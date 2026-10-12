@@ -5,6 +5,8 @@
 
 [color=#DDB869][b]0.6 PREVIEW[/b][/color]
 
+Sorry about the missing shader assets in 0.5 — I forgot to bundle them. They are included in 0.6.
+
 [size=3][color=#E6E2D4]Muzzle flashes, flying brass, a cape caught mid-turn. Stop the action in solo play and find the angle you never get during a firefight.[/color][/size]
 War Journalist gives you a free camera and a photo menu for composing the shot. Move around the scene, adjust roll and field of view, save a camera position, or use slow motion to set up the next frame.
 

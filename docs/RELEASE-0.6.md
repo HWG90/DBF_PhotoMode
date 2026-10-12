@@ -1,5 +1,7 @@
 # War Journalist 0.6 Preview
 
+Sorry about the missing shader assets in 0.5 — I forgot to bundle them. They are included in 0.6.
+
 War Journalist now includes all 40 decorative shader overlays and their materials/registrations, camera foundation, private menu/input services, PNG screenshot converter and logos. The only mod prerequisite is the chosen Lua loader: Bingus Shared Loader v15+ for BSL, or MDL API 2 for the alternative package. MCM remains optional. DBF-HUD and original ActionCam are not required.
 
 - BSL: the single Addon option installs the Lua runtime and every required overlay asset together. HD2 Arsenal or manual patch installation works.
