@@ -1,0 +1,68 @@
+[ATTACH type="full"]38670[/ATTACH]
+
+[size=6][color=#F4CA35][b]WAR JOURNALIST[/b][/color][/size]
+[size=3][color=#9BB6BF]HELLDIVERS 2 • PHOTO MODE[/color][/size]
+
+[color=#DDB869][b]0.5 PREVIEW[/b][/color]
+
+[size=3][color=#E6E2D4]Muzzle flashes, flying brass, a cape caught mid-turn. Stop the action in solo play and find the angle you never get during a firefight.[/color][/size]
+War Journalist gives you a free camera and a photo menu for composing the shot. Move around the scene, adjust roll and field of view, save a camera position, or use slow motion to set up the next frame.
+
+[color=#DDB869][b]Preview limits:[/b][/color] Focus distance, aperture/f-stop and scene color/depth shaders are disabled in this release. Full details are below.
+
+[size=4][color=#F4CA35][b]DOWNLOAD & INSTALL[/b][/color][/size]
+[color=#9BB6BF][b]MAIN DOWNLOAD • BSL[/b][/color]
+[url=https://github.com/HWG90/DBF_PhotoMode/releases/download/v0.5-preview.1/War-Journalist-0.5-BSL.zip][b]War-Journalist-0.5-BSL.zip[/b][/url]
+Requires [b]Bingus Shared Loader v15 or newer[/b]. Import the ZIP into HD2 Arsenal, enable War Journalist alongside Shared Loader, deploy and restart the game normally.
+
+[color=#9BB6BF][b]ALTERNATIVE • MDL[/b][/color]
+[url=https://github.com/HWG90/DBF_PhotoMode/releases/download/v0.5-preview.1/War-Journalist-0.5-MDL.zip][b]War-Journalist-0.5-MDL.zip[/b][/url]
+For [b]MDL Pro 2.0.8 / API 2[/b]. Use the MDL package instead and follow its included installation notes.
+
+[b]Install one Photo Mode package. Disable the original ActionCam before installing.[/b]
+[url=https://www.nexusmods.com/helldivers2/mods/17157]MCM[/url] is optional. With MCM, configure bindings in [b]MCM > Photo Mode[/b]. Without it, bindings appear on the photo menu’s [b]Controls[/b] page. Saved settings are retained.
+
+[size=4][color=#F4CA35][b]CAMERA & COMPOSITION[/b][/color][/size]
+[color=#9BB6BF][b]Position the camera[/b][/color]
+Free movement, mousewheel speed, Q/E roll, vertical field of view and camera lock. [b]Save Camera Position[/b] keeps a shot while you remain within its configurable [b]5–60 m[/b] radius. Leaving that radius, returning to the player, changing scenes, dying or restarting clears it.
+
+[color=#9BB6BF][b]Shape the frame[/b][/color]
+Tint filters, decorative shader patterns, vignette, grain, framing guides and logos. The menu resizes with its text and controls. Type numeric values directly, or right-click an enabled setting to restore its default.
+
+[color=#9BB6BF][b]Stop the action in solo play[/b][/color]
+Solo pause stops native simulation, player animation and AI. Pause and slow motion require a verified solo session; other players, joining peers or unknown session state prevent activation. Freecam remains available in multiplayer. Losing window focus keeps the solo pause active.
+
+[size=4][color=#F4CA35][b]DEFAULT CONTROLS[/b][/color][/size]
+[b]P[/b] — enter or exit Photo Mode
+[b]WASD[/b] — move the camera
+[b]Shift / Ctrl[/b] — rise / descend
+[b]Mousewheel[/b] — adjust movement speed
+[b]Q / E[/b] — roll the camera; switch tabs in menu focus
+[b]Tab[/b] — switch camera / menu focus
+[b]L[/b] — lock or unlock the camera
+[b]Backslash (\)[/b] — prototype solo slow motion
+[b]H[/b] — hide photo controls
+[b]Enter / Space[/b] — choose or edit; WASD moves the menu selector
+[b]Escape[/b] — cancel or leave
+All bindings are configurable.
+
+[size=4][color=#F4CA35][b]SCREENSHOTS[/b][/color][/size]
+The [b]Screenshot[/b] button temporarily hides photo controls, requests game HUD hiding, and restores your visibility settings afterward. Built-in capture saves PNG files.
+[b]BSL:[/b] %LOCALAPPDATA%/DBF/PhotoMode/Screenshots
+[b]MDL:[/b] the mod folder’s Screenshots directory
+Steam screenshots remain an alternative.
+
+[size=4][color=#F4CA35][b]KNOWN ISSUES • 0.5 PREVIEW[/b][/color][/size]
+[color=#DDB869][b]Unavailable controls[/b][/color]
+Focus distance and aperture/f-stop have no working implementation here; both sliders are disabled. Scene color/depth shaders are disabled and not included. Exposure, saturation and contrast controls are also unavailable.
+Native bloom/DoF toggles use the game’s existing graphics. They do not provide custom focus or aperture.
+
+[color=#DDB869][b]Capture & overlay limits[/b][/color]
+Built-in PNG capture may retain ship UI, and HDR brightness can differ from the displayed image. Decorative shader overlays require DBF-HUD assets; missing materials are skipped.
+
+[size=4][color=#F4CA35][b]SOURCE & CREDITS[/b][/color][/size]
+[url=https://github.com/HWG90/DBF_PhotoMode][b]Source, documentation & GitHub downloads[/b][/url]
+[url=https://www.nexusmods.com/helldivers2/mods/17248]Nexus page & downloads[/url]
+Camera discovery/photo foundation: [url=https://www.nexusmods.com/helldivers2/mods/16752]ActionCam by HuedPurple[/url].
+Native UI/font reader: [b]CowboyBingus[/b] — 0BSD license included.
+Helldivers 2 and Arrowhead artwork remains the property of its respective owners.
