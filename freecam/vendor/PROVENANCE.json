@@ -1,0 +1,21 @@
+{
+  "source": "War Journalist 0.5 released embedded private service",
+  "actioncam_credit": "ActionCam 2.3.1 by HuedPurple",
+  "actioncam_archive_sha256": "b6653309c569ee79971d7fc510f9173343d3028175d4a890ad791e55892e273f",
+  "actioncam_source_sha256": "e0d36e63aeac8be815398df5494a3d9759594c8dacfd53b04e9ff1fa4df416ce",
+  "runtime_sha256": {
+    "PhotoCapture64.dll": "be5cc8c9930fa4de342d3afb3ce8be184c4f1208dcab1f7fcab67991ea1a6bd7",
+    "mcm_input_eed2e92830f3.dll": "d1f84d7a48e49f1927bdad9785d135746f918259e84a38f44aa9f4afae38c6c3",
+    "bingus_memory.lua": "eb3a8c7c5246340e8932d009d208c4e6d43d5429fe8405298ff96bae163d0260",
+    "bingus_runtime.lua": "74b3805771639bbbca448709e188b1b16c487eb420605c91e1056b740273c77b",
+    "camera_input.lua": "c10218b454dde521b0d9a51d38f58496486f903b0f7c8a8abd367f04da7fcf1b",
+    "capture.lua": "70c05a6b724719a4d015ba5147fb0becfb78222751beb773fcae135fee52abea",
+    "core.lua": "d03bd8a72f3ab80372dc57351e1e837b10c53e9ea6835002b25fe4ec4fcc87b1",
+    "font.lua": "83f7e1fd6076f6f86bc86bdb8ae302bfc2b0e5902ceae1a2041420b3b722dcc0",
+    "store.lua": "3bc9a632382be9591a6119c576d9c0b2f33bd0fef9db8103de00c0cff87f4382",
+    "view.lua": "3f2e45fdaa2981529e3bb8bf62a6ede71637d081b3c53d0f8ae2f27cf6aa6f2a"
+  },
+  "native_encoding": "hex; decoded only by package builder",
+  "native_runtime": "Windows built-in APIs; static CRT",
+  "input_credit": "CowboyBingus; included 0BSD license"
+}

@@ -37,7 +37,7 @@ mod.on_update(ctx,.016);assert(count.start==0,'Startup must wait for the game AP
 G.stingray={};mod.on_update(ctx,.016);mod.on_update(ctx,.016)
 assert(count.start==1 and count.standalone==1 and G.DBF_PHOTO_MODE_STARTED,'Standalone camera must start exactly once')
 assert(G.DBF_PHOTO_STANDALONE_API and G.DBF_PHOTO_PACKAGE_ROOT==ctx.dir)
-assert(count.host.config_dir=='C:/fixture/appdata/MDL/Helldivers2/Mods/dbf_mcm/settings' and #directories==5)
+assert(count.host.config_dir=='C:/fixture/appdata/DBF/PhotoMode/settings' and #directories==3)
 assert(not pcall(count.host.read,'../secrets') and not pcall(count.host.require,'src/../../secrets.lua'),'Private host must reject traversal')
 G.update(.016);assert(count.step==1 and count.previous==1)
 mod.on_disable(ctx);cleanup[1]();G.update(.016)

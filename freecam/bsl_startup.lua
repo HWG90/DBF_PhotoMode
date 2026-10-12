@@ -31,8 +31,7 @@ local function write_native(name)
 end
 local native=body('standalone-library.txt'):match('^(mcm_input_%x+%.dll)%s*$');assert(native,'Photo input library manifest invalid')
 write_native(native);write_native('PhotoCapture64.dll')
-local config=appdata
-for _,part in ipairs({'MDL','Helldivers2','Mods','dbf_mcm','settings'})do config=config..'/'..part;kernel.CreateDirectoryA(config,nil)end
+local config=root..'/settings';kernel.CreateDirectoryA(config,nil)
 local host={dir=root,config_dir=config,log=log}
 function host.read(name)return files[name]and body(name)or nil end
 function host.require(name)

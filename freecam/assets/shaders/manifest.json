@@ -1,0 +1,1314 @@
+{
+  "schema": 1,
+  "owner": "War Journalist / DBF_PhotoMode",
+  "source_archive": "before-whole-build.zip",
+  "source_archive_sha256": "c724d3be00c6b72a0186a698b741dc032db61962d2fec89e489338d7017efd18",
+  "source_cpu_entry": "native/ee6b1ba7e22d71ed.patch_0",
+  "source_cpu_sha256": "79ee29300fc86f9e054c6e7d15284c760484aa528113b9da7ec159adb4e8f9ba",
+  "source_registry_sha256": "5b83c424902bb429d476253edeeb400bb02e2f92fbc4c863f7430e251a8a24b1",
+  "source_shader_registrations": 315,
+  "source_hlsl_directory": "DBF-HUD/assets/panel-shaders/animated",
+  "original_registry": {
+    "file": "original-default-shaders.bin",
+    "bytes": 640,
+    "sha256": "f62a82b5fc095c42958a1f30fe6a1f7846107d197960b3e5beb72bda18b86040"
+  },
+  "original_registry_provenance": "Original ee6b1ba7e22d71ed base archive via read-only DSAR/DSAA bundles.nxa access; 953 base resources, 77 default registrations. Hash verified against the retained HUD original group, not an installed patch.",
+  "dependencies": {
+    "textures": [],
+    "fonts": [],
+    "other_mods": [],
+    "game_render_targets": [
+      "linear_depth"
+    ],
+    "linear_depth_use": "Only under scissor_mode > 0.5; Photo Mode sets scissor_mode=0."
+  },
+  "coexistence_limit": "Other packages replacing core/stingray_renderer/shader_libraries/default_shaders must union shader IDs. A separate higher-priority group can hide these or another mod's registrations; arbitrary patch stacking does not merge registry resources.",
+  "resource_names_preserved": true,
+  "compiled_bytes_preserved": true,
+  "textures_fonts_and_hud_runtime_included": false,
+  "scene_or_dof_assets_included": false,
+  "live_validation": false,
+  "overlays": [
+    {
+      "id": "amber_glass",
+      "material": "mods/dbf_hud/materials/mapped_amber_glass",
+      "shader": "mods/dbf_hud/shaders/mapped_amber_glass",
+      "material_cpu": {
+        "file": "amber_glass.material.bin",
+        "bytes": 144,
+        "sha256": "4f92de9c38d78b3f5b73239533b44e6ef7e90b4b27ef7bbecfe53f0c0e6bfd77"
+      },
+      "shader_cpu": {
+        "file": "amber_glass.shader.bin",
+        "bytes": 4,
+        "sha256": "fb5e512425fc9449316ec95969ebe71e2d576dbab833d61e2a5b9330fd70ee02"
+      },
+      "shader_gpu": {
+        "file": "amber_glass.shader.gpu",
+        "bytes": 15792,
+        "sha256": "e27205b8ff9306e0530396341c4d1937502277901c307658868b475ddaf66b4b"
+      },
+      "hlsl": {
+        "file": "amber_glass.hlsl",
+        "bytes": 1722,
+        "sha256": "5b7d7cb6a570fbd372b66c3b0c86b2c481f54f2438683e78bad230875260f459"
+      },
+      "hlsl_validation": {
+        "compiler": "Windows d3dcompiler_47.dll D3DCompile",
+        "entry": "hud_fill",
+        "target": "ps_5_0",
+        "optimization": 3,
+        "instruction_reflection_and_signature_sections_match": true
+      }
+    },
+    {
+      "id": "bayer",
+      "material": "mods/dbf_hud/materials/mapped_bayer",
+      "shader": "mods/dbf_hud/shaders/mapped_bayer",
+      "material_cpu": {
+        "file": "bayer.material.bin",
+        "bytes": 144,
+        "sha256": "2fe0894019e312b28bec45268c9dd571dec964c4ed1beb4eb9c7258d90de9284"
+      },
+      "shader_cpu": {
+        "file": "bayer.shader.bin",
+        "bytes": 4,
+        "sha256": "fb5e512425fc9449316ec95969ebe71e2d576dbab833d61e2a5b9330fd70ee02"
+      },
+      "shader_gpu": {
+        "file": "bayer.shader.gpu",
+        "bytes": 15792,
+        "sha256": "13e31187a619ab71df8f78d9e3dac2ae9a33ba12a6a427d79bab393051c4347f"
+      },
+      "hlsl": {
+        "file": "bayer.hlsl",
+        "bytes": 1674,
+        "sha256": "bb0549e3f74d8f313f7d3cd6abf0b5a32d12271a3e9100de0c59ad9cf9ec94e1"
+      },
+      "hlsl_validation": {
+        "compiler": "Windows d3dcompiler_47.dll D3DCompile",
+        "entry": "hud_fill",
+        "target": "ps_5_0",
+        "optimization": 3,
+        "instruction_reflection_and_signature_sections_match": true
+      }
+    },
+    {
+      "id": "blueprint",
+      "material": "mods/dbf_hud/materials/mapped_blueprint",
+      "shader": "mods/dbf_hud/shaders/mapped_blueprint",
+      "material_cpu": {
+        "file": "blueprint.material.bin",
+        "bytes": 144,
+        "sha256": "ba9c9046dde50bcf9fef84e22efaa5d0f4bc5b3f6daae82d2e8b2e5f1048bec8"
+      },
+      "shader_cpu": {
+        "file": "blueprint.shader.bin",
+        "bytes": 4,
+        "sha256": "fb5e512425fc9449316ec95969ebe71e2d576dbab833d61e2a5b9330fd70ee02"
+      },
+      "shader_gpu": {
+        "file": "blueprint.shader.gpu",
+        "bytes": 15792,
+        "sha256": "c678d79f75aef0bd8fac447a762aee77a26562d2112c9c43a1340ed3f4bbfedc"
+      },
+      "hlsl": {
+        "file": "blueprint.hlsl",
+        "bytes": 1739,
+        "sha256": "b480cf79933e45c8fd7108f45439de9803eeb515e01cd7389a6e083680a530ca"
+      },
+      "hlsl_validation": {
+        "compiler": "Windows d3dcompiler_47.dll D3DCompile",
+        "entry": "hud_fill",
+        "target": "ps_5_0",
+        "optimization": 3,
+        "instruction_reflection_and_signature_sections_match": true
+      }
+    },
+    {
+      "id": "brushed_steel",
+      "material": "mods/dbf_hud/materials/mapped_brushed_steel",
+      "shader": "mods/dbf_hud/shaders/mapped_brushed_steel",
+      "material_cpu": {
+        "file": "brushed_steel.material.bin",
+        "bytes": 144,
+        "sha256": "69068d27b50d9705a8cf78cebe465a236dfd313b38315621d71d14bc12ba4ebb"
+      },
+      "shader_cpu": {
+        "file": "brushed_steel.shader.bin",
+        "bytes": 4,
+        "sha256": "fb5e512425fc9449316ec95969ebe71e2d576dbab833d61e2a5b9330fd70ee02"
+      },
+      "shader_gpu": {
+        "file": "brushed_steel.shader.gpu",
+        "bytes": 15792,
+        "sha256": "6e093d42be55302883ac8089fa4e8e83c348c12cd5e47ec148d01bb9c5a50d09"
+      },
+      "hlsl": {
+        "file": "brushed_steel.hlsl",
+        "bytes": 1694,
+        "sha256": "17d24a7f17d1773832774014718e394d943b42d2b465f7073cd73070b2c77b8d"
+      },
+      "hlsl_validation": {
+        "compiler": "Windows d3dcompiler_47.dll D3DCompile",
+        "entry": "hud_fill",
+        "target": "ps_5_0",
+        "optimization": 3,
+        "instruction_reflection_and_signature_sections_match": true
+      }
+    },
+    {
+      "id": "carbon",
+      "material": "mods/dbf_hud/materials/mapped_carbon",
+      "shader": "mods/dbf_hud/shaders/mapped_carbon",
+      "material_cpu": {
+        "file": "carbon.material.bin",
+        "bytes": 144,
+        "sha256": "40edd94c1e4a670c73fadc9ae473ed82df36aa657aa5e8d3ea39bfaf2fd5c7e4"
+      },
+      "shader_cpu": {
+        "file": "carbon.shader.bin",
+        "bytes": 4,
+        "sha256": "fb5e512425fc9449316ec95969ebe71e2d576dbab833d61e2a5b9330fd70ee02"
+      },
+      "shader_gpu": {
+        "file": "carbon.shader.gpu",
+        "bytes": 15792,
+        "sha256": "ab6db9b4cfa5028251bb5138276c47c7069bf353cbf952c8d09fc8d8387e56c0"
+      },
+      "hlsl": {
+        "file": "carbon.hlsl",
+        "bytes": 1700,
+        "sha256": "8cff52f4b74674f78c095660f1f3f0adb32f4d9dd77f27385185d63565dfadc8"
+      },
+      "hlsl_validation": {
+        "compiler": "Windows d3dcompiler_47.dll D3DCompile",
+        "entry": "hud_fill",
+        "target": "ps_5_0",
+        "optimization": 3,
+        "instruction_reflection_and_signature_sections_match": true
+      }
+    },
+    {
+      "id": "caution_dots",
+      "material": "mods/dbf_hud/materials/mapped_caution_dots",
+      "shader": "mods/dbf_hud/shaders/mapped_caution_dots",
+      "material_cpu": {
+        "file": "caution_dots.material.bin",
+        "bytes": 144,
+        "sha256": "afa1b53032d7b5e5e44e831c726c04ce88cb4b4edaee1443b5dbf09bfd4165bb"
+      },
+      "shader_cpu": {
+        "file": "caution_dots.shader.bin",
+        "bytes": 4,
+        "sha256": "fb5e512425fc9449316ec95969ebe71e2d576dbab833d61e2a5b9330fd70ee02"
+      },
+      "shader_gpu": {
+        "file": "caution_dots.shader.gpu",
+        "bytes": 15792,
+        "sha256": "d268cb8994e378e5af23b60c6987dda55a6aa1657b36edab23c9d9f120b244c4"
+      },
+      "hlsl": {
+        "file": "caution_dots.hlsl",
+        "bytes": 1664,
+        "sha256": "70189d0c6b82d49f5a56e2edd759ee81ca05b529731f6b4c6a12c52855780c6e"
+      },
+      "hlsl_validation": {
+        "compiler": "Windows d3dcompiler_47.dll D3DCompile",
+        "entry": "hud_fill",
+        "target": "ps_5_0",
+        "optimization": 3,
+        "instruction_reflection_and_signature_sections_match": true
+      }
+    },
+    {
+      "id": "ceramic",
+      "material": "mods/dbf_hud/materials/mapped_ceramic",
+      "shader": "mods/dbf_hud/shaders/mapped_ceramic",
+      "material_cpu": {
+        "file": "ceramic.material.bin",
+        "bytes": 144,
+        "sha256": "92bcde1e459c998ff89ab00e8b5756112f535020875f75bdb38887e69d8cc651"
+      },
+      "shader_cpu": {
+        "file": "ceramic.shader.bin",
+        "bytes": 4,
+        "sha256": "fb5e512425fc9449316ec95969ebe71e2d576dbab833d61e2a5b9330fd70ee02"
+      },
+      "shader_gpu": {
+        "file": "ceramic.shader.gpu",
+        "bytes": 15792,
+        "sha256": "baa519b5d81fc6beaa1da474356cca98c5fd0fb111f38d23681765601f85aff9"
+      },
+      "hlsl": {
+        "file": "ceramic.hlsl",
+        "bytes": 1711,
+        "sha256": "0ea9e42a231f95e3519b4a0690fce5495b38988f53d9917df3717f5d40771591"
+      },
+      "hlsl_validation": {
+        "compiler": "Windows d3dcompiler_47.dll D3DCompile",
+        "entry": "hud_fill",
+        "target": "ps_5_0",
+        "optimization": 3,
+        "instruction_reflection_and_signature_sections_match": true
+      }
+    },
+    {
+      "id": "ceramic_cracks",
+      "material": "mods/dbf_hud/materials/mapped_ceramic_cracks",
+      "shader": "mods/dbf_hud/shaders/mapped_ceramic_cracks",
+      "material_cpu": {
+        "file": "ceramic_cracks.material.bin",
+        "bytes": 144,
+        "sha256": "d026f45407905e2cdae2af0cffa446a28dfa0155610fddebdcd064c907b38d09"
+      },
+      "shader_cpu": {
+        "file": "ceramic_cracks.shader.bin",
+        "bytes": 4,
+        "sha256": "fb5e512425fc9449316ec95969ebe71e2d576dbab833d61e2a5b9330fd70ee02"
+      },
+      "shader_gpu": {
+        "file": "ceramic_cracks.shader.gpu",
+        "bytes": 15792,
+        "sha256": "f26516f5d9cedca474509502e3de6d042214ce453e9b91fb0ae6f26ddaf0650d"
+      },
+      "hlsl": {
+        "file": "ceramic_cracks.hlsl",
+        "bytes": 1728,
+        "sha256": "5141bc74729059f3e51890d9ca1d4797a3a068a14d15f12a1fd7cd43bed012f8"
+      },
+      "hlsl_validation": {
+        "compiler": "Windows d3dcompiler_47.dll D3DCompile",
+        "entry": "hud_fill",
+        "target": "ps_5_0",
+        "optimization": 3,
+        "instruction_reflection_and_signature_sections_match": true
+      }
+    },
+    {
+      "id": "checker_coarse",
+      "material": "mods/dbf_hud/materials/mapped_checker_coarse",
+      "shader": "mods/dbf_hud/shaders/mapped_checker_coarse",
+      "material_cpu": {
+        "file": "checker_coarse.material.bin",
+        "bytes": 144,
+        "sha256": "aff55b1cc9372694c5268a09aa4a268c3f01acd5c9ec5a07e481d50e867065a4"
+      },
+      "shader_cpu": {
+        "file": "checker_coarse.shader.bin",
+        "bytes": 4,
+        "sha256": "fb5e512425fc9449316ec95969ebe71e2d576dbab833d61e2a5b9330fd70ee02"
+      },
+      "shader_gpu": {
+        "file": "checker_coarse.shader.gpu",
+        "bytes": 15792,
+        "sha256": "ccb268b9f1ad46acdf678f981fb63747ae4edf938086d3cc99f90c5229ea69fe"
+      },
+      "hlsl": {
+        "file": "checker_coarse.hlsl",
+        "bytes": 1699,
+        "sha256": "c817c4c95c95ec81849774e5eed7fc60a682b93d67369deb604d21979dc53eca"
+      },
+      "hlsl_validation": {
+        "compiler": "Windows d3dcompiler_47.dll D3DCompile",
+        "entry": "hud_fill",
+        "target": "ps_5_0",
+        "optimization": 3,
+        "instruction_reflection_and_signature_sections_match": true
+      }
+    },
+    {
+      "id": "checker_fine",
+      "material": "mods/dbf_hud/materials/mapped_checker_fine",
+      "shader": "mods/dbf_hud/shaders/mapped_checker_fine",
+      "material_cpu": {
+        "file": "checker_fine.material.bin",
+        "bytes": 144,
+        "sha256": "4712178515802e8c85ce81328f08c87ed436ffed95a43f11130587b9bc21359b"
+      },
+      "shader_cpu": {
+        "file": "checker_fine.shader.bin",
+        "bytes": 4,
+        "sha256": "fb5e512425fc9449316ec95969ebe71e2d576dbab833d61e2a5b9330fd70ee02"
+      },
+      "shader_gpu": {
+        "file": "checker_fine.shader.gpu",
+        "bytes": 15792,
+        "sha256": "e7e8a6ecd06de7419985eb162e897866b074272eca281f1b8e0c6dbe67ce8ff1"
+      },
+      "hlsl": {
+        "file": "checker_fine.hlsl",
+        "bytes": 1658,
+        "sha256": "ec0e9dd3c505f63d63a8634ec28f356a6a58b667210887105e8b497442ad61cd"
+      },
+      "hlsl_validation": {
+        "compiler": "Windows d3dcompiler_47.dll D3DCompile",
+        "entry": "hud_fill",
+        "target": "ps_5_0",
+        "optimization": 3,
+        "instruction_reflection_and_signature_sections_match": true
+      }
+    },
+    {
+      "id": "circuit",
+      "material": "mods/dbf_hud/materials/mapped_circuit",
+      "shader": "mods/dbf_hud/shaders/mapped_circuit",
+      "material_cpu": {
+        "file": "circuit.material.bin",
+        "bytes": 144,
+        "sha256": "2ffdcf8b860f366846f8d52011b10a6dd3392e9437146631c23a33a5910dc26e"
+      },
+      "shader_cpu": {
+        "file": "circuit.shader.bin",
+        "bytes": 4,
+        "sha256": "fb5e512425fc9449316ec95969ebe71e2d576dbab833d61e2a5b9330fd70ee02"
+      },
+      "shader_gpu": {
+        "file": "circuit.shader.gpu",
+        "bytes": 15792,
+        "sha256": "fa9a3ecba0a816ae3658deaf012e9eef1e85a567f7459d9de2f60c16cb27cbbc"
+      },
+      "hlsl": {
+        "file": "circuit.hlsl",
+        "bytes": 1793,
+        "sha256": "6682b3fb2d59ac2c587ac8c3a89e4c36502ca7e05033c35b26df4280ef7b9e8c"
+      },
+      "hlsl_validation": {
+        "compiler": "Windows d3dcompiler_47.dll D3DCompile",
+        "entry": "hud_fill",
+        "target": "ps_5_0",
+        "optimization": 3,
+        "instruction_reflection_and_signature_sections_match": true
+      }
+    },
+    {
+      "id": "cobalt_glass",
+      "material": "mods/dbf_hud/materials/mapped_cobalt_glass",
+      "shader": "mods/dbf_hud/shaders/mapped_cobalt_glass",
+      "material_cpu": {
+        "file": "cobalt_glass.material.bin",
+        "bytes": 144,
+        "sha256": "abc5ca1cca7a6ff07f2a9889cc4b22ca73bdd0af0348f03d5502c46f6b0577e4"
+      },
+      "shader_cpu": {
+        "file": "cobalt_glass.shader.bin",
+        "bytes": 4,
+        "sha256": "fb5e512425fc9449316ec95969ebe71e2d576dbab833d61e2a5b9330fd70ee02"
+      },
+      "shader_gpu": {
+        "file": "cobalt_glass.shader.gpu",
+        "bytes": 15792,
+        "sha256": "23fe13d119e9086d6a02cd446bf5e173872f6f33e31c50fef4b696985bf2a6f7"
+      },
+      "hlsl": {
+        "file": "cobalt_glass.hlsl",
+        "bytes": 1703,
+        "sha256": "44be7fbb4de829f8ff1682b69939775b80618c928079e646c0e7a7a7b16a4bc2"
+      },
+      "hlsl_validation": {
+        "compiler": "Windows d3dcompiler_47.dll D3DCompile",
+        "entry": "hud_fill",
+        "target": "ps_5_0",
+        "optimization": 3,
+        "instruction_reflection_and_signature_sections_match": true
+      }
+    },
+    {
+      "id": "crt_phosphor",
+      "material": "mods/dbf_hud/materials/mapped_crt_phosphor",
+      "shader": "mods/dbf_hud/shaders/mapped_crt_phosphor",
+      "material_cpu": {
+        "file": "crt_phosphor.material.bin",
+        "bytes": 144,
+        "sha256": "8fca4a0d1c0306151be9026972ef4ae21b12865f5cf73b558156a971f1f1cd01"
+      },
+      "shader_cpu": {
+        "file": "crt_phosphor.shader.bin",
+        "bytes": 4,
+        "sha256": "fb5e512425fc9449316ec95969ebe71e2d576dbab833d61e2a5b9330fd70ee02"
+      },
+      "shader_gpu": {
+        "file": "crt_phosphor.shader.gpu",
+        "bytes": 15792,
+        "sha256": "f049fd50f7547fe82e72d82ae3d3893560989ae4a70a7080f104ff707ed4e90c"
+      },
+      "hlsl": {
+        "file": "crt_phosphor.hlsl",
+        "bytes": 1747,
+        "sha256": "d3021bfb31ad34ea5c196074ade9fc572dc9975f1bd8f2e5b845df59060abfb7"
+      },
+      "hlsl_validation": {
+        "compiler": "Windows d3dcompiler_47.dll D3DCompile",
+        "entry": "hud_fill",
+        "target": "ps_5_0",
+        "optimization": 3,
+        "instruction_reflection_and_signature_sections_match": true
+      }
+    },
+    {
+      "id": "crt_scan",
+      "material": "mods/dbf_hud/materials/mapped_crt_scan",
+      "shader": "mods/dbf_hud/shaders/mapped_crt_scan",
+      "material_cpu": {
+        "file": "crt_scan.material.bin",
+        "bytes": 144,
+        "sha256": "40158496324259aae0bc2ba66bcbfee9a65d2f415e4183fcb57054497cfdddc2"
+      },
+      "shader_cpu": {
+        "file": "crt_scan.shader.bin",
+        "bytes": 4,
+        "sha256": "fb5e512425fc9449316ec95969ebe71e2d576dbab833d61e2a5b9330fd70ee02"
+      },
+      "shader_gpu": {
+        "file": "crt_scan.shader.gpu",
+        "bytes": 15792,
+        "sha256": "389183d1cf8a2cf8b86b256603f2f23f182ee05514d5dcc87752938f25840c6d"
+      },
+      "hlsl": {
+        "file": "crt_scan.hlsl",
+        "bytes": 1656,
+        "sha256": "028b4da96f13416b3a337000936d4b23fa3434432f90ccf5f7863234143699cd"
+      },
+      "hlsl_validation": {
+        "compiler": "Windows d3dcompiler_47.dll D3DCompile",
+        "entry": "hud_fill",
+        "target": "ps_5_0",
+        "optimization": 3,
+        "instruction_reflection_and_signature_sections_match": true
+      }
+    },
+    {
+      "id": "diagonal_weave",
+      "material": "mods/dbf_hud/materials/mapped_diagonal_weave",
+      "shader": "mods/dbf_hud/shaders/mapped_diagonal_weave",
+      "material_cpu": {
+        "file": "diagonal_weave.material.bin",
+        "bytes": 144,
+        "sha256": "5eee55067a0ef8d09fbfb0a68ea83ef5b4d5fbdf03e1eb9e7cfb13e9b525917e"
+      },
+      "shader_cpu": {
+        "file": "diagonal_weave.shader.bin",
+        "bytes": 4,
+        "sha256": "fb5e512425fc9449316ec95969ebe71e2d576dbab833d61e2a5b9330fd70ee02"
+      },
+      "shader_gpu": {
+        "file": "diagonal_weave.shader.gpu",
+        "bytes": 15792,
+        "sha256": "d261d37877888ef8d9a8d3e02153febb4792c917c1a505bef0088a3d3866f90b"
+      },
+      "hlsl": {
+        "file": "diagonal_weave.hlsl",
+        "bytes": 1644,
+        "sha256": "bb718bfe1846d0df980f031fd31d73d7c7077b28bb4afdb0bee2a58c95e951dc"
+      },
+      "hlsl_validation": {
+        "compiler": "Windows d3dcompiler_47.dll D3DCompile",
+        "entry": "hud_fill",
+        "target": "ps_5_0",
+        "optimization": 3,
+        "instruction_reflection_and_signature_sections_match": true
+      }
+    },
+    {
+      "id": "dot_matrix",
+      "material": "mods/dbf_hud/materials/mapped_dot_matrix",
+      "shader": "mods/dbf_hud/shaders/mapped_dot_matrix",
+      "material_cpu": {
+        "file": "dot_matrix.material.bin",
+        "bytes": 144,
+        "sha256": "a3f8a97da4550effcd87fded8240661efe75e3d26ddd10de33e487095261c02f"
+      },
+      "shader_cpu": {
+        "file": "dot_matrix.shader.bin",
+        "bytes": 4,
+        "sha256": "fb5e512425fc9449316ec95969ebe71e2d576dbab833d61e2a5b9330fd70ee02"
+      },
+      "shader_gpu": {
+        "file": "dot_matrix.shader.gpu",
+        "bytes": 15792,
+        "sha256": "a6feab95578fbf908b69786747e06ad9237b643fe426d024bafb59f2aa259aae"
+      },
+      "hlsl": {
+        "file": "dot_matrix.hlsl",
+        "bytes": 1727,
+        "sha256": "b0c1d151cae7fe3b5eabdea7ee6b8a27cabdc248e48b479bbe8a38cceb68556c"
+      },
+      "hlsl_validation": {
+        "compiler": "Windows d3dcompiler_47.dll D3DCompile",
+        "entry": "hud_fill",
+        "target": "ps_5_0",
+        "optimization": 3,
+        "instruction_reflection_and_signature_sections_match": true
+      }
+    },
+    {
+      "id": "energy_threads",
+      "material": "mods/dbf_hud/materials/mapped_energy_threads",
+      "shader": "mods/dbf_hud/shaders/mapped_energy_threads",
+      "material_cpu": {
+        "file": "energy_threads.material.bin",
+        "bytes": 144,
+        "sha256": "c8cc62b052796be21db70191258dd23aeac7ab3334d672cd73b3d4b7eebed2a8"
+      },
+      "shader_cpu": {
+        "file": "energy_threads.shader.bin",
+        "bytes": 4,
+        "sha256": "fb5e512425fc9449316ec95969ebe71e2d576dbab833d61e2a5b9330fd70ee02"
+      },
+      "shader_gpu": {
+        "file": "energy_threads.shader.gpu",
+        "bytes": 15792,
+        "sha256": "d139052c9686ba8e1a993e1ad53ca456b3b28078d7fe061177f6a8ebba01810c"
+      },
+      "hlsl": {
+        "file": "energy_threads.hlsl",
+        "bytes": 1651,
+        "sha256": "95bfcc95ee8847a5492654f95e37142bf6bde3ff29a8a219362c63b7dfd458cd"
+      },
+      "hlsl_validation": {
+        "compiler": "Windows d3dcompiler_47.dll D3DCompile",
+        "entry": "hud_fill",
+        "target": "ps_5_0",
+        "optimization": 3,
+        "instruction_reflection_and_signature_sections_match": true
+      }
+    },
+    {
+      "id": "etched_scale",
+      "material": "mods/dbf_hud/materials/mapped_etched_scale",
+      "shader": "mods/dbf_hud/shaders/mapped_etched_scale",
+      "material_cpu": {
+        "file": "etched_scale.material.bin",
+        "bytes": 144,
+        "sha256": "8105b45e2150ad6bc31bd70c5406839fa53c834b2f14f92edad353a29e71ea30"
+      },
+      "shader_cpu": {
+        "file": "etched_scale.shader.bin",
+        "bytes": 4,
+        "sha256": "fb5e512425fc9449316ec95969ebe71e2d576dbab833d61e2a5b9330fd70ee02"
+      },
+      "shader_gpu": {
+        "file": "etched_scale.shader.gpu",
+        "bytes": 15792,
+        "sha256": "0bdb7346442fc134590fd844b0f0d627ba0b6040d9ff0be00a5706e8c753542a"
+      },
+      "hlsl": {
+        "file": "etched_scale.hlsl",
+        "bytes": 1686,
+        "sha256": "4d95d8108dcd8104d2c5cceae902934c699828a11f20d246e9978dae32a4150b"
+      },
+      "hlsl_validation": {
+        "compiler": "Windows d3dcompiler_47.dll D3DCompile",
+        "entry": "hud_fill",
+        "target": "ps_5_0",
+        "optimization": 3,
+        "instruction_reflection_and_signature_sections_match": true
+      }
+    },
+    {
+      "id": "frosted",
+      "material": "mods/dbf_hud/materials/mapped_frosted",
+      "shader": "mods/dbf_hud/shaders/mapped_frosted",
+      "material_cpu": {
+        "file": "frosted.material.bin",
+        "bytes": 144,
+        "sha256": "cf1fc5fd47c68332a602269d4bff5a5ceeef57efb57dc4efa7da6610a120a58f"
+      },
+      "shader_cpu": {
+        "file": "frosted.shader.bin",
+        "bytes": 4,
+        "sha256": "fb5e512425fc9449316ec95969ebe71e2d576dbab833d61e2a5b9330fd70ee02"
+      },
+      "shader_gpu": {
+        "file": "frosted.shader.gpu",
+        "bytes": 15792,
+        "sha256": "1fd57397d6e61e29428d9abe74353d877a1b05acbceb13da80c3ed5e9663c81e"
+      },
+      "hlsl": {
+        "file": "frosted.hlsl",
+        "bytes": 1727,
+        "sha256": "b297c643839b7c09c4ea316f3e03b425bcdc0df42d04c78f9158b885cae2fbf8"
+      },
+      "hlsl_validation": {
+        "compiler": "Windows d3dcompiler_47.dll D3DCompile",
+        "entry": "hud_fill",
+        "target": "ps_5_0",
+        "optimization": 3,
+        "instruction_reflection_and_signature_sections_match": true
+      }
+    },
+    {
+      "id": "glass_sheen",
+      "material": "mods/dbf_hud/materials/mapped_glass_sheen",
+      "shader": "mods/dbf_hud/shaders/mapped_glass_sheen",
+      "material_cpu": {
+        "file": "glass_sheen.material.bin",
+        "bytes": 144,
+        "sha256": "4412ab6959b0ac98d3b78858ded2b0791afad89b17ceb1192798a08489ca07d9"
+      },
+      "shader_cpu": {
+        "file": "glass_sheen.shader.bin",
+        "bytes": 4,
+        "sha256": "fb5e512425fc9449316ec95969ebe71e2d576dbab833d61e2a5b9330fd70ee02"
+      },
+      "shader_gpu": {
+        "file": "glass_sheen.shader.gpu",
+        "bytes": 15792,
+        "sha256": "14b3894ea7cbd0edb4342fc1b2ec598d7c025f1e1064c7ecc0bd0758d8328025"
+      },
+      "hlsl": {
+        "file": "glass_sheen.hlsl",
+        "bytes": 1673,
+        "sha256": "e95876e161bf275183a1b1f62ff471d137e1e79e91b5ec3e90892732a1a87b2e"
+      },
+      "hlsl_validation": {
+        "compiler": "Windows d3dcompiler_47.dll D3DCompile",
+        "entry": "hud_fill",
+        "target": "ps_5_0",
+        "optimization": 3,
+        "instruction_reflection_and_signature_sections_match": true
+      }
+    },
+    {
+      "id": "grid_nodes",
+      "material": "mods/dbf_hud/materials/mapped_grid_nodes",
+      "shader": "mods/dbf_hud/shaders/mapped_grid_nodes",
+      "material_cpu": {
+        "file": "grid_nodes.material.bin",
+        "bytes": 144,
+        "sha256": "93d335a9b70702db6742f94d3f64575a6bf110e24c599bc6c2ce2e2ca6e5bd88"
+      },
+      "shader_cpu": {
+        "file": "grid_nodes.shader.bin",
+        "bytes": 4,
+        "sha256": "fb5e512425fc9449316ec95969ebe71e2d576dbab833d61e2a5b9330fd70ee02"
+      },
+      "shader_gpu": {
+        "file": "grid_nodes.shader.gpu",
+        "bytes": 15792,
+        "sha256": "9cf484069c47d88f3f75bc4261eb2580484d82308643f52ce4285f1ee0aa9604"
+      },
+      "hlsl": {
+        "file": "grid_nodes.hlsl",
+        "bytes": 1769,
+        "sha256": "9caa6e804bc8fa88f6b94f8e7a3908a130002eb202b5de59f6f0e47444b79723"
+      },
+      "hlsl_validation": {
+        "compiler": "Windows d3dcompiler_47.dll D3DCompile",
+        "entry": "hud_fill",
+        "target": "ps_5_0",
+        "optimization": 3,
+        "instruction_reflection_and_signature_sections_match": true
+      }
+    },
+    {
+      "id": "gunmetal",
+      "material": "mods/dbf_hud/materials/mapped_gunmetal",
+      "shader": "mods/dbf_hud/shaders/mapped_gunmetal",
+      "material_cpu": {
+        "file": "gunmetal.material.bin",
+        "bytes": 144,
+        "sha256": "2413b2692f01b86489960cb1402c9a01cc45f6d1994f0d8bd1ffcdbdf5e77cb2"
+      },
+      "shader_cpu": {
+        "file": "gunmetal.shader.bin",
+        "bytes": 4,
+        "sha256": "fb5e512425fc9449316ec95969ebe71e2d576dbab833d61e2a5b9330fd70ee02"
+      },
+      "shader_gpu": {
+        "file": "gunmetal.shader.gpu",
+        "bytes": 15792,
+        "sha256": "3cf44d6da19ddcf9734c7a4803090724e070e70c810de035841e1d2ec3ce1910"
+      },
+      "hlsl": {
+        "file": "gunmetal.hlsl",
+        "bytes": 1681,
+        "sha256": "26ade33c03f18f4d8a6e1790692ad94c3e1c191c5feb8623fe65db0ec89c438d"
+      },
+      "hlsl_validation": {
+        "compiler": "Windows d3dcompiler_47.dll D3DCompile",
+        "entry": "hud_fill",
+        "target": "ps_5_0",
+        "optimization": 3,
+        "instruction_reflection_and_signature_sections_match": true
+      }
+    },
+    {
+      "id": "hammered_metal",
+      "material": "mods/dbf_hud/materials/mapped_hammered_metal",
+      "shader": "mods/dbf_hud/shaders/mapped_hammered_metal",
+      "material_cpu": {
+        "file": "hammered_metal.material.bin",
+        "bytes": 144,
+        "sha256": "e843a10d99a52769f57f65c3f2f10155fd56615a246ab5ca491d4c496c1056d9"
+      },
+      "shader_cpu": {
+        "file": "hammered_metal.shader.bin",
+        "bytes": 4,
+        "sha256": "fb5e512425fc9449316ec95969ebe71e2d576dbab833d61e2a5b9330fd70ee02"
+      },
+      "shader_gpu": {
+        "file": "hammered_metal.shader.gpu",
+        "bytes": 15792,
+        "sha256": "8f2994a216867208f35c68d1f99a1693135893b4e34395e27bfe3167141fb667"
+      },
+      "hlsl": {
+        "file": "hammered_metal.hlsl",
+        "bytes": 1682,
+        "sha256": "0d351e6a712a40d400821a784d30db22df4664ce0ed33b99dfcf0cece32120ae"
+      },
+      "hlsl_validation": {
+        "compiler": "Windows d3dcompiler_47.dll D3DCompile",
+        "entry": "hud_fill",
+        "target": "ps_5_0",
+        "optimization": 3,
+        "instruction_reflection_and_signature_sections_match": true
+      }
+    },
+    {
+      "id": "hazard_red",
+      "material": "mods/dbf_hud/materials/mapped_hazard_red",
+      "shader": "mods/dbf_hud/shaders/mapped_hazard_red",
+      "material_cpu": {
+        "file": "hazard_red.material.bin",
+        "bytes": 144,
+        "sha256": "28891c08ddda01f2cbb61a407f6a999c1591ddb9a91f7b993898b1cb01554329"
+      },
+      "shader_cpu": {
+        "file": "hazard_red.shader.bin",
+        "bytes": 4,
+        "sha256": "fb5e512425fc9449316ec95969ebe71e2d576dbab833d61e2a5b9330fd70ee02"
+      },
+      "shader_gpu": {
+        "file": "hazard_red.shader.gpu",
+        "bytes": 15792,
+        "sha256": "8f8cf2b3152900f7927ab75c46d6bd17ce3f2dbd5b1171c61ddfb172db14508e"
+      },
+      "hlsl": {
+        "file": "hazard_red.hlsl",
+        "bytes": 1657,
+        "sha256": "c29ce88f645e9376d44a1f4f02309353cd82340ad5d8b6e8f61c2b17a5228c4b"
+      },
+      "hlsl_validation": {
+        "compiler": "Windows d3dcompiler_47.dll D3DCompile",
+        "entry": "hud_fill",
+        "target": "ps_5_0",
+        "optimization": 3,
+        "instruction_reflection_and_signature_sections_match": true
+      }
+    },
+    {
+      "id": "heat_shimmer",
+      "material": "mods/dbf_hud/materials/mapped_heat_shimmer",
+      "shader": "mods/dbf_hud/shaders/mapped_heat_shimmer",
+      "material_cpu": {
+        "file": "heat_shimmer.material.bin",
+        "bytes": 144,
+        "sha256": "3e1f9aa0da0d862bdf487333affa5b7d55c96a4697ad1cb9eca167f68333a3bf"
+      },
+      "shader_cpu": {
+        "file": "heat_shimmer.shader.bin",
+        "bytes": 4,
+        "sha256": "fb5e512425fc9449316ec95969ebe71e2d576dbab833d61e2a5b9330fd70ee02"
+      },
+      "shader_gpu": {
+        "file": "heat_shimmer.shader.gpu",
+        "bytes": 15792,
+        "sha256": "c30d163a08b1b2e5dafe0c3bd079502f2b959e67f1313ef93a7eb8899fcaff61"
+      },
+      "hlsl": {
+        "file": "heat_shimmer.hlsl",
+        "bytes": 1631,
+        "sha256": "031ba85e8e18bb2b3e96870c2d499f7ac27baa7639de78aa87c20247adff26a6"
+      },
+      "hlsl_validation": {
+        "compiler": "Windows d3dcompiler_47.dll D3DCompile",
+        "entry": "hud_fill",
+        "target": "ps_5_0",
+        "optimization": 3,
+        "instruction_reflection_and_signature_sections_match": true
+      }
+    },
+    {
+      "id": "hex_cells",
+      "material": "mods/dbf_hud/materials/mapped_hex_cells",
+      "shader": "mods/dbf_hud/shaders/mapped_hex_cells",
+      "material_cpu": {
+        "file": "hex_cells.material.bin",
+        "bytes": 144,
+        "sha256": "622c86871c3dfdd47b757c0905d4137e3bd0c0e088cf2b0d787565e98c16ccc6"
+      },
+      "shader_cpu": {
+        "file": "hex_cells.shader.bin",
+        "bytes": 4,
+        "sha256": "fb5e512425fc9449316ec95969ebe71e2d576dbab833d61e2a5b9330fd70ee02"
+      },
+      "shader_gpu": {
+        "file": "hex_cells.shader.gpu",
+        "bytes": 15792,
+        "sha256": "1c2318995e930017ca4907d5da22900309526fd5324c3f28d372519b44af0b49"
+      },
+      "hlsl": {
+        "file": "hex_cells.hlsl",
+        "bytes": 1799,
+        "sha256": "8cbbf436e9d309e0ab21ba1d6d83d8e1506ee1fe6fef2cd4e3d8b1d8515f4bed"
+      },
+      "hlsl_validation": {
+        "compiler": "Windows d3dcompiler_47.dll D3DCompile",
+        "entry": "hud_fill",
+        "target": "ps_5_0",
+        "optimization": 3,
+        "instruction_reflection_and_signature_sections_match": true
+      }
+    },
+    {
+      "id": "ion_noise",
+      "material": "mods/dbf_hud/materials/mapped_ion_noise",
+      "shader": "mods/dbf_hud/shaders/mapped_ion_noise",
+      "material_cpu": {
+        "file": "ion_noise.material.bin",
+        "bytes": 144,
+        "sha256": "0dd877d1d1ab7ab48ba3768d57152ca4245f9a65a776b5cab1aa88770dc8c208"
+      },
+      "shader_cpu": {
+        "file": "ion_noise.shader.bin",
+        "bytes": 4,
+        "sha256": "fb5e512425fc9449316ec95969ebe71e2d576dbab833d61e2a5b9330fd70ee02"
+      },
+      "shader_gpu": {
+        "file": "ion_noise.shader.gpu",
+        "bytes": 15792,
+        "sha256": "2c91ef824fcf22a7225aa2b03a4dd9b9d39e4b1268ca818f249aedb6f9b6ffb3"
+      },
+      "hlsl": {
+        "file": "ion_noise.hlsl",
+        "bytes": 1646,
+        "sha256": "be82cf2f5914b25850cdc6b1abaefdd18844356c075420c5141a7943d190d4c6"
+      },
+      "hlsl_validation": {
+        "compiler": "Windows d3dcompiler_47.dll D3DCompile",
+        "entry": "hud_fill",
+        "target": "ps_5_0",
+        "optimization": 3,
+        "instruction_reflection_and_signature_sections_match": true
+      }
+    },
+    {
+      "id": "iridescent",
+      "material": "mods/dbf_hud/materials/mapped_iridescent",
+      "shader": "mods/dbf_hud/shaders/mapped_iridescent",
+      "material_cpu": {
+        "file": "iridescent.material.bin",
+        "bytes": 144,
+        "sha256": "2e18cdc76f62e699a450c47d12cbd245fecd32c70ef60d0ebe20cd7b30a94b3f"
+      },
+      "shader_cpu": {
+        "file": "iridescent.shader.bin",
+        "bytes": 4,
+        "sha256": "fb5e512425fc9449316ec95969ebe71e2d576dbab833d61e2a5b9330fd70ee02"
+      },
+      "shader_gpu": {
+        "file": "iridescent.shader.gpu",
+        "bytes": 15792,
+        "sha256": "99d65a377a26c660c3cf0e4c48209199cc6b2c9f85e55dc4bcfefb8c5f20f7ee"
+      },
+      "hlsl": {
+        "file": "iridescent.hlsl",
+        "bytes": 1638,
+        "sha256": "b0f96d6a4cb6a517493a50eac4e371823d293eb9c0a1559b1e1165690176fb39"
+      },
+      "hlsl_validation": {
+        "compiler": "Windows d3dcompiler_47.dll D3DCompile",
+        "entry": "hud_fill",
+        "target": "ps_5_0",
+        "optimization": 3,
+        "instruction_reflection_and_signature_sections_match": true
+      }
+    },
+    {
+      "id": "leather",
+      "material": "mods/dbf_hud/materials/mapped_leather",
+      "shader": "mods/dbf_hud/shaders/mapped_leather",
+      "material_cpu": {
+        "file": "leather.material.bin",
+        "bytes": 144,
+        "sha256": "dee259cd20c02d1ba18ed3eaef63f609912a503789ac3468c5469f6d51732bd2"
+      },
+      "shader_cpu": {
+        "file": "leather.shader.bin",
+        "bytes": 4,
+        "sha256": "fb5e512425fc9449316ec95969ebe71e2d576dbab833d61e2a5b9330fd70ee02"
+      },
+      "shader_gpu": {
+        "file": "leather.shader.gpu",
+        "bytes": 15792,
+        "sha256": "14181869dc116a79da0512de12492a30d834a30c230d9bb85f4eae11239705ef"
+      },
+      "hlsl": {
+        "file": "leather.hlsl",
+        "bytes": 1676,
+        "sha256": "1d5457e505c53bf73a6bfd24afa461ebcd44094b6c1d8ab4b6a78c1f316524b4"
+      },
+      "hlsl_validation": {
+        "compiler": "Windows d3dcompiler_47.dll D3DCompile",
+        "entry": "hud_fill",
+        "target": "ps_5_0",
+        "optimization": 3,
+        "instruction_reflection_and_signature_sections_match": true
+      }
+    },
+    {
+      "id": "micro_mesh",
+      "material": "mods/dbf_hud/materials/mapped_micro_mesh",
+      "shader": "mods/dbf_hud/shaders/mapped_micro_mesh",
+      "material_cpu": {
+        "file": "micro_mesh.material.bin",
+        "bytes": 144,
+        "sha256": "8e3aeb132442812e0e445b5be5666c677701aae69e39f28155bbcbd4c75e012e"
+      },
+      "shader_cpu": {
+        "file": "micro_mesh.shader.bin",
+        "bytes": 4,
+        "sha256": "fb5e512425fc9449316ec95969ebe71e2d576dbab833d61e2a5b9330fd70ee02"
+      },
+      "shader_gpu": {
+        "file": "micro_mesh.shader.gpu",
+        "bytes": 15792,
+        "sha256": "be10a89bfda39767a80283acbbaa682252bdc4fd47178cc197a59875f10fc24f"
+      },
+      "hlsl": {
+        "file": "micro_mesh.hlsl",
+        "bytes": 1698,
+        "sha256": "d21384e9900d4990e030fd6ff9361e95ce32b2d33c6c9a80c23b689b687144c6"
+      },
+      "hlsl_validation": {
+        "compiler": "Windows d3dcompiler_47.dll D3DCompile",
+        "entry": "hud_fill",
+        "target": "ps_5_0",
+        "optimization": 3,
+        "instruction_reflection_and_signature_sections_match": true
+      }
+    },
+    {
+      "id": "oxidized_copper",
+      "material": "mods/dbf_hud/materials/mapped_oxidized_copper",
+      "shader": "mods/dbf_hud/shaders/mapped_oxidized_copper",
+      "material_cpu": {
+        "file": "oxidized_copper.material.bin",
+        "bytes": 144,
+        "sha256": "2c011cd83e05d45b7f9a6d1bd48f9e8c62faad1993fb670f14f8e73a70287369"
+      },
+      "shader_cpu": {
+        "file": "oxidized_copper.shader.bin",
+        "bytes": 4,
+        "sha256": "fb5e512425fc9449316ec95969ebe71e2d576dbab833d61e2a5b9330fd70ee02"
+      },
+      "shader_gpu": {
+        "file": "oxidized_copper.shader.gpu",
+        "bytes": 15792,
+        "sha256": "ae63c9c4b02d1a905ffefc4a4dfee0e7ffd74abbe87be364531ed2002baea8fa"
+      },
+      "hlsl": {
+        "file": "oxidized_copper.hlsl",
+        "bytes": 1712,
+        "sha256": "5bbe9322a4c4fb84be21ce50c96e5795d49cf6e98c6f0da29b89f4b6c84732fe"
+      },
+      "hlsl_validation": {
+        "compiler": "Windows d3dcompiler_47.dll D3DCompile",
+        "entry": "hud_fill",
+        "target": "ps_5_0",
+        "optimization": 3,
+        "instruction_reflection_and_signature_sections_match": true
+      }
+    },
+    {
+      "id": "prismatic",
+      "material": "mods/dbf_hud/materials/mapped_prismatic",
+      "shader": "mods/dbf_hud/shaders/mapped_prismatic",
+      "material_cpu": {
+        "file": "prismatic.material.bin",
+        "bytes": 144,
+        "sha256": "e81f18da153c3a8c7f5ab12b58e4e093ba9ca1d476b3b86b2e5752473824e4e2"
+      },
+      "shader_cpu": {
+        "file": "prismatic.shader.bin",
+        "bytes": 4,
+        "sha256": "fb5e512425fc9449316ec95969ebe71e2d576dbab833d61e2a5b9330fd70ee02"
+      },
+      "shader_gpu": {
+        "file": "prismatic.shader.gpu",
+        "bytes": 15792,
+        "sha256": "de07e63f3ec93b86c8c5d04958efeea622b815c7c8205ed039da70b7cab17ae9"
+      },
+      "hlsl": {
+        "file": "prismatic.hlsl",
+        "bytes": 1720,
+        "sha256": "8d79347d966822a2047406a26f9b5fbda1b0dc4d123db6792eb61f45ff2f94ea"
+      },
+      "hlsl_validation": {
+        "compiler": "Windows d3dcompiler_47.dll D3DCompile",
+        "entry": "hud_fill",
+        "target": "ps_5_0",
+        "optimization": 3,
+        "instruction_reflection_and_signature_sections_match": true
+      }
+    },
+    {
+      "id": "pulse",
+      "material": "mods/dbf_hud/materials/mapped_pulse",
+      "shader": "mods/dbf_hud/shaders/mapped_pulse",
+      "material_cpu": {
+        "file": "pulse.material.bin",
+        "bytes": 144,
+        "sha256": "b3dffc44ee6dab8551c45cd179331b5b6d9da7efa1f0f73d905e5b04ec5b2651"
+      },
+      "shader_cpu": {
+        "file": "pulse.shader.bin",
+        "bytes": 4,
+        "sha256": "fb5e512425fc9449316ec95969ebe71e2d576dbab833d61e2a5b9330fd70ee02"
+      },
+      "shader_gpu": {
+        "file": "pulse.shader.gpu",
+        "bytes": 15792,
+        "sha256": "8530ac3776bf85f124873354bfe64f9f32656b7d8c317156e1214672531ff804"
+      },
+      "hlsl": {
+        "file": "pulse.hlsl",
+        "bytes": 1634,
+        "sha256": "954ffb02217ce9b4932768be41e8d94e5c98d5f222917f6c1be76bae0ddb2cd4"
+      },
+      "hlsl_validation": {
+        "compiler": "Windows d3dcompiler_47.dll D3DCompile",
+        "entry": "hud_fill",
+        "target": "ps_5_0",
+        "optimization": 3,
+        "instruction_reflection_and_signature_sections_match": true
+      }
+    },
+    {
+      "id": "rail_glints",
+      "material": "mods/dbf_hud/materials/mapped_rail_glints",
+      "shader": "mods/dbf_hud/shaders/mapped_rail_glints",
+      "material_cpu": {
+        "file": "rail_glints.material.bin",
+        "bytes": 144,
+        "sha256": "4c74dc2a55ad26cec4c244df35248574f9af23908d7d5b6afa00ecbaa950a594"
+      },
+      "shader_cpu": {
+        "file": "rail_glints.shader.bin",
+        "bytes": 4,
+        "sha256": "fb5e512425fc9449316ec95969ebe71e2d576dbab833d61e2a5b9330fd70ee02"
+      },
+      "shader_gpu": {
+        "file": "rail_glints.shader.gpu",
+        "bytes": 15792,
+        "sha256": "163e4ad14038668deef9c7ae49f22f84cb071a205fd1eaf2aed5d5fa1a94b8ef"
+      },
+      "hlsl": {
+        "file": "rail_glints.hlsl",
+        "bytes": 1629,
+        "sha256": "ff647b2344d954e69f42196258b3868d83e9464b4bd281c53cc0b52baeeeec25"
+      },
+      "hlsl_validation": {
+        "compiler": "Windows d3dcompiler_47.dll D3DCompile",
+        "entry": "hud_fill",
+        "target": "ps_5_0",
+        "optimization": 3,
+        "instruction_reflection_and_signature_sections_match": true
+      }
+    },
+    {
+      "id": "ribbed_alloy",
+      "material": "mods/dbf_hud/materials/mapped_ribbed_alloy",
+      "shader": "mods/dbf_hud/shaders/mapped_ribbed_alloy",
+      "material_cpu": {
+        "file": "ribbed_alloy.material.bin",
+        "bytes": 144,
+        "sha256": "c34b14358bb1c9400594edb1c27fc9d9d1b1ef7542b599375f3bdd7c401bef3d"
+      },
+      "shader_cpu": {
+        "file": "ribbed_alloy.shader.bin",
+        "bytes": 4,
+        "sha256": "fb5e512425fc9449316ec95969ebe71e2d576dbab833d61e2a5b9330fd70ee02"
+      },
+      "shader_gpu": {
+        "file": "ribbed_alloy.shader.gpu",
+        "bytes": 15792,
+        "sha256": "2e71164043451bf242d64103f9e7a3c3ac3dd7b1984c3c8d9d2aac2d5ea5d6aa"
+      },
+      "hlsl": {
+        "file": "ribbed_alloy.hlsl",
+        "bytes": 1676,
+        "sha256": "2e881c37b9428cf14ee72aacd857ee893d93f4efbd2d646f9757d84d19c2c08e"
+      },
+      "hlsl_validation": {
+        "compiler": "Windows d3dcompiler_47.dll D3DCompile",
+        "entry": "hud_fill",
+        "target": "ps_5_0",
+        "optimization": 3,
+        "instruction_reflection_and_signature_sections_match": true
+      }
+    },
+    {
+      "id": "stipple_gradient",
+      "material": "mods/dbf_hud/materials/mapped_stipple_gradient",
+      "shader": "mods/dbf_hud/shaders/mapped_stipple_gradient",
+      "material_cpu": {
+        "file": "stipple_gradient.material.bin",
+        "bytes": 144,
+        "sha256": "1df197377a2ab76f9c7037daa940947a38707787c891ee18b0212dca1c031345"
+      },
+      "shader_cpu": {
+        "file": "stipple_gradient.shader.bin",
+        "bytes": 4,
+        "sha256": "fb5e512425fc9449316ec95969ebe71e2d576dbab833d61e2a5b9330fd70ee02"
+      },
+      "shader_gpu": {
+        "file": "stipple_gradient.shader.gpu",
+        "bytes": 15792,
+        "sha256": "9c08d198d5c5f8c471b707da31d944a54fe67cd32e5be6c91222966e2ec816f4"
+      },
+      "hlsl": {
+        "file": "stipple_gradient.hlsl",
+        "bytes": 1659,
+        "sha256": "940db3747edc3bc58e838528a91026d7226455ef0607ff0a867e6de35fcd7060"
+      },
+      "hlsl_validation": {
+        "compiler": "Windows d3dcompiler_47.dll D3DCompile",
+        "entry": "hud_fill",
+        "target": "ps_5_0",
+        "optimization": 3,
+        "instruction_reflection_and_signature_sections_match": true
+      }
+    },
+    {
+      "id": "sweep",
+      "material": "mods/dbf_hud/materials/mapped_sweep",
+      "shader": "mods/dbf_hud/shaders/mapped_sweep",
+      "material_cpu": {
+        "file": "sweep.material.bin",
+        "bytes": 144,
+        "sha256": "2ec302f64354f71d4a94ba37d66d16b8653ab0bc09138eba3504290710e516de"
+      },
+      "shader_cpu": {
+        "file": "sweep.shader.bin",
+        "bytes": 4,
+        "sha256": "fb5e512425fc9449316ec95969ebe71e2d576dbab833d61e2a5b9330fd70ee02"
+      },
+      "shader_gpu": {
+        "file": "sweep.shader.gpu",
+        "bytes": 15792,
+        "sha256": "8fed924e9e86e70784031b2a1cb0745377da86a0163c38ea443655c1c750f9e4"
+      },
+      "hlsl": {
+        "file": "sweep.hlsl",
+        "bytes": 1645,
+        "sha256": "440378d1004f437afd55669806007bff67d93203f0d3925839089c3aa891e66c"
+      },
+      "hlsl_validation": {
+        "compiler": "Windows d3dcompiler_47.dll D3DCompile",
+        "entry": "hud_fill",
+        "target": "ps_5_0",
+        "optimization": 3,
+        "instruction_reflection_and_signature_sections_match": true
+      }
+    },
+    {
+      "id": "thermal",
+      "material": "mods/dbf_hud/materials/mapped_thermal",
+      "shader": "mods/dbf_hud/shaders/mapped_thermal",
+      "material_cpu": {
+        "file": "thermal.material.bin",
+        "bytes": 144,
+        "sha256": "88a3dc305d1e1748bd5cde91a5ca9a52c3396dffa14fa65e7cb448975654b7ff"
+      },
+      "shader_cpu": {
+        "file": "thermal.shader.bin",
+        "bytes": 4,
+        "sha256": "fb5e512425fc9449316ec95969ebe71e2d576dbab833d61e2a5b9330fd70ee02"
+      },
+      "shader_gpu": {
+        "file": "thermal.shader.gpu",
+        "bytes": 15792,
+        "sha256": "a58d17c68da266b5ca1df77401c61b5f0547f08a03a00c6a78f44cc16bdc931a"
+      },
+      "hlsl": {
+        "file": "thermal.hlsl",
+        "bytes": 1639,
+        "sha256": "5d3458cf8ca0ed2c59c0c06de3c78ae9ee58f88371c70acf3ee10e7ae50a9377"
+      },
+      "hlsl_validation": {
+        "compiler": "Windows d3dcompiler_47.dll D3DCompile",
+        "entry": "hud_fill",
+        "target": "ps_5_0",
+        "optimization": 3,
+        "instruction_reflection_and_signature_sections_match": true
+      }
+    },
+    {
+      "id": "triangular_grille",
+      "material": "mods/dbf_hud/materials/mapped_triangular_grille",
+      "shader": "mods/dbf_hud/shaders/mapped_triangular_grille",
+      "material_cpu": {
+        "file": "triangular_grille.material.bin",
+        "bytes": 144,
+        "sha256": "e207813af16e0028fb4d4e7444c83609432570729595a8e1aae6a00ead51c5ab"
+      },
+      "shader_cpu": {
+        "file": "triangular_grille.shader.bin",
+        "bytes": 4,
+        "sha256": "fb5e512425fc9449316ec95969ebe71e2d576dbab833d61e2a5b9330fd70ee02"
+      },
+      "shader_gpu": {
+        "file": "triangular_grille.shader.gpu",
+        "bytes": 15792,
+        "sha256": "f7c1bb6f4acbae3bbc34255860cff71658f9aeb940880b8db3e7ccea9516eaa3"
+      },
+      "hlsl": {
+        "file": "triangular_grille.hlsl",
+        "bytes": 1720,
+        "sha256": "0188362125f858a9aa6575504b8da2990d4102dc3ac45b231b1c0eda511019f1"
+      },
+      "hlsl_validation": {
+        "compiler": "Windows d3dcompiler_47.dll D3DCompile",
+        "entry": "hud_fill",
+        "target": "ps_5_0",
+        "optimization": 3,
+        "instruction_reflection_and_signature_sections_match": true
+      }
+    },
+    {
+      "id": "warning_hatch",
+      "material": "mods/dbf_hud/materials/mapped_warning_hatch",
+      "shader": "mods/dbf_hud/shaders/mapped_warning_hatch",
+      "material_cpu": {
+        "file": "warning_hatch.material.bin",
+        "bytes": 144,
+        "sha256": "5e5153cf1e5533e4dbae2046a53f73b6a3d74662063b5bc0bd54c436849f6e7f"
+      },
+      "shader_cpu": {
+        "file": "warning_hatch.shader.bin",
+        "bytes": 4,
+        "sha256": "fb5e512425fc9449316ec95969ebe71e2d576dbab833d61e2a5b9330fd70ee02"
+      },
+      "shader_gpu": {
+        "file": "warning_hatch.shader.gpu",
+        "bytes": 15792,
+        "sha256": "850de0e37a41df5c9fecad48b2f423794f6de2b96b2cf3bcbac586fd7c9f36fc"
+      },
+      "hlsl": {
+        "file": "warning_hatch.hlsl",
+        "bytes": 1649,
+        "sha256": "60076b545f06f58ad148d76edf389091faf570acb062a856ef35edb8a903daf1"
+      },
+      "hlsl_validation": {
+        "compiler": "Windows d3dcompiler_47.dll D3DCompile",
+        "entry": "hud_fill",
+        "target": "ps_5_0",
+        "optimization": 3,
+        "instruction_reflection_and_signature_sections_match": true
+      }
+    }
+  ]
+}

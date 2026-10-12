@@ -102,7 +102,7 @@ def stable_runtime(payload):
 
 
 def verify(path):
-    sys.path.insert(0,str(ROOT/'tools'));import lua_archive
+    sys.path.insert(0,str(ROOT/'tools'));import lua_archive,photo_assets
     with zipfile.ZipFile(path)as archive:
         names=archive.namelist();assert len(names)==len(set(names))and archive.testzip()is None, 'ZIP paths/CRC invalid'
         for name in names:
@@ -113,37 +113,56 @@ def verify(path):
         files={name:archive.read(name)for name in names}
     version=(ROOT/'VERSION').read_text().strip()
     if 'Addon/9ba626afa44a3aa3.patch_0'in files:
-        format='BSL';prefix='';manifest=json.loads(files['manifest.json'])
+        format='BSL';asset_prefix='Addon/';manifest=json.loads(files['manifest.json'])
         assert manifest['Version']==1 and manifest['Name']=='War Journalist '+version, 'BSL identity/version mismatch'
         assert manifest['Options'][0]['Include']==['Addon']and 'Bingus Shared Loader'in manifest['Description'], 'BSL install/dependency mismatch'
-        assert files['Addon/9ba626afa44a3aa3.patch_0.stream']==b''and files['Addon/9ba626afa44a3aa3.patch_0.gpu_resources']==b'', 'Unexpected scene assets'
-        resources=lua_archive.read(files['Addon/9ba626afa44a3aa3.patch_0']);key=lua_archive.hash_name('mods/dbf_photomode/startup')
-        assert len(resources)==1 and key in resources, 'BSL startup entry mismatch'
-        kind,body=resources[key];assert kind==lua_archive.LUA_TYPE and body[4:8]==b'\x02\0\0\0'
-        startup=body[8:].rstrip(b'\0').decode();payload=embedded_payload(startup)
+        rows=photo_assets.read_archive(files[asset_prefix+'9ba626afa44a3aa3.patch_0'],files[asset_prefix+'9ba626afa44a3aa3.patch_0.gpu_resources'])
+        startup_rows=[row for row in rows if row[1]==lua_archive.LUA_TYPE]
+        assert len(startup_rows)==1 and startup_rows[0][0]==lua_archive.hash_name('mods/dbf_photomode/startup'), 'BSL startup entry mismatch'
+        body=startup_rows[0][2];assert body[4:8]==b'\x02\0\0\0'and int.from_bytes(body[:4],'little')==len(body)-8
+        startup=body[8:].decode();payload=embedded_payload(startup)
         assert 'DBF_PHOTO_MODE_OWNER'in startup and 'DBF_PHOTO_PACKAGE_ROOT'in startup and 'config_dir=config'in startup, 'BSL ownership/private path missing'
         assert 'mod.require'not in startup and 'mod.read'not in startup, 'LLL dependency in BSL'
+        doc=files['INSTALL.txt'].decode(errors='replace');license=files['LICENSE-Bingus.txt']
+        asset_manifest=json.loads(files['ASSET-MANIFEST.json'])
     else:
-        format='MDL';prefix='dbf_freecam/';assert all(name.startswith(prefix)for name in files), 'Foreign MDL files'
-        payload={name[len(prefix):]:body for name,body in files.items()};manifest=json.loads(payload['manifest.json'])
+        format='MDL';asset_prefix='GameData/'
+        assert all(name.startswith(('dbf_freecam/','GameData/'))or name in ('INSTALL.txt','FILES-SHA256.txt')for name in files), 'Foreign MDL files'
+        payload={name.removeprefix('dbf_freecam/'):body for name,body in files.items()if name.startswith('dbf_freecam/')};manifest=json.loads(payload['manifest.json'])
         assert manifest['id']=='dbf_freecam'and manifest['name']=='War Journalist'and manifest['version']==version and manifest['loader']=='MDL', 'MDL identity/version mismatch'
         assert manifest['api']==2 and manifest['restart_required']is True, 'MDL API/restart policy missing'
         startup=payload['mod.lua'].decode()
         assert 'DBF_PHOTO_MODE_OWNER'in startup and 'DBF_PHOTO_PACKAGE_ROOT'in startup and 'ctx.api==2'in startup, 'MDL bootstrap contract missing'
         assert 'mod.require'not in startup and 'mod.read'not in startup, 'LLL dependency in MDL'
+        doc=payload['INSTALL.txt'].decode(errors='replace');license=payload['LICENSE-Bingus.txt']
+        asset_manifest=json.loads(payload['ASSET-MANIFEST.json'])
+        assert 'GameData'in doc and 'INSTALL BOTH INCLUDED PARTS'in doc, 'MDL bundled asset instructions missing'
     stable_runtime(payload)
-    checksum_name=prefix+'FILES-SHA256.txt';assert checksum_name in files;checksums={}
+    base=asset_prefix+'9ba626afa44a3aa3.patch_0'
+    assert files[base+'.stream']==b'', 'Unexpected streamed resources'
+    audit=photo_assets.validate_archive(files[base],files[base+'.gpu_resources'])
+    assert audit==asset_manifest, 'Packaged asset audit differs from verified closure'
+    registry_base=asset_prefix+'ee6b1ba7e22d71ed.patch_0'
+    assert files[registry_base+'.stream']==b''and files[registry_base+'.gpu_resources']==b'', 'Unexpected registry sidecars'
+    registry_rows=photo_assets.read_archive(files[registry_base])
+    assert registry_rows==[photo_assets.registry_resource()], 'Shader registration closure mismatch'
+    checksum_name='FILES-SHA256.txt';assert checksum_name in files;checksums={}
     for line in files[checksum_name].decode().splitlines():
-        digest,name=line.split('  ',1);entry=prefix+name
-        assert name not in checksums and entry in files and re.fullmatch('[0-9a-f]{64}',digest)
-        assert hashlib.sha256(files[entry]).hexdigest()==digest, 'Checksum mismatch: '+entry;checksums[name]=digest
-    assert {prefix+name for name in checksums}==set(files)-{checksum_name}, 'Checksum coverage differs from ZIP'
-    license=files[prefix+'LICENSE-Bingus.txt'];doc=files[prefix+'INSTALL.txt'].decode(errors='replace')
+        digest,name=line.split('  ',1)
+        assert name not in checksums and name in files and re.fullmatch('[0-9a-f]{64}',digest)
+        assert hashlib.sha256(files[name]).hexdigest()==digest, 'Checksum mismatch: '+name;checksums[name]=digest
+    assert set(checksums)==set(files)-{checksum_name}, 'Checksum coverage differs from ZIP'
     assert b'Zero-Clause BSD'in license and b'CowboyBingus'in license
-    for text in ('War Journalist','MCM is optional','KNOWN ISSUES','disabled','HuedPurple','CowboyBingus'):assert text in doc, 'Missing install/known-issues/credit: '+text
+    for text in ('War Journalist','MCM is optional','KNOWN ISSUES','disabled','HuedPurple','CowboyBingus','40 decorative','MANUAL ASSET INSTALL'):assert text in doc, 'Missing install/known-issues/credit: '+text
+    assert 'DBF-HUD asset pack'not in doc, 'HUD dependency remains in install notes'
+    vendor=json.loads(files.get('VENDOR-PROVENANCE.json')or payload['VENDOR-PROVENANCE.json'])
+    for name,digest in vendor['runtime_sha256'].items():
+        packaged=payload['src/vendor/'+name]if name.endswith('.lua')else payload[name]
+        assert hashlib.sha256(packaged).hexdigest()==digest, 'Vendored runtime identity mismatch: '+name
     return {'version':version,'format':format,'passed':True,'checked_at_utc':datetime.now(timezone.utc).isoformat(),'archive':path.name,
             'archive_sha256':hashlib.sha256(path.read_bytes()).hexdigest(),'files':len(files),'private_payload_files':len(payload),
-            'checksums_verified':len(checksums),'game_process_accessed':False,'scope':'ZIP CRC/checksums, bootstrap/private input/capture, stable gates, known issues and credits'}
+            'checksums_verified':len(checksums),'asset_audit':audit,'game_process_accessed':False,
+            'scope':'ZIP CRC/checksums, bootstrap/private input/capture, exact complete native resource closure and registration, stable gates, docs and credits'}
 
 
 def main():

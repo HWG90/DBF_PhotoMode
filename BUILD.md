@@ -1,12 +1,11 @@
 # Build
 
-Install Python 3 and MSVC x64 tools for the optional PNG converter. Use the game's lua51.dll for Lua compilation (`HD2_LUA51_DLL` selects an alternate installed path).
+Python 3 and a LuaJIT/Lua 5.1 compiler library are development tools, not player prerequisites. HD2_LUA51_DLL selects the compiler library; the default uses the installed game LuaJIT.
 
-Build the converter with `python freecam/native/build_photo_capture.py`.
-Run `python freecam/build.py --actioncam <ActionCam-2.3.1-archive> --output dist/releases/photo-0.5`. The ActionCam archive is a local build input; its source hashes and credit are recorded in the package. The builder copies the public MCM service/native input dependency from the canonical DBF-MCM sibling checkout; `--mcm-root` overrides that path.
+Build BSL with `py -3 freecam/build.py --output dist/releases/photo-0.6`, then MDL with `py -3 tools/build_mdl.py --output dist/releases/photo-0.6`. All camera/private runtime and decorative native assets are owned under freecam/vendor and freecam/assets/shaders. No DBF-HUD, DBF-MCM, external ActionCam, installed mod package or patched game asset is read during release builds. Vendored byte identities are checked before packaging.
 
-Then run `python tools/build_mdl.py --output dist/releases/photo-0.5` to package the MDL API 2 alternative from that generated camera source.
+Run `py -3 tools/run_tests.py --mcm-root <canonical DBF-MCM>` for isolated behavior fixtures, `py -3 tools/verify_release.py <ZIP>` for exact immutable release validation, and `py -3 tools/test_packaged_standalone.py <BSL ZIP> <MDL ZIP> --receipt <receipt.json>` for package-only standalone startup. The fixture runner's MCM source input is testing only; the packaged-startup check prohibits external source fallback.
 
-Run `python tools/run_tests.py --mcm-root ../DBF-MCM --native` for the isolated fixtures. Verify each ZIP with `python tools/verify_release.py <release.zip>`.
+The optional screenshot converter can be rebuilt from freecam/native/build_photo_capture.py with MSVC x64, static CRT; player packages include its verified binary. Vendored native DLL payloads are kept as hex in source and decoded into real DLLs during packaging.
 
-The primary distribution is the BSL ZIP; MDL is the alternative. No scene shader native assets are included. Saved settings, diagnostics, game files, screenshots from tests and development evidence are excluded from packages.
+BSL contains the runtime and native assets under Addon. MDL includes the loose addon plus GameData patches in the same ZIP. Numeric DoF and scene effects remain disabled until visual verification. Saved settings, diagnostics, game files and development evidence are excluded.

@@ -40,7 +40,7 @@ return {name='War Journalist',version='__VERSION__',author='Goose',
   local appdata=assert(G.os.getenv('LOCALAPPDATA'),'Local AppData unavailable')
   local ffi=G.require('ffi');pcall(ffi.cdef,'int CreateDirectoryA(const char *,void *);')
   local kernel=ffi.load('kernel32');local config=appdata
-  for _,part in ipairs({'MDL','Helldivers2','Mods','dbf_mcm','settings'})do config=config..'/'..part;kernel.CreateDirectoryA(config,nil)end
+  for _,part in ipairs({'DBF','PhotoMode','settings'})do config=config..'/'..part;kernel.CreateDirectoryA(config,nil)end
   host={dir=ctx.dir,config_dir=config,log=ctx.log};local cache={}
   function host.read(name)
    assert(type(name)=='string'and name:match('^[%w_/%.-]+$')and not name:find('..',1,true)and name:sub(1,1)~='/','Invalid photo package path')

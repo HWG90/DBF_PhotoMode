@@ -1,9 +1,10 @@
-"""Extend the locally supplied ActionCam archive; produce an undeployed replacement."""
+"""Build the self-contained Photo Mode release; never installs."""
 from pathlib import Path
 import argparse, hashlib, json, os, re, struct, sys, zipfile
 ROOT=Path(__file__).resolve().parent
 sys.path.insert(0,str(ROOT.parent/'tools'))
 import lua_archive
+import photo_assets
 
 def patch(source):
     def replace(old,new):
@@ -147,19 +148,20 @@ def payload_files(output):
     files={'src/actioncam.lua':(output/'ActionCam-Freecam.lua').read_bytes(),
         'src/standalone.lua':(ROOT/'standalone.lua').read_bytes(),
         'PROVENANCE.json':(output/'PROVENANCE.json').read_bytes()}
-    mcm=Path(os.environ.get('DBF_PHOTO_MCM_ROOT')or ROOT.parent.parent/'DBF-MCM')
-    for name,path in [('core','src/core.lua'),('store','src/store.lua'),('capture','src/capture.lua'),('camera_input','src/camera_input.lua'),('view','src/view.lua'),('font','src/ui/font.lua'),('bingus_memory','src/native_ui/bingus_memory.lua'),('bingus_runtime','src/native_ui/bingus_runtime.lua')]:
-        files['src/vendor/'+name+'.lua']=(mcm/path).read_bytes()
-    native=(mcm/'native/build/library.txt').read_text().strip()
+    vendor=ROOT/'vendor';identity=json.loads((vendor/'PROVENANCE.json').read_text())
+    for name in ('core','store','capture','camera_input','view','font','bingus_memory','bingus_runtime'):
+        body=(vendor/(name+'.lua')).read_bytes()
+        if hashlib.sha256(body).hexdigest()!=identity['runtime_sha256'][name+'.lua']:raise ValueError('Vendored Lua identity mismatch: '+name)
+        files['src/vendor/'+name+'.lua']=body
+    native=(vendor/'standalone-library.txt').read_text().strip()
     if not re.fullmatch(r'mcm_input_[0-9a-f]+\.dll',native):raise ValueError('Invalid private input DLL manifest')
-    files[native]=(mcm/'native/build'/native).read_bytes();files['standalone-library.txt']=native.encode()
-    capture_dir=ROOT.parent/'dist/photo-capture-native'
-    capture_manifest=json.loads((capture_dir/'photo-capture-native.json').read_text())
-    capture=capture_dir/capture_manifest['library']
-    if capture.parent.resolve()!=capture_dir.resolve()or hashlib.sha256(capture.read_bytes()).hexdigest()!=capture_manifest['sha256']:
-        raise ValueError('PhotoCapture native build identity mismatch')
-    files['PhotoCapture64.dll']=capture.read_bytes()
-    files['LICENSE-Bingus.txt']=(mcm/'src/native_ui/LICENSE').read_bytes()
+    files['standalone-library.txt']=native.encode()
+    for name in (native,'PhotoCapture64.dll'):
+        body=bytes.fromhex((vendor/(name+'.hex')).read_text())
+        if hashlib.sha256(body).hexdigest()!=identity['runtime_sha256'][name]:raise ValueError('Vendored native identity mismatch: '+name)
+        files[name]=body
+    files['LICENSE-Bingus.txt']=(vendor/'LICENSE-Bingus.txt').read_bytes()
+    files['VENDOR-PROVENANCE.json']=(vendor/'PROVENANCE.json').read_bytes()
     for path in (ROOT/'assets').glob('*.png'):files['assets/'+path.name]=path.read_bytes()
     return files
 
@@ -195,15 +197,23 @@ def package_bsl(output,version=None):
     startup=template.replace('-- __EMBEDDED_FILES__','\n'.join(embedded)).replace('__VERSION__',version).encode()
     compile_lua(startup,'WarJournalist-BSL-startup')
     entry='mods/dbf_photomode/startup';envelope=struct.pack('<II',len(startup),2)+startup
-    archive=lua_archive.write({lua_archive.hash_name(entry):envelope})
-    parsed=lua_archive.read(archive)
-    if len(parsed)!=1 or parsed[lua_archive.hash_name(entry)][1]!=envelope:raise ValueError('BSL archive source round-trip failed')
+    archive,gpu=photo_assets.archive_rows(photo_assets.load_resources()+[(lua_archive.hash_name(entry),lua_archive.LUA_TYPE,envelope,b'')])
+    parsed=photo_assets.read_archive(archive,gpu)
+    startup_rows=[row for row in parsed if row[1]==lua_archive.LUA_TYPE]
+    if len(startup_rows)!=1 or startup_rows[0][2]!=envelope:raise ValueError('BSL archive source round-trip failed')
+    asset_audit=photo_assets.validate_archive(archive,gpu)
+    registry,registry_gpu=photo_assets.archive_rows([photo_assets.registry_resource()])
+    if registry_gpu:raise ValueError('Unexpected registry GPU data')
     manifest={'Version':1,'Guid':'0a1f063d-d880-4282-a5c3-89f9efc52b21','Name':'War Journalist '+version,
-        'Description':'Photo Mode. Requires Bingus Shared Loader v15+ / API 1. MCM is optional; ActionCam must not be installed alongside it.',
-        'Options':[{'Name':'War Journalist '+version,'Description':'Requires Bingus Shared Loader v15+ / API 1. Enable both, deploy and restart.','Include':['Addon']}]}
+        'Description':'Self-contained Photo Mode with all 40 decorative overlay assets, standalone menu/input and PNG capture. Requires only Bingus Shared Loader v15+ / API 1. MCM is optional.',
+        'Options':[{'Name':'War Journalist '+version,'Description':'All runtime and assets included. Requires only Bingus Shared Loader v15+ / API 1. Enable, deploy and restart.','Include':['Addon']}]}
     package={'manifest.json':(json.dumps(manifest,indent=2)+'\n').encode(),
         'Addon/9ba626afa44a3aa3.patch_0':archive,'Addon/9ba626afa44a3aa3.patch_0.stream':b'',
-        'Addon/9ba626afa44a3aa3.patch_0.gpu_resources':b'','PROVENANCE.json':files['PROVENANCE.json'],
+        'Addon/9ba626afa44a3aa3.patch_0.gpu_resources':gpu,
+        'Addon/ee6b1ba7e22d71ed.patch_0':registry,'Addon/ee6b1ba7e22d71ed.patch_0.stream':b'',
+        'Addon/ee6b1ba7e22d71ed.patch_0.gpu_resources':b'','PROVENANCE.json':files['PROVENANCE.json'],
+        'ASSET-MANIFEST.json':(json.dumps(asset_audit,indent=2)+'\n').encode(),
+        'VENDOR-PROVENANCE.json':files['VENDOR-PROVENANCE.json'],
         'LICENSE-Bingus.txt':files['LICENSE-Bingus.txt'],'README.md':(ROOT.parent/'README.md').read_bytes(),
         'INSTALL.txt':(ROOT/'README.md').read_bytes(),'Source/bsl_startup.lua':(ROOT/'bsl_startup.lua').read_bytes()}
     for name,body in files.items():
@@ -223,17 +233,24 @@ def package_bsl(output,version=None):
     (output/'War-Journalist-BSL-startup.lua').write_bytes(startup)
     (output/'BSL-BUILD-RECEIPT.json').write_text(json.dumps({'version':version,'artifact':target.name,
         'sha256':hashlib.sha256(target.read_bytes()).hexdigest(),'entry':entry,'runtime_files_sha256':{name:hashlib.sha256(body).hexdigest()for name,body in sorted(files.items())},
-        'validation':'All embedded runtime/vendor Lua and BSL bootstrap compiled; one-resource archive round-trip and ZIP integrity passed',
+        'asset_audit':asset_audit,
+        'validation':'All embedded Lua compiled; complete native asset closure, shader registrations, startup round-trip and ZIP integrity passed',
         'live_validation':False,'deployment':'not installed'},indent=2)+'\n')
     print(target)
     return target
 
 def build(archive,output):
-    original=archive.read_bytes();resources=lua_archive.read(original)
-    name=lua_archive.hash_name('mods/actioncam/actioncam')
-    kind,body=resources[name]
-    if kind!=lua_archive.LUA_TYPE or body[4:8]!=b'\x02\0\0\0': raise ValueError('Expected Lua source resource')
-    source=body[8:].decode('utf-8').rstrip('\0')
+    if archive:
+        original=archive.read_bytes();resources=lua_archive.read(original)
+        name=lua_archive.hash_name('mods/actioncam/actioncam')
+        kind,body=resources[name]
+        if kind!=lua_archive.LUA_TYPE or body[4:8]!=b'\x02\0\0\0': raise ValueError('Expected Lua source resource')
+        source=body[8:].decode('utf-8').rstrip('\0');origin=archive.name;origin_hash=hashlib.sha256(original).hexdigest()
+    else:
+        body=(ROOT/'vendor/actioncam-2.3.1.lua').read_bytes()
+        identity=json.loads((ROOT/'vendor/PROVENANCE.json').read_text())
+        if hashlib.sha256(body).hexdigest()!=identity['actioncam_source_sha256']:raise ValueError('Vendored camera identity mismatch')
+        source=body.decode('utf-8');origin='ActionCam 2.3.1 (vendored source)';origin_hash=identity['actioncam_archive_sha256']
     result=patch(source).encode('utf-8')
     # Compile the complete generated runtime before producing installable bytes.
     import ctypes
@@ -249,7 +266,7 @@ def build(archive,output):
     finally:lua.lua_close(state)
     output.mkdir(parents=True,exist_ok=True)
     (output/'ActionCam-Freecam.lua').write_bytes(result)
-    (output/'PROVENANCE.json').write_text(json.dumps({'source_archive':archive.name,'source_sha256':hashlib.sha256(original).hexdigest(),
+    (output/'PROVENANCE.json').write_text(json.dumps({'source_archive':origin,'source_sha256':origin_hash,
         'photo_modules_sha256':{p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in [ROOT/'photo_options.lua',ROOT/'lens.lua',ROOT/'composition.lua',ROOT/'postfx.lua',ROOT/'photo_runtime.lua',ROOT/'hud.lua',ROOT/'render_profile.lua',ROOT/'camera_profile.lua',ROOT/'saved_camera.lua',ROOT/'photo_menu.lua']},
         'simulation_sha256':hashlib.sha256((ROOT/'simulation.lua').read_bytes()).hexdigest(),
         'simulation_backend_sha256':hashlib.sha256((ROOT/'simulation_backend.lua').read_bytes()).hexdigest(),
@@ -260,7 +277,6 @@ def build(archive,output):
 
 if __name__=='__main__':
     version=(ROOT.parent/'VERSION').read_text().strip()
-    parser=argparse.ArgumentParser();parser.add_argument('--actioncam',type=Path,required=True);parser.add_argument('--output',type=Path,default=ROOT.parent/'dist/releases'/('photo-'+version));parser.add_argument('--mcm-root',type=Path)
+    parser=argparse.ArgumentParser();parser.add_argument('--actioncam',type=Path,help='Optional explicit camera foundation override; defaults to owned vendored source');parser.add_argument('--output',type=Path,default=ROOT.parent/'dist/releases'/('photo-'+version))
     args=parser.parse_args()
-    if args.mcm_root:os.environ['DBF_PHOTO_MCM_ROOT']=str(args.mcm_root.resolve())
     build(args.actioncam,args.output)

@@ -4,3 +4,7 @@
 *.md text eol=lf
 *.txt text eol=lf
 VERSION text eol=lf
+
+# Preserve exact verified upstream/vendor bytes across clones.
+freecam/vendor/* -text -whitespace
+freecam/assets/shaders/* -text -whitespace

@@ -1,7 +1,7 @@
 [size=6][color=#F4CA35][b]WAR JOURNALIST[/b][/color][/size]
 [size=3][color=#9BB6BF]HELLDIVERS 2 • PHOTO MODE[/color][/size]
 
-[color=#DDB869][b]0.5 PREVIEW[/b][/color]
+[color=#DDB869][b]0.6 PREVIEW[/b][/color]
 
 [size=3][color=#E6E2D4]Muzzle flashes, flying brass, a cape caught mid-turn. Stop the action in solo play and find the angle you never get during a firefight.[/color][/size]
 War Journalist gives you a free camera and a photo menu for composing the shot. Move around the scene, adjust roll and field of view, save a camera position, or use slow motion to set up the next frame.
@@ -10,15 +10,15 @@ War Journalist gives you a free camera and a photo menu for composing the shot. 
 
 [size=4][color=#F4CA35][b]DOWNLOAD & INSTALL[/b][/color][/size]
 [color=#9BB6BF][b]MAIN DOWNLOAD • BSL[/b][/color]
-[url=https://www.nexusmods.com/helldivers2/mods/17248?tab=files][b]War-Journalist-0.5-BSL.zip[/b][/url]
-Requires [b]Bingus Shared Loader v15 or newer[/b]. Import the ZIP into HD2 Arsenal, enable War Journalist alongside Shared Loader, deploy and restart the game normally.
+[url=https://www.nexusmods.com/helldivers2/mods/17248?tab=files][b]War-Journalist-0.6-BSL.zip[/b][/url]
+Requires only [b]Bingus Shared Loader v15 or newer[/b]. All runtime and 40 decorative overlay assets are bundled. Import the ZIP into HD2 Arsenal, enable War Journalist alongside Shared Loader, deploy and restart normally. Manual installation is also supported; see INSTALL.txt.
 
 [color=#9BB6BF][b]ALTERNATIVE • MDL[/b][/color]
-[url=https://www.nexusmods.com/helldivers2/mods/17248?tab=files][b]War-Journalist-0.5-MDL.zip[/b][/url]
-For [b]MDL Pro 2.0.8 / API 2[/b]. Use the MDL package instead and follow its included installation notes.
+[url=https://www.nexusmods.com/helldivers2/mods/17248?tab=files][b]War-Journalist-0.6-MDL.zip[/b][/url]
+For [b]MDL Pro 2.0.8 / API 2[/b]. Use the MDL package instead. Install both included parts: dbf_freecam into MDL Mods, and GameData patches into Helldivers 2/data. See INSTALL.txt for the complete manual steps.
 
 [b]Install one Photo Mode package. Disable the original ActionCam before installing.[/b]
-[url=https://www.nexusmods.com/helldivers2/mods/17157]MCM[/url] is optional. With MCM, configure bindings in [b]MCM > Photo Mode[/b]. Without it, bindings appear on the photo menu’s [b]Controls[/b] page. Saved settings are retained.
+[url=https://www.nexusmods.com/helldivers2/mods/17157]MCM[/url] is optional. With MCM, configure bindings in [b]MCM > Photo Mode[/b]. Without it, bindings appear on the photo menu’s [b]Controls[/b] page. Standalone settings live in %LOCALAPPDATA%/DBF/PhotoMode/settings. [b]No MCM, DBF-HUD or ActionCam download is needed.[/b]
 
 [size=4][color=#F4CA35][b]CAMERA & COMPOSITION[/b][/color][/size]
 [color=#9BB6BF][b]Position the camera[/b][/color]
@@ -50,13 +50,13 @@ The [b]Screenshot[/b] button temporarily hides photo controls, requests game HUD
 [b]MDL:[/b] the mod folder’s Screenshots directory
 Steam screenshots remain an alternative.
 
-[size=4][color=#F4CA35][b]KNOWN ISSUES • 0.5 PREVIEW[/b][/color][/size]
+[size=4][color=#F4CA35][b]KNOWN ISSUES • 0.6 PREVIEW[/b][/color][/size]
 [color=#DDB869][b]Unavailable controls[/b][/color]
 Focus distance and aperture/f-stop have no working implementation here; both sliders are disabled. Scene color/depth shaders are disabled and not included. Exposure, saturation and contrast controls are also unavailable.
 Native bloom/DoF toggles use the game’s existing graphics. They do not provide custom focus or aperture.
 
 [color=#DDB869][b]Capture & overlay limits[/b][/color]
-Built-in PNG capture may retain ship UI, and HDR brightness can differ from the displayed image. Decorative shader overlays require DBF-HUD assets; missing materials are skipped.
+Built-in PNG capture may retain ship UI, and HDR brightness can differ from the displayed image. All 40 decorative shader overlays are bundled with their materials and registrations. Other shader packs replacing the default registry require merged registrations.
 
 [size=4][color=#F4CA35][b]SOURCE & CREDITS[/b][/color][/size]
 [url=https://github.com/HWG90/DBF_PhotoMode][b]Source, documentation & GitHub downloads[/b][/url]
