@@ -47,7 +47,8 @@ Bingus native UI/font reader: CowboyBingus (0BSD, included license).
 Helldivers 2 and Arrowhead artwork remains property of its respective owners.
 
 [Source and GitHub downloads](https://github.com/HWG90/DBF_PhotoMode) |
-[Nexus](https://www.nexusmods.com/helldivers2/mods/17248)
+[Nexus](https://www.nexusmods.com/helldivers2/mods/17248) |
+[Ayaka](https://ayakamods.com/mods/war-journalist-helldivers-2-photo-mode.4948/)
 
 ## Gallery
 

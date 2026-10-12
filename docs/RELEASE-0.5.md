@@ -7,3 +7,7 @@ BSL is the recommended main download. MDL is the alternative. Install one packag
 Default camera lock is L. Slow motion is backslash. Q/E rolls in camera focus and changes tabs in menu focus. WASD selects settings; Enter or Space chooses/edits; numeric typing and right-click reset are supported.
 
 Focus/aperture and scene shader effects are disabled. See KNOWN-ISSUES.md and the included INSTALL.txt.
+
+[Nexus](https://www.nexusmods.com/helldivers2/mods/17248) | [Ayaka](https://ayakamods.com/mods/war-journalist-helldivers-2-photo-mode.4948/)
+
+Validation: 17 isolated fixture groups passed; both packages passed Lua compilation, archive integrity and exact checksum checks. MDL lifecycle was checked against the API 2.0.8 source contract. These checks do not claim a new live game test of either loader package.
