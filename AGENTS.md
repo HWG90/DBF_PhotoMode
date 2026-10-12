@@ -1,0 +1,1 @@
+Maintain War Journalist / DBF_PhotoMode source here. Keep release artifacts in dist/releases. Never commit saved settings, logs, game binaries, diagnostics or unrelated projects. Run the isolated Lua fixtures and validate packaged bytes before publication. Public release keeps scene effects and numeric DoF disabled until visually verified.

@@ -1,0 +1,92 @@
+"""Run isolated release fixtures with LuaJIT; never attaches to the game.
+
+Usage: python tools/run_tests.py --mcm-root ../DBF-MCM --native
+HD2_LUA51_DLL or --lua-dll selects the Lua 5.1/LuaJIT library.
+"""
+import argparse
+from datetime import datetime, timezone
+import hashlib
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import time
+
+ROOT = Path(__file__).resolve().parents[1]
+FIXTURES = (
+    'tests.lua', 'look_tests.lua', 'simulation_tests.lua', 'studio_tests.lua',
+    'menu_tests.lua', 'resize_menu_tests.lua', 'photo_menu_interaction_tests.lua',
+    'numeric_menu_tests.lua', 'panel_lifecycle_tests.lua', 'postfx_tests.lua',
+    'saved_camera_tests.lua', 'shader_runtime_tests.lua', 'screenshot_tests.lua',
+    'screenshot_backend_tests.lua', 'stable_gates_tests.lua', 'mdl_tests.lua',
+)
+
+
+def lua_string(value):
+    equals = '='
+    while ']'+equals+']' in value:
+        equals += '='
+    return '['+equals+'['+value+']'+equals+']'
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--mcm-root', type=Path, default=Path(os.environ.get('DBF_MCM_TEST_ROOT', str(ROOT.parent/'DBF-MCM'))))
+    parser.add_argument('--lua-dll', type=Path)
+    parser.add_argument('--fixture', action='append', choices=FIXTURES)
+    parser.add_argument('--native', action='store_true', help='Also run the built standalone PNG converter fixtures')
+    parser.add_argument('--receipt', type=Path, default=ROOT/'dist/validation/release-fixtures.json')
+    args = parser.parse_args()
+    mcm = args.mcm_root.resolve()
+    if not (mcm/'src/core.lua').is_file():
+        parser.error('MCM source checkout missing src/core.lua; use --mcm-root or DBF_MCM_TEST_ROOT')
+    if args.lua_dll:
+        os.environ['HD2_LUA51_DLL'] = str(args.lua_dll.resolve())
+    sys.path.insert(0, str(ROOT))
+    import run_lua
+    if not run_lua.DLL.is_file():
+        parser.error('LuaJIT library missing; use --lua-dll or HD2_LUA51_DLL')
+    original_cwd = Path.cwd()
+    bootstrap = ('DBF_PHOTO_TEST_ROOT='+lua_string((ROOT/'freecam').as_posix()+'/')+'\n'
+                 'DBF_PHOTO_REPO_ROOT='+lua_string(ROOT.as_posix()+'/')+'\n').encode()
+    results = []
+    try:
+        # The fixtures deliberately exercise the owning MCM core through its
+        # relative dependency imports. Photo modules use the explicit test root.
+        os.chdir(mcm)
+        for name in args.fixture or FIXTURES:
+            path = ROOT/'freecam'/name
+            source = path.read_bytes()
+            started = time.monotonic()
+            result = {'fixture': name, 'sha256': hashlib.sha256(source).hexdigest()}
+            try:
+                run_lua.run(bootstrap+source, name)
+                result['passed'] = True
+            except Exception as error:
+                result.update(passed=False, error=str(error))
+                print('FAIL '+name+': '+str(error), file=sys.stderr)
+            result['duration_ms'] = round((time.monotonic()-started)*1000, 2)
+            results.append(result)
+    finally:
+        os.chdir(original_cwd)
+    if args.native:
+        test = ROOT/'freecam/native/test_photo_capture.py'
+        completed = subprocess.run([sys.executable, str(test)], cwd=ROOT, check=False)
+        results.append({'fixture': 'native/test_photo_capture.py', 'sha256': hashlib.sha256(test.read_bytes()).hexdigest(),
+                        'passed': completed.returncode == 0, 'exit_code': completed.returncode})
+    passed = all(result['passed'] for result in results)
+    receipt = {'version': (ROOT/'VERSION').read_text().strip(), 'checked_at_utc': datetime.now(timezone.utc).isoformat(),
+               'passed': passed, 'isolated_tests_only': True, 'game_process_accessed': False,
+               'mcm_core_sha256': hashlib.sha256((mcm/'src/core.lua').read_bytes()).hexdigest(),
+               'source_modules_sha256': {path.name: hashlib.sha256(path.read_bytes()).hexdigest()
+                                        for path in sorted((ROOT/'freecam').glob('*.lua')) if not path.name.endswith('_tests.lua') and path.name != 'tests.lua'},
+               'results': results}
+    args.receipt.parent.mkdir(parents=True, exist_ok=True)
+    args.receipt.write_text(json.dumps(receipt, indent=2)+'\n', encoding='utf-8')
+    print(f'{sum(result["passed"] for result in results)}/{len(results)} fixture groups passed; receipt: {args.receipt}')
+    return 0 if passed else 1
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

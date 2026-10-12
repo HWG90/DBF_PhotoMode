@@ -1,0 +1,6 @@
+*.lua text eol=lf
+*.py text eol=lf
+*.cpp text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+VERSION text eol=lf
