@@ -1,10 +1,14 @@
 War Journalist - Helldivers 2 Photo Mode
 
-0.6 Preview
+0.7 Preview
+
+NOTICE: When Shader DoF is enabled, scene effects and color controls are grayed out.
+The menu displays "Shader DoF Enabled. Scene Effects disabled".
+Turn DoF OFF or select Native camera mode to use scene effects.
 
 BSL is the recommended main download and requires only Bingus Shared Loader
 v15 or newer. The ZIP includes the camera, private menu/input, PNG capture,
-and all 40 decorative shader overlays. MCM, DBF-HUD and ActionCam downloads
+40 decorative shader overlays, shader DoF, and scene preview assets. MCM, DBF-HUD and ActionCam downloads
 are not required. HD2 Arsenal is an optional way to install the BSL ZIP;
 enable it alongside BSL, deploy, then restart normally. MDL API 2 is the
 alternative loader; its ZIP includes both the loose addon and GameData assets. Install only one Photo Mode package.
@@ -28,6 +32,8 @@ registry can conflict; merge the registrations when combining shader packs.
 
 P: photo mode. WASD: move. Shift/Ctrl: rise/descend. Mousewheel: speed.
 Q/E: roll in camera focus, tabs in menu focus. Tab: camera/menu focus.
+In menu focus W/S selects rows; A/D adjusts values or cycles choices without hover.
+Shift+A/D gives 0.001 m focus steps. Valid typed values also save on leaving the field.
 L: lock/unlock the camera. Backslash: prototype slow motion (solo).
 H: hide controls. Enter/Space: choose/edit. Escape: cancel/leave.
 All bindings are configurable. Resizing the menu scales its text and controls.
@@ -47,15 +53,24 @@ The MDL package uses its mod folder's Screenshots directory. Capture temporarily
 photo controls and requesting game HUD hiding, then restoring your settings.
 Use Steam screenshots as an alternative.
 
-KNOWN ISSUES / DISABLED FEATURES
-Focus distance and aperture/f-stop do not work and are disabled in this
-release. Scene color/depth shader effects are disabled and not included.
-Exposure, saturation and contrast sliders are also unavailable. Native
-bloom/DoF toggles use the game's existing rendering; no custom lens control
-is claimed. Ship UI may remain visible in built-in captures; HDR screenshots
-may differ from the displayed brightness. All 40 decorative overlay shader materials and their registrations are
-bundled. Scene color/depth shader effects and numeric DoF are separate
-unfinished features; this release does not claim they are fixed.
+SHADER DOF / PREVIEW LIMITS
+Choose Shader preview for working depth-aware focus distance and aperture/f-stop.
+32/64 samples and round/hex bokeh are available. Blur uses a 960x540 color source;
+focused pixels retain the original full-resolution scene. Final bokeh quality
+remains under review. All 42 shader libraries, 42 materials and 317 registry IDs
+are bundled; no separate DoF asset package is required.
+
+Native game engine DoF is still nonfunctional for manual focus/aperture control;
+its numeric controls remain disabled. The native toggle uses the game's existing
+effect and does not implement an adjustable lens.
+
+Scene color/depth effects and exposure/contrast/saturation are included as
+unverified previews. They are gated while Shader DoF is ON; turn DoF OFF or select
+native camera mode to test them. Scene color uses a 960x540 source; neutral
+controls preserve the original image. HDR-aware PNG conversion is included,
+but ship UI may remain visible. Steam screenshots remain an alternative.
+Disable older Photo Mode packages, the LLL addon, and any separate DoF asset
+candidate. Only BSL and MDL are offered in 0.7. No alt-tab crash fix is claimed.
 
 CREDITS
 Camera discovery/photo foundation: ActionCam 2.3.1 by HuedPurple

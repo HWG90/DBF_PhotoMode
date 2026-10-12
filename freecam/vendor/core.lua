@@ -31,7 +31,8 @@ local function normalize(c,v)
     assert(type(v)=='number' and v==v and math.abs(v)<1e12,'Expected finite number')
     if c.type=='slider' then
         assert(v>=c.min and v<=c.max,'Value outside slider range')
-        return math.min(c.max,c.min+math.floor((v-c.min)/c.step+.5)*c.step)
+        local step=c.fine_step or c.step
+        return math.min(c.max,c.min+math.floor((v-c.min)/step+.5)*step)
     end
     if c.type=='choice' then assert(v%1==0 and v>=1 and v<=#c.choices,'Invalid choice');return v end
     if c.type=='keybind' then assert(v%1==0 and v>=0 and v<=255,'Invalid virtual key');return v end
@@ -127,6 +128,8 @@ function M.new(store,log,grouping,options)
                     assert(type(c.min)=='number' and type(c.max)=='number' and type(c.step)=='number' and
                         c.min==c.min and c.max==c.max and c.step==c.step and math.abs(c.min)<1e12 and
                         math.abs(c.max)<1e12 and c.max>c.min and c.step>0 and c.step<=c.max-c.min,'Invalid slider')
+                    assert(c.commit_on_blur==nil or type(c.commit_on_blur)=='boolean','commit_on_blur must be boolean')
+                    assert(c.fine_step==nil or(type(c.fine_step)=='number'and c.fine_step==c.fine_step and c.fine_step>0 and c.fine_step<=c.step),'Invalid fine slider step')
                 elseif c.type=='choice' then
                     assert(c.presentation==nil or c.presentation=='dropdown' or c.presentation=='selector' or c.presentation=='combined','Invalid choice presentation')
                     assert(type(c.choices)=='table' and #c.choices>0,'Choices required')

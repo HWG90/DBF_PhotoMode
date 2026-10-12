@@ -1,0 +1,30 @@
+{
+  "shader": "mods/dbf_photo/shaders/dof_local_depth_v1",
+  "material": "mods/dbf_photo/materials/dof_local_depth_v1",
+  "source": "Promoted exact reviewed DoF template/material and preserved315-ID registry; only candidate build inputs",
+  "files": {
+    "dof_library_template.gpu": {
+      "sha256": "6729d404ca524fc4dd20a986fdab5bd65f54b9fca126fccda96b4c42afb492b7",
+      "bytes": 16592
+    },
+    "dof_registry_base.bin": {
+      "sha256": "5b83c424902bb429d476253edeeb400bb02e2f92fbc4c863f7430e251a8a24b1",
+      "bytes": 2544
+    },
+    "dof_local_depth.material.bin": {
+      "sha256": "79a8ece6ebbe03f6fb2f366afa08df658d46723877257e5890180ced7620c23d",
+      "bytes": 144
+    }
+  },
+  "template_source": "dist/releases/photo-dof-local-depth-review/dof_local_depth.gpu",
+  "registry_original_count": 315,
+  "template_native_abi": {
+    "payload_bytes": 16592,
+    "pixel_window_offset": 9320,
+    "pixel_window_bytes": 7152,
+    "vertex_offset": 4080,
+    "vertex_bytes": 5160
+  },
+  "public_default_includes_dof": false,
+  "installed_bytes_altered": false
+}

@@ -12,16 +12,28 @@ assert(meta.width==2 and meta.height==2 and meta.format==28 and meta.bytes==164 
 assert(not pcall(factory.inspect,body:sub(1,147),#body));assert(not pcall(factory.inspect,dds(0,2),160));assert(not pcall(factory.inspect,body,148))
 local original_open=io.open;local files={};local calls=0;local allowed=true
 io.open=function(path,mode)
+ if mode=='r+b'and files[path]then local offset=0
+  return {close=function()end,seek=function(_,_,where)offset=where;return offset end,write=function(_,value)files[path]=files[path]:sub(1,offset)..value..files[path]:sub(offset+#value+1);offset=offset+#value end}
+ end
  if mode=='rb'and files[path]then local content=files[path]
   return {close=function()end,seek=function(_,where)if where=='end'then return #content end;return 0 end,read=function(_,n)return content:sub(1,n)end}
  end
 end
 local sr={Application={save_render_target=function(target,path)assert(target=='back_buffer');calls=calls+1;files[path]=body end}}
-local backend=assert(factory.new(sr,function()return allowed end))
+local hdr=false;local hdr_proof=true
+local backend=assert(factory.new(sr,function()return allowed,{format=16,width=2,height=2,kind=4,mips=1,array=1,hdr_enabled=hdr,hdr10_output_verified=hdr_proof}end))
 assert(not backend.capture('relative.dds'));assert(not backend.capture('C:/Shots/bad.png'));assert(not backend.capture('C:/Shots/../outside.dds'));assert(calls==0)
 allowed=false;assert(not backend.capture('C:/Shots/one.dds'));assert(calls==0)
 allowed=true;local ok,result=backend.capture('C:/Shots/one.dds');assert(ok and result.path=='C:/Shots/one.dds'and calls==1)
 assert(not backend.capture('C:/Shots/one.dds')and calls==1,'Capture must not overwrite an existing image')
+local hdr_body=body:sub(1,128)..integer(24)..body:sub(133)
+sr.Application.save_render_target=function(_,path)calls=calls+1;files[path]=hdr_body end
+hdr=true;ok,result=backend.capture('C:/Shots/hdr.dds');assert(ok and result.color_encoding=='hdr10-pq-bt2020'and result.white_nits==203 and result.hdr_enabled==true,'HDR encoding must follow the live flag and verified native output branch')
+hdr=false;ok,result=backend.capture('C:/Shots/sdr10.dds');assert(ok and result.color_encoding=='srgb','RGB10 storage alone must not select PQ conversion')
+hdr=true;hdr_proof=false;ok,result=backend.capture('C:/Shots/no-proof.dds');assert(ok and result.color_encoding=='srgb','A changed output branch must not be treated as verified HDR10')
+hdr_proof=true;local unknown=body:sub(1,128)..integer(0)..body:sub(133)
+sr.Application.save_render_target=function(_,path)calls=calls+1;files[path]=unknown end
+ok,result=backend.capture('C:/Shots/unknown-hdr.dds');assert(ok and result.format==24 and result.color_encoding=='hdr10-pq-bt2020','Descriptor-proven UNKNOWN DDS must still normalize and select HDR10 correctly')
 sr.Application.save_render_target=function()calls=calls+1 end
 assert(not backend.capture('C:/Shots/missing.dds'),'A nil native return must not be reported as a saved screenshot')
 sr.Application.save_render_target=function(_,path)calls=calls+1;files[path]='not an image'end

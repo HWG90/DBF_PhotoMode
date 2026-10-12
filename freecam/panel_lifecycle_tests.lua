@@ -44,3 +44,38 @@ for _,standalone in ipairs({false,true})do
  assert(a.mods.dbf_freecam.name=='Photo Mode');assert(ctrl.close());DBFMCM=nil;DBF_PHOTO_STANDALONE_API=nil
 end
 print('Photo pages: Controls absent with MCM, retained standalone; internal name Photo Mode passed')
+
+-- Tab and the visible focus action commit through blur; Escape still cancels.
+do
+ local pressed={};local text_editing=false;local binding=false;local allow_blur=false
+ local blur_calls,cancel_calls,input_mode=0,0,0;local callbacks
+ local service=core.new(nil,function()end)
+ service.is_open=function()return false end;service.close=function()return true end
+ service.create_photo_view=function()return {}end;service.photo_resolution=function()return 1920,1080 end
+ service.camera_input={down=function(key)return pressed[key]or false end,focused=function()return true end,
+  acquire=function()input_mode=3;return {}end,release=function()input_mode=0;return true end,
+  set_focus=function(menu)input_mode=menu and 1 or 3;return true end,
+  sample=function()return {wheel=0,mouse_x=0,mouse_y=0,dt=.016}end,menu_sample=function()return {click=false,wheel=0,dt=.016}end}
+ local fake_menu={new=function(_,actions)
+  callbacks=actions
+  return {bind=function()end,draw=function()end,tick=function()end,close=function()end,
+   editing_key=function()return binding end,editing_text=function()return text_editing end,
+   blur=function()blur_calls=blur_calls+1;if not allow_blur then return false end;text_editing=false;return true end,
+   dismiss=function()cancel_calls=cancel_calls+1;text_editing=false;return true end}
+ end}
+ DBFMCM=service
+ local state={};local adapter=controller.new(state,{},function()return true end,function()end,nil,options,nil,fake_menu)
+ local function tick()adapter.tick(.016)end
+ local function press(key)pressed[key]=true;tick();pressed[key]=false;tick()end
+ tick();press(80);assert(state.active and input_mode==3)
+ press(9);assert(input_mode==1 and blur_calls==0)
+ text_editing=true;press(9);assert(input_mode==1 and blur_calls==1 and text_editing,'Invalid pending text must block Tab focus transfer')
+ allow_blur=true;press(9);assert(input_mode==3 and blur_calls==2 and not text_editing,'Tab must commit pending text through blur')
+ binding=true;press(9);assert(input_mode==3 and blur_calls==2,'Key capture must retain the focus shortcut')
+ binding=false;press(9);assert(input_mode==1)
+ text_editing=true;callbacks.focus();assert(input_mode==3 and blur_calls==3 and not text_editing,'Visible focus action must share the commit path')
+ press(9);text_editing=true;press(27)
+ assert(input_mode==1 and cancel_calls==1 and blur_calls==3 and not text_editing,'Escape must cancel editing rather than commit')
+ assert(adapter.close()and input_mode==0);DBFMCM=nil
+end
+print('Photo focus transfer: Tab/button blur commits, invalid text refusal, binding suppression and Escape cancellation passed')

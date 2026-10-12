@@ -1,4 +1,4 @@
-"""Execute immutable BSL/MDL packages with no source checkout or optional mods.
+"""Execute immutable BSL/MDL/LLL packages with no source checkout or optional mods.
 
 Uses the installed LuaJIT in a separate test process, never the game process.
 Engine drawing is mocked; packaged private services and native DLLs are real.
@@ -87,8 +87,12 @@ def payload(archive):
         startup = body[8:].rstrip(b'\0').decode()
         return 'BSL', startup, embedded_payload(startup)
     prefix = 'dbf_freecam/'
-    assert all(name.startswith((prefix, 'GameData/')) or name in ('INSTALL.txt', 'FILES-SHA256.txt') for name in files)
+    assert all(name.startswith((prefix, 'GameData/', 'Arsenal/')) or name in ('INSTALL.txt', 'FILES-SHA256.txt') for name in files)
     files = {name[len(prefix):]: body for name, body in files.items() if name.startswith(prefix)}
+    if 'main.lua' in files:
+        manifest=json.loads(files['manifest.json'])
+        assert manifest['lll']['entry']=='main.lua' and manifest['lll']['restart_only'] and manifest['lll']['retain_until_exit']
+        return 'LLL', files['main.lua'].decode(), files
     return 'MDL', files['mod.lua'].decode(), files
 
 
@@ -147,8 +151,11 @@ local function log(message)logs[#logs+1]=tostring(message)end
 '''
 
 CHECK = r'''
-assert(DBF_PHOTO_MODE_OWNER and DBF_PHOTO_MODE_OWNER.started and not DBF_PHOTO_MODE_OWNER.failed,'Packaged startup failed: '..table.concat(logs,' | '))
-assert(DBF_PHOTO_MODE_STARTED and DBF_PHOTO_STANDALONE_API,'Private standalone API missing')
+if TEST_LOADER~='LLL'then
+ assert(DBF_PHOTO_MODE_OWNER and DBF_PHOTO_MODE_OWNER.started and not DBF_PHOTO_MODE_OWNER.failed,'Packaged startup failed: '..table.concat(logs,' | '))
+ assert(DBF_PHOTO_MODE_STARTED,'Packaged startup marker missing')
+end
+assert(DBF_PHOTO_STANDALONE_API,'Private standalone API missing')
 assert(DBFMCM==nil,'Standalone package must not publish MCM')
 update(.016);render();render()
 local api=DBF_PHOTO_STANDALONE_API
@@ -176,13 +183,17 @@ for _,message in ipairs(logs)do assert(not message:lower():find('startup failed'
 def verify(archive):
     loader, startup, files = payload(archive)
     native_name = files['standalone-library.txt'].decode().strip()
-    libraries = {native_name: files[native_name], 'PhotoCapture64.dll': files['PhotoCapture64.dll']}
+    capture_names = [name for name in files if name.startswith('PhotoCapture') and name.endswith('.dll')]
+    assert len(capture_names)==1, 'Exactly one active packaged screenshot DLL required'
+    capture_name=capture_names[0]
+    libraries = {native_name: files[native_name], capture_name: files[capture_name]}
     imports = {}
     with tempfile.TemporaryDirectory(prefix='photo-standalone-') as scratch:
         isolated = Path(scratch)
         package = isolated / 'package'
         appdata = isolated / 'appdata'
         (appdata / 'CowboyBingus/Helldivers2/Logs').mkdir(parents=True)
+        (appdata / 'DBF/PhotoMode/settings').mkdir(parents=True)
         package.mkdir()
         for name, body in files.items():
             destination = package / name
@@ -199,9 +210,15 @@ def verify(archive):
             free = ctypes.windll.kernel32.FreeLibrary
             free.argtypes = [ctypes.c_void_p]
             assert free(handle._handle), 'Native test library unload failed'
-        source = ('TEST_ROOT=' + lua_string(isolated.as_posix()) + '\nTEST_APPDATA=' + lua_string(appdata.as_posix()) + '\n').encode() + MOCK.encode()
+        source = ('TEST_ROOT=' + lua_string(isolated.as_posix()) + '\nTEST_APPDATA=' + lua_string(appdata.as_posix()) + '\nTEST_LOADER='+lua_string(loader)+'\n').encode() + MOCK.encode()
         if loader == 'BSL':
             source += ('\nassert(loadstring(' + lua_string(startup) + ',"@immutable-BSL-package"))()\nupdate(.016)\n').encode()
+        elif loader == 'LLL':
+            source += ('\nmod={dir='+lua_string(package.as_posix())+',config_dir=TEST_APPDATA.."/DBF/PhotoMode/settings",log=log}\n'
+                       'mod.read=function(name)local f=assert(io.open(mod.dir.."/"..name,"rb"));local body=f:read("*a");f:close();return body end\n'
+                       'mod.require=function(name)return assert(loadstring(mod.read(name),"@"..mod.dir.."/"..name))()end\n'
+                       'local adapter=assert(loadstring('+lua_string(startup)+',"@immutable-LLL-package"))()\n'
+                       'assert(adapter.live_lua_api==1);adapter.on_enable();adapter.on_update(.016)\n').encode()
         else:
             source += ('\nlocal real_globals=_G;local proxy=setmetatable({},{__index=function(_,key)return real_globals[key]end,__newindex=function()error("MDL sandbox proxy mutated")end})\n'
                        'local env=setmetatable({_G=proxy,rawget=function(tbl,key)if tbl==proxy then return proxy[key]end;return rawget(tbl,key)end},{__index=_G})\n'
@@ -211,9 +228,12 @@ def verify(archive):
         source += CHECK.encode()
         if loader == 'MDL':
             source += b'\nadapter.on_disable(ctx);for _,fn in ipairs(cleanup)do fn()end;assert(DBF_PHOTO_MODE_OWNER.stopped)\n'
+        elif loader == 'LLL':
+            source += b'\nlocal allowed,reason=adapter.on_disable();assert(allowed==false and reason:find("normal restart",1,true),"LLL must retain camera hooks until process exit");shutdown();assert(api.camera_input.release());assert(DBF_PHOTO_STANDALONE_API==api,"LLL retained service must survive until exit");print("Packaged LLL standalone bootstrap, full settings, private view and restart retention passed")\n'
         else:
             source += b'\nshutdown()\n'
-        source += b"assert(DBF_PHOTO_STANDALONE_API==nil,'Private API leaked after shutdown');print('Packaged standalone bootstrap, full settings, private view and owned cleanup passed')\n"
+        if loader != 'LLL':
+            source += b"assert(DBF_PHOTO_STANDALONE_API==nil,'Private API leaked after shutdown');print('Packaged standalone bootstrap, full settings, private view and owned cleanup passed')\n"
         previous = Path.cwd()
         try:
             os.chdir(isolated)
@@ -230,6 +250,7 @@ def verify(archive):
             'optional_mods_present': False, 'repository_source_fallback': False,
             'private_settings_persisted': 'LocalAppData/DBF/PhotoMode/settings/dbf_freecam.ini',
             'engine_drawing': 'controlled mocks; actual packaged private renderer module',
+            'shutdown_behavior': 'Restart retention after camera-hook startup verified' if loader == 'LLL' else 'Owned shutdown cleanup verified',
             'game_process_accessed': False, 'native_input_hook_installed': False}
 
 

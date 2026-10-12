@@ -10,12 +10,27 @@
     "bingus_runtime.lua": "74b3805771639bbbca448709e188b1b16c487eb420605c91e1056b740273c77b",
     "camera_input.lua": "c10218b454dde521b0d9a51d38f58496486f903b0f7c8a8abd367f04da7fcf1b",
     "capture.lua": "70c05a6b724719a4d015ba5147fb0becfb78222751beb773fcae135fee52abea",
-    "core.lua": "d03bd8a72f3ab80372dc57351e1e837b10c53e9ea6835002b25fe4ec4fcc87b1",
+    "core.lua": "c008876010ae194e61aea0fa7441a25af607f4b6a80fcf5aa0941aab091b88a6",
     "font.lua": "83f7e1fd6076f6f86bc86bdb8ae302bfc2b0e5902ceae1a2041420b3b722dcc0",
     "store.lua": "3bc9a632382be9591a6119c576d9c0b2f33bd0fef9db8103de00c0cff87f4382",
-    "view.lua": "3f2e45fdaa2981529e3bb8bf62a6ede71637d081b3c53d0f8ae2f27cf6aa6f2a"
+    "view.lua": "3f2e45fdaa2981529e3bb8bf62a6ede71637d081b3c53d0f8ae2f27cf6aa6f2a",
+    "PhotoCapture_f37e408d89cd.dll": "f37e408d89cd8c8fd222039ab13e4614e887cdd2c552050c632ccb223bc70b53"
   },
   "native_encoding": "hex; decoded only by package builder",
   "native_runtime": "Windows built-in APIs; static CRT",
-  "input_credit": "CowboyBingus; included 0BSD license"
+  "input_credit": "CowboyBingus; included 0BSD license",
+  "local_modifications": {
+    "core.lua": {
+      "baseline_sha256": "d03bd8a72f3ab80372dc57351e1e837b10c53e9ea6835002b25fe4ec4fcc87b1",
+      "sha256": "c008876010ae194e61aea0fa7441a25af607f4b6a80fcf5aa0941aab091b88a6",
+      "change": "Opt-in fine_step normalization and commit_on_blur metadata validation; original controls retain existing precision."
+    },
+    "PhotoCapture_f37e408d89cd.dll": {
+      "baseline_library": "PhotoCapture64.dll",
+      "baseline_sha256": "be5cc8c9930fa4de342d3afb3ce8be184c4f1208dcab1f7fcab67991ea1a6bd7",
+      "sha256": "f37e408d89cd8c8fd222039ab13e4614e887cdd2c552050c632ccb223bc70b53",
+      "change": "Color-aware HDR10 PQ/BT2020 to SDR sRGB PNG conversion selected by verified live back-buffer HDR state; hash filename preserves loaded old DLL."
+    }
+  },
+  "capture_library": "PhotoCapture_f37e408d89cd.dll"
 }

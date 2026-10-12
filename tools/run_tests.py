@@ -17,9 +17,9 @@ ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = (
     'tests.lua', 'look_tests.lua', 'simulation_tests.lua', 'studio_tests.lua',
     'menu_tests.lua', 'resize_menu_tests.lua', 'photo_menu_interaction_tests.lua',
-    'numeric_menu_tests.lua', 'panel_lifecycle_tests.lua', 'postfx_tests.lua',
+    'numeric_menu_tests.lua', 'numeric_blur_tests.lua', 'panel_lifecycle_tests.lua', 'menu_reopen_tests.lua', 'postfx_tests.lua',
     'saved_camera_tests.lua', 'shader_runtime_tests.lua', 'screenshot_tests.lua',
-    'screenshot_backend_tests.lua', 'stable_gates_tests.lua', 'mdl_tests.lua',
+    'screenshot_backend_tests.lua', 'stable_gates_tests.lua', 'mdl_tests.lua', 'depth_resource_tests.lua', 'dof_overlay_tests.lua', 'dof_runtime_tests.lua', 'shader_template_guard_tests.lua', 'dof_controls_tests.lua', 'scene_overlay_tests.lua', 'scene_runtime_tests.lua',
 )
 
 
@@ -36,6 +36,7 @@ def main():
     parser.add_argument('--lua-dll', type=Path)
     parser.add_argument('--fixture', action='append', choices=FIXTURES)
     parser.add_argument('--native', action='store_true', help='Also run the built standalone PNG converter fixtures')
+    parser.add_argument('--native-build', type=Path, help='Use an explicitly named native converter build for --native')
     parser.add_argument('--receipt', type=Path, default=ROOT/'dist/validation/release-fixtures.json')
     args = parser.parse_args()
     mcm = args.mcm_root.resolve()
@@ -72,7 +73,10 @@ def main():
         os.chdir(original_cwd)
     if args.native:
         test = ROOT/'freecam/native/test_photo_capture.py'
-        completed = subprocess.run([sys.executable, str(test)], cwd=ROOT, check=False)
+        native_command = [sys.executable, str(test)]
+        if args.native_build:
+            native_command.extend(['--build', str(args.native_build.resolve())])
+        completed = subprocess.run(native_command, cwd=ROOT, check=False)
         results.append({'fixture': 'native/test_photo_capture.py', 'sha256': hashlib.sha256(test.read_bytes()).hexdigest(),
                         'passed': completed.returncode == 0, 'exit_code': completed.returncode})
     passed = all(result['passed'] for result in results)

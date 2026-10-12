@@ -1,0 +1,5 @@
+local factory=dofile(assert(DBF_PHOTO_TEST_ROOT)..'shader_template_guard.lua')
+local guard=factory.new({},function()return true end);assert(guard.present())
+guard=factory.new({},function()return false end);local ok,why=guard.present();assert(not ok and why:find('not registered',1,true))
+guard=factory.new({},function()error('changed renderer')end);ok,why=guard.present();assert(not ok and why:find('changed renderer',1,true))
+print('Renderer template guard: present/absent distinction and changed-layout containment passed; no game process accessed')

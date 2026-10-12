@@ -6,12 +6,21 @@ sys.path.insert(0,str(ROOT.parent/'tools'))
 import lua_archive
 import photo_assets
 
-def patch(source):
+def capture_library_name():
+    name=json.loads((ROOT/'vendor/PROVENANCE.json').read_text()).get('capture_library','PhotoCapture64.dll')
+    if not re.fullmatch(r'PhotoCapture(?:64|_[0-9a-f]{12,64})\.dll',name):raise ValueError('Invalid owned screenshot library name')
+    return name
+
+def patch(source,dof_candidate=False,scene_candidate=False):
     def replace(old,new):
         nonlocal source
         if source.count(old)!=1: raise ValueError('ActionCam source contract changed: '+old[:70])
         source=source.replace(old,new)
     replace('local function bindings_step()', 'local function legacy_bindings_step()')
+    # Routine statistics must not format and flush a diagnostic line each second.
+    # Event/error logs still use the original immediate writer.
+    source,count=re.subn(r'(CFG\.LOG_EVERY\s*=\s*)1\.0\b',r'\g<1>30.0',source,count=1)
+    if count!=1: raise ValueError('ActionCam diagnostic interval contract changed')
     # Freecam keys belong to MCM; profile/restart bindings continue using MBM.
     source=re.sub(r'^  \{id = \'actioncam\.photo_[^\n]+\n','',source,flags=re.M)
     controller=(ROOT/'controller.lua').read_text(encoding='utf-8')
@@ -51,9 +60,10 @@ end)()
 local DBF_PHOTO_HUD=(function()
 __PHOTO_HUD__
 end)().new()
+__PHOTO_DOF_CANDIDATE__
 local DBF_PHOTO_RUNTIME=(function()
 __PHOTO_RUNTIME__
-end)().new(sr,DBF_PHOTO_LENS,DBF_PHOTO_COMPOSITION,DBF_PHOTO_POSTFX,log,DBF_PHOTO_HUD,DBF_PHOTO_PROFILE)
+end)().new(sr,DBF_PHOTO_LENS,DBF_PHOTO_COMPOSITION,DBF_PHOTO_POSTFX,log,DBF_PHOTO_HUD,DBF_PHOTO_PROFILE__PHOTO_DOF_ARGUMENT____PHOTO_SCENE_ARGUMENT__)
 local DBF_PHOTO_MENU=(function()
 __PHOTO_MENU__
 end)()
@@ -67,7 +77,7 @@ local DBF_SCREENSHOTS
 do
  local ok,value=pcall(function()
   local root=assert(rawget(_G,'DBF_PHOTO_PACKAGE_ROOT'),'Photo package path unavailable');local folder=root..'/Screenshots'
-  local convert=DBF_PHOTO_SCREENSHOT.native_converter(root..'/PhotoCapture64.dll',folder)
+  local convert=DBF_PHOTO_SCREENSHOT.native_converter(root..'/__CAPTURE_LIBRARY__',folder)
   local backend=assert(DBF_PHOTO_SCREENSHOT_BACKEND.new(sr))
   return DBF_PHOTO_SCREENSHOT.new(backend,convert,folder,log)
  end)
@@ -90,6 +100,44 @@ local function bindings_step()
   if not ok then DBF_FREECAM.stop();log('freecam error: '..tostring(why)) end
 end
 """.replace('__CONTROLLER__',controller).replace('__SIMULATION__',(ROOT/'simulation.lua').read_text(encoding='utf-8')).replace('__SIMULATION_BACKEND__',(ROOT/'simulation_backend.lua').read_text(encoding='utf-8')).replace('__CAMERA_LOOK__',(ROOT/'look.lua').read_text(encoding='utf-8'))
+    candidate=''
+    if dof_candidate:
+        # Explicit review opt-in. This authorizes a preview; it does not assert
+        # that the candidate's native GPU result has passed visual validation.
+        candidate="""local DBF_PHOTO_DOF_FACTORY=(function()
+local DBF_PHOTO_DEPTH=(function()
+__PHOTO_DEPTH__
+end)()
+local DBF_PHOTO_DOF=(function()
+__PHOTO_DOF__
+end)()
+local DBF_PHOTO_SHADER_TEMPLATE_GUARD=(function()
+__PHOTO_SHADER_TEMPLATE_GUARD__
+end)()
+return {new=function(runtime_sr)
+ return DBF_PHOTO_DOF.new(runtime_sr,DBF_PHOTO_DEPTH.new(runtime_sr),true,DBF_PHOTO_SHADER_TEMPLATE_GUARD.new(runtime_sr))
+end}
+end)()
+""".replace('__PHOTO_DEPTH__',(ROOT/'depth_resource.lua').read_text(encoding='utf-8')).replace('__PHOTO_DOF__',(ROOT/'dof_overlay.lua').read_text(encoding='utf-8')).replace('__PHOTO_SHADER_TEMPLATE_GUARD__',(ROOT/'shader_template_guard.lua').read_text(encoding='utf-8'))
+    if scene_candidate:
+        candidate+="""local DBF_PHOTO_SCENE_FACTORY=(function()
+local DEPTH=(function()
+__SCENE_DEPTH__
+end)()
+local SCENE=(function()
+__SCENE_OVERLAY__
+end)()
+local GUARD=(function()
+__SCENE_GUARD__
+end)()
+return {new=function(runtime_sr)
+ local instance=SCENE.new(runtime_sr,DEPTH.new(runtime_sr),true,GUARD.new(runtime_sr,nil,0xd926b3f7))
+ instance.active=function(options)return SCENE.uniforms(options).active end
+ return instance
+end}
+end)()
+""".replace('__SCENE_DEPTH__',(ROOT/'depth_resource.lua').read_text(encoding='utf-8')).replace('__SCENE_OVERLAY__',(ROOT/'scene_overlay.lua').read_text(encoding='utf-8')).replace('__SCENE_GUARD__',(ROOT/'shader_template_guard.lua').read_text(encoding='utf-8'))
+    hook=hook.replace('__PHOTO_DOF_CANDIDATE__',candidate).replace('__PHOTO_DOF_ARGUMENT__',',DBF_PHOTO_DOF_FACTORY'if dof_candidate else ',nil'if scene_candidate else '').replace('__PHOTO_SCENE_ARGUMENT__',',DBF_PHOTO_SCENE_FACTORY'if scene_candidate else '').replace('__CAPTURE_LIBRARY__',capture_library_name())
     for token,filename in [('__PHOTO_OPTIONS__','photo_options.lua'),('__PHOTO_LENS__','lens.lua'),('__PHOTO_COMPOSITION__','composition.lua'),('__PHOTO_POSTFX__','postfx.lua'),('__PHOTO_RUNTIME__','photo_runtime.lua'),('__PHOTO_HUD__','hud.lua'),('__PHOTO_PROFILE__','render_profile.lua'),('__PHOTO_MENU__','photo_menu.lua'),('__LOGO_ART__','assets/logo_art.lua'),('__CAMERA_PROFILE__','camera_profile.lua'),('__SAVED_CAMERA__','saved_camera.lua')]:
         hook=hook.replace(token,(ROOT/filename).read_text(encoding='utf-8'))
     for token,filename in [('__SCREENSHOT__','screenshot.lua'),('__SCREENSHOT_BACKEND__','screenshot_backend.lua')]:
@@ -156,7 +204,7 @@ def payload_files(output):
     native=(vendor/'standalone-library.txt').read_text().strip()
     if not re.fullmatch(r'mcm_input_[0-9a-f]+\.dll',native):raise ValueError('Invalid private input DLL manifest')
     files['standalone-library.txt']=native.encode()
-    for name in (native,'PhotoCapture64.dll'):
+    for name in (native,capture_library_name()):
         body=bytes.fromhex((vendor/(name+'.hex')).read_text())
         if hashlib.sha256(body).hexdigest()!=identity['runtime_sha256'][name]:raise ValueError('Vendored native identity mismatch: '+name)
         files[name]=body
@@ -181,9 +229,11 @@ def compile_lua(body,name):
         if lua.luaL_loadbuffer(state,body,len(body),name.encode()):raise ValueError(lua.lua_tolstring(state,-1,None).decode())
     finally:lua.lua_close(state)
 
-def package_bsl(output,version=None):
+def package_bsl(output,version=None,dof_candidate=False):
     version=version or(ROOT.parent/'VERSION').read_text().strip()
     files=payload_files(output)
+    if (b'local DBF_PHOTO_DOF_FACTORY='in files['src/actioncam.lua'])!=bool(dof_candidate):
+        raise ValueError('Runtime DoF path and packaged asset selection differ')
     for name,body in files.items():
         if name.endswith('.lua'):compile_lua(body,name)
     embedded=[]
@@ -194,24 +244,31 @@ def package_bsl(output,version=None):
         embedded.append('['+lua_bytes(name.encode())+']='+value+',')
     template=(ROOT/'bsl_startup.lua').read_text(encoding='utf-8')
     if template.count('-- __EMBEDDED_FILES__')!=1:raise ValueError('BSL bootstrap embed contract changed')
-    startup=template.replace('-- __EMBEDDED_FILES__','\n'.join(embedded)).replace('__VERSION__',version).encode()
+    startup=template.replace('-- __EMBEDDED_FILES__','\n'.join(embedded)).replace('__VERSION__',version).replace('__CAPTURE_LIBRARY__',capture_library_name()).encode()
     compile_lua(startup,'WarJournalist-BSL-startup')
     entry='mods/dbf_photomode/startup';envelope=struct.pack('<II',len(startup),2)+startup
-    archive,gpu=photo_assets.archive_rows(photo_assets.load_resources()+[(lua_archive.hash_name(entry),lua_archive.LUA_TYPE,envelope,b'')])
+    registry_gpu=b''
+    if dof_candidate:
+        import dof_assets
+        core_resources,shared_resources,asset_audit=dof_assets.resources(output)
+        archive,gpu=photo_assets.archive_rows(shared_resources+[(lua_archive.hash_name(entry),lua_archive.LUA_TYPE,envelope,b'')])
+        registry,registry_gpu=photo_assets.archive_rows(core_resources)
+    else:
+        archive,gpu=photo_assets.archive_rows(photo_assets.load_resources()+[(lua_archive.hash_name(entry),lua_archive.LUA_TYPE,envelope,b'')])
+        asset_audit=photo_assets.validate_archive(archive,gpu)
+        registry,registry_gpu=photo_assets.archive_rows([photo_assets.registry_resource()])
+        if registry_gpu:raise ValueError('Unexpected registry GPU data')
     parsed=photo_assets.read_archive(archive,gpu)
     startup_rows=[row for row in parsed if row[1]==lua_archive.LUA_TYPE]
     if len(startup_rows)!=1 or startup_rows[0][2]!=envelope:raise ValueError('BSL archive source round-trip failed')
-    asset_audit=photo_assets.validate_archive(archive,gpu)
-    registry,registry_gpu=photo_assets.archive_rows([photo_assets.registry_resource()])
-    if registry_gpu:raise ValueError('Unexpected registry GPU data')
     manifest={'Version':1,'Guid':'0a1f063d-d880-4282-a5c3-89f9efc52b21','Name':'War Journalist '+version,
-        'Description':'Self-contained Photo Mode with all 40 decorative overlay assets, standalone menu/input and PNG capture. Requires only Bingus Shared Loader v15+ / API 1. MCM is optional.',
+        'Description':'Self-contained Photo Mode with 40 decorative overlays, shader DoF and scene preview assets, standalone menu/input and HDR-aware PNG capture. Requires only Bingus Shared Loader v15+ / API 1. MCM is optional.',
         'Options':[{'Name':'War Journalist '+version,'Description':'All runtime and assets included. Requires only Bingus Shared Loader v15+ / API 1. Enable, deploy and restart.','Include':['Addon']}]}
     package={'manifest.json':(json.dumps(manifest,indent=2)+'\n').encode(),
         'Addon/9ba626afa44a3aa3.patch_0':archive,'Addon/9ba626afa44a3aa3.patch_0.stream':b'',
         'Addon/9ba626afa44a3aa3.patch_0.gpu_resources':gpu,
         'Addon/ee6b1ba7e22d71ed.patch_0':registry,'Addon/ee6b1ba7e22d71ed.patch_0.stream':b'',
-        'Addon/ee6b1ba7e22d71ed.patch_0.gpu_resources':b'','PROVENANCE.json':files['PROVENANCE.json'],
+        'Addon/ee6b1ba7e22d71ed.patch_0.gpu_resources':registry_gpu,'PROVENANCE.json':files['PROVENANCE.json'],
         'ASSET-MANIFEST.json':(json.dumps(asset_audit,indent=2)+'\n').encode(),
         'VENDOR-PROVENANCE.json':files['VENDOR-PROVENANCE.json'],
         'LICENSE-Bingus.txt':files['LICENSE-Bingus.txt'],'README.md':(ROOT.parent/'README.md').read_bytes(),
@@ -239,7 +296,7 @@ def package_bsl(output,version=None):
     print(target)
     return target
 
-def build(archive,output):
+def build(archive,output,dof_candidate=False):
     if archive:
         original=archive.read_bytes();resources=lua_archive.read(original)
         name=lua_archive.hash_name('mods/actioncam/actioncam')
@@ -251,7 +308,7 @@ def build(archive,output):
         identity=json.loads((ROOT/'vendor/PROVENANCE.json').read_text())
         if hashlib.sha256(body).hexdigest()!=identity['actioncam_source_sha256']:raise ValueError('Vendored camera identity mismatch')
         source=body.decode('utf-8');origin='ActionCam 2.3.1 (vendored source)';origin_hash=identity['actioncam_archive_sha256']
-    result=patch(source).encode('utf-8')
+    result=patch(source,dof_candidate=dof_candidate).encode('utf-8')
     # Compile the complete generated runtime before producing installable bytes.
     import ctypes
     lua=ctypes.CDLL(os.environ.get('HD2_LUA51_DLL',r'C:\Program Files (x86)\Steam\steamapps\common\Helldivers 2\bin\lua51.dll'))
@@ -266,17 +323,21 @@ def build(archive,output):
     finally:lua.lua_close(state)
     output.mkdir(parents=True,exist_ok=True)
     (output/'ActionCam-Freecam.lua').write_bytes(result)
+    modules=[ROOT/name for name in ['photo_options.lua','lens.lua','composition.lua','postfx.lua','photo_runtime.lua','hud.lua','render_profile.lua','camera_profile.lua','saved_camera.lua','photo_menu.lua']]
+    if dof_candidate:modules.extend([ROOT/'depth_resource.lua',ROOT/'dof_overlay.lua',ROOT/'shader_template_guard.lua'])
     (output/'PROVENANCE.json').write_text(json.dumps({'source_archive':origin,'source_sha256':origin_hash,
-        'photo_modules_sha256':{p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in [ROOT/'photo_options.lua',ROOT/'lens.lua',ROOT/'composition.lua',ROOT/'postfx.lua',ROOT/'photo_runtime.lua',ROOT/'hud.lua',ROOT/'render_profile.lua',ROOT/'camera_profile.lua',ROOT/'saved_camera.lua',ROOT/'photo_menu.lua']},
+        'dof_candidate_preview':bool(dof_candidate),
+        'photo_modules_sha256':{p.name:hashlib.sha256(p.read_bytes()).hexdigest()for p in modules},
         'simulation_sha256':hashlib.sha256((ROOT/'simulation.lua').read_bytes()).hexdigest(),
         'simulation_backend_sha256':hashlib.sha256((ROOT/'simulation_backend.lua').read_bytes()).hexdigest(),
         'look_sha256':hashlib.sha256((ROOT/'look.lua').read_bytes()).hexdigest(),
         'controller_sha256':hashlib.sha256((ROOT/'controller.lua').read_bytes()).hexdigest(),'deployment':'not installed','live_validation':False},indent=2)+'\n')
     (output/'INSTALL.txt').write_text((ROOT/'README.md').read_text())
-    return package_bsl(output,(ROOT.parent/'VERSION').read_text().strip())
+    return package_bsl(output,(ROOT.parent/'VERSION').read_text().strip(),dof_candidate=dof_candidate)
 
 if __name__=='__main__':
     version=(ROOT.parent/'VERSION').read_text().strip()
     parser=argparse.ArgumentParser();parser.add_argument('--actioncam',type=Path,help='Optional explicit camera foundation override; defaults to owned vendored source');parser.add_argument('--output',type=Path,default=ROOT.parent/'dist/releases'/('photo-'+version))
+    parser.add_argument('--dof-candidate',action='store_true',help='Include the explicit DoF fallback preview; final shader quality remains under review')
     args=parser.parse_args()
-    build(args.actioncam,args.output)
+    build(args.actioncam,args.output,dof_candidate=args.dof_candidate)

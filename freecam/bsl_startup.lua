@@ -30,7 +30,7 @@ local function write_native(name)
  if not matches then local file=assert(io.open(path,'wb'));assert(file:write(payload));assert(file:close())end
 end
 local native=body('standalone-library.txt'):match('^(mcm_input_%x+%.dll)%s*$');assert(native,'Photo input library manifest invalid')
-write_native(native);write_native('PhotoCapture64.dll')
+write_native(native);write_native('__CAPTURE_LIBRARY__')
 local config=root..'/settings';kernel.CreateDirectoryA(config,nil)
 local host={dir=root,config_dir=config,log=log}
 function host.read(name)return files[name]and body(name)or nil end

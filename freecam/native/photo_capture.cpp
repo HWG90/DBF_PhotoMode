@@ -5,6 +5,7 @@
 #include <windows.h>
 #include <wincodec.h>
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -70,7 +71,28 @@ DWORD com_error(HRESULT result) {
     return result == E_OUTOFMEMORY ? ERROR_NOT_ENOUGH_MEMORY : ERROR_GEN_FAILURE;
 }
 
-DWORD convert(const wchar_t* input_path, const wchar_t* output_path) {
+float pq_nits(float encoded) {
+    // SMPTE ST 2084 EOTF. PQ is absolute: normalized 1.0 means 10,000 nits.
+    constexpr double m1 = 2610.0 / 16384.0, m2 = 2523.0 / 32.0;
+    constexpr double c1 = 3424.0 / 4096.0, c2 = 2413.0 / 128.0, c3 = 2392.0 / 128.0;
+    const double power = std::pow(static_cast<double>(encoded), 1.0 / m2);
+    return static_cast<float>(10000.0 * std::pow(std::max(power - c1, 0.0) / (c2 - c3 * power), 1.0 / m1));
+}
+void hdr10_bytes(float r, float g, float b, float white_nits,
+                 uint8_t& red, uint8_t& green, uint8_t& blue) {
+    // Rotate linear BT.2020 into BT.709/sRGB before tone mapping or encoding.
+    const float sr = 1.660491F * r - 0.587641F * g - 0.072850F * b;
+    const float sg = -0.124550F * r + 1.132900F * g - 0.008349F * b;
+    const float sb = -0.018151F * r - 0.100579F * g + 1.118730F * b;
+    const float luminance = std::max(0.0F, 0.2126F * sr + 0.7152F * sg + 0.0722F * sb);
+    // Hue-preserving Reinhard mapping, with an explicit HDR diffuse-white scale.
+    const float scale = 1.0F / (white_nits + luminance);
+    red = linear_byte(sr * scale); green = linear_byte(sg * scale); blue = linear_byte(sb * scale);
+}
+DWORD convert(const wchar_t* input_path, const wchar_t* output_path,
+              uint32_t encoding, float white_nits) {
+    if (encoding > 1 || (encoding == 1 && (!std::isfinite(white_nits) || white_nits <= 0 || white_nits > 10000)))
+        return ERROR_INVALID_PARAMETER;
     if (!input_path || !output_path || !*input_path || !*output_path ||
         wcsnlen(input_path, 32761) > 32760 || wcsnlen(output_path, 32701) > 32700)
         return ERROR_INVALID_PARAMETER;
@@ -116,6 +138,11 @@ DWORD convert(const wchar_t* input_path, const wchar_t* output_path) {
     case 2: pixel_bytes = 16; break;
     default: return ERROR_NOT_SUPPORTED;
     }
+    // Storage format does not imply a color space. Only an explicit HDR10
+    // capture profile may request PQ/BT.2020 decoding; SDR RGB10 stays intact.
+    if (encoding == 1 && format != 24) return ERROR_NOT_SUPPORTED;
+    std::array<float, 1024> pq{};
+    if (encoding == 1) for (size_t i = 0; i < pq.size(); ++i) pq[i] = pq_nits(static_cast<float>(i) / 1023.0F);
     const uint32_t tight_pitch = width * pixel_bytes;
     const uint32_t pitch = (flags & 8) ? word(header + 20) : tight_pitch;
     if (pitch < tight_pitch || pitch > kMaxRowPitch ||
@@ -166,6 +193,12 @@ DWORD convert(const wchar_t* input_path, const wchar_t* output_path) {
         result = frame->SetPixelFormat(&requested);
         if (FAILED(result)) return com_error(result);
         if (!IsEqualGUID(requested, GUID_WICPixelFormat32bppBGRA)) return ERROR_NOT_SUPPORTED;
+        Com<IWICMetadataQueryWriter> metadata;
+        result = frame->GetMetadataQueryWriter(metadata.address());
+        if (FAILED(result)) return com_error(result);
+        PROPVARIANT rendering_intent{}; rendering_intent.vt = VT_UI1; rendering_intent.bVal = 0;
+        result = metadata->SetMetadataByName(L"/sRGB/RenderingIntent", &rendering_intent);
+        if (FAILED(result)) return com_error(result);
         for (uint32_t y = 0; y < height; ++y) {
             if (!read_exact(input.handle, source.data(), pitch)) return ERROR_READ_FAULT;
             for (uint32_t x = 0; x < width; ++x) {
@@ -178,9 +211,13 @@ DWORD convert(const wchar_t* input_path, const wchar_t* output_path) {
                     blue = source_pixel[0]; green = source_pixel[1]; red = source_pixel[2];
                 } else if (format == 24) {
                     const uint32_t packed = word(source_pixel);
-                    red = static_cast<uint8_t>(((packed & 1023) * 255 + 511) / 1023);
-                    green = static_cast<uint8_t>((((packed >> 10) & 1023) * 255 + 511) / 1023);
-                    blue = static_cast<uint8_t>((((packed >> 20) & 1023) * 255 + 511) / 1023);
+                    if (encoding == 1) {
+                        hdr10_bytes(pq[packed & 1023], pq[(packed >> 10) & 1023], pq[(packed >> 20) & 1023], white_nits, red, green, blue);
+                    } else {
+                        red = static_cast<uint8_t>(((packed & 1023) * 255 + 511) / 1023);
+                        green = static_cast<uint8_t>((((packed >> 10) & 1023) * 255 + 511) / 1023);
+                        blue = static_cast<uint8_t>((((packed >> 20) & 1023) * 255 + 511) / 1023);
+                    }
                 } else if (format == 10) {
                     red = linear_byte(half_float(half_word(source_pixel)));
                     green = linear_byte(half_float(half_word(source_pixel + 2)));
@@ -213,7 +250,17 @@ DWORD convert(const wchar_t* input_path, const wchar_t* output_path) {
 extern "C" __declspec(dllexport) int __cdecl PhotoDDSConvert(const wchar_t* input_path,
                                                             const wchar_t* output_path) {
     DWORD error = ERROR_GEN_FAILURE;
-    try { error = convert(input_path, output_path); }
+    try { error = convert(input_path, output_path, 0, 0); }
+    catch (const std::bad_alloc&) { error = ERROR_NOT_ENOUGH_MEMORY; }
+    catch (...) { error = ERROR_GEN_FAILURE; }
+    SetLastError(error);
+    return error == ERROR_SUCCESS ? 1 : 0;
+}
+
+extern "C" __declspec(dllexport) int __cdecl PhotoDDSConvertColor(const wchar_t* input_path,
+        const wchar_t* output_path, uint32_t encoding, float white_nits) {
+    DWORD error = ERROR_GEN_FAILURE;
+    try { error = convert(input_path, output_path, encoding, white_nits); }
     catch (const std::bad_alloc&) { error = ERROR_NOT_ENOUGH_MEMORY; }
     catch (...) { error = ERROR_GEN_FAILURE; }
     SetLastError(error);

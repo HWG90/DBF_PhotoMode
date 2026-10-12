@@ -37,7 +37,7 @@ local function tick()menu.tick({click=false,wheel=0,dt=.016},function(k)return k
 local function press(k)keys[k]=true;tick();keys[k]=false;tick()end
 menu.page=1;menu.selection=1;draw();tick();press(69);assert(menu.page==2);press(81);assert(menu.page==1)
 press(83);assert(menu.selection==2);press(87);assert(menu.selection==1)
-press(68);assert(menu.selection==2);press(65);assert(menu.selection==1)
+h.set('fov',90);local unedited=h.get('fov');press(68);assert(menu.selection==1 and h.get('fov')==unedited+1);press(65);assert(menu.selection==1 and h.get('fov')==unedited)
 press(13);assert(menu.editing_value);local before=h.get('fov');press(65);assert(h.get('fov')==before-1)
 press(13);assert(not menu.editing_value)
-print('Menu keyboard: Q/E tabs, WASD selector, Enter slider editing, popup layers and opacity passed')
+print('Menu keyboard: Q/E tabs, W/S rows, A/D selected values, Enter slider editing, popup layers and opacity passed')

@@ -54,7 +54,19 @@ local function native_guard(sr)
      local key=ffi.new('uint64_t[1]');ffi.copy(key,entries:sub(at+1,at+8),8)
      if tonumber(key[0])==resource and integer(entries,at+16)~=4294967294 then
       local cell=ffi.new('uint64_t[1]');ffi.copy(cell,entries:sub(at+9,at+16),8);local texture=tonumber(cell[0]);local descriptor=read(texture,36)
-      return true,{format=integer(descriptor,8),width=integer(descriptor,20),height=integer(descriptor,24),mips=integer(descriptor,28),array=integer(descriptor,32),kind=descriptor:byte(4)}
+      local hdr_enabled
+      local setting=sr.Application.render_setting
+      if type(setting)=='function'then
+       local address=util.funcinfo(setting).addr
+       if address and read(address,8)=='\x48\x8b\xd1\xe9\x38\xfe\xff\xff'then
+        local got_hdr,value=pcall(setting,'hdr_enabled');if got_hdr and type(value)=='boolean'then hdr_enabled=value end
+       end
+      end
+      -- This branch selects DXGI24/native16 for HDR and DXGI28/native0 for
+      -- SDR, then passes HDR10 enum12 or SDR enum0 to SetColorSpace1.
+      local hdr10_output_verified=read(base+0x6c674b,24)=='\x48\x8b\x0f\x40\x0f\xb6\xc6\xf6\xd8\x1b\xd2\x4c\x8b\x01\x83\xe2\x0c\x41\xff\x90\x30\x01\x00\x00'and
+       read(base+0x6c65ed,7)=='\x8d\x04\x85\x18\x00\x00\x00'
+      return true,{format=integer(descriptor,8),width=integer(descriptor,20),height=integer(descriptor,24),mips=integer(descriptor,28),array=integer(descriptor,32),kind=descriptor:byte(4),hdr_enabled=hdr_enabled,hdr10_output_verified=hdr10_output_verified}
      end
     end
     error('Screenshot texture descriptor unavailable')
@@ -93,6 +105,13 @@ function M.new(sr,verify)
    local output=io.open(path,'r+b');if not output then return false,'Screenshot header could not be normalized'end
    output:seek('set',128);output:write('\24\0\0\0');output:close();result.format=24
   end
+  local target=self.verified_target
+  -- Capture transfer selection belongs to the live render setting, never to
+  -- RGB10 storage alone. The standalone converter retains an SDR RGB10 mode.
+  if result.format==24 and target and target.format==16 and target.hdr_enabled==true and target.hdr10_output_verified==true then
+   result.color_encoding='hdr10-pq-bt2020';result.white_nits=203
+  else result.color_encoding='srgb'end
+  result.hdr_enabled=target and target.hdr_enabled
   result.path=path;return true,result
  end
  if jit then jit.off(self.capture,true);jit.off(self.ready,true)end

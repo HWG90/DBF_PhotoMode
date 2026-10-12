@@ -1,10 +1,19 @@
 -- Public release safety gates, exercised against the real MCM registration.
 local root=rawget(_G,'DBF_PHOTO_TEST_ROOT')or'freecam/'
 local options=dofile(root..'photo_options.lua');local catalog=dofile(root..'composition.lua')
-local deferred={scene_effect=true,scene_strength=true,scene_depth_range=true,scene_steps=true,scene_status=true}
+local deferred={scene_effect=true,scene_steps=true}
 for key in pairs(deferred)do assert(options.defaults[key]==nil,'Deferred scene setting leaked into defaults: '..key)end
+local candidate={scene_shader=true,scene_strength=true,scene_depth_range=true,fog_distance=true,fog_density=true}
 for _,page in ipairs(options.pages(function()end,function()end,catalog))do
- for _,control in ipairs(page.controls)do assert(not deferred[control.id],'Deferred scene control leaked into menu: '..control.id)end
+ if page.id=='color'then assert(page.controls[1].id=='color_status','Color notice must precede disabled controls')end
+ if page.id=='effects'then assert(page.controls[1].id=='scene_status','Effects notice must precede disabled controls')end
+end
+assert(options.defaults.scene_shader==1 and options.defaults.exposure==0 and options.defaults.contrast==100 and options.defaults.saturation==100)
+for _,page in ipairs(options.pages(function()end,function()end,catalog))do
+ for _,control in ipairs(page.controls)do
+  assert(not deferred[control.id],'Deferred scene control leaked into menu: '..control.id)
+  if candidate[control.id]then assert(control.disabled,'Scene candidate must default to disabled without a verified runtime')end
+ end
 end
 
 local native_caps={dof=true,bloom=true,focus_distance=true,aperture=true,exposure=true,saturation=true,contrast=true}
@@ -39,6 +48,14 @@ editing=true;keys[76]=true;tick();assert(not handle.get('lock_camera'),'Typing/c
 editing=false;tick();assert(not handle.get('lock_camera'),'Finishing input while L is held must not create a new toggle edge')
 keys[76]=false;tick();panel.bound_key=76;keys[76]=true;tick();assert(not handle.get('lock_camera'),'A newly captured L binding must suppress its held key')
 keys[76]=false;tick();assert(panel.bound_key==nil);press(76);assert(handle.get('lock_camera'))
+-- Only an explicitly enabled, ready candidate runtime may lift numeric gates.
+DBF_PHOTO_RENDER_PROFILE={parameters={}}
+effects.custom_dof_candidate=true;effects.custom_dof_ready=true;tick()
+assert(not mod.controls.focus_distance.disabled and not mod.controls.aperture.disabled and not mod.controls.dof.disabled,'Ready candidate controls must follow runtime capabilities instead of the native profile')
+handle.set('focus_distance',2);handle.set('aperture',1.2)
+effects.custom_dof_ready=false;tick()
+assert(mod.controls.focus_distance.disabled and mod.controls.aperture.disabled,'Losing candidate readiness must immediately close numeric gates')
+assert(not pcall(handle.set,'focus_distance',3),'Unavailable candidate edits must be rejected')
 assert(controller.close()and not owned);DBFMCM=nil;DBF_PHOTO_RENDER_PROFILE=nil
 
 -- Even if an installed experimental asset remains available, release runtime

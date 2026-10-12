@@ -1,0 +1,24 @@
+{
+  "source": "Verified scene-controls preview asset snapshot",
+  "effects": [
+    {
+      "shader": "mods/dbf_photo/shaders/dof_local_depth_v1",
+      "material": "mods/dbf_photo/materials/dof_local_depth_v1",
+      "gpu": "dof_local_depth.gpu",
+      "material_file": "dof_local_depth.material.bin"
+    },
+    {
+      "shader": "mods/dbf_photo/shaders/scene_depth_color_v1",
+      "material": "mods/dbf_photo/materials/scene_depth_color_v1",
+      "gpu": "scene_depth_color.gpu",
+      "material_file": "scene_depth_color.material.bin"
+    }
+  ],
+  "files": {
+    "dof_registry_base.bin": "5b83c424902bb429d476253edeeb400bb02e2f92fbc4c863f7430e251a8a24b1",
+    "dof_local_depth.gpu": "a1147750dfdb4a7cad87713af1740e5c23b34605506978ba9a97620034108c9a",
+    "dof_local_depth.material.bin": "79a8ece6ebbe03f6fb2f366afa08df658d46723877257e5890180ced7620c23d",
+    "scene_depth_color.gpu": "439727b99f75182666cd4d145276b0a2023da177a400bacd5500cb735cb9ba3f",
+    "scene_depth_color.material.bin": "723d73660a2ad089f1f39aa335490b6aab161d633de9b063dd208efb36ac902c"
+  }
+}

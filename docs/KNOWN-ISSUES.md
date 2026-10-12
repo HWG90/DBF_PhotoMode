@@ -1,10 +1,14 @@
-# Known issues in 0.6 Preview
+# Known issues in 0.7 Preview
 
-- Focus distance and aperture/f-stop have no working implementation in this release. Both sliders are disabled.
-- Scene color/depth shader effects are disabled and not included.
-- Exposure, saturation and contrast controls are unavailable.
-- Native bloom/DoF toggles use the game's existing graphics. They do not provide custom focus or aperture.
-- Built-in PNG capture may retain ship UI; HDR capture brightness can differ from the displayed image. Steam screenshots are an alternative.
-- All 40 decorative shader overlays are included. They tint/pattern the image; they do not implement scene sampling or numeric DoF. Other shader packs that replace the default shader registry require merged registrations.
+NOTICE: When Shader DoF is enabled, scene effects and color controls are grayed out.
+The menu displays "Shader DoF Enabled. Scene Effects disabled".
+Turn DoF OFF or select Native camera mode to use scene effects.
 
-Camera controls, pause/slow motion, composition, menu controls and saved camera positions remain available. Pause and slow motion require a verified solo session.
+- Native game engine DoF is still nonfunctional for manual focus/aperture control. Native numeric controls remain disabled; the native toggle only uses the existing engine effect. Use Shader preview for adjustable focus/aperture.
+- Shader DoF blur samples a 960x540 color source. Focused pixels retain the original full-resolution scene; final bokeh quality remains under review.
+- Scene effects and exposure/contrast/saturation are unverified previews. They are gated while Shader DoF is ON because the passes do not yet share grading. Scene color also uses a 960x540 source.
+- Built-in HDR-aware PNG capture may retain ship UI. Steam screenshots remain an alternative.
+- Shader packs replacing the default shader registry require an explicit registration merge.
+- Pause and slow motion require a verified solo session. No unrelated alt-tab crash fix is claimed.
+
+BSL and MDL are the only published packages for this preview.

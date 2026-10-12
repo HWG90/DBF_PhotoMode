@@ -9,16 +9,19 @@ function M.new(view,actions)
  local self={page=1,scroll=0,selection=1,size_scale=1};local nav_held={};local nav_time={};local nav_ready=false;local last_focus
  local rows={};local selected_hit;local hits={};local held=false;local drag;local resize;local scroll_drag;local geometry;local pointer_x,pointer_y;local pressed_key
  local key_capture;local armed=false;local baseline={};local color_edit;local popup;local popup_close_on_release=false;local popup_scroll=0;local visible_count=1;local popup_count=1;local text_edit;local reset_regions={};local right_held
- function self.close()view.release();hits={};drag=nil;resize=nil;scroll_drag=nil;key_capture=nil;text_edit=nil;color_edit=nil;popup=nil;popup_close_on_release=false;self.bound_key=nil;self.editing_value=nil;self.notice=nil;nav_ready=false;held=false;right_held=nil;pointer_x,pointer_y=nil,nil;pressed_key=nil end
- function self.suspend()nav_ready=false;held=false;right_held=nil;drag=nil;resize=nil;scroll_drag=nil;pressed_key=nil;pointer_x,pointer_y=nil,nil end
- function self.bind(handle,pages)self.handle=handle;self.pages=pages end
+ local finish_number
+ local function blur_number()if text_edit and text_edit.c.commit_on_blur==true then return finish_number()end;return true end
+ function self.close()blur_number();view.release();hits={};drag=nil;resize=nil;scroll_drag=nil;key_capture=nil;text_edit=nil;color_edit=nil;popup=nil;popup_close_on_release=false;self.bound_key=nil;self.editing_value=nil;self.notice=nil;nav_ready=false;held=false;right_held=nil;pointer_x,pointer_y=nil,nil;pressed_key=nil end
+ function self.suspend()blur_number();nav_ready=false;held=false;right_held=nil;drag=nil;resize=nil;scroll_drag=nil;pressed_key=nil;pointer_x,pointer_y=nil,nil end
+ function self.bind(handle,pages)if self.handle~=handle then blur_number();text_edit=nil;self.editing_value=nil end;self.handle=handle;self.pages=pages end
+ function self.blur()return blur_number()end
  local function value(c)
   if c.type=='text'then return ''end;if c.type=='button'then return c.button_label or 'Activate'end
   local v=self.handle.get(c.id)
   if c.type=='choice'then return c.choices[v]or tostring(v)end
   if c.type=='toggle'then return v and 'ON'or 'OFF'end
   if c.type=='keybind'then local names={[0]='NONE',[9]='TAB',[13]='ENTER',[16]='SHIFT',[17]='CTRL',[18]='ALT',[27]='ESC',[32]='SPACE',[220]='\\'};return names[v]or(v>=32 and v<=126 and string.char(v)or('VK '..v))end
-  if c.type=='slider'then return string.format(c.step<.01 and '%.3f'or c.step<1 and '%.2f'or '%.0f',v)end
+  if c.type=='slider'then local step=c.fine_step or c.step;return string.format(step<.01 and '%.3f'or step<1 and '%.2f'or '%.0f',v)end
   return tostring(v)
  end
  local function set_slider(c,x,b)
@@ -43,16 +46,31 @@ function M.new(view,actions)
  local function reveal(index)
   if index<=self.scroll then self.scroll=index-1 elseif index>self.scroll+visible_count then self.scroll=index-visible_count end
  end
- local function begin_number(c)
-  self.editing_value=c;text_edit={c=c,text=tostring(self.handle.get(c.id)),replace=true,typing=false};self.notice=nil
+ local function shift_value(c,direction,fine)
+  if not selectable(c)then return end
+  if c.type=='slider'then local step=fine and c.fine_step or c.step;self.handle.set(c.id,math.max(c.min,math.min(c.max,self.handle.get(c.id)+direction*step)))
+  elseif c.type=='toggle'then self.handle.set(c.id,direction>0)
+  elseif c.type=='choice'and #c.choices>0 then self.handle.set(c.id,(self.handle.get(c.id)-1+direction)%#c.choices+1)end
  end
- local function finish_number()
+ local function move_row(direction)
+  for _=1,#rows do self.selection=(self.selection-1+direction)%#rows+1;if selectable(rows[self.selection])then break end end
+  self.editing_value=nil;color_edit=nil;popup=nil;popup_close_on_release=false;scroll_drag=nil;reveal(self.selection)
+ end
+ local function begin_number(c)
+  if text_edit and text_edit.c==c then return end
+  if not blur_number()then return end
+  self.editing_value=c;text_edit={c=c,handle=self.handle,text=tostring(self.handle.get(c.id)),replace=true,typing=false};self.notice=nil
+ end
+ finish_number=function()
   if not text_edit then return true end;local e=text_edit;local c=e.c
-  if c.disabled then text_edit=nil;self.editing_value=nil;return false end
+  local owned=e.handle==self.handle
+  local found=false;for _,page in ipairs(self.pages or {})do for _,control in ipairs(page.controls or {})do if control==c then found=true end end end
+  if not owned or not found or c.disabled then text_edit=nil;self.editing_value=nil;return true end
   local number=tonumber(e.text)
   if not number or number~=number or math.abs(number)==math.huge then e.error='Enter a valid number';return false end
-  number=math.max(c.min,math.min(c.max,number));number=math.min(c.max,c.min+math.floor((number-c.min)/c.step+.5)*c.step)
-  local called,ok,why=pcall(self.handle.set,c.id,number);if not called or ok==false then e.error=tostring(called and why or ok);return false end
+  local step=c.fine_step or c.step
+  number=math.max(c.min,math.min(c.max,number));number=math.min(c.max,c.min+math.floor((number-c.min)/step+.5)*step)
+  local called,ok,why=pcall(e.handle.set,c.id,number);if not called or ok==false then e.error=tostring(called and why or ok);return false end
   text_edit=nil;self.editing_value=nil;self.notice=nil;return true
  end
  local function reset_default(c)
@@ -167,11 +185,11 @@ function M.new(view,actions)
   end
   local hint=hovered_control or rows[self.selection];local label=hint and tostring(hint.label or '')or 'Photo settings'
   text(label,left,bottom+136*s,width-32*s,18*s,12,T.muted)
-  text(hint and hint.disabled and 'Unavailable in this scene' or text_edit and(text_edit.error or(text_edit.typing and 'Enter / Space saves  |  Esc cancels  |  Ctrl+A replaces' or 'Type number or A/D step  |  Enter / Space saves  |  Esc cancels'))or key_capture and 'Press the new shortcut  |  Esc cancels' or self.notice or 'Enter / Space edits  |  Right-click resets default',left,bottom+117*s,width-32*s,18*s,11,hint and hint.disabled and T.disabled or T.muted)
+  text(hint and hint.disabled and 'Unavailable in this scene' or text_edit and(text_edit.error or(text_edit.typing and 'Enter / Space saves  |  Esc cancels  |  Ctrl+A replaces' or text_edit.c.fine_step and 'A/D step  |  Shift+A/D fine  |  Esc cancels' or 'Type number or A/D step  |  Enter / Space saves  |  Esc cancels'))or key_capture and 'Press the new shortcut  |  Esc cancels' or self.notice or 'A/D changes value  |  Enter edits  |  Right-click resets',left,bottom+117*s,width-32*s,18*s,11,hint and hint.disabled and T.disabled or T.muted)
   rect(left,bottom+112*s,width-32*s,1,T.line,1,301)
   button('Toggle HUD',{x=left,y=bottom+76*s,w=154*s,h=30*s},actions.hud,'hud');button('Hide controls ['..keys.hide..']',{x=left+160*s,y=bottom+76*s,w=width-192*s,h=30*s},actions.hide,'hide')
   button('Exit photo mode',{x=left,y=bottom+38*s,w=width-32*s,h=30*s},actions.exit,'exit')
-  text('Q/E tabs  |  WASD select/edit  |  Enter / Space choose',left+12*s,bottom+14*s,width-58*s,18*s,12,T.muted)
+  text('W/S rows  |  A/D values  |  Q/E tabs  |  Enter edits',left+12*s,bottom+14*s,width-58*s,18*s,12,T.muted)
   local grip={x=x+4*s,y=bottom+4*s,w=20*s,h=20*s};local grip_hover=over(grip);local grip_pressed=resize~=nil
   local grip_command=rect(grip.x,grip.y,grip.w,grip.h,grip_pressed and T.pressed or grip_hover and T.field_hover or T.panel,1,320,false,'resize_grip');grip_command.resize=true;grip_command.hovered=grip_hover==true;grip_command.pressed=grip_pressed
   for i=0,2 do rect(x+(7+i*5)*s,bottom+(7+i*5)*s,3*s,3*s,focused and(grip_hover or grip_pressed)and T.gold or T.muted,1,321)end
@@ -228,10 +246,14 @@ function M.new(view,actions)
   end
   local prev,nexttab=pressed(81,false),pressed(69,false);local up,downrow=pressed(87,true),pressed(83,true);local left,right=pressed(65,true),pressed(68,true);local enter=pressed(13,false);local space=pressed(32,false);local choose=enter or space
   local numeric_pressed={};for _,k in ipairs(numeric_keys)do if pressed(k,true)then numeric_pressed[#numeric_pressed+1]=k end end
+  if text_edit and text_edit.c.commit_on_blur==true and(prev or nexttab or up or downrow)then
+   if not blur_number()then held=input.click;return end
+  end
   if right_now and not right_held then
    local c=popup and popup.c or nil
    if not c and pointer_x and pointer_y then for _,b in ipairs(reset_regions)do if pointer_x>=b.x and pointer_x<=b.x+b.w and pointer_y>=b.y and pointer_y<=b.y+b.h then c=b.c;break end end end
-   reset_default(c or rows[self.selection])
+   c=c or rows[self.selection]
+   if not text_edit or c==text_edit.c or blur_number()then reset_default(c)end
   end;right_held=right_now
   if text_edit then
    local e=text_edit;local ctrl=down(17)
@@ -244,27 +266,31 @@ function M.new(view,actions)
       if char then if e.replace then e.text='';e.replace=false end;if #e.text<24 then e.text=e.text..char end;e.typing=true;e.error=nil end
      end
     end
-    if not e.typing and(left or right)then local c=e.c;self.handle.set(c.id,math.max(c.min,math.min(c.max,self.handle.get(c.id)+(left and -c.step or c.step))));e.text=tostring(self.handle.get(c.id));e.replace=true end
+     if not e.typing and(left or right)then local c=e.c;local step=down(16)and c.fine_step or c.step;self.handle.set(c.id,math.max(c.min,math.min(c.max,self.handle.get(c.id)+(left and -step or step))));e.text=tostring(self.handle.get(c.id));e.replace=true end
    end
    if choose then finish_number()end
   elseif prev or nexttab then
    self.page=(self.page-1+(prev and -1 or 1))%#self.pages+1;self.selection=1;self.scroll=0;color_edit=nil;self.editing_value=nil;popup=nil;scroll_drag=nil
+  elseif up or downrow then
+   if #rows>0 then move_row(up and -1 or 1)end
   elseif popup then
-   if up or downrow or left or right then self.choice_selection=math.max(1,math.min(#popup.c.choices,(self.choice_selection or self.handle.get(popup.c.id))+((up or left)and -1 or 1)))
+   if left or right then shift_value(popup.c,left and -1 or 1,down(16));self.choice_selection=self.handle.get(popup.c.id)
     if self.choice_selection<=popup_scroll then popup_scroll=self.choice_selection-1 elseif self.choice_selection>popup_scroll+popup_count then popup_scroll=self.choice_selection-popup_count end
    end
    if choose then if not popup.c.disabled then self.handle.set(popup.c.id,self.choice_selection or self.handle.get(popup.c.id))end;popup=nil end
   else
-   if #rows>0 and(up or downrow or((left or right)and not self.editing_value))then local index=self.selection
-    for _=1,#rows do index=(index-1+((up or left)and -1 or 1))%#rows+1;if selectable(rows[index])then self.selection=index;break end end;self.editing_value=nil;reveal(self.selection)
-   end
    local c=rows[self.selection]
-   if selectable(c)and self.editing_value==c and(left or right)and c.type=='slider'then self.handle.set(c.id,math.max(c.min,math.min(c.max,self.handle.get(c.id)+(left and -c.step or c.step))))end
+   if left or right then shift_value(c,left and -1 or 1,down(16));reveal(self.selection)end
    if choose then if not selected_hit or selected_hit.c~=c then reveal(self.selection)else activate(selected_hit)end;if key_capture then for k=1,255 do if down(k)then baseline[k]=true end end end end
   end
   if input.wheel and input.wheel~=0 then if popup then popup_scroll=math.max(0,math.min(#popup.c.choices-popup_count,popup_scroll-(input.wheel>0 and 1 or -1)))else self.scroll=math.max(0,math.min(math.max(0,#rows-visible_count),self.scroll-(input.wheel>0 and 1 or -1)));color_edit=nil end end
   if input.click and drag and input.x then set_slider(drag.c,input.x,drag)end
-  if input.click and not held and input.x and input.y then for i=#hits,1,-1 do local b=hits[i]
+  if input.click and not held and input.x and input.y then
+   local target;for i=#hits,1,-1 do local b=hits[i];if input.x>=b.x and input.x<=b.x+b.w and input.y>=b.y and input.y<=b.y+b.h then target=b;break end end
+   local same=text_edit and target and target.c==text_edit.c and target.numeric and input.x>=target.numeric.x
+   if not same and not blur_number()then held=input.click;return end
+   if same then held=input.click;return end
+   for i=#hits,1,-1 do local b=hits[i]
    if input.x>=b.x and input.x<=b.x+b.w and input.y>=b.y and input.y<=b.y+b.h then
     pressed_key=b.key or b.c
     if b.resize then resize={x=input.x,y=input.y,scale=geometry.scale};drag=nil

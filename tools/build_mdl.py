@@ -33,12 +33,19 @@ def package(output):
     for name,body in files.items():
         if name.endswith('.lua'):build.compile_lua(body,'WarJournalist-MDL-'+name)
     import sys;sys.path.insert(0,str(ROOT/'tools'));import photo_assets
-    assets,gpu=photo_assets.archive_rows(photo_assets.load_resources())
-    registry,registry_gpu=photo_assets.archive_rows([photo_assets.registry_resource()]);assert not registry_gpu
-    audit=photo_assets.validate_archive(assets,gpu)
+    dof_enabled=b'local DBF_PHOTO_DOF_FACTORY='in files['src/actioncam.lua']
+    if dof_enabled:
+        import dof_assets
+        core_resources,shared_resources,audit=dof_assets.resources(output)
+        assets,gpu=photo_assets.archive_rows(shared_resources)
+        registry,registry_gpu=photo_assets.archive_rows(core_resources)
+    else:
+        assets,gpu=photo_assets.archive_rows(photo_assets.load_resources())
+        registry,registry_gpu=photo_assets.archive_rows([photo_assets.registry_resource()]);assert not registry_gpu
+        audit=photo_assets.validate_archive(assets,gpu)
     files['ASSET-MANIFEST.json']=(json.dumps(audit,indent=2)+'\n').encode()
     package={'dbf_freecam/'+name:body for name,body in files.items()}
-    for base,cpu,external in [('9ba626afa44a3aa3',assets,gpu),('ee6b1ba7e22d71ed',registry,b'')]:
+    for base,cpu,external in [('9ba626afa44a3aa3',assets,gpu),('ee6b1ba7e22d71ed',registry,registry_gpu)]:
         package['GameData/'+base+'.patch_0']=cpu;package['GameData/'+base+'.patch_0.gpu_resources']=external;package['GameData/'+base+'.patch_0.stream']=b''
     package['INSTALL.txt']=files['INSTALL.txt']
     package['FILES-SHA256.txt']=''.join(hashlib.sha256(body).hexdigest()+'  '+name+'\n'for name,body in sorted(package.items())).encode()

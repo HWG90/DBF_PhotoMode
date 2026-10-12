@@ -18,7 +18,7 @@ function M.new(backend,convert,folder,log)
   local ok,why=pcall(function()
    local saved,reason=backend.capture(dds);assert(saved,reason)
    self.metadata=type(reason)=='table'and reason or nil
-   local converted,reason=convert(dds,png);assert(converted,reason)
+   local converted,reason=convert(dds,png,self.metadata);assert(converted,reason)
    local f=assert(io.open(png,'rb'),'PNG was not written');local signature=f:read(8);f:close();assert(signature=='\137PNG\r\n\26\n','Screenshot is not a PNG')
   end)
   if ok then os.remove(dds)else self.raw_path=dds end;pending=nil
@@ -30,13 +30,17 @@ function M.new(backend,convert,folder,log)
 end
 function M.native_converter(path,folder)
  local ffi=require('ffi')
- pcall(ffi.cdef,[[int MultiByteToWideChar(unsigned int,unsigned long,const char *,int,wchar_t *,int);int CreateDirectoryW(const wchar_t *,void *);unsigned long GetLastError(void);int PhotoDDSConvert(const wchar_t *,const wchar_t *);]])
+ pcall(ffi.cdef,[[int MultiByteToWideChar(unsigned int,unsigned long,const char *,int,wchar_t *,int);int CreateDirectoryW(const wchar_t *,void *);unsigned long GetLastError(void);int PhotoDDSConvert(const wchar_t *,const wchar_t *);int PhotoDDSConvertColor(const wchar_t *,const wchar_t *,unsigned int,float);]])
  local kernel=ffi.load('kernel32');local native=ffi.load(path)
  local function wide(value)
   local n=kernel.MultiByteToWideChar(65001,8,value,-1,nil,0);assert(n>0,'Screenshot path invalid')
   local out=ffi.new('wchar_t[?]',n);assert(kernel.MultiByteToWideChar(65001,8,value,-1,out,n)==n,'Screenshot path conversion failed');return out
  end
  kernel.CreateDirectoryW(wide(folder),nil)
- return function(input,output)local result=native.PhotoDDSConvert(wide(input),wide(output));local error_code=kernel.GetLastError();return result==1,'PNG conversion failed ('..tonumber(error_code)..')'end
+ return function(input,output,metadata)
+  local encoding=metadata and metadata.color_encoding=='hdr10-pq-bt2020'and 1 or 0
+  local result=native.PhotoDDSConvertColor(wide(input),wide(output),encoding,metadata and metadata.white_nits or 203)
+  local error_code=kernel.GetLastError();return result==1,'PNG conversion failed ('..tonumber(error_code)..')'
+ end
 end
 return M
