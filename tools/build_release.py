@@ -30,7 +30,7 @@ ACTIVE_MODULES=('animation_state.lua','chat_context.lua','look.lua','simulation.
     'depth_resource.lua','focus_sampler.lua','photo_lights.lua','photo_light_gizmos.lua','photo_light_presets.lua','subject_backend.lua','subject.lua','subject_poses.lua','director.lua','ai_backend.lua','ai_control.lua',
     'saved_camera.lua','controller.lua','input_release.lua','input_release_backend.lua','hover_pause.lua',
     'hover_pause_backend.lua','scene_dof_overlay.lua','shader_template_guard.lua','standalone.lua',
-    'bsl_startup.lua','mdl.lua','lll.lua','assets/logo_art.lua','assets/helldiver_crest.lua')
+    'bsl_startup.lua','mdl.lua','lll.lua','assets/logo_art.lua','assets/helldiver_crest.lua','assets/subject_pose_frames.lua')
 
 def sha(body):return hashlib.sha256(body).hexdigest()
 def json_bytes(value):return(json.dumps(value,indent=2)+'\n').encode()

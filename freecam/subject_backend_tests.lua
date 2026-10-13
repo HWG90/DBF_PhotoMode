@@ -88,5 +88,51 @@ assert(not backend.valid(weapon_part)and subject.release());for i=before+1,#writ
 assert(not pcall(backend.resolve),'Retired equipment reference was accepted')
 put(generations+3,'\1');put(weapon_objects[1]+0xdc,'\255');put(barrel+0xdc,'\255')
 local wrong=world.native+4096;pointer(pack.native+0x18,wrong);assert(not pcall(backend.resolve),'Foreign-world equipment was accepted');pointer(pack.native+0x18,world.native)
+-- Fixed poses acquire their bone component lazily. Existing visibility setup
+-- above intentionally had no bone APIs; that must remain a valid backend.
+local transform_reads=0
+sr.Unit.world_pose=function(handle,index)assert(handle==hero and index==1);transform_reads=transform_reads+1;return{}end
+sr.Unit.animation_bone_mode=function()error('Ownership reader must not dereference the native bone getter')end
+sr.Unit.set_animation_bone_mode=function()error('Ownership reader must not invoke a bone setter')end
+sr.Matrix4x4={translation=function()return{2,3,4}end,forward=function()return{0,1,0}end}
+sr.Vector3={x=function(v)return v[1]end,y=function(v)return v[2]end,z=function(v)return v[3]end}
+local visibility_address=memory.function_address
+memory.function_address=function(fn)
+ if fn==sr.Unit.animation_bone_mode then return exe+0x410470 end
+ if fn==sr.Unit.set_animation_bone_mode then return exe+0x410700 end
+ return visibility_address(fn)
+end
+pointer(vtable+0x1a8,exe+0x2bd9a0);put(exe+0x2bd9a0,'\x48\x8b\x81\x68\x01\x00\x00\xc3')
+local bone_component=alloc(0x300);pointer(hero.native+0x168,bone_component);u32(bone_component+0x284,3)
+local pose_frame=backend.pose_frame();local before_pose_writes=#writes
+assert(pose_frame.root_handle==hero and pose_frame.root_ref==hero.ref and pose_frame.native==hero.native and pose_frame.component==bone_component and pose_frame.local_owner)
+assert(pose_frame.world_native==world.native and pose_frame.position[1]==2 and backend.pose_valid(pose_frame,true)==true)
+local normal_world_pose=sr.Unit.world_pose
+sr.Unit.world_pose=function(handle,index)local value=normal_world_pose(handle,index);u32(base+8,901);return value end
+local stable_frame=pcall(backend.pose_frame);sr.Unit.world_pose=normal_world_pose;u32(base+8,900)
+assert(not stable_frame,'Pose frame combined an old root identity with replacement owner key')
+-- Losing local ownership still permits restoring the same intact borrowed
+-- Unit, but cannot permit a new application on behalf of its replacement.
+u32(base+8,901);assert(backend.pose_valid(pose_frame,true)==false and backend.pose_valid(pose_frame,false)==true);u32(base+8,900)
+pointer(hero.native+0x168,0)
+assert(backend.pose_valid(pose_frame,false)==false and not pcall(backend.pose_frame),'Null bone component reached public getter')
+pointer(hero.native+0x168,alloc(0x300));assert(backend.pose_valid(pose_frame,false)==false,'Replacement bone component reused prior lease')
+pointer(hero.native+0x168,bone_component)
+u32(bone_component+0x284,8);assert(backend.pose_valid(pose_frame,false)==nil and not pcall(backend.pose_frame),'Unknown bone mode accepted');u32(bone_component+0x284,3)
+local pose_read=memory.read
+memory.read=function(at,n)if at==hero.native+0x168 then error('Transient pose component read failed')end;return pose_read(at,n)end
+local valid,why=backend.pose_valid(pose_frame,false)
+assert(valid==nil and why:find('Transient pose component',1,true),'Unknown component read was treated as retirement');memory.read=pose_read
+assert(backend.pose_valid(pose_frame,true)==true,'Read recovery did not retain original component identity')
+local reads_before=transform_reads;put(generations+1,'\2')
+assert(backend.pose_valid(pose_frame,false)==false and not pcall(backend.pose_frame)and transform_reads==reads_before,'Retired root reached transform getter')
+put(generations+1,'\1')
+pointer(hero.native+0x18,world.native+4096);assert(backend.pose_valid(pose_frame,false)==false);pointer(hero.native+0x18,world.native)
+local replacement=alloc(512);pointer(replacement,vtable);u32(replacement+8,hero.ref);pointer(replacement+0x18,world.native);pointer(slots+8,replacement)
+assert(backend.pose_valid(pose_frame,false)==false,'Replaced root native object reused prior lease');pointer(slots+8,hero.native)
+pointer(vtable+0x1a8,exe+0x2bd9a1);assert(backend.pose_valid(pose_frame,false)==nil and not pcall(backend.pose_frame),'Changed bone getter layout accepted');pointer(vtable+0x1a8,exe+0x2bd9a0)
+local pose_address=memory.function_address;memory.function_address=function(fn)if fn==sr.Unit.animation_bone_mode then return exe+0x410471 end;return pose_address(fn)end
+assert(not pcall(backend.pose_frame),'Changed public bone-mode binding accepted');memory.function_address=pose_address
+assert(backend.pose_valid(pose_frame,true)==true and#writes==before_pose_writes,'Read-only fixed-pose ownership check mutated renderer')
 put(exe+0x4128e0,'\0');assert(not pcall(factory.new,sr,memory),'Changed renderer binding passed exact build validation')
-print('Subject renderer backend: local inventory/backpack ownership, fresh descriptors, mesh-object replacement/reordering, exact visibility restore, foreign world and recycled generations passed')
+print('Subject renderer backend: visibility restoration plus lazy fixed-pose root/component ownership, null/layout/mode guards, transient read retry, foreign world and recycled generations passed')

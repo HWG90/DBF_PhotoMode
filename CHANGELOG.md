@@ -4,7 +4,7 @@
 
 - Added numbered scene light indicators, click/drag positioning, Shift fine control, three subject-focused lighting rigs, and five persistent lighting setup slots.
 - Added shader blur strength from 1x to 8x (4x default), with 64/128 samples above 1x and the accepted compositor color math preserved. New visual acceptance is pending.
-- Added guarded Salute, Wave, and Taunt controls under Subject. Victory-pose mappings are not yet verified.
+- Added fixed Salute, Wave, and Taunt poses under Subject. Selecting a pose applies it immediately while world time stays at zero; Reset, exit, pause-off and slow motion restore the original skeleton before simulation resumes. No gameplay emote is triggered. Victory poses are not yet included.
 - Added solo-only Director Normal, Passive, and Dummy enemy behavior with Reset to Normal. The selected behavior continues after Photo Mode closes and covers newly discovered enemies; game restart returns to Normal. Joining players cancel the mode and restore owned changes. Live persistence and Reset were user-confirmed.
 - Fixed temporary scene/respawn read loss clearing the selected enemy behavior. Dummy now retains and renews its owned movement flag when a borrowed detector becomes unavailable; restoration no longer depends on that detector's lifetime. These edge cases have fixture coverage.
 - Retained photo-light placements across Photo Mode exit within the same scene; five explicit saved setup slots also survive restarts.

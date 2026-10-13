@@ -1,0 +1,47 @@
+{
+  "version": "0.9.6",
+  "checked_at_utc": "2026-10-13T17:07:27.365371+00:00",
+  "implementation": "Fixed sampled local skeletal transforms; no animation event or simulation advancement",
+  "live": {
+    "pid": 62116,
+    "world_time_rate": 0,
+    "world_delta": 0,
+    "salute_confirmation": "Yes, held salute",
+    "switch_and_restore_confirmation": "Switching and reset work",
+    "sampled_poses": [
+      "Salute",
+      "Wave",
+      "Taunt"
+    ],
+    "original_bone_mode": "position_and_rotation",
+    "held_bone_mode": "ignore"
+  },
+  "guards": {
+    "root_nodes_preserved": [
+      1,
+      8
+    ],
+    "modified_node_range": [
+      9,
+      92
+    ],
+    "generation_world_component_validation": true,
+    "snapshot_once_until_reset": true,
+    "restore_before_resume": true
+  },
+  "verification": {
+    "fixture_groups_passed": 52,
+    "final_affected_fixture_groups_passed": 3,
+    "packages": [
+      "BSL",
+      "MDL",
+      "LLL"
+    ],
+    "packaged_standalone_passed": true
+  },
+  "limits": [
+    "Exit/pause-off/slow-motion cleanup has fixture coverage; fresh in-game acceptance is limited to held pose, switching and Reset.",
+    "Mission, respawn and ragdoll transitions require broader live coverage.",
+    "Victory poses are not included."
+  ]
+}

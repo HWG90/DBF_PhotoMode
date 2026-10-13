@@ -6,16 +6,34 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
     local lighting_write=false;local lighting_revision=-1
     self._input_release=input_release;self._input_tick=0
     self._ai=ai
-    self._poses=poses;self._pose_available=false;self._pose_caps={};self._pose_paused=false
+    self._poses=poses;self._pose_available=false;self._pose_caps={}
+    function self._request_time_change(rate)
+        if not freeze then return true end
+        if rate~=0 and self._poses and(self._poses.active or self._poses.pending)then
+            local waiting=self._pose_time_pending or{};waiting.rate=rate
+            if not waiting.queued then
+                local called,ok,why=pcall(self._poses.release)
+                waiting.queued=called and ok~=false
+                if not waiting.queued then log('Subject pose cleanup: '..tostring(called and why or ok))end
+            end
+            if self._poses.active or self._poses.pending then
+                self._pose_time_pending=waiting;photo.input={}
+                return true,'Restoring the original pose before changing simulation time'
+            end
+        end
+        self._pose_time_pending=nil
+        if rate~=nil then return freeze.start(rate)end
+        return freeze.release()
+    end
     function self._pose_action(stop)
         if not self._poses then return false,'Subject poses unavailable'end
         local method,id
         if stop then
-            if not(self._poses.active or self._poses.pending)then return false,'No owned pose to stop'end
+            if not(self._poses.active or self._poses.pending)then return false,'No owned pose to reset'end
             method=self._poses.queue_stop
         else
             id=options and options.subject_poses and handle and options.subject_poses[handle.get('subject_pose')]
-            if not(photo.active and self._pose_available and self._pose_caps[id]and not self._pose_paused)then return false,'Turn Pause entire action off and wait for a supported local subject'end
+            if not(photo.active and not self._pose_stop_pending and not self._pose_time_pending and self._pose_available and self._pose_caps[id])then return false,'Pause entire action and wait for a supported local subject'end
             method=self._poses.queue
         end
         local called,ok,why=pcall(method,id)
@@ -32,17 +50,14 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
             local called,a,b,c=pcall(self._poses.refresh,dt)
             if called then ready,status,caps=a,b,c or{}else status=tostring(a)end
         end
-        self._pose_paused=false
-        if freeze and type(freeze.rate)=='function'then
-            local ok,rate=pcall(freeze.rate);self._pose_paused=not ok or type(rate)~='number'or rate~=rate or rate<=0
-        end
         self._pose_available=ready==true;self._pose_caps=caps
         local selected=options and options.subject_poses and options.subject_poses[handle.get('subject_pose')]
         local any=false;for _,id in ipairs(options and options.subject_poses or{})do if caps[id]==true then any=true end end
-        controls.subject_pose.disabled=not(photo.active and ready and any)
-        controls.subject_pose_play.disabled=not(photo.active and ready and caps[selected]==true and not self._pose_paused)
+        controls.subject_pose.disabled=not(photo.active and not self._pose_stop_pending and not self._pose_time_pending and ready and any)
+        controls.subject_pose_play.disabled=not(photo.active and not self._pose_stop_pending and not self._pose_time_pending and ready and caps[selected]==true)
         controls.subject_pose_stop.disabled=not(self._poses and(self._poses.active or self._poses.pending))
-        if ready and self._pose_paused then status='Turn Pause entire action off to play or stop; pause again to hold the pose'
+        if self._pose_stop_pending then status=self._poses.status or'Restoring the original pose before leaving Photo Mode'
+        elseif self._pose_time_pending then status='Restoring the original pose before changing simulation time'
         elseif ready and not caps[selected]then status='Selected pose is unavailable for this subject'end
         controls.subject_pose_status.label=status or'Subject poses unavailable'
     end
@@ -324,16 +339,30 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
     end
     function self.stop(preserve_resume)
         self._pending_start=nil
+        local time_waiting=self._pose_time_pending;self._pose_time_pending=nil
+        -- Bone leases are restored only by the owning update. Keep the paused
+        -- camera/input ownership until that update acknowledges restoration.
+        if self._poses and(self._poses.active or self._poses.pending or self._pose_stop_pending)then
+            local waiting=self._pose_stop_pending or{preserve_resume=preserve_resume,queued=time_waiting and time_waiting.queued}
+            if not preserve_resume then waiting.preserve_resume=nil end
+            if not waiting.queued then
+                local called,ok,why=pcall(self._poses.release)
+                waiting.queued=called and ok~=false
+                if not waiting.queued then log('Subject pose cleanup queued: '..tostring(called and why or ok))end
+            end
+            if self._poses.active or self._poses.pending then
+                self._pose_stop_pending=waiting;photo.input={}
+                if screenshots then screenshots.cancel()end
+                return false,self._poses.status or'Subject pose restoration is waiting for an update'
+            end
+        end
+        self._pose_stop_pending=nil
         self._light_subject=nil;if self._light_gizmos then self._light_gizmos.cancel()end
         clear_subject_click();focus_deadline=0;focus_mode_seen=nil;screenshot_edge=false
         if focus_sampler and focus_sampler.release then local ok,why=pcall(focus_sampler.release);if not ok then log('Auto-focus cleanup: '..tostring(why))end end
         if screenshots then screenshots.cancel()end
         if lights and(lights.count()>0 or lights.pending)then lights.queue('release','photo mode exited')end
         if subject and(subject.count()>0 or subject.pending)then subject.queue(nil)end
-        if self._poses then
-            local called,ok,why=pcall(self._poses.release)
-            if not called or ok==false then log('Subject pose cleanup queued: '..tostring(called and why or ok))end
-        end
         if not preserve_resume then resume_after=nil end
         if roll_value and handle then handle.set('roll',roll_value);roll_value=nil end
         photo.active,photo.pos,photo.locked,photo.lock_pose=false,nil,false,nil
@@ -472,6 +501,14 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
     function self.tick(dt)
         self._input_tick=self._input_tick+1
         if self._input_release then pcall(self._input_release.tick,photo.active and provider~=nil)end
+        if self._pose_stop_pending then
+            self.stop(self._pose_stop_pending.preserve_resume)
+            return
+        end
+        if self._pose_time_pending then
+            local ok,why=self._request_time_change(self._pose_time_pending.rate)
+            if ok==false then self.slowmo_active=false;log('Simulation time: '..tostring(why))end
+        end
         local current=rawget(_G,'DBFMCM')or rawget(_G,'DBF_PHOTO_STANDALONE_API')
         if current~=api then
             self.slowmo_active=false
@@ -497,7 +534,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
                 {id='roll_left_key',type='keybind',label='Roll left',default=81},
                 {id='roll_right_key',type='keybind',label='Roll right',default=69},
                 {id='roll_speed',type='slider',label='Roll speed (degrees/s)',default=45,min=1,max=180,step=1},
-                {id='freeze_player',type='toggle',label='Pause entire action (solo)',default=true,on_change=function(v)if not v and freeze then freeze.release()end end},
+                {id='freeze_player',type='toggle',label='Pause entire action (solo)',default=true,on_change=function(v)if not v then self._request_time_change(nil)end end},
                 {id='look_sensitivity',type='slider',label='Camera look sensitivity',default=0.15,min=0.01,max=1,step=0.01},
                 {id='focus_key',type='keybind',label='Switch camera / menu focus',default=9},
                 {id='hide_controls_key',type='keybind',label='Show / hide photo controls',default=72},
@@ -533,6 +570,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
                     subject_change=subject_change,
                     subject_pose_play=self._poses and function()return self._pose_action(false)end,
                     subject_pose_stop=self._poses and function()return self._pose_action(true)end,
+                    subject_pose_change=self._poses and function()return self._pose_action(false)end,
                     ai_change=self._ai_change,
                     ai_reset=self._reset_ai,
                     director_save=director and function()director_action('save')end,
@@ -620,7 +658,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         if slow_key and not slow_edge and not editing and not api.is_open()and freeze and not self._pending_start then
             self.slowmo_active=not self.slowmo_active
             local rate=self.slowmo_active and handle.get('slowmo_speed')or (photo.active and handle.get('freeze_player')and 0 or nil)
-            local ok,why;if rate then ok,why=freeze.start(rate)else ok,why=freeze.release()end
+            local ok,why=self._request_time_change(rate)
             if not ok then self.slowmo_active=false;log('Slow motion: '..tostring(why))end
         end
         slow_edge=slow_key
@@ -857,6 +895,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         return true
     end
     function self.entry_pending()return self._pending_start~=nil end
+    function self.pose_cleanup_pending()return self._pose_stop_pending~=nil or self._pose_time_pending~=nil end
     return self
 end
 return M

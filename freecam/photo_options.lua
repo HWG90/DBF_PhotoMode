@@ -9,6 +9,30 @@ M.defaults={fov=0,focal_preset=1,roll=0,roll_preset=1,saved_camera_radius=60,loc
  show_legend=true,legend_open=true,legend_docked=true,legend_tab_y=75,legend_columns=2,legend_x=2,legend_y=2,legend_size=38}
 M.ai_modes={'normal','passive','dummy'}
 M.subject_poses={'salute','wave','taunt'}
+M.subject_pose_labels={'Salute','Wave','Taunt'}
+function M.set_subject_poses(catalog)
+ if type(catalog)~='table'or getmetatable(catalog)~=nil then return false,'Pose catalog must be a plain list'end
+ local count,last=0,0
+ for key in pairs(catalog)do
+  if type(key)~='number'or key%1~=0 or key<1 or key>256 then return false,'Pose catalog supports at most 256 entries'end
+  count=count+1;last=math.max(last,key)
+ end
+ if count<3 or count~=last then return false,'Pose catalog must be a dense list including the original three poses'end
+ local ids,labels,seen_ids,seen_labels={},{},{},{}
+ local prefix={'salute','wave','taunt'}
+ for index=1,count do
+  local entry=rawget(catalog,index)
+  if type(entry)~='table'or getmetatable(entry)~=nil then return false,'Pose catalog entry must be a plain table'end
+  local id,label=entry.id,entry.label
+  if type(id)~='string'or#id>64 or not id:match('^[a-z][a-z0-9_]*$')or seen_ids[id]then return false,'Pose catalog IDs must be unique lowercase symbols'end
+  if type(label)~='string'or#label>96 or not label:match('%S')or label:find('%c')or seen_labels[label]then return false,'Pose catalog labels must be unique, nonempty display text'end
+  if prefix[index]and id~=prefix[index]then return false,'Pose catalog must retain Salute, Wave and Taunt as its first three entries'end
+  ids[index],labels[index]=id,label;seen_ids[id],seen_labels[label]=true,true
+ end
+ -- Validate the complete catalog before replacing either menu mapping.
+ M.subject_poses,M.subject_pose_labels=ids,labels
+ return true
+end
 M.light_presets={'key_fill_rim','portrait','dramatic_side'}
 M.menu_layout_defaults={menu_x=-1,menu_y=-1,menu_scale=1}
 -- Preset choices are commands/labels. FOV and roll remain the only settings
@@ -133,10 +157,10 @@ function M.pages(reset,recenter,catalog,saved_actions)
  {id='director_status',type='text',label='Shots store camera position and angle relative to the player.'},
  {id='director_hint',type='text',label='Five shots persist between game sessions.'}}},
  {id='subject',name='Subject',require_confirmation=false,controls={
- choice('subject_pose','Pose',{'Salute','Wave','Taunt'}),
- director_action('subject_pose_play','Play pose','subject_pose_play'),director_action('subject_pose_stop','Stop pose','subject_pose_stop'),
+ (function()local row=choice('subject_pose','Pose',M.subject_pose_labels);row.on_change=saved_actions and saved_actions.subject_pose_change;return row end)(),
+ director_action('subject_pose_play','Apply pose','subject_pose_play'),director_action('subject_pose_stop','Reset pose','subject_pose_stop'),
  {id='subject_pose_status',type='text',label='Subject poses are waiting for a verified local player'},
- {id='subject_pose_hint',type='text',label='Turn Pause entire action OFF to play or stop. Pause again to hold the pose.'},
+ {id='subject_pose_hint',type='text',label='Pause entire action to hold a fixed pose. Choosing a pose applies it; Reset restores the original pose.'},
  subject_control('hide_player','Hide entire player'),subject_control('hide_armour','Hide armour and helmet'),subject_control('hide_weapons','Hide carried weapons'),
  {id='subject_status',type='text',label='Subject controls are waiting for a verified player'},
  {id='subject_hint',type='text',label='Visibility is restored when Photo Mode closes.'}}}}

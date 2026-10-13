@@ -153,7 +153,10 @@ __SUBJECT__
 end)().new(H.dbf_subject_backend,log)
 H.dbf_poses=(function()
 __SUBJECT_POSES__
-end)().new(sr,H.dbf_subject_backend,function()return DBF_PLAYER_FREEZE.rate()==0 end,log)
+end)().new(sr,H.dbf_subject_backend,function()return PHOTO.active and DBF_PLAYER_FREEZE.rate()==0 end,log,(function()
+__SUBJECT_POSE_FRAMES__
+end)())
+DBF_PHOTO_OPTIONS.set_subject_poses(H.dbf_poses.catalog)
 do
  local backend=(function()
 __AI_BACKEND__
@@ -188,6 +191,7 @@ end
 -- Called after the previous update returns. Positive World delta and restored
 -- Photo time policy are required before the deferred entry may acquire input.
 H.dbf_input_after_update=function(...)
+ if H.dbf_poses then H.dbf_poses.after_update()end
  if target and world_alive(target.world)then
   local delta=try(sr.World.delta_time,target.world)
   if type(delta)=='number'and delta>=0 and delta<math.huge then
@@ -203,7 +207,13 @@ H.dbf_input_before_update=function()
   local api=rawget(_G,'DBFMCM')or rawget(_G,'DBF_PHOTO_STANDALONE_API')
   local input=api and api.camera_input
   local focused=input and input.focused and input.focused()
-  if not focused or api.is_open()then DBF_PLAYER_FREEZE.release();return end
+  if not focused or api.is_open()then
+   if H.dbf_poses and(H.dbf_poses.active or H.dbf_poses.pending)then
+    H.dbf_poses.release();H.dbf_poses.flush()
+    if H.dbf_poses.active or H.dbf_poses.pending then return end
+   end
+   DBF_PLAYER_FREEZE.release();return
+  end
   DBF_PLAYER_FREEZE.hold()
  end
 end
@@ -278,7 +288,7 @@ end)()
     hook=hook.replace('__PHOTO_DOF_CANDIDATE__',candidate).replace('__PHOTO_DOF_ARGUMENT__',',DBF_PHOTO_DOF_FACTORY'if dof_candidate else ',nil'if scene_candidate else '').replace('__PHOTO_SCENE_ARGUMENT__',',DBF_PHOTO_SCENE_FACTORY'if scene_candidate else '').replace('__CAPTURE_LIBRARY__',capture_library_name())
     for token,filename in [('__PHOTO_OPTIONS__','photo_options.lua'),('__PHOTO_LENS__','lens.lua'),('__PHOTO_COMPOSITION__','composition.lua'),('__PHOTO_POSTFX__','postfx.lua'),('__PHOTO_RUNTIME__','photo_runtime.lua'),('__PHOTO_HUD__','hud.lua'),('__PHOTO_PROFILE__','render_profile.lua'),('__PHOTO_MENU__','photo_menu.lua'),('__CONTROL_LEGEND__','control_legend.lua'),('__LOGO_ART__','assets/logo_art.lua'),('__CAMERA_PROFILE__','camera_profile.lua'),('__SAVED_CAMERA__','saved_camera.lua')]:
         hook=hook.replace(token,(ROOT/filename).read_text(encoding='utf-8'))
-    for token,filename in [('__SCREENSHOT__','screenshot.lua'),('__SCREENSHOT_BACKEND__','screenshot_backend.lua'),('__FOCUS_DEPTH__','depth_resource.lua'),('__FOCUS_SAMPLER__','focus_sampler.lua'),('__PHOTO_LIGHTS__','photo_lights.lua'),('__LIGHT_GIZMOS__','photo_light_gizmos.lua'),('__LIGHT_PRESETS__','photo_light_presets.lua'),('__CHAT_CONTEXT__','chat_context.lua'),('__HELLDIVER_CREST__','assets/helldiver_crest.lua'),('__SUBJECT_BACKEND__','subject_backend.lua'),('__SUBJECT__','subject.lua'),('__SUBJECT_POSES__','subject_poses.lua'),('__AI_BACKEND__','ai_backend.lua'),('__AI_CONTROL__','ai_control.lua'),('__DIRECTOR__','director.lua'),('__INPUT_RELEASE__','input_release.lua'),('__INPUT_RELEASE_BACKEND__','input_release_backend.lua'),('__HOVER_PAUSE__','hover_pause.lua'),('__HOVER_PAUSE_BACKEND__','hover_pause_backend.lua')]:
+    for token,filename in [('__SCREENSHOT__','screenshot.lua'),('__SCREENSHOT_BACKEND__','screenshot_backend.lua'),('__FOCUS_DEPTH__','depth_resource.lua'),('__FOCUS_SAMPLER__','focus_sampler.lua'),('__PHOTO_LIGHTS__','photo_lights.lua'),('__LIGHT_GIZMOS__','photo_light_gizmos.lua'),('__LIGHT_PRESETS__','photo_light_presets.lua'),('__CHAT_CONTEXT__','chat_context.lua'),('__HELLDIVER_CREST__','assets/helldiver_crest.lua'),('__SUBJECT_BACKEND__','subject_backend.lua'),('__SUBJECT__','subject.lua'),('__SUBJECT_POSES__','subject_poses.lua'),('__SUBJECT_POSE_FRAMES__','assets/subject_pose_frames.lua'),('__AI_BACKEND__','ai_backend.lua'),('__AI_CONTROL__','ai_control.lua'),('__DIRECTOR__','director.lua'),('__INPUT_RELEASE__','input_release.lua'),('__INPUT_RELEASE_BACKEND__','input_release_backend.lua'),('__HOVER_PAUSE__','hover_pause.lua'),('__HOVER_PAUSE_BACKEND__','hover_pause_backend.lua')]:
         hook=hook.replace(token,(ROOT/filename).read_text(encoding='utf-8'))
     replace('-- One frame of Photo Mode: fly the detached camera and place it.',hook+'\n-- One frame of Photo Mode: fly the detached camera and place it.')
     replace("  if PHOTO_REF and PHOTO_REF.active then", "  if PHOTO_REF and PHOTO_REF.dbf_clear_saved and (reason=='death'or reason=='world gone'or reason=='restart'or reason=='shutdown')then PHOTO_REF.dbf_clear_saved(reason)end\n  if PHOTO_REF and PHOTO_REF.dbf_stop then PHOTO_REF.dbf_stop() end\n  if PHOTO_REF and PHOTO_REF.active then")

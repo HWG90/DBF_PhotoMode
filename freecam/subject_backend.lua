@@ -132,7 +132,36 @@ function M.new(sr,memory)
   local position={V.x(point),V.y(point),V.z(point)}
   for i=1,3 do assert(type(position[i])=='number'and position[i]==position[i]and math.abs(position[i])<1e8,'Local player transform invalid')end
   assert(native(ref)==unit and ptr(unit+0x18)==world_native,'Local player retired during transform read')
-  return{local_owner=true,identity=identity,position=position,yaw=math.atan2(y,x),root_ref=ref,root_handle=root_cache.handle,world=world}
+  return{local_owner=true,identity=identity,owner_key=owner_key(local_player),position=position,yaw=math.atan2(y,x),root_ref=ref,root_handle=root_cache.handle,world=world}
+ end
+ -- The public bone-mode getter dereferences Unit+168 without a null check.
+ -- This is distinct from the animation state machine at Unit+178.
+ local function pose_component(unit)
+  assert(ptr(ptr(unit)+0x1a8)==exe+0x2bd9a0 and read(exe+0x2bd9a0,8)=='\x48\x8b\x81\x68\x01\x00\x00\xc3','Subject bone component layout changed')
+  local component=ptr(unit+0x168)
+  assert(component>=65536 and component<2^47,'Subject bone component unavailable')
+  assert(word(component+0x284)<=7,'Subject bone transfer mode changed')
+  return component
+ end
+ function self.pose_frame()
+  local frame=self.frame();local unit=native(frame.root_ref)
+  assert(memory.function_address(sr.Unit.animation_bone_mode)==exe+0x410470
+   and memory.function_address(sr.Unit.set_animation_bone_mode)==exe+0x410700,'Subject bone mode binding changed')
+  frame.native=unit;frame.component=pose_component(unit);frame.world_native=ptr(unit+0x18)
+  assert(frame.owner_key==owner_key(owner()),'Subject pose owner changed during lookup');return frame
+ end
+ function self.pose_valid(frame,require_owner)
+  local ok,result=pcall(function()
+   local unit=native(frame.root_ref)
+   if unit~=frame.native or ptr(unit+0x18)~=frame.world_native or ptr(unit+0x168)~=frame.component then return false end
+   if require_owner and owner_key(owner())~=frame.owner_key then return false end
+   return pose_component(unit)==frame.component
+  end)
+  if not ok then
+   if tostring(result):find('Subject Unit generation retired',1,true)then return false end
+   return nil,tostring(result)
+  end
+  return result
  end
  function self.resolve()
   local local_player=owner();local players,player,game_ref,entities,avatar,root=local_player.players,local_player.player,local_player.game_ref,local_player.entities,local_player.avatar,local_player.root

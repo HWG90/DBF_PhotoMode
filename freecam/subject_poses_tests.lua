@@ -1,87 +1,143 @@
 local root=rawget(_G,'DBF_PHOTO_TEST_ROOT')or'freecam/'
 local M=dofile(root..'subject_poses.lua')
 local function fixture()
- local x={identity='player:1',unit={},alive=true,graph=true,state=0,paused=false,events={},calls={},missing={}}
- local U={}
- function U.alive(unit)x.calls[#x.calls+1]='alive';assert(unit==x.unit);return x.alive end
- function U.has_animation_state_machine(unit)x.calls[#x.calls+1]='graph';assert(unit==x.unit and x.alive);return x.graph end
- function U.animation_get_state(unit)
-  x.calls[#x.calls+1]='get';assert(unit==x.unit and x.alive and x.graph)
-  local values={};for i=1,31 do values[i]=0 end;values[9]=x.state;return unpack(values)
+ local x={identity='local:1',paused=true,time=0,delta=0,captures=0,applies=0,restores=0,writes=0,logs={},units={}}
+ local function unit()return{bones={10,20},mode='position_and_rotation',component={}}end
+ x.units[x.identity]=unit()
+ local A={}
+ function A.frame()
+  assert(not x.frame_error,'Transient frame read failed')
+  local u=x.units[x.identity];assert(u and not u.retired,'Local subject unavailable')
+  return{identity=x.identity,root_handle=u,component=u.component}
  end
- function U.has_animation_event(unit,event)x.calls[#x.calls+1]='has';assert(unit==x.unit and x.alive and x.graph and type(event)=='string');return not x.missing[event]end
- function U.animation_event(...)
-  assert(select('#',...)==2,'Binding requires exactly two arguments')
-  local unit,event=...;assert(unit==x.unit and x.alive and x.graph);x.events[#x.events+1]=event
-  if x.event_error then error('event failed')end
-  -- No return values: native Lua binding is void.
+ function A.valid(f,require_owner)
+  if x.read_error then return nil,'Transient ownership read failed'end
+  local u=f.root_handle
+  if u.retired or u.component~=f.component then return false end
+  if require_owner and f.identity~=x.identity then return false end
+  return true
  end
- local backend={frame=function()
-  if x.frame_error then error('frame unavailable')end
-  return{local_owner=x.remote~=true,identity=x.identity,root_handle=x.unit}
- end}
- x.api=M.new({Unit=U},backend,function()return x.paused end)
- x.U=U;assert(x.api.refresh(.5));return x
+ function A.prepare(id)assert(not x.prepare_error,'Pose decode failed');assert(id=='salute'or id=='wave'or id=='taunt')end
+ function A.capture(f)
+  assert(A.valid(f,true)==true);assert(not x.capture_error,'Snapshot failed');x.captures=x.captures+1
+  local u=f.root_handle;return{frame=f,original={u.bones[1],u.bones[2]},mode=u.mode}
+ end
+ function A.apply(lease,id)
+  assert(A.valid(lease.frame,true)==true and x.paused,'Unsafe fixed pose application')
+  x.applies=x.applies+1;local u=lease.frame.root_handle;u.mode='ignore';x.writes=x.writes+1
+  local base=({salute=100,wave=200,taunt=300})[id]
+  u.bones[1]=base+1;x.writes=x.writes+1
+  if x.apply_error then error('Partial pose application failed')end
+  u.bones[2]=base+2;x.writes=x.writes+1
+ end
+ function A.restore(lease)
+  assert(A.valid(lease.frame,false)==true,'Unsafe fixed pose restoration')
+  x.restores=x.restores+1;local u=lease.frame.root_handle
+  u.bones[1]=lease.original[1];x.writes=x.writes+1
+  if x.restore_error then error('Partial pose restoration failed')end
+  u.bones[2]=lease.original[2];u.mode=lease.mode;x.writes=x.writes+2
+ end
+ x.api=M.new({},nil,function()if x.pause_error then error('Pause read failed')end;return x.paused end,function(s)x.logs[#x.logs+1]=s end,nil,A)
+ x.add=function(id)x.units[id]=unit();return x.units[id]end
+ x.unit=function()return x.units[x.identity]end
+ assert(x.api.refresh(.5));return x
 end
+local function selected(x,id)assert(x.api.queue(id));assert(x.api.flush());assert(x.api.current()==id and x.api.active and not x.api.pending)end
+local function original(u)assert(u.bones[1]==10 and u.bones[2]==20 and u.mode=='position_and_rotation','Original snapshot was not restored')end
+
 do
  local x=fixture();assert(#M.catalog==3 and x.api.capabilities.salute and x.api.capabilities.wave and x.api.capabilities.taunt)
- assert(not x.api.queue('victory'),'No guessed victory catalog')
- assert(x.api.queue('salute')and#x.events==0,'Menu queue dispatched a native event')
- assert(x.api.flush(.016)and x.events[1]=='action_salute_01'and x.api.active)
- x.state=176;assert(x.api.flush(.016));x.state=178;assert(x.api.flush(.016))
- assert(x.api.queue_stop()and#x.events==1);assert(x.api.flush(.016)and x.events[2]=='action_salute_exit')
- x.state=177;assert(x.api.flush(.016));assert(x.api.queue_stop());assert(x.api.flush(.016)and#x.events==2,'Repeated salute exit')
- x.state=0;assert(x.api.flush(.016)and not x.api.active and not x.api.current())
+ assert(not x.api.queue('victory'),'Guessed pose accepted')
+ assert(x.api.queue('salute')and x.writes==0);assert(x.api.after_update()and x.writes==0 and x.api.pending,'After-update hook consumed a menu request')
+ assert(x.api.flush()and x.unit().bones[1]==101 and x.unit().mode=='ignore')
+ assert(x.time==0 and x.delta==0 and x.paused,'Selecting a fixed pose advanced time')
+ x.unit().bones[1]=-999;x.unit().bones[2]=-888
+ assert(x.api.after_update()and x.unit().bones[1]==101 and x.unit().bones[2]==102,'Engine update overwrote held pose')
+ selected(x,'wave');assert(x.unit().bones[1]==201 and x.captures==1,'Switch captured the already-posed skeleton')
+ selected(x,'taunt');assert(x.unit().bones[1]==301 and x.captures==1)
+ local before=x.writes;assert(x.api.queue_stop()and x.writes==before and x.api.pending)
+ assert(x.api.flush()and not x.api.active and not x.api.pending);original(x.unit())
+ assert(x.api.flush()and x.api.after_update()and x.writes==before+3,'Idle callbacks kept mutating bones')
 end
 do
- local x=fixture();assert(x.api.queue('wave'));assert(x.api.flush(.016));x.state=199;assert(x.api.flush(.016))
- assert(x.api.release());assert(x.api.flush(.016)and x.events[2]=='emote_wave_done')
- x.state=0;assert(x.api.flush(.016)and not x.api.active)
- assert(x.api.refresh(.5));assert(x.api.queue('taunt'));assert(x.api.flush(.016));x.state=135;assert(x.api.flush(.016))
- local before=#x.events;assert(x.api.queue_stop());assert(x.api.flush(.016)and#x.events==before and x.api.status:find('naturally',1,true),'Taunt stop fabricated an event')
- x.state=0;assert(x.api.flush(.016)and not x.api.active)
+ local x=fixture();selected(x,'salute');x.paused=false
+ assert(x.api.after_update()and not x.api.active and not x.api.pending);original(x.unit())
+ assert(not x.api.refresh(.5)and not x.api.queue('wave'),'Unpaused scene accepted a pose')
+ x.paused=true;assert(x.api.refresh(.5));selected(x,'wave');local before=x.writes
+ assert(x.api.release()and x.api.pending and x.api.active and x.writes==before,'Photo close performed synchronous writes')
+ assert(x.api.flush()and not x.api.active);original(x.unit())
+end
+for _,retired in ipairs({'root','component'})do
+ local x=fixture();selected(x,'salute');local before=x.writes
+ if retired=='root'then x.unit().retired=true else x.unit().component={}end
+ assert(x.api.flush()and not x.api.active and not x.api.pending and x.writes==before,'Retired '..retired..' received a bone/mode write')
 end
 do
- local x=fixture();x.paused=true;assert(x.api.queue('salute'));local ok,why=x.api.flush(.016)
- assert(not ok and#x.events==0 and why:find('Pause entire action',1,true),'Paused pose changed clock or dispatched')
- x.paused=false;assert(x.api.queue('salute'));assert(x.api.flush(.016));x.state=178;assert(x.api.flush(.016))
- x.paused=true;assert(x.api.queue_stop());assert(not x.api.flush(.016)and#x.events==1 and x.api.current()=='salute','Paused stop discarded ownership')
- x.paused=false;assert(x.api.queue_stop());assert(x.api.flush(.016)and#x.events==2)
-end
-for _,kind in ipairs({'dead','graph','remote','world','busy','read'})do
- local x=fixture();assert(x.api.queue('wave'))
- if kind=='dead'then x.alive=false elseif kind=='graph'then x.graph=false elseif kind=='remote'then x.remote=true
- elseif kind=='world'then x.identity='player:2';x.unit={} elseif kind=='busy'then x.state=35 else x.frame_error=true end
- local ok=x.api.flush(.016);assert(not ok and#x.events==0,'Rejected '..kind..' reached event setter')
+ local x=fixture();selected(x,'salute');local before=x.writes;x.read_error=true
+ assert(not x.api.after_update()and x.api.active and x.api.pending and x.api.current()=='salute'and x.writes==before,'Unknown read failure dropped lease or wrote')
+ assert(not x.api.flush()and x.writes==before,'Unknown cleanup read failure wrote')
+ x.read_error=false;assert(x.api.flush()and not x.api.active);original(x.unit())
 end
 do
- local x=fixture();assert(x.api.queue('salute'));assert(x.api.flush(.016));x.state=178;assert(x.api.flush(.016))
- x.identity='player:2';x.unit={};x.state=0;assert(x.api.queue_stop());x.api.flush(.016)
- assert(#x.events==1 and not x.api.current(),'Old cleanup touched replacement avatar')
+ local x=fixture();x.apply_error=true;assert(x.api.queue('wave'));assert(not x.api.flush())
+ assert(x.api.active and x.api.pending and x.api.current()=='wave'and x.unit().mode=='ignore'and x.unit().bones[1]==201 and x.unit().bones[2]==20,'Partial apply lost original lease')
+ x.apply_error=false;x.restore_error=true;assert(not x.api.flush())
+ assert(x.api.active and x.api.pending and x.unit().mode=='ignore','Partial restore discarded mode restoration')
+ x.restore_error=false;assert(x.api.flush()and not x.api.active);original(x.unit());assert(x.captures==1)
 end
 do
- local x=fixture();assert(x.api.queue('salute'));x.missing.action_salute_exit=true
- assert(not x.api.flush(.016)and#x.events==0,'Missing exit allowed salute entry')
- x.missing.action_salute_exit=nil;assert(x.api.refresh(.5));assert(x.api.queue('salute'));assert(x.api.flush(.016))
- x.state=178;assert(x.api.flush(.016));x.state=35;assert(x.api.flush(.016));assert(not x.api.current(),'Foreign gameplay action kept pose ownership')
- assert(x.api.queue_stop());assert(x.api.flush(.016)and#x.events==1)
+ local x=fixture();selected(x,'salute');x.pause_error=true;local before=x.writes
+ assert(not x.api.flush()and x.api.active and x.api.pending and x.writes==before,'Unknown pause state wrote a pose')
+ -- A queued restore does not need a functioning pause reader.
+ assert(x.api.flush()and not x.api.active);original(x.unit())
+end
+for _,failure in ipairs({'frame_error','prepare_error','capture_error'})do
+ local x=fixture();assert(x.api.queue('wave'));x[failure]=true
+ assert(not x.api.flush()and not x.api.active and not x.api.pending and x.writes==0,'Pre-write '..failure..' retained invalid ownership')
 end
 do
- local x=fixture();assert(x.api.queue('wave'));x.event_error=true;assert(not x.api.flush(.016))
- assert(x.api.current()=='wave','Uncertain event dispatch lost cleanup record')
- x.event_error=false;x.state=199;assert(x.api.queue_stop());assert(x.api.flush(.016)and x.events[2]=='emote_wave_done')
+ local x=fixture();assert(x.api.queue('wave'));assert(x.api.queue_stop());assert(x.api.flush()and x.writes==0 and not x.api.pending,'Canceled menu request applied')
+ assert(x.api.queue('wave'));assert(x.api.release());assert(x.api.after_update()and x.writes==0,'Closed queued pose still applied')
+ assert(x.api.queue('wave'));x.identity='local:2';x.add(x.identity)
+ assert(not x.api.flush()and x.writes==0 and not x.api.pending,'Queued pose followed a replacement subject')
 end
 do
- local x=fixture();assert(x.api.queue('salute'));assert(x.api.flush(.016));assert(x.api.queue_stop())
- assert(x.api.flush(.016)and x.api.pending and x.api.current()=='salute'and#x.events==1,'Early Stop lost queued engine entry')
- x.state=176;assert(x.api.flush(.016)and x.events[2]=='action_salute_exit'and not x.api.pending)
- x.state=0;assert(x.api.flush(.016)and not x.api.current())
+ local x=fixture();selected(x,'salute');local old=x.unit();x.identity='local:2';local new=x.add(x.identity)
+ assert(x.api.refresh(.5));assert(x.api.queue('taunt'));assert(x.api.flush(),'Restoring old owner cleared queued replacement pose ID')
+ original(old);assert(new.bones[1]==301 and x.api.current()=='taunt'and x.captures==2)
+ assert(x.api.queue_stop());assert(x.api.flush());original(new)
 end
 do
- local x=fixture();assert(x.api.queue('wave'));assert(x.api.flush(.016));x.paused=true
- for i=1,25 do x.api.flush(.1)end
- assert(x.api.current()=='wave','Paused entry wait expired')
- x.paused=false;for i=1,25 do x.api.flush(.1)end
- assert(not x.api.current()and#x.events==1,'Ignored engine event was retried or retained indefinitely')
+ local x=fixture();selected(x,'salute');local old=x.unit();x.identity='local:2';x.add(x.identity)
+ assert(x.api.after_update()and not x.api.active,'Ownership loss kept applying a held pose');original(old);original(x.unit())
 end
-print('Subject pose events: exact two-argument calls, local ownership, fresh alive/graph checks, queued updates, pause refusal, observed states, normal exits, natural Taunt completion and respawn/foreign-action isolation passed')
+
+-- Real public-API adapter: exact node range, immutable capture, zero-time
+-- writes, mapping guards, and component invalidation.
+do
+ local data=dofile(root..'assets/subject_pose_frames.lua');local unit={};local world={};local alive=true;local mode='position_and_rotation';local values={};local writes={};local updates=0;local bad_parent=false
+ for i=1,107 do values[i]={tag=i}end
+ local function clone(t)local c={};for k,v in pairs(t)do c[k]=type(v)=='table'and clone(v)or v end;return c end
+ local sr={Unit={},World={update_unit=function(w,u)assert(w==world and u==unit);updates=updates+1 end},
+  Vector3=function(x,y,z)return{x,y,z}end,Quaternion={axis_angle=function(axis,angle)return{axis=axis,angle=angle}end},
+  Matrix4x4={from_quaternion_position=function(q,p)return{q=q,p=p}end},
+  Matrix4x4Box=function(value)local saved=clone(value);return{unbox=function()return clone(saved)end}end}
+ local U=sr.Unit
+ U.num_scene_graph_items=function(u)assert(u==unit);return 107 end
+ U.scene_graph_parent=function(u,i)assert(u==unit);return bad_parent and i==10 and 5 or data.rig.nodes[i].parent end
+ U.has_node=function(u,name)assert(u==unit);for _,n in ipairs(data.rig.nodes)do if n.name==name then return true end end;return false end
+ U.node=function(u,name)assert(u==unit);for i,n in ipairs(data.rig.nodes)do if n.name==name then return i end end end
+ U.local_pose=function(u,i)assert(u==unit);return values[i]end
+ U.set_local_pose=function(u,i,v)assert(u==unit and alive);writes[#writes+1]=i;values[i]=clone(v)end
+ U.animation_bone_mode=function(u)assert(u==unit);return mode end
+ U.set_animation_bone_mode=function(u,m)assert(u==unit and alive);mode=m end
+ local subject={pose_frame=function()return{local_owner=true,identity='native:1',root_handle=unit,world=world}end,pose_valid=function()return alive end}
+ local a=M.native(sr,subject,data);local frame=a.frame();bad_parent=true;assert(not pcall(a.capture,frame)and#writes==0,'Changed bone parent accepted');bad_parent=false
+ local lease=a.capture(frame);a.prepare('wave');a.apply(lease,'wave');assert(mode=='ignore'and#writes==84 and updates==1)
+ for _,i in ipairs(writes)do assert(i>=9 and i<=92,'Placement/gameplay node mutated')end
+ for _,i in ipairs({1,2,5,8,93,107})do assert(values[i].tag==i,'Root/boss/collision anchor changed')end
+ a.apply(lease,'taunt');a.restore(lease);assert(mode=='position_and_rotation'and updates==3)
+ for i=1,107 do assert(values[i].tag==i,'Original native pose snapshot was overwritten')end
+ alive=false;local before=#writes;assert(not pcall(a.apply,lease,'salute')and not pcall(a.restore,lease)and#writes==before,'Stale native component received writes')
+end
+print('Fixed subject poses: zero-time selection/hold, original-snapshot switching, reset/exit/unpause, stale ownership, read/partial-write recovery, request cancellation and real native adapter guards passed')

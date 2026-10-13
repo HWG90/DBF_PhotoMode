@@ -1,7 +1,7 @@
 # War Journalist 0.9.6
 
 This development update adds movable scene lights, subject-focused lighting
-setups, stronger shader depth of field, local emote controls, and persistent
+setups, stronger shader depth of field, fixed subject poses, and persistent
 solo-only enemy behavior.
 
 ## Changes since 0.9.5
@@ -14,7 +14,7 @@ solo-only enemy behavior.
 - **Subject-focused lighting:** Key / Fill / Rim, Portrait, and Dramatic side presets aim at the selected subject. Without a selected subject, the current center focus plane supplies the target. Applying a preset replaces the current light setup, with rollback on a failed replacement.
 - **Five saved lighting setups:** save, recall, and clear subject-relative placements and settings. Slots persist across restarts in `lighting-presets.ini`; no game handles are stored.
 - **Stronger shader DoF:** blur strength defaults to 4x and ranges from 1x to 8x. Stronger blur uses 64 samples in Standard and 128 in Smoother. Native DoF is unchanged. The accepted compositor color conversion and scene-effect code are retained exactly; the new shader still needs live visual acceptance.
-- **Subject emotes:** Salute, Wave, and Taunt use verified local-player animation events. Turn **Pause entire action** off to play, then pause again on the desired frame. Stop uses the authored Salute/Wave exit; Taunt finishes naturally. Victory-pose event mappings remain unverified and are not exposed.
+- **Fixed subject poses:** choose Salute, Wave, or Taunt while **Pause entire action** remains ON. Selection applies a sampled skeleton pose immediately, without an emote event or simulation step. **Reset pose** restores the original pose; exiting or resuming time waits for restoration. Placement anchors remain unchanged. The user confirmed a held Salute with world rate and delta both zero, then confirmed immediate pose switching and Reset. Broader mission/transition coverage remains in progress. Victory poses are not exposed.
 - **More complete subject hiding:** nested equipment is included, fixing the reported floating parts left behind by visibility controls. The user accepted the live result.
 - **Cleanup guards:** menu-close errors no longer prevent the remaining effect, time, and input cleanup. Retired-world GUI resources are guarded during teardown.
 
@@ -29,7 +29,7 @@ The cleanup changes have isolated fixture coverage. **HDR/SDR and other
 display-setting crashes remain unresolved**; this update does not claim to
 fix them. Broader mission-light combinations, all camera transitions, and
 every compositor/effect combination still need coverage. New draggable lights,
-lighting presets, and emote playback have isolated fixture coverage; their
+lighting presets, and fixed poses have isolated fixture coverage; their
 full in-game acceptance is pending. Lighting: **Not tested fully**.
 
 This remains a single-pass bokeh gather. Large foreground blur and highlight
