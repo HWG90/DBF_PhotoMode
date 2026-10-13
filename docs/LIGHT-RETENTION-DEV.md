@@ -51,14 +51,16 @@ The final candidate passed all 42 isolated fixture groups and standalone package
 checks for BSL, MDL and LLL. Complete development archives are retained under
 `dist/releases/War-Journalist-0.9.5-light-retention-dev`.
 
-With the game closed, the local LLL `src/actioncam.lua` was backed up and replaced
-with the validated generated runtime, SHA256
+The local LLL `src/actioncam.lua` was backed up and replaced with the validated
+generated runtime, SHA256
 `cad118cf72a041c4cd69f01a79f2894bcec5bd55a74b91b0e985fe36b9170e50`.
 The final marker readback guard also checks scene generation before accessing
 units. Existing dedicated light assets are byte-identical and need no deployment.
 Settings, screenshots, other runtime files and Arsenal source were untouched.
 The deployment receipt and rollback copies are under
-`dist/review/photo-light-retention-dev`. No live refresh was performed.
+`dist/review/photo-light-retention-dev`. The initial candidate was installed while
+the game was closed; the user launched before the final marker guard was written.
+The final runtime is on disk for the next normal restart. No live refresh was performed.
 
 Next-launch acceptance remains open: add and position lights, exit Photo Mode,
 then reopen it and confirm they return without Add light. Remove one, repeat,
