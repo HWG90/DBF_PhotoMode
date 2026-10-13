@@ -1,4 +1,4 @@
-# Known issues in 0.9.6
+# Known issues in 0.9.7
 
 - **Photo lighting: Not tested fully across scenes.** Dedicated bundled light assets have worked in the running game; availability still requires those assets to be loaded after restart. Coverage of every mission and transition is incomplete.
 - Native focus/aperture and camera-instance recovery were user-tested during development. This does not prove every scene, game update, ragdoll or transition. Controls wait for a validated current camera rather than writing through a stale one.

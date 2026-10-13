@@ -128,24 +128,56 @@ function M.new(sr,memory)
   if not valid_context(ctx)then return nil,'Enemy scene or authority changed'end
   local ref=unit(ctx,e);if not ref then return nil,'retired'end
   local ai,ai_token=part(ptr(memory.game+L.AI),specs.ai,e);if not ai or u32(ai)==16 then return nil,'retired'end
-  local behavior,b_token=part(ptr(memory.game+L.BEHAVIOR),specs.behavior,e)
-  local invalid=u32(memory.game+L.INVALID);local owner=behavior and u32(behavior+0x68)or e
-  if owner==0 or owner==invalid then owner=e end
-  local owner_ref=ref
-  if owner~=e then
-   local owner_ai=part(ptr(memory.game+L.AI),specs.ai,owner)
-   owner_ref=unit(ctx,owner)
-   if not owner_ai or not owner_ref or u32(owner_ai)==16 then return nil,'Enemy detector owner is not a live enemy'end
+  local invalid=u32(memory.game+L.INVALID);local fields={};local issues={}
+  local function field(key,at,size,token)
+   local ok,value=pcall(function()return size==1 and read(at,1):byte()or u32(at)end)
+   if ok then fields[key]={value=value,address=at,size=size,token=token}
+   else issues[#issues+1]=key..' field unreadable'end
   end
-  local detector,d_token=part(ptr(memory.game+L.DETECTOR),specs.detector,owner)
-  local alert,a_token=part(ptr(memory.game+L.ALERT),specs.alert,e)
-  if not(behavior and detector)then return nil,'Enemy detector/behavior components unavailable'end
-  local fields={};local function field(key,at,size,token)fields[key]={value=size==1 and read(at,1):byte()or u32(at),address=at,size=size,token=token}end
-  field('still',ai+4,4,ai_token);field('detector',detector+0x13f0,1,d_token);field('hostiles',detector+0x310,4,d_token);field('target',behavior+0x18,4,b_token)
-  fields.detector.owner=owner;fields.detector.owner_identity=identity(ctx,owner,owner_ref)
-  fields.hostiles.owner=owner;fields.hostiles.owner_identity=fields.detector.owner_identity
-  if alert then field('alert',alert,4,a_token)end
-  return {entity=e,identity=identity(ctx,e,ref),unit=ref,fields=fields,invalid=invalid}
+  local function optional_part(key,label)
+   local ok,row,token=pcall(function()return part(ptr(memory.game+L[label]),specs[key],e)end)
+   if not ok or not row then issues[#issues+1]=key..' component unavailable';return end
+   return row,token
+  end
+  field('still',ai+4,4,ai_token)
+  local behavior,b_token=optional_part('behavior','BEHAVIOR')
+  local owner=e
+  if behavior then
+   field('target',behavior+0x18,4,b_token)
+   local ok,value=pcall(u32,behavior+0x68)
+   if ok and value~=0 and value~=invalid then owner=value end
+  end
+  local requested_owner=owner
+  local function detector_for(entity)
+   local owner_ref=ref
+   if entity~=e then
+    owner_ref=unit(ctx,entity)
+    local owner_ai=owner_ref and part(ptr(memory.game+L.AI),specs.ai,entity)
+    if not owner_ref or not owner_ai or u32(owner_ai)==16 then return nil,'Borrowed detector owner retired'end
+   end
+   local row,token=part(ptr(memory.game+L.DETECTOR),specs.detector,entity)
+   if not row then return nil,'Detector component unavailable'end
+   return row,token,owner_ref
+  end
+  local ok,detector,d_token,owner_ref=pcall(detector_for,owner)
+  local owner_issue
+  if not ok or not detector then
+   owner_issue=ok and d_token or'Borrowed detector owner unreadable'
+   -- A stale behavior owner is not permission to write its surviving detector
+   -- row. Only fall back to this independently validated live enemy's own row.
+   if owner~=e then owner=e;ok,detector,d_token,owner_ref=pcall(detector_for,e)end
+  end
+  if ok and detector then
+   field('detector',detector+0x13f0,1,d_token);field('hostiles',detector+0x310,4,d_token)
+   for _,key in ipairs({'detector','hostiles'})do if fields[key]then
+    fields[key].owner=owner;fields[key].owner_identity=identity(ctx,owner,owner_ref)
+   end end
+  else issues[#issues+1]='detector component unavailable'end
+  local alert,a_token=optional_part('alert','ALERT');if alert then field('alert',alert,4,a_token)end
+  return {entity=e,identity=identity(ctx,e,ref),unit=ref,fields=fields,invalid=invalid,
+   partial_issue=#issues>0 and table.concat(issues,'; ')or nil,
+   detector_fallback=requested_owner~=e and owner==e and fields.detector~=nil,
+   detector_owner_issue=owner_issue}
  end
  local function write_field(ctx,record,key,value,expected,cleanup)
   local committed=false

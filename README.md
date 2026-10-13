@@ -1,27 +1,28 @@
-![War Journalist](docs/artwork/war-journalist-cover.png)
+![War Journalist](docs/artwork/war-journalist-0.9.7-cover.png)
 
-# War Journalist 0.9.6
+# War Journalist 0.9.7
 
 A Photo Mode for Helldivers 2: free camera, a compact movable studio menu,
 Native and shader depth of field, autofocus, color grading, scene effects,
 photo lighting, Director camera presets and enemy behavior controls,
-subject visibility and PNG capture.
+213 fixed subject pose frames, subject visibility and PNG capture.
 
 [Download on Nexus](https://www.nexusmods.com/helldivers2/mods/17248?tab=files) ·
-[Published GitHub downloads (0.9.5)](https://github.com/HWG90/DBF_PhotoMode/releases/tag/v0.9.5) ·
-[Full 0.9.6 changelog](docs/RELEASE-0.9.6.md)
-
-This source is 0.9.6; the published download above is still 0.9.5.
+[GitHub downloads](https://github.com/HWG90/DBF_PhotoMode/releases) ·
+[Full 0.9.7 changelog](docs/RELEASE-0.9.7.md)
 
 ## What's new
 
+- **213 fixed pose frames:** select a pose while the scene stays paused. Gestures, cooperative variants, kneeling poses and both push-ups are included. Reset restores the original pose before play resumes. These are sampled emote/action frames, not 213 store items; see the [pose catalogue](docs/SUBJECT-POSE-CATALOGUE.md).
+- **Cape correction:** supported capes follow the posed shoulders and restore across pose changes. The integrated fix was confirmed in-game; it preserves the frozen cloth shape without advancing physics. Wider cape coverage remains open.
+- **Menu opacity:** a compact bottom-right slider controls the background from 10% to 100%, saves across restarts, and resets to 38% with right-click.
 - **Solo Director enemy behavior:** Normal, Passive, and Dummy, plus Reset to Normal. The chosen mode continues after Photo Mode closes and applies to newly discovered enemies; game restart returns to Normal. Joining players cancel the mode and restore owned changes. Persistence and Reset were confirmed live.
 - **Light placement tools:** numbered scene indicators, draggable lights with Shift precision, subject-focused portrait/three-point/side rigs, and five lighting setups saved across restarts.
 - **Retained lighting setup:** reopening Photo Mode restores your lights at their previous placements within the same scene. Explicit saved setup slots can also be recalled after restarting.
 - **Stronger shader DoF:** 1x–8x blur strength, 4x by default, with more samples and the accepted color conversion retained.
-- **Subject poses:** choose from an expanded catalogue of fixed emote/action frames while the scene remains paused, including cooperative variants and push-ups. Reset restores the original pose before play resumes. Unidentified clips retain descriptive development labels; see the [pose catalogue](docs/SUBJECT-POSE-CATALOGUE.md) for coverage and limits.
 - **Color editing:** explicit Apply, with a live color swatch and HEX value visible while adjusting RGB.
 - **Subject hiding:** nested equipment is included, fixing the reported floating parts.
+- **Readiness and recovery:** poses unlock independently of paused game time; temporary scene/respawn reads no longer clear the selected enemy behavior.
 - **Cleanup guards:** menu-close failures still allow other cleanup, and GUI teardown checks world lifetime. HDR/SDR and other display-setting crashes remain unresolved.
 
 Native/shader DoF, autofocus, the combined compositor, three photo lights,

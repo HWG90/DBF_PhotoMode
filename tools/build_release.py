@@ -18,7 +18,7 @@ import photo_assets
 import photo_light_assets
 
 VERSION=(ROOT/'VERSION').read_text().strip()
-ASSET_VERSION='0.9.6' # Frozen runtime-compatible candidate; 0.9.5 remains immutable.
+ASSET_VERSION='0.9.6' # Reused unchanged by 0.9.7; both prior shader snapshots remain immutable.
 SNAPSHOTS=ROOT/('freecam/assets/shaders/release-'+ASSET_VERSION)
 APPROVED_GPU='f5960f63e1247ac40af4bb37ccbd59ac26c9168aad9eb40936c082c9ddf40194'
 CINEMATIC_GPU='0ee49d87cc1250ab5582934fba8f925d33bf63cb2555651f1974a52dfa55c9b7'
@@ -71,6 +71,7 @@ def promote_snapshots():
 def resources(output=None):
     """Return source-owned frozen bytes; no dist or installed-game inputs."""
     manifest=json.loads((SNAPSHOTS/'manifest.json').read_text())
+    assert manifest['version']==ASSET_VERSION,'Frozen shader snapshot identity changed'
     core,shared,_=build_preview.resources(output)
     assert row_identity(core)==manifest['base_core_rows_sha256']and row_identity(shared)==manifest['base_shared_rows_sha256'],'Base assets differ from promoted closure'
     group=next(row for row in core if row[1]==photo_assets.GROUP);ids=list(photo_assets.registry_ids(group[2]));assert len(ids)==317
@@ -100,7 +101,7 @@ def resources(output=None):
     for rows in (core,shared):
         cpu,gpu=photo_assets.archive_rows(rows);assert sorted(photo_assets.read_archive(cpu,gpu))==sorted(rows)
     cpu,gpu=photo_assets.archive_rows(shared)
-    audit={'version':VERSION,'shader_libraries_core':44,'materials_shared':44,'registry_resources_core':1,'registry_ids':319,'decorative_pairs':40,
+    audit={'version':VERSION,'shader_asset_version':ASSET_VERSION,'shader_libraries_core':44,'materials_shared':44,'registry_resources_core':1,'registry_ids':319,'decorative_pairs':40,
            'base_core_rows_sha256':manifest['base_core_rows_sha256'],'base_shared_rows_sha256':manifest['base_shared_rows_sha256'],
            'resolved_gpu_sha256':CINEMATIC_GPU,'resolved_hdr_colors_user_accepted':False,'accepted_color_math_preserved':True,'baseline_resolved_verification':approved,
            'legacy_combined_retained':True,'native_numeric_dof_enabled':True,'lighting_status':photo_light_assets.TESTING_STATUS,
@@ -136,12 +137,24 @@ def flat_mdl_files(files, asset_manifest):
     assert not any(name.lower().endswith(('.zip','.7z','.rar','.tar','.gz','.cab')) or zipfile.is_zipfile(io.BytesIO(body)) for name,body in files.items()),'Nested archive in MDL package'
     return files
 
-def public_docs(files):
-    for target,path in [('README.md',ROOT/'README.md'),('KNOWN-ISSUES.md',ROOT/'docs/KNOWN-ISSUES.md'),('RELEASE-NOTES.md',ROOT/'docs'/('RELEASE-'+VERSION+'.md'))]:
-        if path.is_file():files[target]=path.read_bytes()
-    files['SUBJECT-POSE-CATALOGUE.md']=(ROOT/'docs/SUBJECT-POSE-CATALOGUE.md').read_bytes()
-    files['README.md']=files['README.md'].replace(b'(docs/SUBJECT-POSE-CATALOGUE.md)',b'(SUBJECT-POSE-CATALOGUE.md)')
-    files['PHOTO-LIGHT-ASSET.md']=(ROOT/'docs/PHOTO-LIGHT-ASSET.md').read_bytes()
+def public_docs(files,prefix=''):
+    documents={'README.md':ROOT/'README.md','KNOWN-ISSUES.md':ROOT/'docs/KNOWN-ISSUES.md',
+        'RELEASE-NOTES.md':ROOT/'docs'/('RELEASE-'+VERSION+'.md')}
+    for name in ('SUBJECT-POSE-CATALOGUE.md','PHOTO-LIGHT-ASSET.md','PHOTO-AI.md','RELEASE-0.9.5.md','HOVER-PAUSE-VERIFICATION.json'):
+        documents[name]=ROOT/'docs'/name
+    for target,path in documents.items():files[prefix+target]=path.read_bytes()
+    readme=files[prefix+'README.md']
+    for source,target in [('docs/RELEASE-'+VERSION+'.md','RELEASE-NOTES.md'),('freecam/README.md','INSTALL.txt'),
+        ('docs/SUBJECT-POSE-CATALOGUE.md','SUBJECT-POSE-CATALOGUE.md'),('docs/KNOWN-ISSUES.md','KNOWN-ISSUES.md'),
+        ('docs/RELEASE-0.9.5.md','RELEASE-0.9.5.md'),('docs/artwork/war-journalist-cover.png','artwork/war-journalist-cover.png'),
+        ('docs/artwork/war-journalist-'+VERSION+'-cover.png','artwork/war-journalist-cover.png')]:
+        readme=readme.replace(('('+source+')').encode(),('('+target+')').encode())
+    files[prefix+'README.md']=readme
+    cover=ROOT/'docs/artwork'/('war-journalist-'+VERSION+'-cover.png')
+    if not cover.is_file():cover=ROOT/'docs/artwork/war-journalist-cover.png'
+    files[prefix+'artwork/war-journalist-cover.png']=cover.read_bytes()
+    for path in sorted((ROOT/'docs/gallery'/VERSION).glob('*.jpg')):
+        files[prefix+'gallery/'+VERSION+'/'+path.name]=path.read_bytes()
     return files
 
 def build(output):
@@ -170,6 +183,12 @@ def build(output):
         bsl=photo.package_bsl(output,version=VERSION,dof_candidate=True)
         mdl=load('release_mdl',ROOT/'tools/build_mdl.py').package(output,version=VERSION,payload_factory=payload)
     finally:dof_assets.resources=previous_resources
+    # The legacy BSL packager copies a limited document list. Complete its
+    # public documentation and image links without changing embedded runtime.
+    with zipfile.ZipFile(bsl)as z:bsl_files={name:z.read(name)for name in z.namelist()if name!='FILES-SHA256.txt'}
+    bsl.write_bytes(zip_bytes(public_docs(bsl_files)))
+    bsl_receipt=json.loads((output/'BSL-BUILD-RECEIPT.json').read_text());bsl_receipt['sha256']=sha(bsl.read_bytes())
+    (output/'BSL-BUILD-RECEIPT.json').write_bytes(json_bytes(bsl_receipt))
     assets=asset_files(core,shared,audit,'Assets/')
     assets['manifest.json']=json_bytes({'Version':1,'Guid':'3e25431a-27e8-4b7a-b355-3956c1caa8d8','Name':'War Journalist '+VERSION+' Assets',
         'Description':'Complete decorative, focus/compositor and Photo light assets. Lighting: Not tested fully.',
@@ -178,7 +197,7 @@ def build(output):
     asset_name='War-Journalist-'+VERSION+'-Assets.zip';asset_body=zip_bytes(assets);(output/asset_name).write_bytes(asset_body)
     # The complete MDL ZIP is directly importable by Arsenal for GameData only.
     with zipfile.ZipFile(mdl)as z:mdl_files={name:z.read(name)for name in z.namelist()if name!='FILES-SHA256.txt'}
-    mdl_files=flat_mdl_files(mdl_files,json.loads(assets['manifest.json']));mdl.write_bytes(zip_bytes(mdl_files))
+    mdl_files=flat_mdl_files(mdl_files,json.loads(assets['manifest.json']));mdl.write_bytes(zip_bytes(public_docs(mdl_files,'dbf_freecam/')))
     lll_files=payload(output);lll_files['main.lua']=(ROOT/'freecam/lll.lua').read_bytes();lll_files['config/defaults.cfg']=b'{}\n'
     modules=sorted(name for name in lll_files if name.startswith('src/')and name.endswith('.lua'))
     lll_files['manifest.json']=json_bytes({'id':'dbf_freecam','name':'War Journalist','version':VERSION,'author':'Goose',

@@ -1,7 +1,7 @@
 local root=rawget(_G,'DBF_PHOTO_TEST_ROOT')or'freecam/'
 local C=dofile(root..'ai_control.lua');local B=dofile(root..'ai_backend.lua');local bit=require('bit')
 local function clone(t)local out={};for k,v in pairs(t)do out[k]=type(v)=='table'and clone(v)or v end;return out end
-local now=0;local authority=true;local solo=true;local unknown_session=false;local scene_read_error=false;local epoch='mission1';local writes={};local enemies={};local fail=false;local partial=false;local fail_entity
+local now=0;local authority=true;local solo=true;local unknown_session=false;local scene_read_error=false;local epoch='mission1';local writes={};local enemies={};local fail=false;local partial=false;local fail_entity;local fail_key
 local function enemy(e,detector,flags)
  enemies[e]={entity=e,identity=epoch..':'..e..':generation1',invalid=4294967295,fields={
   detector={value=detector or 1,token='det'..e},still={value=flags or 0x200,token='ai'..e},
@@ -20,7 +20,7 @@ function backend.write(ctx,record,key,value,expected)
  local actual=enemies[record.entity];assert(authority and ctx.identity==epoch and actual.identity==record.identity)
  assert(ctx.cleanup or(solo and not unknown_session),'Non-restoring mutation reached multiplayer/unknown session')
  assert(actual.fields[key].token==record.fields[key].token and actual.fields[key].value==expected,'stale record write')
- if fail or record.entity==fail_entity then return false,'retry write',false end
+ if fail or record.entity==fail_entity or key==fail_key then return false,'retry write',false end
  actual.fields[key].value=value;writes[#writes+1]={entity=record.entity,key=key,value=value}
  if partial then partial=false;return false,'readback unavailable',true end
  return true,nil,true
@@ -45,7 +45,7 @@ assert(control.queue('passive'));partial=true;assert(control.flush(true));assert
 assert(control.queue('dummy'));assert(control.flush(true));one.fields.detector.token='replacement';one.fields.detector.value=9;assert(control.release());assert(one.fields.detector.value==9,'Component replacement inherited an old baseline')
 one.fields.detector.token='det1';one.fields.detector.value=1;assert(control.queue('dummy'));assert(control.flush(true));count=#writes;epoch='mission2';assert(control.release());assert(#writes==count,'World retirement dereferenced old records')
 enemies={};for i=1,40 do enemy(i)end;assert(control.queue('passive'));assert(control.flush(true));assert(control.affected<=C.batch,'One refresh exceeded the bounded enemy batch')
-count=#writes;assert(control.flush(true));assert(#writes==count,'Refresh ignored real-time throttling');now=now+.1;assert(control.flush(true));assert(control.affected>C.batch)
+count=#writes;assert(control.flush(true));assert(#writes>count and control.affected>C.batch,'Existing enemies were not held on the next update');now=now+.1;assert(control.flush(true));assert(control.affected>C.batch)
 assert(control.release());assert(control.count()==0)
 -- Menu exit keeps the chosen behavior and continues discovering new enemies.
 enemies={};now=now+.1;one=enemy(1);assert(control.queue('dummy'));assert(control.flush(true))
@@ -104,6 +104,47 @@ unknown_session=false;now=now+.1;assert(control.flush(false)and control.count()=
 local unverified=C.new({now=function()return now end,context=function()return{identity='unknown',authority=true}end,scan=function()error('Unverified player count scanned enemies')end})
 assert(not unverified.ready());assert(unverified.queue('dummy'));assert(unverified.flush(false)and unverified.mode=='normal','Missing solo proof was accepted')
 -- Real backend layout exercises use an isolated byte-addressed memory fixture.
+-- A changed target/movement bit is held on the next update, without scanning
+-- again or waiting for the slower discovery timer (including paused time).
+enemies={};one=enemy(1);local scans=0;local base_scan=backend.scan
+backend.scan=function(...)scans=scans+1;return base_scan(...)end
+assert(control.queue('dummy'));assert(control.flush(false));local before_scans=scans
+one.fields.target.value=77;one.fields.still.value=0x200
+assert(control.flush(false));assert(one.fields.target.value==4294967295 and one.fields.still.value==0x280,'Game target/movement rewrite survived the next update')
+assert(scans==before_scans,'Holding known enemies bypassed the discovery throttle')
+assert(control.release());backend.scan=base_scan
+-- Discovery exceptions and explicit unavailable results delay new arrivals,
+-- without abandoning the independently validated enemies already held.
+enemies={};one=enemy(1);assert(control.queue('dummy'));assert(control.flush(false))
+incoming=enemy(2);backend.scan=function()error('Enumeration temporarily unreadable')end
+one.fields.target.value=77;one.fields.still.value=0x200;now=now+.1
+assert(control.flush(false)and control.mode=='dummy'and control.discovery_error and control.status:find('discovery retry pending',1,true))
+assert(one.fields.target.value==4294967295 and one.fields.still.value==0x280 and incoming.fields.detector.value==1,'Discovery error skipped holding or admitted an unscanned enemy')
+backend.scan=function()return{},0,'Enemy manager unavailable'end;one.fields.target.value=77;now=now+.1
+assert(control.flush(false)and control.discovery_error=='Enemy manager unavailable'and one.fields.target.value==4294967295,'Explicit discovery failure skipped holding')
+backend.scan=base_scan;now=now+.1;assert(control.flush(false)and not control.discovery_error and incoming.fields.detector.value==0,'Discovery retry failed to cover new enemies')
+authority=false;one.fields.target.value=77;count=#writes;now=now+.1
+assert(not control.flush(false)and#writes==count and one.fields.target.value==77,'Discovery recovery bypassed authority validation')
+authority=true;assert(control.release())
+enemies={}
+-- An unrelated detector write failure cannot block validated movement, target,
+-- and alert fields. Partial application must not be counted as fully affected.
+one=enemy(1);fail_key='detector';assert(control.queue('dummy'));assert(control.flush(false))
+assert(one.fields.detector.value==1 and one.fields.still.value==0x280 and one.fields.target.value==4294967295 and one.fields.alert.value==0,'Detector error blocked independent suppression')
+assert(control.affected==0 and control.status:find('1 unavailable',1,true),'Partial failure was hidden by the affected count')
+fail_key=nil;assert(control.flush(false));assert(one.fields.detector.value==0 and control.affected==1)
+assert(control.release());assert(one.fields.detector.value==1 and one.fields.still.value==0x200,'Partial-then-complete cleanup lost the original baseline')
+one=enemy(1);one.fields.detector=nil;one.fields.hostiles=nil;one.partial_issue='Detector unavailable'
+assert(control.queue('dummy'));assert(control.flush(false))
+assert(one.fields.still.value==0x280 and one.fields.target.value==4294967295 and control.affected==0,'Missing optional detector suppressed no local fields or claimed full success')
+assert(control.release());assert(one.fields.still.value==0x200)
+-- Passive retries a failed Dummy movement release without losing the lease
+-- or allowing independent target suppression to stop.
+one=enemy(1);assert(control.queue('dummy'));assert(control.flush(false));fail_key='still'
+one.fields.target.value=77;assert(control.queue('passive'));assert(control.flush(false))
+assert(one.fields.still.value==0x280 and one.fields.target.value==4294967295 and control.affected==0,'Movement restore error blocked targets or claimed success')
+fail_key=nil;assert(control.flush(false));assert(one.fields.still.value==0x200,'Passive dropped pending movement restoration')
+assert(control.release());assert(one.fields.detector.value==1)
 local bytes={};local function put(at,data)for i=1,#data do bytes[at+i-1]=data:byte(i)end end
 local function le(n,size)local out={};for i=1,size do out[i]=string.char(n%256);n=math.floor(n/256)end;return table.concat(out)end
 local function num(at,n,size)put(at,le(n,size or 4))end
@@ -142,7 +183,7 @@ record=assert(native.observe(ctx,entity));local moved=allocate();num(moved+0x13f
 assert(native.write(ctx,record,'detector',1,0));assert(bytes[drow+0x13f0]==0 and bytes[moved+0x13f0]==1,'Relocated component wrote a cached row address')
 record=assert(native.observe(ctx,entity));num(generations+5,2,1);assert(not native.observe(ctx,entity));assert(not native.write(ctx,record,'detector',1,0),'Reused Unit generation accepted');num(generations+5,1,1)
 local detector_record=assert(native.observe_detector(ctx,entity));assert(detector_record.identity==record.identity and detector_record.kind=='detector')
-num(behavior+0x60,0,8);assert(not native.observe(ctx,entity));assert(native.observe_detector(ctx,entity),'Direct detector restoration depended on a Behavior row')
+num(behavior+0x60,0,8);local partial_record=assert(native.observe(ctx,entity));assert(partial_record.fields.still and partial_record.fields.detector and partial_record.fields.alert and not partial_record.fields.target and partial_record.partial_issue,'Missing Behavior discarded independently valid components');assert(native.observe_detector(ctx,entity),'Direct detector restoration depended on a Behavior row')
 assert(native.write(ctx,detector_record,'detector',0,1),'Direct detector write required a Behavior row')
 detector_record=assert(native.observe_detector(ctx,entity));assert(native.write(ctx,detector_record,'detector',1,0));num(behavior+0x60,brow,8)
 num(generations+5,2,1);assert(not native.observe_detector(ctx,entity));assert(not native.write(ctx,detector_record,'detector',0,1),'Direct detector cleanup accepted a stale owner generation');num(generations+5,1,1)
@@ -165,19 +206,29 @@ assert(memwrites==4,'Rejected identities or authority wrote memory')
 num(mode+8,1);local live_control=C.new(native);assert(live_control.queue('dummy'));assert(live_control.flush(false));assert(bytes[moved+0x13f0]==0)
 joining={[44]=true};now=now+.1;assert(live_control.flush(false)and live_control.mode=='normal'and live_control.count()==0)
 assert(bytes[moved+0x13f0]==1 and memory.read(airow+4,4)==le(0x200,4),'Native joining cleanup failed to restore detection/movement')
--- A dead borrowed detector owner must not trap this living enemy's movement lease.
+-- A stale borrowed detector may retain a live-looking descriptor. It must never
+-- be touched; use this living enemy's independently validated own detector.
 joining={};assert(live_control.queue('dummy'));assert(live_control.flush(false))
+local function number(at,size)local n=0;local raw=memory.read(at,size or 8);for i=#raw,1,-1 do n=n*256+raw:byte(i)end;return n end
+local stale_owner=entity+1;local stale_descriptor=allocate();local detector_map=number(detector+0x30);local detector_list=number(detector+0x48)
+num(detector_map+(stale_owner%8)*8,stale_owner);num(detector_map+(stale_owner%8)*8+4,1)
+num(detector_list+8,stale_descriptor,8);num(stale_descriptor+8,stale_owner);num(stale_descriptor+0x14,1,1)
+local stale_detector=moved+0x13f8;num(stale_detector+0x13f0,7,1);num(stale_detector+0x310,11)
 num(brow+0x68,entity+1);num(airow+4,0x680)
-assert(not native.observe(assert(native.context()),entity),'Fixture did not retire the borrowed detector owner')
+local fallback=assert(native.observe(assert(native.context()),entity))
+assert(fallback.detector_fallback and fallback.fields.detector.owner==entity and fallback.fields.detector.address==moved+0x13f0 and fallback.fields.hostiles.address==moved+0x310,'Stale borrowed owner did not resolve the independently validated own detector')
+assert(fallback.fields.still and fallback.fields.target and fallback.fields.alert and not fallback.partial_issue,'Detector fallback discarded valid independent components')
 num(airow+4,0x600);now=now+.1;local before_renew=memwrites
 assert(live_control.flush(false)and live_control.mode=='dummy')
 assert(memory.read(airow+4,4)==le(0x680,4)and memwrites==before_renew+1,'Missing borrowed detector blocked renewal of our movement lease')
+assert(bytes[stale_detector+0x13f0]==7 and memory.read(stale_detector+0x310,4)==le(11,4),'Suppression wrote a stale borrowed detector row')
 local movement=assert(native.observe_restore(assert(native.context()),entity));assert(movement.kind=='movement')
 num(generations+5,2,1);local prior_writes=memwrites
 assert(not native.restore(assert(native.restore_context()),movement,'still',0x600,0x680),'Movement cleanup accepted a reused Unit generation')
 assert(memwrites==prior_writes);num(generations+5,1,1)
 assert(live_control.queue('normal'));assert(live_control.flush(false)and live_control.count()==0,'Borrowed detector retirement blocked movement cleanup')
 assert(memory.read(airow+4,4)==le(0x600,4)and bytes[moved+0x13f0]==1,'Movement cleanup lost unrelated flags or detector baseline')
+assert(bytes[stale_detector+0x13f0]==7 and memory.read(stale_detector+0x310,4)==le(11,4),'Reset wrote a stale borrowed detector row')
 -- Native context classifies scene-read loss separately from network evidence.
 num(brow+0x68,entity);assert(live_control.queue('dummy'));assert(live_control.flush(false));prior_writes=memwrites
 fault_address=game+L.WORLD;now=now+.1
@@ -187,4 +238,22 @@ fault_address=game+L.NET;now=now+.1;prior_writes=memwrites
 assert(not live_control.flush(false)and live_control.mode=='normal'and live_control.count()>0 and memwrites==prior_writes,'Unknown native authority failed to cancel safely')
 fault_address=nil;now=now+.1;assert(live_control.flush(false)and live_control.count()==0)
 assert(memory.read(airow+4,4)==le(0x600,4)and bytes[moved+0x13f0]==1,'Native authority cleanup did not retry')
+-- No usable detector still permits this enemy's own movement, target and alert.
+num(brow+0x68,stale_owner);num(detector_list,0,8);num(brow+0x18,77);num(arow,4)
+partial_record=assert(native.observe(assert(native.context()),entity))
+assert(not partial_record.fields.detector and not partial_record.fields.hostiles and partial_record.fields.still and partial_record.fields.target and partial_record.fields.alert and partial_record.partial_issue,'Missing detector rejected independent behavior fields')
+assert(live_control.queue('dummy'));assert(live_control.flush(false))
+assert(memory.read(airow+4,4)==le(0x680,4)and memory.read(brow+0x18,4)==le(4294967295,4)and memory.read(arow,4)==le(0,4),'Detector absence prevented independent suppression')
+assert(live_control.queue('normal'));assert(live_control.flush(false)and live_control.count()==0)
+assert(memory.read(airow+4,4)==le(0x600,4)and bytes[stale_detector+0x13f0]==7,'Partial Reset did not restore movement or touched a stale detector')
+-- An unreadable optional component is isolated. Own Unit/AI identity remains
+-- mandatory, and a component changing between observation/write is rejected.
+fault_address=behavior+0x40
+partial_record=assert(native.observe(assert(native.context()),entity))
+assert(partial_record.fields.still and partial_record.fields.alert and not partial_record.fields.target and partial_record.partial_issue,'Unreadable Behavior blocked independent fields')
+fault_address=nil;partial_record=assert(native.observe(assert(native.context()),entity));num(behavior+0x60,0,8);prior_writes=memwrites
+assert(not native.write(assert(native.context()),partial_record,'target',77,4294967295)and memwrites==prior_writes,'Disappearing optional component accepted a stale write')
+num(behavior+0x60,brow,8);num(airow,16);prior_writes=memwrites
+assert(not native.observe(assert(native.context()),entity)and not native.write(assert(native.context()),partial_record,'still',0x680,0x600)and memwrites==prior_writes,'Dead own AI accepted partial suppression')
+num(airow,0)
 print('Photo AI: honest Passive/Dummy behavior, bounded changed-only updates, conditional restoration, transient target safety, retry/generation/component/world ownership, fixed build/registry guards and fresh byte-backed native lookups passed')

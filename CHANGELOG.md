@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.9.7 — 2026-10-13
+
+Public release covering all changes since 0.9.5, including the 0.9.6 development work below.
+
+- Expanded Subject to **213 sampled pose frames**, including full-body and cooperative variants. Selection holds a fixed pose while world time stays at zero; Reset and exit restore the original skeleton before time resumes. These are not 213 released store emotes, and props or partners are not spawned.
+- Fixed supported capes floating above the subject during pose changes. The original garment now follows the posed shoulders and restores correctly, retaining its textures and frozen cloth shape without stepping physics. Integrated push-up/Salute switching and reset were confirmed live; broader cape coverage remains open.
+- Fixed pose readiness remaining grayed out while simulation time was paused, with immediate pause-state refresh and real-time recovery retries.
+- Added a persistent 10%–100% menu-opacity slider in the bottom-right footer; right-click restores 38%.
+- Included draggable scene lights, subject-focused rigs, five saved lighting setups, retained same-scene placements, and the color editor's Apply button/live swatch/HEX preview.
+- Included persistent solo Normal/Passive/Dummy enemy behavior, explicit Reset, multiplayer exclusion, and recovery from temporary scene/respawn reads.
+- Fixed live mission enemies remaining hostile in Passive/Dummy when their detector owner was stale. Controls now use an independently validated own detector and apply movement/target/alert fields independently. Known enemies refresh in bounded batches each owning update, while discovery remains on a 50ms timer. Both modes were confirmed working in-game; discovery-failure continuation and restoration retry also have fixture coverage.
+- Included 1x–8x shader blur strength with increased samples, nested-equipment hiding fixes, and menu/world cleanup guards.
+- Retained flat MDL packaging with no nested archives. All loader downloads include their required assets.
+- All 53 isolated fixture groups passed, including all 213 poses and cape restoration/retirement/retry cases. Lighting is **Not tested fully**; stronger blur and broader scene coverage remain open. Display-setting and HDR/SDR switching crashes remain unresolved.
+
+Full details: [0.9.7 release notes](docs/RELEASE-0.9.7.md).
+
 ## 0.9.6 — 2026-10-13
 
 - Added numbered scene light indicators, click/drag positioning, Shift fine control, three subject-focused lighting rigs, and five persistent lighting setup slots.

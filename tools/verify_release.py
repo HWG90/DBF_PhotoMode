@@ -1,4 +1,4 @@
-"""Verify immutable War Journalist releases (0.9.5/0.9.6 and legacy gates)."""
+"""Verify immutable War Journalist releases (0.9.5 through 0.9.7 and legacy gates)."""
 import argparse
 from collections import Counter
 from datetime import datetime, timezone
@@ -14,6 +14,7 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 PREFIX = 'dbf_freecam/'
+SHADER_RELEASES = {'0.9.5': '0.9.5', '0.9.6': '0.9.6', '0.9.7': '0.9.6'}
 REQUIRED = {'main.lua', 'src/actioncam.lua', 'src/standalone.lua', 'config/defaults.cfg',
             'INSTALL.txt', 'PROVENANCE.json', 'manifest.json', 'FILES-SHA256.txt',
             'LICENSE-Bingus.txt', 'PhotoCapture64.dll', 'standalone-library.txt'}
@@ -212,8 +213,9 @@ def _release_asset_closure(files, prefix, bsl, version):
     # The existing 40 decorative assets remain byte-identical. Each of the four
     # Photo additions must have a matching shader/material variant and registry.
     decorations = photo_assets.load_resources()
-    resolved_name = 'scene_dof_resolved_v2_'+('8a8fd1f00bd99bfa' if version=='0.9.5' else '76ff992884d03475')
-    resolved_sha = 'f5960f63e1247ac40af4bb37ccbd59ac26c9168aad9eb40936c082c9ddf40194' if version=='0.9.5' else '0ee49d87cc1250ab5582934fba8f925d33bf63cb2555651f1974a52dfa55c9b7'
+    shader_version = SHADER_RELEASES[version]
+    resolved_name = 'scene_dof_resolved_v2_'+('8a8fd1f00bd99bfa' if shader_version=='0.9.5' else '76ff992884d03475')
+    resolved_sha = 'f5960f63e1247ac40af4bb37ccbd59ac26c9168aad9eb40936c082c9ddf40194' if shader_version=='0.9.5' else '0ee49d87cc1250ab5582934fba8f925d33bf63cb2555651f1974a52dfa55c9b7'
     extra_names = ('dof_local_depth_v1', 'scene_depth_color_v1', 'scene_dof_combined_v1', resolved_name)
     expected_shaders = {row[0] for row in decorations if row[1] == photo_assets.SHADER}
     expected_materials = {row[0] for row in decorations if row[1] == photo_assets.MATERIAL}
@@ -331,6 +333,8 @@ def verify_current(path, version, standalone=False):
     for name in ('INSTALL.txt', 'KNOWN-ISSUES.md', 'RELEASE-NOTES.md', 'ASSET-MANIFEST.json'):
         assert metadata.get(name), 'Release metadata missing: '+name
     asset_manifest = json.loads(metadata['ASSET-MANIFEST.json'])
+    if version == '0.9.7':
+        assert asset_manifest['shader_asset_version'] == SHADER_RELEASES[version], 'Release must retain the frozen 0.9.6 shader assets'
     for key, expected in (('version', version), ('shader_libraries_core', 44), ('materials_shared', 44), ('registry_resources_core', 1), ('registry_ids', 319)):
         assert asset_manifest[key] == expected, 'Packaged asset manifest disagrees with resource closure: '+key
     assert asset_manifest['lighting_status'] == 'Not tested fully' and asset_manifest['photo_light']['external_dependencies'] == []
@@ -364,7 +368,7 @@ def verify(path, standalone=False):
         name = PREFIX+'manifest.json' if PREFIX+'manifest.json' in archive.namelist() else 'manifest.json'
         manifest = json.loads(archive.read(name))
     version = manifest.get('version') or manifest.get('Name', '').removeprefix('War Journalist ')
-    if version in ('0.9.5', '0.9.6'):
+    if version in SHADER_RELEASES:
         return verify_current(path, version, standalone)
     assert not standalone, '--standalone in this verifier requires a supported release package'
     return verify_legacy_stable(path)

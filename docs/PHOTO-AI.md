@@ -1,11 +1,11 @@
-# Director enemy behavior — 0.9.6
+# Director enemy behavior — 0.9.7
 
-The development source now embeds `freecam/ai_backend.lua` and
+The runtime embeds `freecam/ai_backend.lua` and
 `freecam/ai_control.lua` and adds **Enemy behavior** at the top of Director. Its stable
 setting ID is `ai_behavior` (1 Normal, 2 Passive, 3 Dummy); `ai_reset` explicitly
 resets it to Normal. `ai_status` reports the affected count, pending cleanup,
-or the reason it is unavailable. This is included in the 0.9.6 source;
-the existing public 0.9.5 ZIPs do not contain it.
+or the reason it is unavailable. This feature was developed in 0.9.6 and is
+included in 0.9.7; the earlier public 0.9.5 ZIPs do not contain it.
 
 The menu exposes **Normal**, **Passive**, and **Dummy**. The selected behavior
 continues after the menu and Photo Mode close, including bounded discovery of
@@ -66,18 +66,26 @@ A retired world
 invalidates old records; the chosen mode resumes only in a new validated
 authoritative mission context.
 
-Movement restoration resolves the enemy's own live Unit and AI descriptor,
-independently of any borrowed detector owner. Dummy can also renew its already
-owned movement bit through that narrow reader when the borrowed detector is
-temporarily unavailable. Detection/target suppression remains unavailable
-until its full component ownership is verified; the status reports that gap.
+Movement, target and alert fields resolve independently of any borrowed
+detector owner. If that owner is retired or cannot be validated, the backend
+uses this enemy's own independently validated detector when available; it
+never writes the stale owner's surviving row. Missing components leave the
+other validated controls usable and are reported as partial application,
+rather than claiming the enemy is fully affected. Dummy-to-Passive movement
+restoration keeps its lease for retry without blocking target suppression.
 
 The controller polls availability at most twice per second. The backend uses a monotonic
-wall clock independent of world time, discovers at most 256 map buckets per
-refresh, processes at most 16 enemies every 50ms, and tracks at most 1,024.
+wall clock independent of world time, discovers at most 256 map buckets every
+50ms, processes at most 16 known enemies per owning update, and tracks at most
+1,024. The known-enemy hold no longer waits for the discovery timer. Larger
+groups are revisited over multiple updates; this is not a claim that every
+enemy is processed every frame. A discovery failure delays new arrivals but
+keeps validating and holding known enemies; the status reports the pending
+discovery retry. Context or authority failure still stops ordinary writes.
 Unusable records without owned changes are discarded for later discovery;
 they cannot permanently consume the tracking slots. A full registry is shown
-in the status. Detector cleanup has its own bounded 16-owner sweep.
+in the status. Detector cleanup has its own bounded 16-owner sweep at the
+discovery cadence; its owner list is not rebuilt between sweeps.
 Discovery and processing therefore span multiple refreshes in large scenes.
 Writes happen only when a field differs; there is no global frame hook,
 background task, or every-frame whole-world enumeration in these modules.
@@ -133,6 +141,15 @@ that the selected behavior persists after leaving Photo Mode and that Reset
 restores normal behavior. The live selector exposes Normal, Passive, and Dummy.
 New-enemy discovery has bounded-refresh fixture coverage; the live acceptance
 does not establish every enemy type, mission, or transition.
+
+On October 13, the mission trace identified live enemies whose Behavior row
+still named a retired detector owner despite having a valid detector of their
+own. After the fallback and independent-field correction, David confirmed
+**"Dummy and Passive both work"** (live handoff batch 359). Fixtures cover the
+stale borrowed row remaining untouched, own-detector fallback, missing or
+unreadable optional components, independent failed writes, and restoration.
+The subsequent discovery-failure continuation and sweep-allocation change
+have offline fixture coverage; they were not part of that live confirmation.
 
 The earlier combined development candidate was
 `dist/releases/War-Journalist-0.9.5-persistent-ai-dev`; BSL, MDL and LLL each
