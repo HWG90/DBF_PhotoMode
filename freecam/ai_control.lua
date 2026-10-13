@@ -3,9 +3,15 @@ local M={modes={'normal','passive','dummy'},maximum=1024,interval=.05,batch=16}
 local bit=require('bit')
 local function count(t)local n=0;for _ in pairs(t)do n=n+1 end;return n end
 function M.new(backend,log)
- local self={mode='normal',status='Enemy behavior: Normal',available=false,pending=false,affected=0};local requested;local context;local held={};local detectors={};local cursor=0;local next_refresh=0;local round=0;local detector_round=0
+ local self={mode='normal',status='Enemy behavior: Normal',available=false,pending=false,affected=0,solo_reset=0};local requested;local context;local held={};local detectors={};local cursor=0;local next_refresh=0;local round=0;local detector_round=0
  local function fail(why)self.status=tostring(why);return false,self.status end
- local function get_context()local ok,value,why=pcall(backend.context);if not ok then return nil,tostring(value)end;return value,why end
+ local function get_context(cleanup)
+  local ok,value,why,policy=pcall(cleanup and(backend.restore_context or backend.context)or backend.context)
+  if not ok then return nil,tostring(value),'transient_context'end
+  if value~=nil and type(value)~='table'then return nil,'Solo session context unavailable','unknown_session'end
+  if value and not cleanup and(value.solo~=true or value.player_count~=1)then return nil,'Enemy behavior requires a verified solo player count','unknown_session'end
+  return value,why,policy
+ end
  function self.ready()
   local value,why=get_context();self.available=value~=nil
   return self.available,why,{normal=true,passive=self.available,dummy=self.available}
@@ -25,12 +31,30 @@ function M.new(backend,log)
   local r,why=detector_record(lease);if not r then return why=='retired',why end
   local field=r.fields.detector
   if field.value~=lease.applied or field.value==lease.baseline then return true end
-  local ok,done,err=pcall(backend.write,context,r,'detector',lease.baseline,field.value)
+  local ok,done,err=pcall(backend.restore or backend.write,context,r,'detector',lease.baseline,field.value)
   if not ok or done==false then return false,tostring(ok and err or done)end
   return true
  end
+ local function reassert_movement(e,h)
+  local lease=h.leases.still
+  if self.mode~='dummy'or not(lease and lease.owned and backend.observe_restore)then return end
+  local called,r=pcall(backend.observe_restore,context,e)
+  if not called or not r or r.identity~=h.identity then return end
+  local field=r.fields and r.fields.still
+  if not field or field.token~=lease.token then return end
+  local value=bit.bor(field.value,0x80)%4294967296
+  if value~=field.value then
+   -- Only renew our existing movement lease. Detector/target failures do not
+   -- justify touching a different component or acquiring a new ownership record.
+   pcall(backend.write,context,r,'still',value,field.value)
+  end
+ end
  local function restore(e,h)
-  local r,why=observe(e);if not r then if why=='retired'then return true end;return false,why end
+  local function own_record()
+   local ok,r,why=pcall(backend.observe_restore or backend.observe,context,e)
+   if not ok then return nil,tostring(r)end;return r,why
+  end
+  local r,why=own_record();if not r then if why=='retired'then return true end;return false,why end
   if r.identity~=h.identity then return true end
   for key,lease in pairs(h.leases)do
    local field=r.fields[key]
@@ -39,9 +63,9 @@ function M.new(backend,log)
     if current==lease.applied then
      local value=key=='still'and bit.bor(bit.band(field.value,bit.bnot(0x80)),lease.baseline)%4294967296 or lease.baseline
      if value~=field.value then
-      local ok,done,err=pcall(backend.write,context,r,key,value,field.value)
+      local ok,done,err=pcall(backend.restore or backend.write,context,r,key,value,field.value)
       if not ok or done==false then return false,tostring(ok and err or done)end
-      local fresh,why=observe(e);if not fresh then return why=='retired',why end
+      local fresh,why=own_record();if not fresh then return why=='retired',why end
       if fresh.identity~=h.identity then return true end;r=fresh
      end
     end
@@ -52,9 +76,10 @@ function M.new(backend,log)
  end
  local function release_all(reason)
   if next(held)==nil and next(detectors)==nil then context=nil;self.affected=0;self.status=reason or'Enemy behavior: Normal';return true end
-  local current,why=get_context()
+  local current,why=get_context(true)
   if not current then return fail('Enemy cleanup waiting for authority: '..tostring(why))end
   if context and current.identity~=context.identity then held={};detectors={};context=nil;self.affected=0;self.status='Enemy scene retired';return true end
+  context=current
   local pending_error
   for e,h in pairs(held)do local ok,err=restore(e,h);if ok then held[e]=nil else pending_error=err end end
   for key,lease in pairs(detectors)do local ok,err=restore_detector(lease);if ok then detectors[key]=nil else pending_error=err end end
@@ -112,7 +137,15 @@ function M.new(backend,log)
   local now=backend.now();if now<next_refresh and not self.pending then return true end;next_refresh=now+M.interval
   if requested then self.mode=requested;requested=nil;self.pending=false end
   if self.mode=='normal'then return release_all()end
-  local current,why=get_context();if not current then self.available=false;return fail('Enemy behavior unavailable: '..tostring(why))end
+  local current,why,policy=get_context()
+  if not current then
+   self.available=false
+   if policy=='not_solo'or policy=='unknown_session'then
+    requested=nil;self.mode='normal';self.pending=false;self.solo_reset=self.solo_reset+1
+    return release_all('Enemy behavior reset to Normal: '..tostring(why))
+   end
+   return fail('Enemy behavior unavailable: '..tostring(why))
+  end
   self.available=true
   if context and current.identity~=context.identity then held={};detectors={};cursor=0;round=0;detector_round=0 end
   context=current
@@ -129,7 +162,7 @@ function M.new(backend,log)
     if not r then
      -- Unusable, untouched records must not crowd out new live enemies. The
      -- rolling discovery scan can retry them without retaining a cleanup lease.
-     if err=='retired'or next(h.leases)==nil then held[e]=nil else h.error=err;h.applied=false end
+     if err=='retired'or next(h.leases)==nil then held[e]=nil else h.error=err;h.applied=false;reassert_movement(e,h)end
     else
      if h.identity~=r.identity then h={identity=r.identity,leases={}};held[e]=h end
      local ok,why=apply(e,h,r);h.error=not ok and why or nil;h.applied=ok

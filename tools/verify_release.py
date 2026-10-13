@@ -1,4 +1,4 @@
-"""Verify immutable War Journalist releases (0.9.5 BSL/MDL/LLL and legacy gates)."""
+"""Verify immutable War Journalist releases (0.9.5/0.9.6 and legacy gates)."""
 import argparse
 from collections import Counter
 from datetime import datetime, timezone
@@ -190,7 +190,7 @@ def _release_files(source):
     return files
 
 
-def _release_asset_closure(files, prefix, bsl):
+def _release_asset_closure(files, prefix, bsl, version):
     import photo_assets
     import lua_archive
     import photo_light_assets
@@ -212,7 +212,9 @@ def _release_asset_closure(files, prefix, bsl):
     # The existing 40 decorative assets remain byte-identical. Each of the four
     # Photo additions must have a matching shader/material variant and registry.
     decorations = photo_assets.load_resources()
-    extra_names = ('dof_local_depth_v1', 'scene_depth_color_v1', 'scene_dof_combined_v1', 'scene_dof_resolved_v2_8a8fd1f00bd99bfa')
+    resolved_name = 'scene_dof_resolved_v2_'+('8a8fd1f00bd99bfa' if version=='0.9.5' else '76ff992884d03475')
+    resolved_sha = 'f5960f63e1247ac40af4bb37ccbd59ac26c9168aad9eb40936c082c9ddf40194' if version=='0.9.5' else '0ee49d87cc1250ab5582934fba8f925d33bf63cb2555651f1974a52dfa55c9b7'
+    extra_names = ('dof_local_depth_v1', 'scene_depth_color_v1', 'scene_dof_combined_v1', resolved_name)
     expected_shaders = {row[0] for row in decorations if row[1] == photo_assets.SHADER}
     expected_materials = {row[0] for row in decorations if row[1] == photo_assets.MATERIAL}
     expected_shaders.update(photo_assets.hash64('mods/dbf_photo/shaders/'+name) for name in extra_names)
@@ -220,8 +222,8 @@ def _release_asset_closure(files, prefix, bsl):
     shaders = {row[0]: row for row in core if row[1] == photo_assets.SHADER}
     materials = {row[0]: row for row in shared if row[1] == photo_assets.MATERIAL}
     assert set(shaders) == expected_shaders and set(materials) == expected_materials, 'Shader/material identity closure differs'
-    resolved = shaders[photo_assets.hash64('mods/dbf_photo/shaders/scene_dof_resolved_v2_8a8fd1f00bd99bfa')]
-    assert hashlib.sha256(resolved[3]).hexdigest() == 'f5960f63e1247ac40af4bb37ccbd59ac26c9168aad9eb40936c082c9ddf40194', 'Accepted compositor bytes changed'
+    resolved = shaders[photo_assets.hash64('mods/dbf_photo/shaders/'+resolved_name)]
+    assert hashlib.sha256(resolved[3]).hexdigest() == resolved_sha, 'Versioned compositor bytes changed'
     indexed = {row[:2]: row for row in core+shared}
     for row in decorations:
         assert indexed[row[:2]] == row, 'Existing decorative asset changed'
@@ -252,16 +254,16 @@ def _release_asset_closure(files, prefix, bsl):
             'registry_sha256': hashlib.sha256(group[2]).hexdigest()}, startup
 
 
-def verify_095(path, standalone=False):
+def verify_current(path, version, standalone=False):
     import photo_assets
     from test_packaged_standalone import pe_imports
     files = _release_files(path)
     bsl = 'Addon/9ba626afa44a3aa3.patch_0' in files
-    audit, startup = _release_asset_closure(files, 'Addon/' if bsl else 'GameData/', bsl)
+    audit, startup = _release_asset_closure(files, 'Addon/' if bsl else 'GameData/', bsl, version)
     if bsl:
         loader = 'BSL'
         manifest = json.loads(files['manifest.json'])
-        assert manifest['Version'] == 1 and manifest['Name'] == 'War Journalist 0.9.5'
+        assert manifest['Version'] == 1 and manifest['Name'] == 'War Journalist '+version
         assert manifest['Options'][0]['Include'] == ['Addon'] and 'Bingus Shared Loader' in manifest['Description']
         runtime = embedded_payload(startup)
         assert 'DBF_PHOTO_MODE_OWNER' in startup and 'DBF_PHOTO_PACKAGE_ROOT' in startup
@@ -271,7 +273,7 @@ def verify_095(path, standalone=False):
         runtime = {name.removeprefix(PREFIX): body for name, body in files.items() if name.startswith(PREFIX)}
         metadata = runtime
         manifest = json.loads(runtime['manifest.json'])
-        assert manifest['id'] == 'dbf_freecam' and manifest['name'] == 'War Journalist' and manifest['version'] == '0.9.5'
+        assert manifest['id'] == 'dbf_freecam' and manifest['name'] == 'War Journalist' and manifest['version'] == version
         loader = 'LLL' if 'main.lua' in runtime else 'MDL'
         if loader == 'LLL':
             policy = manifest['lll']
@@ -289,9 +291,9 @@ def verify_095(path, standalone=False):
             assert not any(name.lower().endswith(('.zip', '.7z', '.rar', '.tar', '.gz', '.cab')) or zipfile.is_zipfile(io.BytesIO(body)) for name, body in files.items()), 'Nested archive in MDL package'
             assert b'Import this complete MDL ZIP into Arsenal' in files['INSTALL.txt'], 'Flat MDL install instructions missing'
         else:
-            asset_zip = files['Arsenal/War-Journalist-0.9.5-Assets.zip']
+            asset_zip = files['Arsenal/War-Journalist-'+version+'-Assets.zip']
             nested = _release_files(io.BytesIO(asset_zip))
-            nested_audit, _ = _release_asset_closure(nested, 'Assets/', False)
+            nested_audit, _ = _release_asset_closure(nested, 'Assets/', False, version)
             assert nested_audit == audit, 'Arsenal companion asset closure differs'
             for name, body in files.items():
                 if name.startswith('GameData/'):
@@ -329,7 +331,7 @@ def verify_095(path, standalone=False):
     for name in ('INSTALL.txt', 'KNOWN-ISSUES.md', 'RELEASE-NOTES.md', 'ASSET-MANIFEST.json'):
         assert metadata.get(name), 'Release metadata missing: '+name
     asset_manifest = json.loads(metadata['ASSET-MANIFEST.json'])
-    for key, expected in (('version', '0.9.5'), ('shader_libraries_core', 44), ('materials_shared', 44), ('registry_resources_core', 1), ('registry_ids', 319)):
+    for key, expected in (('version', version), ('shader_libraries_core', 44), ('materials_shared', 44), ('registry_resources_core', 1), ('registry_ids', 319)):
         assert asset_manifest[key] == expected, 'Packaged asset manifest disagrees with resource closure: '+key
     assert asset_manifest['lighting_status'] == 'Not tested fully' and asset_manifest['photo_light']['external_dependencies'] == []
     docs = b'\n'.join(metadata.get(name, b'') for name in ('INSTALL.txt', 'KNOWN-ISSUES.md', 'RELEASE-NOTES.md')).decode()
@@ -345,7 +347,7 @@ def verify_095(path, standalone=False):
         assert artwork[prefix+'README.md']
         for entry in source_manifest['entries']:
             assert hashlib.sha256(artwork[prefix+entry['file']]).hexdigest() == entry['sha256'], 'Missing/changed credited logo original'
-    result = {'version': '0.9.5', 'format': loader, 'passed': True, 'checked_at_utc': datetime.now(timezone.utc).isoformat(),
+    result = {'version': version, 'format': loader, 'passed': True, 'checked_at_utc': datetime.now(timezone.utc).isoformat(),
               'archive': path.name, 'archive_sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
               'files': len(files), 'private_payload_files': len(runtime), 'asset_audit': audit, 'native_imports': imports,
               'game_process_accessed': False, 'standalone_executed': bool(standalone),
@@ -361,9 +363,10 @@ def verify(path, standalone=False):
     with zipfile.ZipFile(path) as archive:
         name = PREFIX+'manifest.json' if PREFIX+'manifest.json' in archive.namelist() else 'manifest.json'
         manifest = json.loads(archive.read(name))
-    if manifest.get('version') == '0.9.5' or manifest.get('Name') == 'War Journalist 0.9.5':
-        return verify_095(path, standalone)
-    assert not standalone, '--standalone in this verifier requires a 0.9.5 package'
+    version = manifest.get('version') or manifest.get('Name', '').removeprefix('War Journalist ')
+    if version in ('0.9.5', '0.9.6'):
+        return verify_current(path, version, standalone)
+    assert not standalone, '--standalone in this verifier requires a supported release package'
     return verify_legacy_stable(path)
 
 

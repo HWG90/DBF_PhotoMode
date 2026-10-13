@@ -192,6 +192,44 @@ assert(manager.flush(a,camera)and manager.count()==1);assert(manager.close('load
 assert(manager.tick(a,camera));assert(manager.create({}));assert(manager.release('photo mode exited'));main=b;worlds={a,b}
 assert(manager.flush(nil,nil)and not manager.saved_setup());assert(manager.flush(b,camera)and manager.count()==0,'Different live world reused retained setup');main=a
 assert(manager.tick(a,camera));assert(manager.create({}));assert(manager.release('photo mode exited'));assert(manager.clear());assert(manager.flush(a,camera)and manager.count()==0,'Explicit clear while suspended left retained definitions')
+-- Marker drags queue one absolute-world edit; aiming rebuilds an orthonormal
+-- facing basis and leaves light movement independent of the camera afterward.
+assert(manager.create({kind='spot',right=2,forward=3,up=4,follow_camera=true}));local move_id=manager.list()[1].id;local moving=units[next_id]
+assert(manager.markers()[1].index==1 and manager.list()[1].position[1]==12)
+before=#writes
+for i=1,50 do assert(manager.queue('move',{id=move_id,position={40+i,50,60},aim={90,55,60}}))end
+assert(#writes==before,'Gizmo drag wrote from render');assert(manager.flush(a,camera));assert(moving.pos[1]==90 and moving.pos[2]==50 and moving.rot.forward[2]==1)
+assert(not manager.selected().follow_camera and manager.selected().right==0 and manager.selected().forward==0,'World drag retained camera offsets/follow')
+assert(manager.queue('aim',{id=move_id,target={90,50,70}}));assert(manager.flush(a,camera));assert(math.abs(moving.rot.forward[3]-1)<1e-9,'Vertical subject aim failed')
+before=#writes;assert(not manager.move({id=move_id,position={0/0,0,0}}));assert(not manager.aim({id=move_id,target={90,50,60}}));assert(#writes==before,'Invalid/coincident aim changed the light')
+fail_intensity_once=true;assert(not manager.move({id=move_id,position={1,2,3},aim={2,2,3}}));assert(moving.pos[1]==90 and moving.pos[3]==60 and moving.rot.forward[3]==1,'Failed move did not roll back placement')
+local function same(x,y)
+ if type(x)~=type(y)then return false end;if type(x)~='table'then return x==y end
+ for k,v in pairs(x)do if not same(v,y[k])then return false end end;for k in pairs(y)do if x[k]==nil then return false end end;return true
+end
+local subject={10,25,30};local spawn_api=sr.World.spawn_unit
+sr.World.spawn_unit=function(...)assert(manager.count()<M.maximum,'Setup exceeded three owned units');return spawn_api(...)end
+before=next_id;assert(manager.queue('preset',{name='key_fill_rim',target=subject,frame=camera,distance=3}));assert(next_id==before)
+assert(manager.flush(a,camera));assert(manager.count()==3)
+for _,light in ipairs(manager.list())do
+ local dx,dy,dz=subject[1]-light.position[1],subject[2]-light.position[2],subject[3]-light.position[3];local distance=math.sqrt(dx*dx+dy*dy+dz*dz)
+ assert(math.abs(light.forward[1]-dx/distance)<1e-8 and math.abs(light.forward[2]-dy/distance)<1e-8 and math.abs(light.forward[3]-dz/distance)<1e-8,'Preset spot missed the subject')
+end
+local exported=manager.export_setup();exported.definitions[1].anchor.position[1]=999;assert(manager.export_setup().definitions[1].anchor.position[1]~=999,'Export leaked mutable anchors')
+local original_setup=manager.export_setup();fail_intensity_once=true
+assert(not manager.preset({name='portrait',target={20,30,40},frame=camera}));assert(same(original_setup,manager.export_setup())and not manager.pending,'Preset failure lost the original setup')
+before=#writes;assert(not manager.preset({name='bad',target=subject}));assert(not manager.preset({name='portrait',target=subject,distance=0/0}));assert(#writes==before,'Invalid setup began a replacement')
+local cone_end=sr.Light.set_spot_angle_end;sr.Light.set_spot_angle_end=nil
+assert(not manager.preset({name='portrait',target=subject})and same(original_setup,manager.export_setup()),'Unsupported spots replaced existing lights');sr.Light.set_spot_angle_end=cone_end
+assert(manager.preset({name='dramatic_side',target=subject,frame=camera}));assert(manager.count()==2)
+assert(manager.release('photo mode exited'));assert(manager.flush(a,moved));assert(manager.count()==2,'Preset did not survive same-scene Photo exit')
+assert(manager.clear());assert(manager.tick(a,camera));assert(manager.create({intensity=7}));original_setup=manager.export_setup()
+local original_light=sr.Unit.light;local failed_unit=next_id+1
+sr.Unit.light=function(unit,index)if unit.id==failed_unit then error('new light component unavailable')end;return original_light(unit,index)end
+fail_destroy=true;assert(not manager.preset({name='portrait',target=subject,frame=camera}));assert(manager.pending and manager.count()==2 and same(original_setup,manager.export_setup()),'Partial preset lost retry ownership or original setup')
+fail_destroy=false;sr.Unit.light=original_light
+assert(not manager.flush(a,camera));assert(not manager.pending and manager.count()==1 and same(original_setup,manager.export_setup()),'Preset rollback did not finish owned cleanup')
+assert(manager.flush(a,camera));assert(manager.clear());sr.World.spawn_unit=spawn_api
 local options=dofile(root..'photo_options.lua');local controller_factory=dofile(root..'controller.lua')
 local previous_api=DBFMCM;local values={};local controls={};local open=false;local owned=false
 local api={camera_input={down=function()return false end,focused=function()return true end,

@@ -41,6 +41,8 @@ assert(handle.get('dof_mode')==1,'Native camera should be the default method')
 handle.set('dof_mode',2);frame()
 assert(handle.get('focus_distance')==5 and math.abs(handle.get('aperture')-5.6)<1e-7 and handle.get('dof')==false)
 local controls=api.mods.dbf_freecam.controls
+assert(handle.get('dof_strength')==4 and controls.dof_strength.min==1 and controls.dof_strength.max==8 and controls.dof_strength.step==.25 and not controls.dof_strength.disabled,'Shader blur strength bounds/default or availability wrong')
+handle.set('dof_strength',5.25);frame();assert(photo.options.dof_strength==5.25,'Stored blur strength did not reach photo options')
 assert(controls.focus_distance.step==.01 and controls.focus_distance.fine_step==.001,'Focus must offer centimetre steps and millimetre fine adjustment')
 for _,control in pairs(controls)do if control.type=='slider'then assert(control.commit_on_blur==true,'Photo numeric controls must opt into commit on leaving the field')end end
 assert(not controls.focus_distance.disabled and not controls.aperture.disabled,'Registered off-state must allow lens edits')
@@ -57,6 +59,8 @@ handle.set('dof_quality',2);handle.set('bokeh_shape',2);frame()
 assert(uniforms.atlas_scissor[3]==6 and uniforms.atlas_scissor[4]==1,'Stored quality and aperture shape must reach the shader material')
 assert(not pcall(handle.set,'aperture',0),'Native core must reject invalid f-stop values')
 handle.set('dof',false);frame();assert(runtime.custom_dof_ready and native.dof==0)
+handle.set('dof_mode',1);frame();assert(controls.dof_strength.disabled and controls.dof_quality.disabled and controls.bokeh_shape.disabled,'Native mode exposed shader-only controls')
+handle.set('dof_mode',2);frame();assert(handle.get('dof_strength')==5.25 and not controls.dof_strength.disabled,'Changing method lost shader strength')
 assert(controller.close()and native.dof==1 and native.bloom==0,'Stopping must restore original native flags')
 DBFMCM=nil;DBF_PHOTO_RENDER_PROFILE=nil
 print('Candidate controls: actual private core settings -> controller options -> DoF uniforms; focus/aperture visible together; off-state editing, bounds and native restore passed')

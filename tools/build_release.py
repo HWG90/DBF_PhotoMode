@@ -1,4 +1,4 @@
-"""Build all self-contained War Journalist 0.9.5 loader packages; never installs."""
+"""Build self-contained War Journalist loader packages from VERSION; never installs."""
 import argparse
 from datetime import datetime, timezone
 import hashlib
@@ -17,15 +17,17 @@ import dof_assets
 import photo_assets
 import photo_light_assets
 
-VERSION='0.9.5'
-SNAPSHOTS=ROOT/'freecam/assets/shaders/release-0.9.5'
+VERSION=(ROOT/'VERSION').read_text().strip()
+ASSET_VERSION='0.9.6' # Frozen runtime-compatible candidate; 0.9.5 remains immutable.
+SNAPSHOTS=ROOT/('freecam/assets/shaders/release-'+ASSET_VERSION)
 APPROVED_GPU='f5960f63e1247ac40af4bb37ccbd59ac26c9168aad9eb40936c082c9ddf40194'
+CINEMATIC_GPU='0ee49d87cc1250ab5582934fba8f925d33bf63cb2555651f1974a52dfa55c9b7'
 BASE_REVIEW_SHA='be8b821b545a8146d8c340aa552a3c6dc02b70c39376d3e8bc9e054391ebc866'
 BASE_REVIEW=ROOT/'dist/releases/photo-scene-depth-review/War-Journalist-Scene-Depth-Candidate-Assets.zip'
 ACTIVE_MODULES=('animation_state.lua','chat_context.lua','look.lua','simulation.lua','simulation_backend.lua',
     'photo_options.lua','lens.lua','composition.lua','postfx.lua','photo_runtime.lua','hud.lua','render_profile.lua',
     'camera_profile.lua','photo_menu.lua','control_legend.lua','screenshot.lua','screenshot_backend.lua',
-    'depth_resource.lua','focus_sampler.lua','photo_lights.lua','subject_backend.lua','subject.lua','director.lua','ai_backend.lua','ai_control.lua',
+    'depth_resource.lua','focus_sampler.lua','photo_lights.lua','photo_light_gizmos.lua','photo_light_presets.lua','subject_backend.lua','subject.lua','subject_poses.lua','director.lua','ai_backend.lua','ai_control.lua',
     'saved_camera.lua','controller.lua','input_release.lua','input_release_backend.lua','hover_pause.lua',
     'hover_pause_backend.lua','scene_dof_overlay.lua','shader_template_guard.lua','standalone.lua',
     'bsl_startup.lua','mdl.lua','lll.lua','assets/logo_art.lua','assets/helldiver_crest.lua')
@@ -39,13 +41,14 @@ def row_identity(rows):
 
 def promote_snapshots():
     """Explicit, reversible promotion of approved bytes; compilation is unnecessary."""
+    assert ASSET_VERSION=='0.9.5','Use the versioned cinematic builder and reviewed 0.9.6 snapshot; never overwrite accepted 0.9.5'
     core,shared,_=build_preview.resources(None)
     assert sha(BASE_REVIEW.read_bytes())==BASE_REVIEW_SHA,'Reference base ZIP changed'
     with zipfile.ZipFile(BASE_REVIEW)as z:
         for archive,rows in [('ee6b1ba7e22d71ed',core),('9ba626afa44a3aa3',shared)]:
             path='Assets/'+archive+'.patch_0'
             assert sorted(photo_assets.read_archive(z.read(path),z.read(path+'.gpu_resources')))==sorted(rows),'Base source assets differ from retained preview'
-    manifest={'version':VERSION,'base_core_rows_sha256':row_identity(core),'base_shared_rows_sha256':row_identity(shared),
+    manifest={'version':ASSET_VERSION,'base_core_rows_sha256':row_identity(core),'base_shared_rows_sha256':row_identity(shared),
               'base_reference_zip_sha256':BASE_REVIEW_SHA,'pairs':[]}
     for label,folder in [('resolved',ROOT/'dist/releases/photo-resolved-compositor-v2-review'),('legacy',ROOT/'dist/releases/photo-combined-scene-dof-hdr1-guarded')]:
         info=json.loads((folder/'BUILD-RECEIPT.json').read_text())
@@ -81,9 +84,14 @@ def resources(output=None):
         assert sid not in ids and len(material)==144 and struct.unpack_from('<I',material,128)[0]==sid>>32
         assert pair['native_vertex_byte_identity']and pair['native_parameter_and_binding_abi_preserved']
         if label=='resolved':
-            assert sha(gpu)==APPROVED_GPU==approved['shader_gpu_sha256']and approved['user_accepted_colors']
+            assert APPROVED_GPU==approved['shader_gpu_sha256']and approved['user_accepted_colors']
+            assert sha(gpu)==CINEMATIC_GPU,'Cinematic candidate bytes changed'
+            baseline=(ROOT/'freecam/assets/shaders/release-0.9.5/resolved.hlsl').read_text()
+            current=bodies[label+'.hlsl'].decode()
+            assert current[current.index('float3 decode_resolved'):current.index('float radius')]==baseline[baseline.index('float3 decode_resolved'):baseline.index('float radius')],'Accepted color decoder/encoder changed'
+            assert current[current.index(' float3 working='):]==baseline[baseline.index(' float3 working='):],'Accepted scene-effect color processing changed'
             assert "M.shader='"+pair['shader']+"'"in overlay and "M.material='"+pair['material']+"'"in overlay and "M.color_target='output_target'"in overlay
-            assert (ROOT/'freecam/assets/shaders/scene_dof_resolved_v2.hlsl').read_bytes().replace(b'\r\n',b'\n')==bodies[label+'.hlsl'].replace(b'\r\n',b'\n'),'Current approved HLSL differs from frozen source'
+            assert (ROOT/'freecam/assets/shaders/scene_dof_cinematic_v1.hlsl').read_bytes().replace(b'\r\n',b'\n')==bodies[label+'.hlsl'].replace(b'\r\n',b'\n'),'Cinematic HLSL differs from frozen source'
         ids.append(sid);core.append((sid,photo_assets.SHADER,struct.pack('<I',4),gpu));shared.append((photo_assets.hash64(pair['material']),photo_assets.MATERIAL,material,b''))
     registry=bytearray(group[2][:24]);struct.pack_into('<I',registry,16,len(ids));registry+=struct.pack('<%dQ'%len(ids),*ids)
     core=[(row[0],row[1],bytes(registry),row[3])if row[1]==photo_assets.GROUP else row for row in core]
@@ -94,7 +102,7 @@ def resources(output=None):
     cpu,gpu=photo_assets.archive_rows(shared)
     audit={'version':VERSION,'shader_libraries_core':44,'materials_shared':44,'registry_resources_core':1,'registry_ids':319,'decorative_pairs':40,
            'base_core_rows_sha256':manifest['base_core_rows_sha256'],'base_shared_rows_sha256':manifest['base_shared_rows_sha256'],
-           'resolved_gpu_sha256':APPROVED_GPU,'resolved_hdr_colors_user_accepted':True,'resolved_verification':approved,
+           'resolved_gpu_sha256':CINEMATIC_GPU,'resolved_hdr_colors_user_accepted':False,'accepted_color_math_preserved':True,'baseline_resolved_verification':approved,
            'legacy_combined_retained':True,'native_numeric_dof_enabled':True,'lighting_status':photo_light_assets.TESTING_STATUS,
            'photo_light':photo_light_assets.validate_bundled_archive(cpu,gpu),'frozen_shader_manifest_sha256':sha((SNAPSHOTS/'manifest.json').read_bytes()),
            'installation_performed':False,'release_runtime_live_verified':False}
@@ -195,7 +203,7 @@ def build(output):
     print(json.dumps({'output':str(output),**receipt},indent=2));return paths
 
 if __name__=='__main__':
-    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--output',type=Path,default=ROOT/'dist/releases/photo-0.9.5')
+    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--output',type=Path,default=ROOT/'dist/releases'/('War-Journalist-'+VERSION))
     parser.add_argument('--promote-assets',action='store_true',help='Promote the explicitly approved retained compositor snapshots once')
     args=parser.parse_args()
     if args.promote_assets:promote_snapshots()

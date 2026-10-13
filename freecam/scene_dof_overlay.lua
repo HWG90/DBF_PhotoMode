@@ -1,8 +1,8 @@
 -- Private combined candidate. output_target is native graded PQ in HDR/SDR;
 -- color; GUI composition uses its actual UI white. Visual proof is still needed.
 local M={}
-M.shader='mods/dbf_photo/shaders/scene_dof_resolved_v2_8a8fd1f00bd99bfa'
-M.material='mods/dbf_photo/materials/scene_dof_resolved_v2_8a8fd1f00bd99bfa'
+M.shader='mods/dbf_photo/shaders/scene_dof_resolved_v2_76ff992884d03475'
+M.material='mods/dbf_photo/materials/scene_dof_resolved_v2_76ff992884d03475'
 M.layer=88
 M.combined_scene_dof_candidate=true
 M.color_target='output_target'
@@ -105,7 +105,7 @@ function M.uniforms(o,fov,ui_white)
  local shader=o.dof==true and o.dof_mode==2
  return {
   active=scene or shader,scene_active=scene,shader_dof_active=shader,
-  scissor={number(o.focus_distance,5,.1,200),number(o.aperture,5.6,1.2,22),number(fov,.9,.02,2.9),shader and 24 or 0},
+  scissor={number(o.focus_distance,5,.1,200),number(o.aperture,5.6,1.2,22),number(fov,.9,.02,2.9),shader and 24*number(o.dof_strength,4,1,8)or 0},
   atlas={number(o.scene_depth_range,100,1,200),number(o.fog_density,50,0,100)/100+(o.depth_calibration==true and 1000 or 0),o.bokeh_shape==2 and 6 or 0,o.dof_quality==2 and 1 or 0},
   clip={exposure,contrast,saturation,number(ui_white,203,.01,10000)},
   mode=mode,strength=strength,fog_distance=number(o.fog_distance,25,.1,200),

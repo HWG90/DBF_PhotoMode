@@ -1,25 +1,33 @@
 ![War Journalist](docs/artwork/war-journalist-cover.png)
 
-# War Journalist 0.9.5
+# War Journalist 0.9.6
 
 A Photo Mode for Helldivers 2: free camera, a compact movable studio menu,
 Native and shader depth of field, autofocus, color grading, scene effects,
-photo lighting, Director camera presets, subject visibility and PNG capture.
+photo lighting, Director camera presets and enemy behavior controls,
+subject visibility and PNG capture.
 
 [Download on Nexus](https://www.nexusmods.com/helldivers2/mods/17248?tab=files) ·
-[GitHub downloads](https://github.com/HWG90/DBF_PhotoMode/releases/tag/v0.9.5) ·
-[Full 0.9.5 changelog](docs/RELEASE-0.9.5.md)
+[Published GitHub downloads (0.9.5)](https://github.com/HWG90/DBF_PhotoMode/releases/tag/v0.9.5) ·
+[Full 0.9.6 changelog](docs/RELEASE-0.9.6.md)
+
+This source is 0.9.6; the published download above is still 0.9.5.
 
 ## What's new
 
-- **Native focus and aperture**, with current-camera discovery and lifecycle guards.
-- **Double-click focus and center autofocus**, lens presets and fine focus adjustment.
-- **Full-resolution compositor**: scene color/depth effects and shader bokeh work together.
-- **Movable, resizable menu** that remembers its position, contextual docked controls, and precise Shift scrubbing.
-- **Director**: five saved camera angles/positions relative to the player.
-- **Photo lights**: up to three point/spot lights, placement indicators, colors, power and range controls. The new mission light asset fix is **Not tested fully**.
-- **Subject visibility**, a rebindable screenshot key (Pause by default), and curated Helldivers/Super Earth logos.
-- Fixes for screenshot color channels/HDR conversion, menu reopening, chat keybind conflicts, missing animation graphs, camera instances and the reported hoverpack/melee pause crash.
+- **Solo Director enemy behavior:** Normal, Passive, and Dummy, plus Reset to Normal. The chosen mode continues after Photo Mode closes and applies to newly discovered enemies; game restart returns to Normal. Joining players cancel the mode and restore owned changes. Persistence and Reset were confirmed live.
+- **Light placement tools:** numbered scene indicators, draggable lights with Shift precision, subject-focused portrait/three-point/side rigs, and five lighting setups saved across restarts.
+- **Retained lighting setup:** reopening Photo Mode restores your lights at their previous placements within the same scene. Explicit saved setup slots can also be recalled after restarting.
+- **Stronger shader DoF:** 1x–8x blur strength, 4x by default, with more samples and the accepted color conversion retained.
+- **Subject poses:** Salute, Wave, and Taunt, with guarded play/stop controls. Victory poses still need verified event mappings.
+- **Color editing:** explicit Apply, with a live color swatch and HEX value visible while adjusting RGB.
+- **Subject hiding:** nested equipment is included, fixing the reported floating parts.
+- **Cleanup guards:** menu-close failures still allow other cleanup, and GUI teardown checks world lifetime. HDR/SDR and other display-setting crashes remain unresolved.
+
+Native/shader DoF, autofocus, the combined compositor, three photo lights,
+five Director camera presets, saved menu geometry, fine Shift scrubbing,
+screenshots, and curated logos remain included. See the
+[0.9.5 notes](docs/RELEASE-0.9.5.md) for those features and their test scope.
 
 ## Install
 
@@ -47,7 +55,8 @@ sliders for finer adjustment. Typed values commit when clicking away.
 All key bindings are configurable; existing bindings are retained.
 
 Native DoF is the quality baseline. Shader DoF offers round/hex bokeh and
-32/64-sample quality. Scene effects and grading can layer with shader DoF.
+64/128-sample quality above 1x strength (32/64 at 1x). Scene effects and grading
+can layer with shader DoF. The stronger shader still needs live acceptance.
 The compositor's HDR tint/exposure correction was visually accepted;
 SDR compositor parity and all effect combinations are not fully validated.
 Pause/slow motion are solo-only. See [known issues](docs/KNOWN-ISSUES.md).

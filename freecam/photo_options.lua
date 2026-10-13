@@ -1,13 +1,15 @@
 -- Stored photo controls; existing movement and toggle ids remain stable.
 local M={}
-M.defaults={fov=0,focal_preset=1,roll=0,roll_preset=1,saved_camera_radius=60,lock_camera=false,dof=false,dof_mode=1,dof_quality=1,bokeh_shape=1,focus_mode=1,focus_distance=5,aperture=5.6,
+M.defaults={fov=0,focal_preset=1,roll=0,roll_preset=1,saved_camera_radius=60,lock_camera=false,dof=false,dof_mode=1,dof_quality=1,dof_strength=4,bokeh_shape=1,focus_mode=1,focus_distance=5,aperture=5.6,
  filter=1,filter_strength=25,exposure=0,saturation=100,contrast=100,bloom=true,
  shader=1,shader_opacity=10,shader_scale=1,shader_animate=true,scene_shader=1,scene_strength=100,fog_distance=25,fog_density=50,scene_depth_range=100,vignette=0,vignette_width=18,grain=0,grain_size=1.5,
  frame=1,grid=1,logo=1,logo_size=100,logo_x=90,logo_y=8,logo_opacity=85,logo_color='#FFFFFF',clean_view=false,hide_hud=true,hide_controls=false,
- light_selected=1,light_kind=1,light_enabled=true,light_intensity=3,light_color='#FFFFFF',light_range=8,light_cone=45,light_right=0,light_forward=1,light_up=0,light_follow=false,
- hide_player=false,hide_armour=false,hide_weapons=false,director_slot=1,ai_behavior=1,
+ light_selected=1,light_preset=1,light_setup_slot=1,light_kind=1,light_enabled=true,light_intensity=3,light_color='#FFFFFF',light_range=8,light_cone=45,light_right=0,light_forward=1,light_up=0,light_follow=false,
+ hide_player=false,hide_armour=false,hide_weapons=false,subject_pose=1,director_slot=1,ai_behavior=1,
  show_legend=true,legend_open=true,legend_docked=true,legend_tab_y=75,legend_columns=2,legend_x=2,legend_y=2,legend_size=38}
 M.ai_modes={'normal','passive','dummy'}
+M.subject_poses={'salute','wave','taunt'}
+M.light_presets={'key_fill_rim','portrait','dramatic_side'}
 M.menu_layout_defaults={menu_x=-1,menu_y=-1,menu_scale=1}
 -- Preset choices are commands/labels. FOV and roll remain the only settings
 -- consumed by the lens; these helpers use the existing 24 mm sensor height.
@@ -20,7 +22,7 @@ function M.focal_length(radians)
 end
 function M.pages(reset,recenter,catalog,saved_actions)
  local function slider(id,label,min,max,step)return {id=id,type='slider',label=label,default=M.defaults[id],min=min,max=max,step=step,commit_on_blur=true,fine_step=(id=='focus_distance'or id=='fov')and .001 or nil,disabled=({focus_distance=true,aperture=true,exposure=true,saturation=true,contrast=true,scene_strength=true,fog_distance=true,fog_density=true,scene_depth_range=true})[id]}end
- local function choice(id,label,choices)return {id=id,type='choice',label=label,default=M.defaults[id],choices=choices,presentation='dropdown',disabled=id=='scene_shader'or nil}end
+ local function choice(id,label,choices)return {id=id,type='choice',label=label,default=M.defaults[id],choices=choices,presentation='dropdown',disabled=id=='scene_shader'or id=='subject_pose'or nil}end
  local function toggle(id,label)return {id=id,type='toggle',label=label,default=M.defaults[id]}end
  local function layout_setting(id,label,min,max)return{id=id,type='slider',label=label,default=M.menu_layout_defaults[id],min=min,max=max,step=.000001,layout_storage=true,commit_on_blur=true}end
  local function lens_control(control)
@@ -73,7 +75,7 @@ function M.pages(reset,recenter,catalog,saved_actions)
  lens_control(choice('focal_preset','Lens preset',{'Custom','24 mm','35 mm','50 mm','85 mm','135 mm'})),
  {id='focal_length_status',type='text',label='Focal length: waiting for camera'},
  lens_control(choice('roll_preset','Tilt shortcut',{'Custom','Level (0)','Portrait (+90)','Portrait (-90)'})),
- choice('dof_quality','Shader blur quality',{'Standard','Smoother'}),choice('bokeh_shape','Bokeh shape',{'Round','Hexagonal'}),
+ choice('dof_quality','Shader blur quality',{'Standard','Smoother'}),slider('dof_strength','Shader blur strength',1,8,.25),choice('bokeh_shape','Bokeh shape',{'Round','Hexagonal'}),
  {id='lens_status',type='text',label='Depth-aware focus and aperture'},
  {id='known_issues',type='text',label='Manual native focus/aperture unavailable; use Shader preview.'}}},
  {id='color',name='Color',require_confirmation=false,controls={
@@ -93,7 +95,12 @@ function M.pages(reset,recenter,catalog,saved_actions)
  {id='shader_status',type='text',label='',status_only=true}}},
  {id='lighting',name='Lighting',require_confirmation=false,controls={
  light_action('light_add','Add light','light_add'),
+ choice('light_preset','Subject lighting preset',{'Key / Fill / Rim','Portrait','Dramatic side'}),
+ light_action('light_apply_preset','Replace lights with preset','light_apply_preset'),
+ {id='light_preset_hint',type='text',label='Presets replace current lights around the focused subject; center focus distance is the fallback.'},
  light_control(choice('light_selected','Selected light',{'Light 1','Light 2','Light 3'})),
+ light_action('light_aim','Aim selected at subject','light_aim'),
+ {id='light_drag_hint',type='text',label='Drag numbered scene markers to move lights. Hold Shift for finer movement.'},
  light_control(toggle('light_enabled','Light enabled')),light_control(choice('light_kind','Light type',{'Point','Spot'})),
  light_control(slider('light_intensity','Intensity',0,10000,.01)),
  light_control({id='light_color',type='color',label='Light color',default=M.defaults.light_color}),
@@ -101,6 +108,9 @@ function M.pages(reset,recenter,catalog,saved_actions)
  light_control(slider('light_right','Right offset (m)',-20,20,.01)),light_control(slider('light_forward','Forward offset (m)',-20,20,.01)),light_control(slider('light_up','Up offset (m)',-20,20,.01)),
  light_control(toggle('light_follow','Follow camera')),
  light_action('light_place','Move to camera','light_place'),light_action('light_remove','Remove selected','light_remove'),light_action('light_clear','Remove all lights','light_clear'),
+ choice('light_setup_slot','Saved lighting setup',{'Setup 1 — empty','Setup 2 — empty','Setup 3 — empty','Setup 4 — empty','Setup 5 — empty'}),
+ light_action('light_setup_save','Save lighting setup','light_setup_save'),light_action('light_setup_recall','Recall lighting setup','light_setup_recall'),light_action('light_setup_clear','Clear saved setup','light_setup_clear'),
+ {id='light_setup_status',type='text',label='Five lighting setups are saved relative to the subject.'},
  {id='light_status',type='text',label='Photo lighting is waiting for a camera'}}},
  {id='composition',name='Composition',require_confirmation=false,controls={
  choice('frame','Frame',{'Full screen','Cinematic 2.39:1','16:9','Square','Portrait 4:5'}),
@@ -115,14 +125,18 @@ function M.pages(reset,recenter,catalog,saved_actions)
  {id='director',name='Director',require_confirmation=false,controls={
  ai_control(),
  director_action('ai_reset','Reset AI to Normal','ai_reset'),
- {id='ai_status',type='text',label='Enemy behavior unavailable: waiting for a verified host mission'},
- {id='ai_hint',type='text',label='Persists after Photo Mode exits; new enemies follow the selected behavior. Normal restores ordinary hostility.'},
+ {id='ai_status',type='text',label='Enemy behavior unavailable: waiting for a verified solo mission'},
+ {id='ai_hint',type='text',label='Solo only. Persists after Photo Mode exits; joining players reset behavior to Normal.'},
  {id='ai_limits',type='text',label='Passive allows movement; Dummy also stops voluntary movement. Physics, damage and active attacks can continue.'},
  choice('director_slot','Camera shot slot',{'Shot 1 — empty','Shot 2 — empty','Shot 3 — empty','Shot 4 — empty','Shot 5 — empty'}),
  director_action('director_save','Save relative shot','director_save'),director_action('director_recall','Recall relative shot','director_recall'),director_action('director_clear','Clear selected shot','director_clear'),
  {id='director_status',type='text',label='Shots store camera position and angle relative to the player.'},
  {id='director_hint',type='text',label='Five shots persist between game sessions.'}}},
  {id='subject',name='Subject',require_confirmation=false,controls={
+ choice('subject_pose','Pose',{'Salute','Wave','Taunt'}),
+ director_action('subject_pose_play','Play pose','subject_pose_play'),director_action('subject_pose_stop','Stop pose','subject_pose_stop'),
+ {id='subject_pose_status',type='text',label='Subject poses are waiting for a verified local player'},
+ {id='subject_pose_hint',type='text',label='Turn Pause entire action OFF to play or stop. Pause again to hold the pose.'},
  subject_control('hide_player','Hide entire player'),subject_control('hide_armour','Hide armour and helmet'),subject_control('hide_weapons','Hide carried weapons'),
  {id='subject_status',type='text',label='Subject controls are waiting for a verified player'},
  {id='subject_hint',type='text',label='Visibility is restored when Photo Mode closes.'}}}}

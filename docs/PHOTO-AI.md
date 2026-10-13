@@ -1,17 +1,20 @@
-# Director enemy behavior development integration
+# Director enemy behavior — 0.9.6
 
 The development source now embeds `freecam/ai_backend.lua` and
 `freecam/ai_control.lua` and adds **Enemy behavior** at the top of Director. Its stable
 setting ID is `ai_behavior` (1 Normal, 2 Passive, 3 Dummy); `ai_reset` explicitly
 resets it to Normal. `ai_status` reports the affected count, pending cleanup,
-or the reason it is unavailable. This is a development addition after the
-published 0.9.5 release, not a claim that the existing public ZIPs contain it.
+or the reason it is unavailable. This is included in the 0.9.6 source;
+the existing public 0.9.5 ZIPs do not contain it.
 
 The menu exposes **Normal**, **Passive**, and **Dummy**. The selected behavior
 continues after the menu and Photo Mode close, including bounded discovery of
 new enemies. Normal or **Reset AI to Normal** restores ordinary detection and
 movement. The process starts at Normal after a game restart. Frozen is not
 exposed: Link's stun-based mode needs separate implementation and testing.
+These controls are **solo-only**. A connected or joining remote player resets
+the selection to Normal and restores owned detection/movement changes. The
+previous mode does not resume automatically if that player leaves.
 Their intended behavior does not stop the AI brain or pause physics. Enemies still animate,
 take damage, stagger, and die. A committed attack can finish, and a temporarily
 shared target may be cleared only at the next bounded refresh.
@@ -38,18 +41,36 @@ timestamp `0x6AB382E4`, with the verified Unit-registry code fingerprint and
 fixed component layouts for that build.
 
 `ready()` returns `ready, reason, capabilities`. Controls require a mission,
-a known local peer, verified host/solo authority, no synchronizing peers, a
-main world, and an enemy director. Multiplayer clients are denied.
+a known local peer, verified authority, exactly one connected player including
+the local peer, no synchronizing peers, a main world, and an enemy director.
+The existing `GameSession.other_peers`/`synchronizing_peers` reader counts map
+entries, including sparse peer tables. Without a game session it uses the
+existing `Network.connections` reader. Missing, malformed, or failing readers
+are unavailable. Multiplayer hosts and clients are both denied.
 
 `queue('normal' | 'passive' | 'dummy')` records menu intent without writing.
 The generated runtime calls `flush(photo_active)` from the real update callback.
 Menu callbacks only queue intent. Startup resets `ai_behavior` to Normal;
 Photo Mode exit does not change it. Shutdown explicitly queues Normal, retains
 the registration and returns false while restoration is pending; an update
-must finish cleanup before teardown succeeds. Normal/Reset remain available
-after authority loss while cleanup waits for renewed authority. A retired world
+must finish cleanup before teardown succeeds. Behavior choices are disabled
+outside verified solo play; Reset remains available while cleanup is owed.
+Joining or unknown network/session state cancels the selected mode. Temporary
+world/scene reads during respawn or loading suspend writes while preserving
+the selection; discovery resumes when the scene is verified again. A separate
+`restore_context`/`restore` path restores only the owned detector state and
+stationary bit while the same authoritative host remains valid; it cannot
+discover enemies or clear targets/alerts. Unknown authority retains the leases
+for retry. Ordinary writes recheck solo state even if a stale UI queues one.
+A retired world
 invalidates old records; the chosen mode resumes only in a new validated
 authoritative mission context.
+
+Movement restoration resolves the enemy's own live Unit and AI descriptor,
+independently of any borrowed detector owner. Dummy can also renew its already
+owned movement bit through that narrow reader when the borrowed detector is
+temporarily unavailable. Detection/target suppression remains unavailable
+until its full component ownership is verified; the status reports that gap.
 
 The controller polls availability at most twice per second. The backend uses a monotonic
 wall clock independent of world time, discovers at most 256 map buckets per
@@ -93,7 +114,10 @@ Normal/Passive/Dummy transitions, preexisting states and high flag bits,
 another writer, component replacement, generation reuse, authority loss,
 restoration retry, partial-write acknowledgement, world retirement, exact
 build/registry rejection, descriptor liveness, relocated manager rows, host
-and joining gates, and no writes from menu callbacks.
+and joining gates, and no writes from menu callbacks. Solo-policy fixtures
+cover sparse remote-peer maps, unknown counts and reader errors, stale-context
+write rejection, join-triggered restoration, restricted cleanup writes, and
+no automatic reactivation when returning to solo.
 
 `freecam/ai_controls_integration_tests.lua` exercises the real MCM Core,
 controller and options with the real AI manager and a mock backend: the Director
@@ -104,12 +128,13 @@ The AI manager, UI integration, close cleanup, and GUI lifecycle fixtures passed
 4/4 after the persistence change; receipt:
 `dist/validation/ai-behavior-persistence-fixtures.json`.
 
-David accepted the initial live Dummy behavior. The persistent selector was
-acknowledged in the running game at 08:47 on October 13, retaining Dummy;
-it reported affected enemies after the refresh. This is installation/readback
-evidence; the new exit/new-arrival/Reset sequence awaits separate live acceptance.
+David accepted the initial live Dummy behavior and subsequently confirmed
+that the selected behavior persists after leaving Photo Mode and that Reset
+restores normal behavior. The live selector exposes Normal, Passive, and Dummy.
+New-enemy discovery has bounded-refresh fixture coverage; the live acceptance
+does not establish every enemy type, mission, or transition.
 
-The combined development candidate is
+The earlier combined development candidate was
 `dist/releases/War-Journalist-0.9.5-persistent-ai-dev`; BSL, MDL and LLL each
 include their required assets and pass standalone package verification.
 All 47 fixture groups pass, including provider replacement without losing the

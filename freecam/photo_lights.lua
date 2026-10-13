@@ -2,6 +2,7 @@
 -- or destroy authored scene lights. All mutation belongs in the update phase.
 local M={resource='e07f49224f0a5759',resource_name='mods/dbf_photo/units/photo_light_v1',maximum=3,testing_status='Not tested fully'}
 M.defaults={kind='omni',enabled=true,intensity=3,color='#FFFFFF',range=8,cone=45,right=0,forward=1,up=0,follow_camera=false}
+M.presets={{id='key_fill_rim',label='Key / Fill / Rim'},{id='portrait',label='Portrait'},{id='dramatic_side',label='Dramatic side'}}
 local function copy(value)local out={};for k,v in pairs(value or{})do out[k]=type(v)=='table'and copy(v)or v end;return out end
 local function finite(v)return type(v)=='number'and v==v and math.abs(v)<math.huge end
 local function callable(v)local t=type(v);return t=='function'or(t=='table'and getmetatable(v)and type(getmetatable(v).__call)=='function')end
@@ -39,6 +40,39 @@ local function context(value)
  if (r[2]*f[3]-r[3]*f[2])*u[1]+(r[3]*f[1]-r[1]*f[3])*u[2]+(r[1]*f[2]-r[2]*f[1])*u[3]<.99 then return nil end
  return out
 end
+local function point(value)
+ if type(value)~='table'then return nil end
+ local out={};for i=1,3 do if not finite(value[i])or math.abs(value[i])>10000000 then return nil end;out[i]=value[i]end;return out
+end
+local function cross(a,b)return{a[2]*b[3]-a[3]*b[2],a[3]*b[1]-a[1]*b[3],a[1]*b[2]-a[2]*b[1]}end
+local function normalized(v)
+ local length=math.sqrt(v[1]^2+v[2]^2+v[3]^2);if not finite(length)or length<.0001 then return nil end
+ return{v[1]/length,v[2]/length,v[3]/length}
+end
+local function aimed(position,target,up)
+ local forward=normalized({target[1]-position[1],target[2]-position[2],target[3]-position[3]})
+ if not forward then return nil,'The subject is at the light position'end
+ local right=normalized(cross(forward,up))
+ if not right then right=normalized(cross(forward,math.abs(forward[3])<.9 and{0,0,1}or{1,0,0}))end
+ return context({position=position,forward=forward,right=right,up=cross(right,forward)})
+end
+local function placement(record)
+ local p={};local b,o=record.anchor,record.values
+ for i=1,3 do p[i]=b.position[i]+b.right[i]*o.right+b.forward[i]*o.forward+b.up[i]*o.up end
+ return p
+end
+local function definitions(value)
+ if type(value)~='table'or value.version~=1 or type(value.definitions)~='table'or#value.definitions>M.maximum then return nil,'Invalid photo light setup'end
+ local out={version=1,definitions={},selected=value.selected or 1}
+ if not finite(out.selected)or out.selected~=math.floor(out.selected)or out.selected<1 or out.selected>math.max(1,#value.definitions)then return nil,'Invalid photo light selection'end
+ for i,definition in ipairs(value.definitions)do
+  if type(definition)~='table'then return nil,'Invalid photo light definition'end
+  local values,why=clean(definition.values);local anchor=context(definition.anchor)
+  if not values or not anchor or not point(anchor.position)then return nil,why or'Invalid photo light placement'end
+  out.definitions[i]={values=values,anchor=anchor}
+ end
+ return out
+end
 local function linear(byte)local v=byte/255;return v<=.04045 and v/12.92 or((v+.055)/1.055)^2.4 end
 function M.new(sr,log,reuse,handoff)
  -- Refresh preserves the controller/update callback's shared table identity.
@@ -62,7 +96,7 @@ function M.new(sr,log,reuse,handoff)
  local saved=reuse and callable(reuse.saved_setup)and reuse.saved_setup()or nil
  local self=reuse or{};self.status=M.testing_status..' - Photo lighting is waiting for a camera';self.available=false;self.revision=reuse and(self.revision or 0)+1 or 0;self.pending=false
  local records=handoff and handoff.records or{};local selected=handoff and handoff.selected or 0;local world=handoff and handoff.world;local frame=handoff and context(handoff.frame);local serial=handoff and handoff.serial or 0;local queue={}
- local scene_epoch=handoff and handoff.scene_epoch;local scene_key=world and tostring(world);local scene_verified=false;local restoring=false;local spawn
+ local scene_epoch=handoff and handoff.scene_epoch;local scene_key=world and tostring(world);local scene_verified=false;local restoring=false;local spawn;local replacement;local finish_replacement
  if scene_epoch~=nil then for _,record in ipairs(records)do record.scene_epoch=scene_epoch end end
  local W,U,L,A=sr.World or{},sr.Unit or{},sr.Light or{},sr.Application or{}
  -- The game reuses its main-world handle between ship and mission. The camera
@@ -180,11 +214,20 @@ function M.new(sr,log,reuse,handoff)
  end
  function self.count()return#records end
  function self.saved_setup()return saved and copy(saved)or nil end
+ function self.scene_identity()
+  observe_scene();return scene_verified and scene_key and{world=scene_key,epoch=scene_epoch}or nil
+ end
  function self.selected()
   local record=records[selected];return record and copy(record.values)or nil,selected,#records
  end
  function self.list()
-  local out={};for i,record in ipairs(records)do out[i]={id=record.id,values=copy(record.values),selected=i==selected,error=record.error}end;return out
+  local out={};for i,record in ipairs(records)do out[i]={id=record.id,index=i,values=copy(record.values),position=placement(record),forward=copy(record.anchor.forward),selected=i==selected,error=record.error}end;return out
+ end
+ function self.export_setup()
+  local source=replacement and replacement.backup or saved
+  local result={version=1,definitions={},selected=math.max(1,source and source.selected or selected)}
+  for i,record in ipairs(source and source.definitions or records)do result.definitions[i]={values=copy(record.values),anchor=copy(record.anchor)}end
+  return result
  end
  function self.markers()
   observe_scene()
@@ -209,7 +252,7 @@ function M.new(sr,log,reuse,handoff)
      local light=U.light(record.unit,1)
      local position=numeric(L.world_position(light))
      local direction=numeric(Q.forward(L.world_pose(light)))
-     out[#out+1]={id=record.id,position=position,forward=direction,kind=record.values.kind,color=record.values.color,
+     out[#out+1]={id=record.id,index=i,position=position,forward=direction,kind=record.values.kind,color=record.values.color,
       enabled=record.values.enabled,selected=i==selected,cone=record.values.cone,range=record.values.range,error=record.error}
     end
    end
@@ -224,6 +267,10 @@ function M.new(sr,log,reuse,handoff)
  end
  local function release(reason,preserve)
   observe_scene()
+  if preserve and replacement and scene_verified and scene_key==tostring(world)then
+   saved=copy(replacement.backup);saved.epoch=scene_epoch;saved.scene_key=scene_key;saved.serial=serial
+  end
+  replacement=nil
   if preserve and not saved and#records>0 and scene_verified and scene_key==tostring(world)then
    local definitions={};local saved_selected;local selected_id=records[selected]and records[selected].id
    for _,record in ipairs(records)do
@@ -254,10 +301,19 @@ function M.new(sr,log,reuse,handoff)
    for i=#records,1,-1 do local ok,why=remove_at(i);if not ok then return fail(why)end end
    restoring=false
   end
+  if replacement then
+   local ready,why=self.ready(candidate);if not ready then return fail(why)end
+   if not frame then return fail('Photo lighting is waiting for camera placement')end
+   return finish_replacement()
+  end
   for i=#records,1,-1 do
    local record=records[i];local alive,why=owned_live(record)
    if alive==false then table.remove(records,i);if i<selected then selected=selected-1 end;selected=math.min(selected,#records);self.revision=self.revision+1
    elseif alive==nil then return fail('Photo light ownership unavailable: '..tostring(why))
+   elseif record.recover then
+    record.values=record.recover.values;record.anchor=record.recover.anchor
+    local restored,reason=apply(record);if not restored then self.pending=true;return fail('Photo light placement restoration pending: '..tostring(reason))end
+    record.recover=nil;record.error=nil;self.revision=self.revision+1
    elseif record.values.follow_camera and frame then
     local previous=record.anchor;record.anchor=copy(frame);local ok,err=apply(record)
     if not ok then
@@ -315,11 +371,81 @@ function M.new(sr,log,reuse,handoff)
   record.initialized=true
   self.revision=self.revision+1;status('Photo light '..selected..' added');if log then log(self.status)end;return true
  end
+ local function find_id(id)
+  if id==nil then return records[selected],selected end
+  if finite(id)and id==math.floor(id)then for i,record in ipairs(records)do if record.id==id then return record,i end end end
+ end
+ finish_replacement=function()
+  local job=replacement;if not job then return true end
+  local function install(setup)
+   local wanted={};for _,definition in ipairs(setup.definitions)do wanted[definition.id]=true end
+   -- Remove only surplus copies before spawning. Even rollback never owns more
+   -- than the three supported light units; failed destroys retain their record.
+   for i=#records,1,-1 do if not wanted[records[i].id]then local ok,why=remove_at(i);if not ok then return false,why end end end
+   for _,definition in ipairs(setup.definitions)do
+    local record=find_id(definition.id)
+    if record then
+     record.values=copy(definition.values);record.anchor=copy(definition.anchor)
+     local ok,why=apply(record)
+     if not ok then record.error=why;return false,why end
+     record.error=nil;record.initialized=true
+    else
+     local ok,why=spawn(definition.values,definition.anchor,definition.id);if not ok then return false,why end
+    end
+   end
+   selected=#records>0 and math.max(1,math.min(setup.selected,#records))or 0
+   return true
+  end
+  if job.phase=='apply'then
+   local ok,why=install(job.target)
+   if ok then replacement=nil;self.pending=#queue>0;self.revision=self.revision+1;status('Photo light setup applied');return true end
+   job.phase='rollback';job.error=tostring(why)
+  end
+  local restored,why=install(job.backup)
+  if restored then replacement=nil;self.pending=#queue>0;self.revision=self.revision+1;return fail('Photo light setup unchanged: '..job.error)end
+  self.pending=true;return fail('Photo light setup restoration pending: '..tostring(why))
+ end
+ function self.import_setup(value)
+  if replacement or saved then return fail('Photo light setup is still restoring')end
+  local setup,why=definitions(value);if not setup then return fail(why)end
+  local ready,reason,caps=self.ready();if not ready then return fail(reason)end
+  if not frame then return fail('Photo lighting is waiting for camera placement')end
+  for _,definition in ipairs(setup.definitions)do if definition.values.kind=='spot'and not caps.spot then return fail('Spot lights are unavailable in this engine')end end
+  local backup={definitions={},selected=math.max(1,selected)}
+  for i,record in ipairs(records)do
+   if record.recover or record.initialized==false then return fail('Photo light cleanup must finish before replacing the setup')end
+   backup.definitions[i]={id=record.id,values=copy(record.values),anchor=copy(record.anchor)}
+  end
+  local next_id=serial
+  for i,definition in ipairs(setup.definitions)do if records[i]then definition.id=records[i].id else next_id=next_id+1;definition.id=next_id end end
+  replacement={phase='apply',target=setup,backup=backup};self.pending=true
+  return finish_replacement()
+ end
+ function self.preset(value)
+  if type(value)~='table'then return fail('Choose a lighting setup and subject')end
+  local layouts={
+   key_fill_rim={{-1,-1,.6,6,'#FFF2E0'},{1,-.65,.3,2,'#FFFFFF'},{.6,.8,.65,8,'#E2EEFF'}},
+   portrait={{-.65,-1,.5,5,'#FFF0DC'},{.9,-.8,.15,2,'#FFFFFF'},{0,.7,.7,6,'#FFFFFF'}},
+   dramatic_side={{-1.2,-.15,.5,8,'#FFFFFF'},{.5,.75,.6,3,'#D6E7FF'}},
+  }
+  local layout=layouts[value.name];local target=point(value.target);local basis=context(value.frame or frame);local distance=value.distance==nil and 3 or value.distance
+  if not layout then return fail('Choose Key / Fill / Rim, Portrait, or Dramatic side')end
+  if not target or not basis then return fail('A subject point and camera placement are required')end
+  if not finite(distance)or distance<.25 or distance>50 then return fail('Lighting setup distance must be between 0.25 and 50 m')end
+  local setup={version=1,definitions={},selected=1}
+  for i,item in ipairs(layout)do
+   local position={};for axis=1,3 do position[axis]=target[axis]+distance*(basis.right[axis]*item[1]+basis.forward[axis]*item[2]+basis.up[axis]*item[3])end
+   local anchor,why=aimed(position,target,basis.up);if not anchor then return fail(why)end
+   setup.definitions[i]={anchor=anchor,values={kind='spot',enabled=true,intensity=item[4],color=item[5],range=math.max(8,distance*4),cone=55,right=0,forward=0,up=0,follow_camera=false}}
+  end
+  return self.import_setup(setup)
+ end
  function self.create(values)
-  if saved then return fail('Retained photo lights are still restoring')end
+  if saved or replacement then return fail('Retained photo lights are still restoring')end
   return spawn(values,frame,serial+1)
  end
  function self.update(values)
+  if replacement then return fail('Photo light setup is still restoring')end
   local record=records[selected];if not record then return fail('Add a photo light first')end
   local o,why=clean(values,record.values);if not o then return fail(why)end
   if o.kind=='spot'and not record.caps.spot then return fail('Spot lights are unavailable in this engine')end
@@ -337,13 +463,43 @@ function M.new(sr,log,reuse,handoff)
   record.error=nil;self.revision=self.revision+1;status('Photo light '..selected..' updated');return true
  end
  function self.place_at_camera()
+  if replacement then return fail('Photo light setup is still restoring')end
   local record=records[selected];if not record then return fail('Add a photo light first')end
   if not frame then return fail('Photo lighting is waiting for camera placement')end
   local previous=record.anchor;record.anchor=copy(frame);local ok,why=self.update({})
   if not ok then record.anchor=previous;local restored,reason=apply(record);if not restored then record.error=tostring(why)..'; restoration pending: '..tostring(reason);pcall(L.set_enabled,record.light,false)end end
   return ok,why
  end
+ function self.move(value)
+  if replacement or saved then return fail('Photo light setup is still restoring')end
+  if type(value)~='table'then return fail('Choose a light and world position')end
+  local record,index=find_id(value.id);if not record then return fail('Choose an existing photo light')end
+  local position=point(value.position);local target=value.aim~=nil and point(value.aim)or nil
+  if not position or(value.aim~=nil and not target)then return fail('Invalid photo light position or subject')end
+  local anchor,why
+  if target then anchor,why=aimed(position,target,record.anchor.up)
+  else anchor=context({position=position,forward=record.anchor.forward,right=record.anchor.right,up=record.anchor.up})end
+  if not anchor then return fail(why or'Invalid photo light orientation')end
+  local old_values,old_anchor=record.values,record.anchor
+  local values=copy(old_values);values.right=0;values.forward=0;values.up=0;values.follow_camera=false
+  record.values=values;record.anchor=anchor
+  local ok,reason=apply(record)
+  if not ok then
+   record.values=old_values;record.anchor=old_anchor;local restored,err=apply(record)
+   if not restored then record.recover={values=old_values,anchor=old_anchor};self.pending=true end
+   record.error=tostring(reason)..(restored and''or('; restoration pending: '..tostring(err)))
+   return fail('Photo light move failed: '..record.error)
+  end
+  record.recover=nil;record.error=nil;selected=index;self.revision=self.revision+1;status('Photo light '..index..' placed');return true
+ end
+ function self.aim(value)
+  if type(value)~='table'or not point(value.target)then return fail('Choose a subject point')end
+  local record=find_id(value.id);if not record then return fail('Choose an existing photo light')end
+  return self.move({id=record.id,position=placement(record),aim=value.target})
+ end
+ self.aim_at=self.aim
  function self.remove(index)
+  if replacement then return fail('Photo light setup is still restoring')end
   index=index or selected
   if not finite(index)or index~=math.floor(index)or not records[index]then return fail('Choose an existing photo light')end
   local ok,why=remove_at(index);if not ok then return fail(why)end;status('Photo light removed');return true
@@ -352,11 +508,14 @@ function M.new(sr,log,reuse,handoff)
  -- the real game update callback. Repeated slider edits merge without growing
  -- an unbounded action queue, and an exit discards outstanding creates/edits.
  function self.queue(action,values)
-  local allowed={create=true,update=true,select=true,place_at_camera=true,remove=true,release=true}
+  local allowed={create=true,update=true,select=true,place_at_camera=true,remove=true,release=true,move=true,aim=true,preset=true,import_setup=true}
   if not allowed[action]then return fail('Unknown photo light action')end
   if(action=='create'or action=='update')and values~=nil and type(values)~='table'then return fail('Invalid photo light settings')end
+  if(action=='move'or action=='aim'or action=='preset'or action=='import_setup')and type(values)~='table'then return fail('Invalid photo light placement request')end
   if action=='release'then queue={{action=action,values=values}};self.pending=true;return true end
-  if action=='update'and queue[#queue]and queue[#queue].action==action then
+  if action=='move'and queue[#queue]and queue[#queue].action==action and queue[#queue].values.id==values.id then
+   queue[#queue].values=copy(values)
+  elseif action=='update'and queue[#queue]and queue[#queue].action==action then
    queue[#queue].values=queue[#queue].values or{}
    for key,value in pairs(values or{})do queue[#queue].values[key]=type(value)=='table'and copy(value)or value end
   else

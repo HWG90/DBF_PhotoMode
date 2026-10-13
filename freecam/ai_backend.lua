@@ -54,26 +54,47 @@ function M.new(sr,memory)
   return rows+index*spec.stride,descriptor
  end
  function self.now()return memory.now()end
- function self.context()
+ local function session_authority(cleanup)
+  local net=ptr(memory.game+L.NET);if not net then return nil,'Host authority unavailable','unknown_session'end
+  local local_peer,host_peer=read(net+0xb398,8),read(net+0xb3a8,8);local zero=string.rep('\0',8)
+  if local_peer==zero then return nil,'Local peer authority unavailable','unknown_session'end
+  local N,G=sr.Network,sr.GameSession
+  if not(N and G and type(N.game_session)=='function')then return nil,'Solo session reader unavailable','unknown_session'end
+  local known,peers,joining=pcall(function()
+   local session=N.game_session()
+   if session then
+    assert(type(G.other_peers)=='function'and type(G.synchronizing_peers)=='function','Session peer reader unavailable')
+    return G.other_peers(session),G.synchronizing_peers(session)
+   end
+   assert(type(N.connections)=='function','Connection reader unavailable');return N.connections(),{}
+  end)
+  if not known or type(peers)~='table'or type(joining)~='table'then return nil,'Solo player count unavailable','unknown_session'end
+  -- other_peers excludes the verified local peer. Count map entries rather than
+  -- array length: game session peer tables may be sparse or keyed by peer id.
+  local player_count=1;for _ in pairs(peers)do player_count=player_count+1 end
+  local solo=player_count==1 and next(joining)==nil
+  if not cleanup and not solo then return nil,'Enemy behavior is solo-only; another player is connected or joining','not_solo'end
+  if local_peer~=host_peer and not(host_peer==zero and solo)then return nil,'Local solo authority unavailable','unknown_session'end
+  return {local_peer=local_peer,solo=solo,player_count=player_count}
+ end
+ local function session_context(cleanup)
   local world=ptr(memory.game+L.WORLD);local state=ptr(memory.game+L.GAME_STATE);local mode=ptr(memory.game+L.GAME_MODE)
   if not(world and state and mode and u32(state+L.STATE_VALUE)==4 and u32(mode+8)==1)then return nil,'Enemy controls require a mission'end
-  local net=ptr(memory.game+L.NET);if not net then return nil,'Host authority unavailable'end
-  local local_peer,host_peer=read(net+0xb398,8),read(net+0xb3a8,8);local zero=string.rep('\0',8)
-  if local_peer==zero then return nil,'Local peer authority unavailable'end
-  local N,G=sr.Network,sr.GameSession;if not(N and G)then return nil,'Session authority API unavailable'end
-  local session=N.game_session();local peers,joining
-  if session then peers=G.other_peers(session);joining=G.synchronizing_peers(session)else peers=N.connections();joining={}end
-  if type(peers)~='table'or type(joining)~='table'or next(joining)then return nil,'Session authority is changing'end
-  local solo=next(peers)==nil
-  if local_peer~=host_peer and not(host_peer==zero and solo)then return nil,'Only the authoritative host controls enemy behavior'end
+  -- Classify network uncertainty explicitly. Ordinary world/scene reads may
+  -- fail during respawn or loading; that suspends work without losing intent.
+  local checked,session,why,policy=pcall(session_authority,cleanup)
+  if not checked then return nil,'Session authority unreadable: '..tostring(session),'unknown_session'end
+  if not session then return nil,why,policy end
   local scene=sr.Application.main_world();if not scene then return nil,'Main scene unavailable'end
   local scene_native=memory.scene(scene);local director=ptr(memory.game+L.DIRECTOR);if not director then return nil,'Enemy director unavailable'end
   assert(type(scene_native)=='number'and scene_native>=65536 and scene_native<2^47,'Enemy scene pointer invalid')
   -- Authority is rechecked for every access. A solo session can establish its
   -- host id after startup without retiring the world or our restoration leases.
-  return {world=world,scene=scene,scene_native=scene_native,director=director,identity=table.concat({world,scene_native,director,local_peer},':'),authority=true,solo=solo}
+  return {world=world,scene=scene,scene_native=scene_native,director=director,identity=table.concat({world,scene_native,director,session.local_peer},':'),authority=true,solo=session.solo,player_count=session.player_count,cleanup=cleanup==true}
  end
- local function valid_context(ctx)local current=self.context();return current and current.identity==ctx.identity end
+ function self.context()return session_context(false)end
+ function self.restore_context()return session_context(true)end
+ local function valid_context(ctx)local current=ctx.cleanup and self.restore_context()or self.context();return current and current.identity==ctx.identity end
  local function unit(ctx,e)
   local i=map(ctx.world+L.WORLD_ENTITIES,e);if i==nil then return end
   local row=read(ctx.world+L.WORLD_RECORDS+i*24,24);if word(row,8)~=e then return end
@@ -85,6 +106,14 @@ function M.new(sr,memory)
   return ref
  end
  local function identity(ctx,e,ref)return ctx.identity..':'..e..':'..ref end
+ -- Movement ownership belongs to this Unit/AI row. A retired borrowed
+ -- detector must not prevent restoring this still-live unit's movement bit.
+ function self.observe_restore(ctx,e)
+  if not valid_context(ctx)then return nil,'Enemy scene or authority changed'end
+  local ref=unit(ctx,e);if not ref then return nil,'retired'end
+  local ai,token=part(ptr(memory.game+L.AI),specs.ai,e);if not ai or u32(ai)==16 then return nil,'retired'end
+  return {kind='movement',entity=e,identity=identity(ctx,e,ref),unit=ref,fields={still={value=u32(ai+4),address=ai+4,size=4,token=token}}}
+ end
  -- A detector can be borrowed by another enemy. Resolve its real owner even
  -- after that borrower dies, without depending on the owner's Behavior row.
  function self.observe_detector(ctx,e)
@@ -118,10 +147,16 @@ function M.new(sr,memory)
   if alert then field('alert',alert,4,a_token)end
   return {entity=e,identity=identity(ctx,e,ref),unit=ref,fields=fields,invalid=invalid}
  end
- function self.write(ctx,record,key,value,expected)
+ local function write_field(ctx,record,key,value,expected,cleanup)
   local committed=false
   local ran,why=pcall(function()
-   local observe=record.kind=='detector'and self.observe_detector or self.observe
+   assert((ctx.cleanup==true)==cleanup,'Enemy write context mismatch')
+   if cleanup then
+    assert(key=='detector'or key=='still','Only owned behavior baselines may be restored')
+    if key=='still'then assert(bit.band(bit.bxor(value,expected),bit.bnot(0x80))==0,'Restoration changed unrelated movement flags')
+    else assert(expected==0,'Detector restoration no longer owns the disabled state')end
+   end
+   local observe=record.kind=='detector'and self.observe_detector or record.kind=='movement'and self.observe_restore or self.observe
    local fresh,why=observe(ctx,record.entity);assert(fresh and fresh.identity==record.identity,why or'Enemy generation changed')
    local before=assert(record.fields[key]);local field=assert(fresh.fields[key]);assert(field.token==before.token and field.owner_identity==before.owner_identity and field.value==expected,'Enemy field ownership changed')
    assert(type(value)=='number'and value==math.floor(value)and value>=0 and value<2^(8*field.size),'Invalid enemy field value')
@@ -130,7 +165,10 @@ function M.new(sr,memory)
   end)
   return ran,not ran and tostring(why)or nil,committed
  end
+ function self.write(ctx,record,key,value,expected)return write_field(ctx,record,key,value,expected,false)end
+ function self.restore(ctx,record,key,value,expected)return write_field(ctx,record,key,value,expected,true)end
  function self.scan(ctx,cursor,budget)
+  if ctx.cleanup then return{},0,'Restoration context cannot discover new enemies'end
   if not valid_context(ctx)then return{},0,'Enemy scene or authority changed'end
   local manager=ptr(memory.game+L.AI);if not manager then return{},0,'Enemy manager unavailable'end
   local data,cap,empty=map(manager+specs.ai.map);cursor=math.max(0,math.min(cursor or 0,cap-1));budget=math.max(1,math.min(budget or 256,256,cap-cursor))

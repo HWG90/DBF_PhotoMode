@@ -9,4 +9,5 @@ VERSION text eol=lf
 freecam/vendor/* -text -whitespace
 freecam/assets/shaders/* -text -whitespace
 freecam/assets/shaders/release-0.9.5/** -text -whitespace
+freecam/assets/shaders/release-0.9.6/** -text -whitespace
 freecam/assets/logos/** -text -whitespace

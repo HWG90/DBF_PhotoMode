@@ -99,6 +99,9 @@ end)()
 DBF_PHOTO_MENU.legend_factory=(function()
 __CONTROL_LEGEND__
 end)()
+DBF_PHOTO_MENU.gizmo_factory=(function()
+__LIGHT_GIZMOS__
+end)()
 local DBF_PHOTO_SCREENSHOT=(function()
 __SCREENSHOT__
 end)()
@@ -130,6 +133,13 @@ local DBF_PHOTO_LIGHTS=(function()
 __PHOTO_LIGHTS__
 end)().new(sr,log)
 DBF_PHOTO_LIGHTS.scene_context=function()return target and target.world,WORLD.epoch end
+do
+ local presets=(function()
+__LIGHT_PRESETS__
+ end)()
+ local root=rawget(_G,'DBF_PHOTO_PACKAGE_ROOT')
+ DBF_PHOTO_LIGHTS.presets=presets.new(root and(root..'/lighting-presets.ini'))
+end
 H.dbf_subject_backend=(function()
 __SUBJECT_BACKEND__
 end)()
@@ -141,6 +151,9 @@ end
 H.dbf_subject=(function()
 __SUBJECT__
 end)().new(H.dbf_subject_backend,log)
+H.dbf_poses=(function()
+__SUBJECT_POSES__
+end)().new(sr,H.dbf_subject_backend,function()return DBF_PLAYER_FREEZE.rate()==0 end,log)
 do
  local backend=(function()
 __AI_BACKEND__
@@ -203,7 +216,7 @@ end)().new(PHOTO,function()
 end,log)
 local DBF_FREECAM=(function()
 __CONTROLLER__
-end)().new(PHOTO,CFG,function()return target~=nil and anchor~=nil and not SPEC.active end,log,DBF_PLAYER_FREEZE,DBF_PHOTO_OPTIONS,DBF_PHOTO_RUNTIME,DBF_PHOTO_MENU,DBF_PHOTO_COMPOSITION,DBF_SAVED_CAMERA,DBF_SCREENSHOTS,DBF_FOCUS_SAMPLER,DBF_PHOTO_LIGHTS,H.dbf_subject,H.dbf_director,H.dbf_input_release,function()return H.dbf_input_epoch end,H.dbf_ai)
+end)().new(PHOTO,CFG,function()return target~=nil and anchor~=nil and not SPEC.active end,log,DBF_PLAYER_FREEZE,DBF_PHOTO_OPTIONS,DBF_PHOTO_RUNTIME,DBF_PHOTO_MENU,DBF_PHOTO_COMPOSITION,DBF_SAVED_CAMERA,DBF_SCREENSHOTS,DBF_FOCUS_SAMPLER,DBF_PHOTO_LIGHTS,H.dbf_subject,H.dbf_director,H.dbf_input_release,function()return H.dbf_input_epoch end,H.dbf_ai,H.dbf_poses)
 PHOTO.dbf_stop=DBF_FREECAM.stop
 PHOTO.dbf_clear_saved=DBF_SAVED_CAMERA.clear
 DBF_PHOTO_LIGHTS.update_from_photo=function()
@@ -214,7 +227,7 @@ end
 DBF_PHOTO_LIGHTS.cache_camera=function()
  if not PHOTO.active or not target or not world_alive(target.world)then PHOTO.light_context=nil;return end
  local pose=try(sr.Camera.world_pose,target.cam);if not pose then PHOTO.light_context=nil;return end
- PHOTO.light_context={world=target.world,position={xyz(M.translation(pose))},forward={xyz(M.forward(pose))},right={xyz(M.right(pose))},up={xyz(M.up(pose))}}
+ PHOTO.light_context={world=target.world,scene_epoch=WORLD.epoch,position={xyz(M.translation(pose))},forward={xyz(M.forward(pose))},right={xyz(M.right(pose))},up={xyz(M.up(pose))}}
 end
 local function bindings_step()
   H.dbf_game_chat.attach(rawget(_G,'DBFMCM')or rawget(_G,'DBF_PHOTO_STANDALONE_API'))
@@ -265,7 +278,7 @@ end)()
     hook=hook.replace('__PHOTO_DOF_CANDIDATE__',candidate).replace('__PHOTO_DOF_ARGUMENT__',',DBF_PHOTO_DOF_FACTORY'if dof_candidate else ',nil'if scene_candidate else '').replace('__PHOTO_SCENE_ARGUMENT__',',DBF_PHOTO_SCENE_FACTORY'if scene_candidate else '').replace('__CAPTURE_LIBRARY__',capture_library_name())
     for token,filename in [('__PHOTO_OPTIONS__','photo_options.lua'),('__PHOTO_LENS__','lens.lua'),('__PHOTO_COMPOSITION__','composition.lua'),('__PHOTO_POSTFX__','postfx.lua'),('__PHOTO_RUNTIME__','photo_runtime.lua'),('__PHOTO_HUD__','hud.lua'),('__PHOTO_PROFILE__','render_profile.lua'),('__PHOTO_MENU__','photo_menu.lua'),('__CONTROL_LEGEND__','control_legend.lua'),('__LOGO_ART__','assets/logo_art.lua'),('__CAMERA_PROFILE__','camera_profile.lua'),('__SAVED_CAMERA__','saved_camera.lua')]:
         hook=hook.replace(token,(ROOT/filename).read_text(encoding='utf-8'))
-    for token,filename in [('__SCREENSHOT__','screenshot.lua'),('__SCREENSHOT_BACKEND__','screenshot_backend.lua'),('__FOCUS_DEPTH__','depth_resource.lua'),('__FOCUS_SAMPLER__','focus_sampler.lua'),('__PHOTO_LIGHTS__','photo_lights.lua'),('__CHAT_CONTEXT__','chat_context.lua'),('__HELLDIVER_CREST__','assets/helldiver_crest.lua'),('__SUBJECT_BACKEND__','subject_backend.lua'),('__SUBJECT__','subject.lua'),('__AI_BACKEND__','ai_backend.lua'),('__AI_CONTROL__','ai_control.lua'),('__DIRECTOR__','director.lua'),('__INPUT_RELEASE__','input_release.lua'),('__INPUT_RELEASE_BACKEND__','input_release_backend.lua'),('__HOVER_PAUSE__','hover_pause.lua'),('__HOVER_PAUSE_BACKEND__','hover_pause_backend.lua')]:
+    for token,filename in [('__SCREENSHOT__','screenshot.lua'),('__SCREENSHOT_BACKEND__','screenshot_backend.lua'),('__FOCUS_DEPTH__','depth_resource.lua'),('__FOCUS_SAMPLER__','focus_sampler.lua'),('__PHOTO_LIGHTS__','photo_lights.lua'),('__LIGHT_GIZMOS__','photo_light_gizmos.lua'),('__LIGHT_PRESETS__','photo_light_presets.lua'),('__CHAT_CONTEXT__','chat_context.lua'),('__HELLDIVER_CREST__','assets/helldiver_crest.lua'),('__SUBJECT_BACKEND__','subject_backend.lua'),('__SUBJECT__','subject.lua'),('__SUBJECT_POSES__','subject_poses.lua'),('__AI_BACKEND__','ai_backend.lua'),('__AI_CONTROL__','ai_control.lua'),('__DIRECTOR__','director.lua'),('__INPUT_RELEASE__','input_release.lua'),('__INPUT_RELEASE_BACKEND__','input_release_backend.lua'),('__HOVER_PAUSE__','hover_pause.lua'),('__HOVER_PAUSE_BACKEND__','hover_pause_backend.lua')]:
         hook=hook.replace(token,(ROOT/filename).read_text(encoding='utf-8'))
     replace('-- One frame of Photo Mode: fly the detached camera and place it.',hook+'\n-- One frame of Photo Mode: fly the detached camera and place it.')
     replace("  if PHOTO_REF and PHOTO_REF.active then", "  if PHOTO_REF and PHOTO_REF.dbf_clear_saved and (reason=='death'or reason=='world gone'or reason=='restart'or reason=='shutdown')then PHOTO_REF.dbf_clear_saved(reason)end\n  if PHOTO_REF and PHOTO_REF.dbf_stop then PHOTO_REF.dbf_stop() end\n  if PHOTO_REF and PHOTO_REF.active then")
@@ -306,7 +319,7 @@ end
     replace('    pcall(H.flicker_watch)', '    pcall(DBF_PHOTO_LIGHTS.cache_camera)\n    pcall(H.flicker_watch)')
     replace("  if type(previous) ~= 'function' then return end\n  render_hooked = true",
             "  if type(previous) ~= 'function' then return end\n  previous=DBF_PHOTO_PROFILE.camera_factory.after_render(previous,function()return PHOTO.active end,log)\n  render_hooked = true")
-    replace('  pcall(options_step)', '  -- Freecam owns the sole MCM registration; ActionCam options are disabled.\n  pcall(DBF_PHOTO_LIGHTS.update_from_photo)\n  pcall(H.dbf_subject.flush,last_dt)\n  if H.dbf_ai then pcall(H.dbf_ai.flush,PHOTO.active)end')
+    replace('  pcall(options_step)', '  -- Freecam owns the sole MCM registration; ActionCam options are disabled.\n  pcall(DBF_PHOTO_LIGHTS.update_from_photo)\n  pcall(H.dbf_subject.flush,last_dt)\n  if H.dbf_poses then pcall(H.dbf_poses.flush,last_dt)end\n  if H.dbf_ai then pcall(H.dbf_ai.flush,PHOTO.active)end')
     source=source.replace("CFG.LOG_NAME   = 'ActionCam.log'", "CFG.LOG_NAME   = 'Freecam.log'")
     source=source.replace("'ActionCam_previous.log'", "'Freecam_previous.log'")
     source=source.replace('CFG.EXTRACT_RESEARCH      = true', 'CFG.EXTRACT_RESEARCH      = false')

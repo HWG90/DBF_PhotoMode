@@ -1,11 +1,51 @@
 -- ActionCam photomode adapter. Camera placement stays owned by ActionCam.
 local M={}
-function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,catalog,saved_camera,screenshots,focus_sampler,lights,subject,director,input_release,update_epoch,ai)
+function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,catalog,saved_camera,screenshots,focus_sampler,lights,subject,director,input_release,update_epoch,ai,poses)
     local roll_value;local self={};local api,handle,provider;local held=true;local retry=0;local controls={};local resume_after;local suppress_escape;local panel;local menu_focus=false;local controls_hidden=false;local recovery_menu=false;local focus_edge=false;local hide_edge=false;local slow_edge=false;local lock_edge=false;local escape_edge=false;local screenshot_edge=false
     local subject_pair;local subject_held;local subject_ready=false;local autofocus_write=false;local focus_deadline=0;local focus_elapsed=0;local focus_status='Manual focus';local focus_mode_seen;local menu_startup_reset=false
     local lighting_write=false;local lighting_revision=-1
     self._input_release=input_release;self._input_tick=0
     self._ai=ai
+    self._poses=poses;self._pose_available=false;self._pose_caps={};self._pose_paused=false
+    function self._pose_action(stop)
+        if not self._poses then return false,'Subject poses unavailable'end
+        local method,id
+        if stop then
+            if not(self._poses.active or self._poses.pending)then return false,'No owned pose to stop'end
+            method=self._poses.queue_stop
+        else
+            id=options and options.subject_poses and handle and options.subject_poses[handle.get('subject_pose')]
+            if not(photo.active and self._pose_available and self._pose_caps[id]and not self._pose_paused)then return false,'Turn Pause entire action off and wait for a supported local subject'end
+            method=self._poses.queue
+        end
+        local called,ok,why=pcall(method,id)
+        if not called or ok==false then
+            local reason=tostring(called and why or ok);log('Photo subject pose: '..reason)
+            if controls.subject_pose_status then controls.subject_pose_status.label=reason end
+        end
+        return called and ok~=false,called and why or ok
+    end
+    function self._refresh_poses(dt)
+        if not controls.subject_pose then return end
+        local ready,status,caps=false,'Subject pose service unavailable',{}
+        if self._poses then
+            local called,a,b,c=pcall(self._poses.refresh,dt)
+            if called then ready,status,caps=a,b,c or{}else status=tostring(a)end
+        end
+        self._pose_paused=false
+        if freeze and type(freeze.rate)=='function'then
+            local ok,rate=pcall(freeze.rate);self._pose_paused=not ok or type(rate)~='number'or rate~=rate or rate<=0
+        end
+        self._pose_available=ready==true;self._pose_caps=caps
+        local selected=options and options.subject_poses and options.subject_poses[handle.get('subject_pose')]
+        local any=false;for _,id in ipairs(options and options.subject_poses or{})do if caps[id]==true then any=true end end
+        controls.subject_pose.disabled=not(photo.active and ready and any)
+        controls.subject_pose_play.disabled=not(photo.active and ready and caps[selected]==true and not self._pose_paused)
+        controls.subject_pose_stop.disabled=not(self._poses and(self._poses.active or self._poses.pending))
+        if ready and self._pose_paused then status='Turn Pause entire action off to play or stop; pause again to hold the pose'
+        elseif ready and not caps[selected]then status='Selected pose is unavailable for this subject'end
+        controls.subject_pose_status.label=status or'Subject poses unavailable'
+    end
     local ai_requested=1;local ai_sync=false;local ai_elapsed=.5;local ai_available=false;local ai_reason='Enemy behavior backend unavailable'
     function self._set_ai_value(value)
         if not(handle and controls.ai_behavior)then return end
@@ -36,6 +76,10 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
     end
     function self._refresh_ai(dt)
         if not controls.ai_behavior then return end
+        if ai and self._ai_solo_reset~=(ai.solo_reset or 0)then
+            self._ai_solo_reset=ai.solo_reset or 0
+            if self._ai_solo_reset>0 and ai.mode=='normal'then ai_requested=1;self._set_ai_value(1)end
+        end
         ai_elapsed=ai_elapsed+math.max(.001,math.min(.1,tonumber(dt)or 0))
         if ai and ai_elapsed>=.5 then
             ai_elapsed=0;local called,ready,why=pcall(ai.ready)
@@ -43,7 +87,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         end
         -- Normal/Reset remain reachable for an active lease after authority loss.
         local outstanding=ai and(ai_requested~=1 or ai.pending or ai.count()>0)
-        controls.ai_behavior.disabled=not(ai and((photo.active and ai_available)or outstanding))
+        controls.ai_behavior.disabled=not(ai and photo.active and ai_available)
         controls.ai_reset.disabled=not(ai and(ai_available or outstanding))
         if not ai then controls.ai_status.label='Enemy behavior unavailable: '..ai_reason
         elseif ai.pending then controls.ai_status.label=ai_requested~=1 and'Enemy behavior: applying on next update'or'Enemy behavior: restoring on next update'
@@ -124,6 +168,65 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         if not ok then log('Photo lighting: '..tostring(why))end
         return ok,why
     end
+    self._light_gizmo_factory=menu_factory and menu_factory.gizmo_factory
+    if self._light_gizmo_factory and lights then self._light_gizmos=self._light_gizmo_factory.new(light_request)end
+    function self._light_frame()
+        local frame=photo.active and photo.light_context;if not frame then return nil end
+        local epoch=frame.scene_epoch
+        if lights and lights.scene_context then
+            local ok,world,current=pcall(lights.scene_context)
+            if not ok or world~=frame.world then self._light_subject=nil;return nil end
+            epoch=current
+        end
+        if type(epoch)~='number'or epoch~=epoch or epoch<0 or epoch==math.huge then self._light_subject=nil;return nil end
+        return{world=frame.world,scene_epoch=epoch,position=frame.position,forward=frame.forward,right=frame.right,up=frame.up}
+    end
+    function self._remember_light_subject(u,v,distance)
+        local frame=self._light_frame();local factory=self._light_gizmo_factory
+        if not frame or not factory or not api or not api.photo_resolution then return end
+        local w,h=api.photo_resolution();local target=factory.target(frame,effects and effects.fov,w,h,u,v,distance)
+        self._light_subject=target and{world=frame.world,epoch=frame.scene_epoch,position=target}or nil
+    end
+    function self._light_target()
+        local frame=self._light_frame();local factory=self._light_gizmo_factory
+        if not frame or not factory or not api or not api.photo_resolution then return nil end
+        local saved=self._light_subject
+        if saved and(saved.world~=frame.world or saved.epoch~=frame.scene_epoch)then self._light_subject=nil;saved=nil end
+        if saved then return saved.position,frame end
+        local w,h=api.photo_resolution()
+        return factory.target(frame,effects and effects.fov,w,h,.5,.5,handle and handle.get('focus_distance')),frame
+    end
+    function self._light_aim()
+        local target=self._light_target();if not target then return false,'Subject position unavailable'end
+        return light_request('aim',{target=target})
+    end
+    function self._light_preset()
+        local target,frame=self._light_target();local name=options and options.light_presets and options.light_presets[handle.get('light_preset')]
+        if not target or not name then return false,'Subject lighting preset unavailable'end
+        return light_request('preset',{name=name,target=target,frame=frame})
+    end
+    function self._light_setup(action)
+        local presets=lights and lights.presets
+        if not presets or not handle then return false,'Lighting setup storage unavailable'end
+        local slot=handle.get('light_setup_slot');local ok,why
+        if action=='clear'then ok,why=presets.clear(slot)
+        else
+            local target,frame=self._light_target();if not target then return false,'Subject position unavailable'end
+            if action=='save'then
+                local setup,reason=lights.export_setup();if not setup then ok,why=false,reason else ok,why=presets.save(slot,setup,target,frame)end
+            elseif action=='recall'then
+                local setup,reason=presets.recall(slot,target,frame);if not setup then ok,why=false,reason else ok,why=light_request('import_setup',setup)end
+            else return false,'Unknown lighting setup action'end
+        end
+        if not ok then log('Photo lighting setup: '..tostring(why))end
+        return ok,why
+    end
+    function self._sync_light_gizmos(w,h,focused,hidden)
+        if not self._light_gizmos then return end
+        local items=lights and lights.list and lights.list()or{}
+        self._light_gizmos.update(items,self._light_frame(),effects and effects.fov,w,h,photo.active and not hidden)
+        if not focused then self._light_gizmos.cancel()end
+    end
     local function light_values()
         local values={kind=handle.get('light_kind')==2 and'spot'or'omni'}
         for id,key in pairs(light_fields)do values[key]=handle.get(id)end;return values
@@ -150,6 +253,18 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         controls.light_range.disabled=not(selected and caps.range)
         controls.light_cone.disabled=not(selected and caps.spot and values.kind=='spot')
         controls.light_place.disabled=not selected;controls.light_remove.disabled=not selected;controls.light_clear.disabled=count==0
+        local target=self._light_target()
+        if controls.light_aim then controls.light_aim.disabled=not(selected and target)end
+        if controls.light_apply_preset then controls.light_apply_preset.disabled=not(available and target)end
+        if controls.light_setup_slot then
+            local presets=lights and lights.presets
+            controls.light_setup_slot.disabled=not presets
+            if presets then controls.light_setup_slot.choices=presets.list()end
+            controls.light_setup_save.disabled=not(presets and available and target and count>0 and not lights.pending)
+            controls.light_setup_recall.disabled=not(presets and available and target and presets.occupied(handle.get('light_setup_slot')))
+            controls.light_setup_clear.disabled=not(presets and presets.occupied(handle.get('light_setup_slot')))
+            controls.light_setup_status.label=presets and presets.status or'Lighting setup storage unavailable'
+        end
         controls.light_status.label=ready and lights.status or why
         if lights and not lights.pending and lighting_revision~=lights.revision then
             if selected and handle then
@@ -188,6 +303,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         end
         if not success then focus_message(prefix..': '..tostring(reason));return false end
         if photo.options then photo.options.focus_distance=distance end
+        self._remember_light_subject(u,v,distance)
         focus_message(prefix..': '..string.format('%.3f m',distance));return true
     end
     local function subject_click(input,w,h,time)
@@ -208,11 +324,16 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
     end
     function self.stop(preserve_resume)
         self._pending_start=nil
+        self._light_subject=nil;if self._light_gizmos then self._light_gizmos.cancel()end
         clear_subject_click();focus_deadline=0;focus_mode_seen=nil;screenshot_edge=false
         if focus_sampler and focus_sampler.release then local ok,why=pcall(focus_sampler.release);if not ok then log('Auto-focus cleanup: '..tostring(why))end end
         if screenshots then screenshots.cancel()end
         if lights and(lights.count()>0 or lights.pending)then lights.queue('release','photo mode exited')end
         if subject and(subject.count()>0 or subject.pending)then subject.queue(nil)end
+        if self._poses then
+            local called,ok,why=pcall(self._poses.release)
+            if not called or ok==false then log('Subject pose cleanup queued: '..tostring(called and why or ok))end
+        end
         if not preserve_resume then resume_after=nil end
         if roll_value and handle then handle.set('roll',roll_value);roll_value=nil end
         photo.active,photo.pos,photo.locked,photo.lock_pose=false,nil,false,nil
@@ -402,9 +523,16 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
                     light_change=light_change,
                     light_add=lights and function()light_request('create',light_values())end,
                     light_place=lights and function()light_request('place_at_camera')end,
+                    light_aim=lights and self._light_aim,
+                    light_apply_preset=lights and self._light_preset,
+                    light_setup_save=lights and function()self._light_setup('save')end,
+                    light_setup_recall=lights and function()self._light_setup('recall')end,
+                    light_setup_clear=lights and function()self._light_setup('clear')end,
                     light_remove=lights and function()light_request('remove')end,
                     light_clear=lights and function()light_request('release','removed manually')end,
                     subject_change=subject_change,
+                    subject_pose_play=self._poses and function()return self._pose_action(false)end,
+                    subject_pose_stop=self._poses and function()return self._pose_action(true)end,
                     ai_change=self._ai_change,
                     ai_reset=self._reset_ai,
                     director_save=director and function()director_action('save')end,
@@ -430,6 +558,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
                 local ok,why=stored_set(key,value)
                 if key=='hide_controls'and ok~=false then controls_hidden=value end
                 if key=='focus_distance'and not autofocus_write and ok~=false then
+                    self._light_subject=nil
                     -- Typed values, slider drags and manual A/D edits take
                     -- priority over any automatic focus mode, including MCM.
                     if controls.focus_mode then stored_set('focus_mode',1)end;clear_subject_click();focus_deadline=0
@@ -455,6 +584,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
                     hide=function()if recovery_menu then self.stop();return end;set_hidden(true);menu_focus=false;if provider and provider.set_focus then provider.set_focus(false)end end,
                     hud=function()handle.set('hide_hud',not handle.get('hide_hud'))end,
                     exit=function()self.stop()end})
+                panel.light_gizmos=self._light_gizmos;panel.prepare_light_gizmos=self._sync_light_gizmos
                 local pages=api.mods and api.mods.dbf_freecam.pages or definition.pages
                 local visible={}
                 for _,page in ipairs(pages)do if page.id~='camera'or api.photo_standalone then local q={id=page.id,name=page.name,controls={}}
@@ -547,6 +677,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         if not handle.get('enabled') or not can_start() then self.stop();return end
         refresh_lens()
         refresh_lights()
+        self._refresh_poses(dt)
         refresh_subject_director(dt)
         self._refresh_ai(dt)
         local lock_key=key_down(handle.get('lock_camera_key'))
@@ -588,8 +719,8 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
                     else controls[key].disabled=not(parameters and parameters[key])end
                 end
             end
-            for _,key in ipairs({'dof_quality','bokeh_shape'})do
-                if controls[key]then controls[key].disabled=not(effects.custom_dof_candidate==true and effects.custom_dof_ready==true)end
+            for _,key in ipairs({'dof_quality','dof_strength','bokeh_shape'})do
+                if controls[key]then controls[key].disabled=not(handle.get('dof_mode')==2 and effects.custom_dof_candidate==true and effects.custom_dof_ready==true)end
             end
         end
         local focus_available=focus_sampler and type(focus_sampler.sample)=='function'and controls.focus_distance and not controls.focus_distance.disabled
@@ -664,8 +795,12 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
                     if not panel.dismiss()then menu_focus=false;provider.set_focus(false);suppress_escape=true end
                 else
                     local input=provider.menu_sample()
-                    if focus_mode==2 and focus_available and not controls_hidden and not editing then subject_click(input,w,h,time)end
-                    panel.tick(input,provider.down)
+                    local captured=panel.scene_tick and panel.scene_tick(input,provider.down)
+                    if captured then clear_subject_click()
+                    else
+                        if focus_mode==2 and focus_available and not controls_hidden and not editing then subject_click(input,w,h,time)end
+                        panel.tick(input,provider.down,true)
+                    end
                 end
                 escape_edge=escape
                 photo.input={sequence=photo.sample_sequence or 0,mouse_x=0,mouse_y=0,wheel=0,dt=0};return
@@ -708,6 +843,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         self.slowmo_active=false
         stop_ai()
         local ok,why=self.stop()
+        if self._poses and(self._poses.pending or self._poses.active)then return false,self._poses.status or'Subject pose cleanup is waiting for an update'end
         if ai and(ai.pending or ai.count()>0)then
             if not ai.pending then ai.queue('normal')end
             return false,ai.status or'Enemy restoration is waiting for an update'

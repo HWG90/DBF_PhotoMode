@@ -1,0 +1,24 @@
+{
+  "verified_date_utc": "2026-10-12",
+  "status": "Explicit shader fallback candidate; native camera DoF is preferred",
+  "shader_quality": "Functional focus/aperture response verified; final visual quality remains under review",
+  "runtime_sha256": "291146b261b2299bbb312cd283f686ffc504e2b3a37022f228d508208e123fbb",
+  "shader_gpu_sha256": "b65ce7835b42666da7873815cea2f575260ce9f968f1ee5145f4ffdebf634119",
+  "hlsl_sha256": "2c7ff41d22932b6dae3db4d92f6195ebb84770029c9b102f8c16893cd7928752",
+  "registry_count": 316,
+  "shader_libraries": 41,
+  "materials": 41,
+  "verified_behavior": [
+    "Actual Photo Mode GUI focus at 1.4 metres and f/2 retained sharp helmet and armor detail with a blurred background.",
+    "Changing aperture from f/1.2 to f/22 through the actual GUI restored scene detail.",
+    "Raw R32_FLOAT scene-depth samples measured 1.38 to 1.43 metres at the foreground target, consistent with the successful focus setting.",
+    "Normal startup registered the exact shader library in the renderer; two triangles covered the full viewport."
+  ],
+  "engine_guards": [
+    "Native binding and layout identity checks before existing scene-depth access.",
+    "Actual renderer shader-template registration before drawing.",
+    "Native DoF suppressed only after a successful custom draw; original native flags restored on release."
+  ],
+  "default_checkbox_enabled": false,
+  "publication": "Local source and package verification only; public 0.6 publication unchanged."
+}

@@ -42,7 +42,7 @@ color_format=0;assert(not overlay.apply(o,.9)and created==0,'Gbuffer formats can
 color_width=480;assert(not overlay.apply(o,.9)and created==0,'Quarter-size source must never replace the frame');color_width=nil
 local ok,_,suppress=overlay.apply(o,.9);assert(ok and suppress and overlay.shader_dof_active and overlay.scene_active)
 assert(created==1 and bindings==1 and triangles==2)
-assert(vectors.scissor_rect[1]==1.4 and vectors.scissor_rect[2]==2 and vectors.scissor_rect[3]==.9 and vectors.scissor_rect[4]==24)
+assert(vectors.scissor_rect[1]==1.4 and vectors.scissor_rect[2]==2 and vectors.scissor_rect[3]==.9 and vectors.scissor_rect[4]==96)
 assert(vectors.atlas_scissor[1]==150 and vectors.atlas_scissor[2]==.8 and vectors.atlas_scissor[3]==6 and vectors.atlas_scissor[4]==1)
 assert(vectors.clip_box[1]==.5 and vectors.clip_box[2]==1.2 and vectors.clip_box[3]==.65 and vectors.clip_box[4]==336.35858)
 assert(scalars.scissor_mode==9 and scalars.threshold_fade==.75 and scalars.desaturate==40)
@@ -69,6 +69,11 @@ local u=factory.uniforms({dof=true,dof_mode=2,scene_shader=math.huge,scene_stren
  contrast=-1,saturation=1000,focus_distance=math.huge,aperture=-1,fog_distance=-1,fog_density=math.huge},0/0)
 assert(u.scissor[1]==5 and u.scissor[2]==1.2 and u.scissor[3]==.9 and u.clip[1]==0 and u.clip[2]==.5 and u.clip[3]==2 and u.fog_distance==.1 and u.clip[4]==203,'Non-finite inputs must not reach native setters')
 local shader_options={dof=true,dof_mode=2,scene_shader=1,exposure=0,contrast=100,saturation=100}
+for _,sample in ipairs({{value=1,packed=24},{value=4,packed=96},{value=8,packed=192},{value=0,packed=24},{value=100,packed=192},{value=0/0,packed=96},{value=math.huge,packed=96}})do
+ local values={dof=true,dof_mode=2,dof_strength=sample.value}
+ assert(factory.uniforms(values,.9).scissor[4]==sample.packed,'Strength must be finite, bounded and independent from aperture')
+ values.dof_mode=1;assert(factory.uniforms(values,.9).scissor[4]==0,'Native ignores shader strength')
+end
 u=factory.uniforms(shader_options,.9)
 assert(u.active and u.shader_dof_active and not u.scene_active and u.clip[1]==0 and u.clip[2]==1 and u.clip[3]==1 and u.clip[4]==203,'Processed-color source uses neutral grade without a brightness or saturation fudge')
 assert(shader_options.exposure==0 and shader_options.contrast==100 and shader_options.saturation==100,'Uniform packing never mutates user values')

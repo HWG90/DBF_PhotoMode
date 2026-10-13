@@ -2,10 +2,11 @@ local root=rawget(_G,'DBF_PHOTO_TEST_ROOT')or'freecam/'
 local Core=dofile('src/core.lua');local Controller=dofile(root..'controller.lua');local Options=dofile(root..'photo_options.lua')
 local AI=dofile(root..'ai_control.lua')
 local function clone(t)local r={};for k,v in pairs(t)do r[k]=type(v)=='table'and clone(v)or v end;return r end
-local now=0;local writes=0;local authority=true;local fail_restore=false;local inside_update=false
+local now=0;local writes=0;local authority=true;local solo=true;local fail_restore=false;local inside_update=false
 local enemy={entity=1,identity='scene:enemy:1',invalid=4294967295,fields={detector={value=1,token='detector'},still={value=0x200,token='still'},target={value=70,token='target'},hostiles={value=3,token='hostiles'},alert={value=2,token='alert'}}}
 local enemies={[1]=enemy}
-local backend={now=function()return now end,context=function()if authority then return{identity='scene:1',authority=true}end;return nil,'Only the authoritative host controls enemy behavior'end,
+local backend={now=function()return now end,context=function()if not solo then return nil,'Solo only','not_solo'end;if authority then return{identity='scene:1',authority=true,solo=true,player_count=1}end;return nil,'Only the authoritative host controls enemy behavior'end,
+ restore_context=function()if authority then return{identity='scene:1',authority=true,cleanup=true}end;return nil,'No cleanup authority'end,
 scan=function()local ids={};for id in pairs(enemies)do ids[#ids+1]=id end;return ids,0 end,observe=function(_,id)return clone(enemies[id])end,
 write=function(_,record,key,value,expected)
  local current=enemies[record.entity]
@@ -33,8 +34,8 @@ assert(handle.set('ai_behavior',3)and ai.pending and writes==0,'Menu callback wr
 assert(flush()and ai.mode=='dummy'and ai.affected==1 and enemy.fields.detector.value==0 and enemy.fields.still.value==0x280)
 controller.tick(.1);assert(controls.ai_status.label:find('1 affected',1,true),'Affected count missing')
 authority=false;for i=1,6 do controller.tick(.1)end
-assert(not controls.ai_behavior.disabled and not controls.ai_reset.disabled,'Authority loss prevented switching to Normal/Reset')
-local before=writes;assert(handle.set('ai_behavior',1)and writes==before)
+assert(controls.ai_behavior.disabled and not controls.ai_reset.disabled,'Authority loss must disable behavior choices but retain cleanup Reset')
+local before=writes;assert(handle.activate('ai_reset')and handle.get('ai_behavior')==1 and writes==before)
 assert(not flush()and ai.count()>0 and writes==before,'Lost authority abandoned restoration')
 controller.tick(.1);assert(controls.ai_status.label:find('cleanup waiting',1,true),'Pending cleanup status hidden')
 authority=true;assert(flush()and ai.count()==0 and enemy.fields.detector.value==1 and enemy.fields.still.value==0x200)
@@ -53,6 +54,10 @@ keys[80]=true;controller.tick(.016);keys[80]=false;controller.tick(.016);assert(
 assert(handle.set('ai_behavior',2));assert(flush()and ai.mode=='passive'and enemy.fields.detector.value==0 and enemy.fields.still.value==0x200,'Passive did not restore movement')
 before=writes;assert(handle.activate('ai_reset')and handle.get('ai_behavior')==1 and writes==before,'Reset must only queue restoration')
 assert(flush()and ai.mode=='normal'and ai.count()==0 and enemy.fields.detector.value==1 and next_enemy.fields.detector.value==1,'Reset did not restore normal detection')
+assert(handle.set('ai_behavior',3));assert(flush());solo=false;assert(flush()and ai.mode=='normal');for i=1,6 do controller.tick(.1)end
+assert(mod.controls.ai_behavior.disabled and mod.controls.ai_reset.disabled and handle.get('ai_behavior')==1,'Multiplayer did not gray choices/reset UI to Normal after cleanup')
+assert(not pcall(handle.set,'ai_behavior',3),'Disabled multiplayer behavior remained writable through the handle')
+solo=true;for i=1,6 do controller.tick(.1)end;assert(not mod.controls.ai_behavior.disabled and handle.get('ai_behavior')==1,'Verified solo return silently restored the old choice')
 assert(handle.set('ai_behavior',3));assert(flush());fail_restore=true;before=writes
 assert(controller.close()==false and api.mods.dbf_freecam and writes==before,'Shutdown wrote directly or discarded pending enemy ownership')
 assert(handle.get('ai_behavior')==1 and not flush()and ai.count()>0)

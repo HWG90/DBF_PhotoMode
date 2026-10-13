@@ -33,8 +33,8 @@ function M.new(view,actions,existing)
   self.panel_x=stored_layout('menu_x');self.panel_y=stored_layout('menu_y');self.size_scale=stored_layout('menu_scale');layout_dirty=false;return true
  end
  local function finish_layout()if layout_dirty then layout_dirty=false;self.persist_layout()end end
- function self.close()blur_number();finish_layout();if legend then legend.clear()end;view.release();panel_bounds=nil;hits={};drag=nil;resize=nil;scroll_drag=nil;move_panel=nil;key_capture=nil;text_edit=nil;color_edit=nil;popup=nil;popup_close_on_release=false;self.bound_key=nil;self.editing_value=nil;self.notice=nil;nav_ready=false;held=false;right_held=nil;pointer_x,pointer_y=nil,nil;pressed_key=nil end
- local function suspend_input()blur_number();finish_layout();if legend then legend.clear()end;nav_ready=false;held=false;right_held=nil;drag=nil;resize=nil;scroll_drag=nil;move_panel=nil;pressed_key=nil;pointer_x,pointer_y=nil,nil end
+ function self.close()blur_number();finish_layout();if self.light_gizmos then self.light_gizmos.cancel()end;if legend then legend.clear()end;view.release();panel_bounds=nil;hits={};drag=nil;resize=nil;scroll_drag=nil;move_panel=nil;key_capture=nil;text_edit=nil;color_edit=nil;popup=nil;popup_close_on_release=false;self.bound_key=nil;self.editing_value=nil;self.notice=nil;nav_ready=false;held=false;right_held=nil;pointer_x,pointer_y=nil,nil;pressed_key=nil end
+ local function suspend_input()blur_number();finish_layout();if self.light_gizmos then self.light_gizmos.cancel()end;if legend then legend.clear()end;nav_ready=false;held=false;right_held=nil;drag=nil;resize=nil;scroll_drag=nil;move_panel=nil;pressed_key=nil;pointer_x,pointer_y=nil,nil end
  function self.suspend()suspend_input();panel_bounds=nil;if legend then view.draw({})end end
  function self.bind(handle,pages)
   if self.handle~=handle then blur_number();text_edit=nil;self.editing_value=nil end;self.handle=handle;self.pages=pages;if legend then legend.bind(handle)end
@@ -135,7 +135,8 @@ function M.new(view,actions,existing)
   -- Tab changes input ownership inside the same visible panel. Preserve the
   -- retained GUI/font planes; explicit focus loss still clears via suspend().
   if focused~=last_focus then suspend_input();last_focus=focused end
-  if hidden or not valid(w)or not valid(h)or not self.pages or #self.pages==0 then finish_layout();if legend then legend.clear()end;view.draw({});panel_bounds=nil;hits={};resize=nil;scroll_drag=nil;move_panel=nil;return end
+  if self.prepare_light_gizmos then self.prepare_light_gizmos(w,h,focused,hidden)end
+  if hidden or not valid(w)or not valid(h)or not self.pages or #self.pages==0 then finish_layout();if self.light_gizmos then self.light_gizmos.cancel()end;if legend then legend.clear()end;view.draw({});panel_bounds=nil;hits={};resize=nil;scroll_drag=nil;move_panel=nil;return end
   if view.refresh_font then view.refresh_font()end
   local commands={};hits={};reset_regions={};local base=math.max(.75,math.min(w/1920,h/1080));local maximum=math.min(w/(PANEL_WIDTH+48),h/(PANEL_HEIGHT+102+HUD_MARGIN));local minimum=math.min(maximum,math.max(.35,base*.65))
   local s=math.max(minimum,math.min(maximum,base*self.size_scale));local width=PANEL_WIDTH*s;local footprint=(PANEL_HEIGHT+62)*s
@@ -297,6 +298,7 @@ function M.new(view,actions,existing)
    scrollbar('popup',{x=px+pw-18*s,y=py+2*s,w=16*s,h=popup_count*option_h-4*s},#popup.c.choices,popup_count,popup_scroll,true)
   end
   if legend then legend.draw(commands,w,h,focused,false,{x=x,y=bottom,w=width,h=top-bottom,scale=s})end
+  if self.light_gizmos then self.light_gizmos.draw(commands,self.scene_pointer_blocked,self.scene_input_blocked())end
   view.draw(commands)
  end
  local function activate(b)
@@ -308,8 +310,9 @@ function M.new(view,actions,existing)
   elseif c.type=='keybind'then key_capture=c;armed=false;baseline={}
   elseif c.type=='color'then if color_edit==c then color_edit=nil else color_edit=c end end
  end
- function self.tick(input,down)
+ function self.tick(input,down,scene_checked)
   if not input or last_focus~=true then self.suspend();return end
+  if not scene_checked and self.scene_tick(input,down)then held=false;return end
   if input.x then pointer_x=input.x end;if input.y then pointer_y=input.y end
   if not input.click then finish_layout();drag=nil;scroll_drag=nil;move_panel=nil;pressed_key=nil;if popup_close_on_release then popup=nil;popup_close_on_release=false end end
   if move_panel and input.click then
@@ -407,12 +410,22 @@ function M.new(view,actions,existing)
  function self.editing_key()return key_capture~=nil end
  function self.editing_text()return text_edit~=nil end
  function self.editing_control(id)return text_edit and text_edit.c.id==id or self.editing_value and self.editing_value.id==id or false end
- function self.contains_pointer(x,y)
+ function self.scene_input_blocked()
+  return popup~=nil or key_capture~=nil or text_edit~=nil or color_edit~=nil or self.editing_value~=nil or drag~=nil or resize~=nil or scroll_drag~=nil or move_panel~=nil or legend and legend.capturing_pointer()or false
+ end
+ function self.scene_pointer_blocked(x,y)
   -- A modal dropdown excludes all scene picking, including its outside-click
   -- dismissal. The opaque panel and flyout exclude their entire surfaces.
-  if popup or key_capture or drag or resize or scroll_drag or move_panel or legend and legend.capturing_pointer()then return true end
+  if self.scene_input_blocked()then return true end
   local b=panel_bounds
   return type(x)=='number'and type(y)=='number'and((b and x>=b.x and x<=b.x+b.w and y>=b.y and y<=b.y+b.h)or legend and legend.pointer_over({x=x,y=y}))or false
+ end
+ function self.scene_tick(input,down)
+  if not last_focus or not self.light_gizmos then return false end
+  return self.light_gizmos.tick(input,down,self.scene_pointer_blocked,self.scene_input_blocked())
+ end
+ function self.contains_pointer(x,y)
+  return self.scene_pointer_blocked(x,y)or self.light_gizmos and self.light_gizmos.hit(x,y,self.scene_pointer_blocked,self.scene_input_blocked())or false
  end
  return self
 end
