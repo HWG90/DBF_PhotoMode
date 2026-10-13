@@ -20,6 +20,146 @@ function M.native(sr,subject,data)
  local function checked(frame,owned)
   local valid,why=adapter.valid(frame,owned);assert(valid==true,why or'Subject pose owner retired')
  end
+ -- Cloth keeps its simulated shape while world time is stopped. Its separate
+ -- mesh-placement nodes must follow the posed shoulder anchor as well as the
+ -- skeleton. Capture only the verified cape class; an unsupported garment
+ -- never prevents a body pose or authorizes guessed node-number writes.
+ local cape_api=sr.Mesh and type(sr.Mesh.node)=='function'
+ for _,name in ipairs({'resolve','valid','owned'})do cape_api=cape_api and type(subject[name])=='function'end
+ for _,name in ipairs({'has_mesh','mesh','num_meshes','world_pose'})do cape_api=cape_api and type(U[name])=='function'end
+ for _,name in ipairs({'multiply','inverse','right','forward','up','translation'})do cape_api=cape_api and type(X[name])=='function'end
+ for _,name in ipairs({'x','y','z'})do cape_api=cape_api and type(V[name])=='function'end
+ local function same_pose(a,b)
+  for _,axis in ipairs({'right','forward','up','translation'})do
+   local left,right=X[axis](a),X[axis](b)
+   for _,field in ipairs({'x','y','z'})do
+    local x,y=V[field](left),V[field](right)
+    if type(x)~='number'or type(y)~='number'or x~=x or y~=y or math.abs(x)==math.huge or math.abs(y)==math.huge or math.abs(x-y)>1e-4 then return false end
+   end
+  end
+  return true
+ end
+ local function cape_part(record,owned)
+  local valid,why=subject.valid(record.part)
+  if valid==false then return false end
+  assert(valid==true,why or'Cape ownership read unavailable')
+  assert(U.num_scene_graph_items(record.part.handle)==record.node_count,'Cape skeleton changed')
+  assert(U.has_node(record.part.handle,'cape1')and U.node(record.part.handle,'cape1')==record.cape_node,'Cape anchor mapping changed')
+  if owned then assert(subject.owned(record.part),'Cape attachment ownership changed')end
+  return true
+ end
+ local function cape_mesh(record,mesh)
+  local valid,why=subject.valid(record.part,mesh.index)
+  if valid==false then return false end
+  assert(valid==true,why or'Cape mesh ownership read unavailable')
+  -- Do not dereference a saved Mesh until the backend has found that exact
+  -- object in this still-live, generation-checked Unit's mesh array.
+  assert(sr.Mesh.node(mesh.handle)==mesh.node,'Cape mesh node mapping changed')
+  assert(U.scene_graph_parent(record.part.handle,mesh.node)==mesh.parent,'Cape placement parent changed')
+  return true
+ end
+ local function capture_capes(frame)
+  if not cape_api then return nil end
+  local ok,result=pcall(function()
+   checked(frame,true)
+   assert(U.has_node(frame.root_handle,'cape1'),'Subject cape anchor unavailable')
+   local anchor=U.node(frame.root_handle,'cape1')
+   assert(type(anchor)=='number'and anchor>=8 and anchor<=92,'Subject cape anchor unsupported')
+   local inverse=sr.Matrix4x4Box(X.inverse(U.world_pose(frame.root_handle,anchor)))
+   local scene=subject.resolve();local records,seen={},{}
+   assert(scene.local_owner and scene.groups and scene.groups.hide_player,'Cape subject lookup unavailable')
+   for _,part in ipairs(scene.groups.hide_player)do
+    if part.ref~=frame.root_ref and not seen[part.ref]then
+     seen[part.ref]=true
+     local found,record=pcall(function()
+      assert(subject.valid(part)==true and subject.owned(part),'Cape source unavailable')
+      assert(part.world_native==frame.world_native and part.owner_key==frame.owner_key,'Cape subject world or owner differs')
+      local unit=part.handle
+      assert(U.num_scene_graph_items(unit)==50 and U.has_node(unit,'cape1'),'Unsupported cape skeleton')
+      local named=false
+      for _,name in ipairs({'g_shock_trooper_cape','g_shock_trooper_cape_simple','g_shock_trooper_cape_simple_partial'})do
+       local exists=U.has_mesh(unit,name);if exists==true or exists==1 then named=true end
+      end
+      assert(named,'Unsupported cape mesh class')
+      local count=U.num_meshes(unit);assert(count==part.mesh_count and count>=1 and count<=32,'Cape mesh bounds changed')
+      local r={part=part,node_count=50,cape_node=U.node(unit,'cape1'),anchor=anchor,world=frame.world,meshes={},changed={}}
+      local root=sr.Matrix4x4Box(U.world_pose(unit,1));local nodes={}
+      for index=1,count do
+       assert(subject.valid(part,index)==true,'Cape mesh retired during capture')
+       local handle=U.mesh(unit,index);local node=sr.Mesh.node(handle)
+       assert(type(node)=='number'and node%1==0 and node>=1 and node<=50,'Cape mesh node bounds changed')
+       local parent=U.scene_graph_parent(unit,node)
+       if node>1 and not nodes[node]and type(parent)=='number'and parent%1==0 and parent>=1 and parent<=50 and parent~=node then
+        local pose=sr.Matrix4x4Box(U.world_pose(unit,node))
+        if same_pose(pose:unbox(),root:unbox())then
+         nodes[node]=true
+         r.meshes[#r.meshes+1]={index=index,handle=handle,node=node,parent=parent,
+          original=sr.Matrix4x4Box(U.local_pose(unit,node)),
+          bind=sr.Matrix4x4Box(X.multiply(pose:unbox(),inverse:unbox()))}
+        end
+       end
+      end
+      assert(#r.meshes>0 and cape_part(r,true),'Cape placement nodes unavailable')
+      for _,mesh in ipairs(r.meshes)do assert(cape_mesh(r,mesh),'Cape mesh retired during capture')end
+      return r
+     end)
+     if found then records[#records+1]=record end
+    end
+   end
+   checked(frame,true);return records
+  end)
+  -- No cape writes have happened yet: missing/unsupported cape readers can
+  -- safely skip this optional feature without retaining a mutation lease.
+  return ok and result or nil
+ end
+ local function apply_capes(lease)
+  for _,record in ipairs(lease.capes or{})do
+   if not record.retired then
+    if not cape_part(record,true)then record.retired=true;record.changed={}
+    else
+     assert(U.has_node(lease.frame.root_handle,'cape1')and U.node(lease.frame.root_handle,'cape1')==record.anchor,'Subject cape anchor changed')
+     local anchor=sr.Matrix4x4Box(U.world_pose(lease.frame.root_handle,record.anchor));local wrote=false
+     for _,mesh in ipairs(record.meshes)do
+      if not mesh.retired then
+       if not cape_mesh(record,mesh)then mesh.retired=true;record.changed[mesh.node]=nil
+       else
+        local parent=U.world_pose(record.part.handle,mesh.parent)
+        local desired=X.multiply(X.multiply(mesh.bind:unbox(),anchor:unbox()),X.inverse(parent))
+        record.changed[mesh.node]=true -- Own restoration before a partial setter failure.
+        U.set_local_pose(record.part.handle,mesh.node,desired);wrote=true
+       end
+      end
+     end
+     if wrote then sr.World.update_unit(record.world,record.part.handle)end
+    end
+   end
+  end
+ end
+ local function restore_capes(lease)
+  local failure
+  for _,record in ipairs(lease.capes or{})do
+   if next(record.changed)then
+    local ok,why=pcall(function()
+     if not cape_part(record,false)then record.changed={};record.retired=true;return end
+     local done,wrote={},false;local problem
+     for _,mesh in ipairs(record.meshes)do
+      if record.changed[mesh.node]then
+       local restored,reason=pcall(function()
+        if cape_mesh(record,mesh)then U.set_local_pose(record.part.handle,mesh.node,mesh.original:unbox());wrote=true end
+        done[mesh.node]=true
+       end)
+       if not restored then problem=problem or tostring(reason)end
+      end
+     end
+     if wrote then sr.World.update_unit(record.world,record.part.handle)end
+     for node in pairs(done)do record.changed[node]=nil end
+     assert(not problem,problem)
+    end)
+    if not ok then failure=failure or tostring(why)end
+   end
+  end
+  assert(not failure,failure)
+ end
  function adapter.capture(frame)
   checked(frame,true)
   local unit=frame.root_handle
@@ -32,6 +172,7 @@ function M.native(sr,subject,data)
   -- Preserve world placement/root (1..7), collision nodes and unnamed
   -- gameplay attachments. Body-root 8 is needed for poses such as push-ups.
   for i=8,92 do lease.original[i]=sr.Matrix4x4Box(U.local_pose(unit,i))end
+  lease.capes=capture_capes(frame)
   return lease
  end
  local function poses(id)
@@ -55,13 +196,19 @@ function M.native(sr,subject,data)
    U.set_local_pose(lease.frame.root_handle,i,value:unbox())
   end
   sr.World.update_unit(lease.frame.world,lease.frame.root_handle)
+  apply_capes(lease)
  end
  function adapter.restore(lease)
-  checked(lease.frame,false)
-  for i=8,92 do U.set_local_pose(lease.frame.root_handle,i,lease.original[i]:unbox())end
-  U.set_animation_bone_mode(lease.frame.root_handle,lease.mode)
-  sr.World.update_unit(lease.frame.world,lease.frame.root_handle)
+  local capes,why=pcall(restore_capes,lease)
+  local body,reason=pcall(function()
+   checked(lease.frame,false)
+   for i=8,92 do U.set_local_pose(lease.frame.root_handle,i,lease.original[i]:unbox())end
+   U.set_animation_bone_mode(lease.frame.root_handle,lease.mode)
+   sr.World.update_unit(lease.frame.world,lease.frame.root_handle)
+  end)
+  assert(capes,why);assert(body,reason)
  end
+ function adapter.restore_retired(lease)restore_capes(lease)end
  return adapter
 end
 function M.new(sr,subject,is_paused,log,data,adapter)
@@ -89,7 +236,10 @@ function M.new(sr,subject,is_paused,log,data,adapter)
  local function restore()
   if not owned then idle('Original pose restored');return true end
   local valid,why=backend().valid(owned.frame,false)
-  if valid==false then idle('Previous subject retired');return true end
+  if valid==false then
+   if backend().restore_retired then backend().restore_retired(owned)end
+   idle('Previous subject retired');return true
+  end
   assert(valid==true,why or'Subject restoration ownership unavailable')
   backend().restore(owned);idle('Original pose restored');return true
  end
@@ -135,7 +285,7 @@ function M.new(sr,subject,is_paused,log,data,adapter)
  local function run(after)
   if owned then
    local valid,why=backend().valid(owned.frame,false)
-   if valid==false then idle('Previous subject retired');return true end
+   if valid==false then return restore()end
    assert(valid==true,why or'Subject pose ownership unavailable')
   end
   if request and request.stop or owned and not paused()then return restore()end

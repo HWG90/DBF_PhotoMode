@@ -31,7 +31,7 @@
     "body_root_8_only_for_full_body_poses": true
   },
   "verification": {
-    "fixture_groups_passed": 52,
+    "fixture_groups_passed": 53,
     "final_affected_fixture_groups_passed": 3,
     "packages": [
       "BSL",
@@ -44,7 +44,7 @@
     "Exit/pause-off/slow-motion cleanup has fixture coverage; fresh in-game acceptance is limited to held pose, switching and Reset.",
     "Mission, respawn and ragdoll transitions require broader live coverage.",
     "Every catalogue entry has isolated apply, hold, switch and restoration coverage; full-catalogue visual acceptance is pending.",
-    "Paused cape cloth remains in its previous simulated position despite matching root/garment skeleton transforms.",
+    "Cape placement follows supported poses, but frozen cloth is not physically re-draped; unsupported cape classes and transition coverage need broader live testing.",
     "No props or cooperative participants are spawned; no runtime emote events or world simulation steps are used."
   ],
   "expanded_catalogue": {
@@ -76,5 +76,22 @@
     "live_active_pose": "Kneeling thumbs-up - hold [14/18] - variant 9",
     "live_world_rate": 0,
     "active_snapshot_preserved_during_refresh": true
+  },
+  "cape_placement_fix": {
+    "checked_at_utc": "2026-10-13T19:00:10.165340+00:00",
+    "implementation": "Original cape mesh placement follows the posed shoulder anchor while retaining frozen cloth shape and material appearance",
+    "scope": "Verified 50-node cape class; placement nodes discovered from mesh bindings and actual parent hierarchy",
+    "live_pid": 62116,
+    "install_batch": 343,
+    "status_batch": 344,
+    "cape_records": 1,
+    "placement_nodes": 3,
+    "world_time_rate": 0,
+    "user_confirmation": "Follows and resets correctly",
+    "test_sequence": "Switch between a push-up and Salute, then Reset pose",
+    "temporary_test_was_retired": true,
+    "temporary_prototype_not_packaged": true,
+    "physics_advanced": false,
+    "fixture_groups_passed": 53
   }
 }
