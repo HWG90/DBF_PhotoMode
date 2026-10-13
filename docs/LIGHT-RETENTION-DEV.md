@@ -49,11 +49,15 @@ illumination or in-game menu acceptance.
 
 The final candidate passed all 42 isolated fixture groups and standalone package
 checks for BSL, MDL and LLL. Complete development archives are retained under
-`dist/releases/War-Journalist-0.9.5-light-retention-dev`.
+`dist/releases/War-Journalist-0.9.5-light-retention-dev`. The follow-up candidate
+also adds a visible **Apply** button to the RGB color editor; it closes the editor
+while retaining the previewed color. Pointer interaction and placement passed at
+1920x1080 and 800x600. Complete packages with both fixes passed their standalone
+checks under `dist/releases/War-Journalist-0.9.5-light-retention-apply-dev`.
 
 The local LLL `src/actioncam.lua` was backed up and replaced with the validated
 generated runtime, SHA256
-`cad118cf72a041c4cd69f01a79f2894bcec5bd55a74b91b0e985fe36b9170e50`.
+`f262ef08a6b95bdaeed01344674a92f84324dd0b2854bf7001b4b4f9a3efad04`.
 The final marker readback guard also checks scene generation before accessing
 units. Existing dedicated light assets are byte-identical and need no deployment.
 Settings, screenshots, other runtime files and Arsenal source were untouched.

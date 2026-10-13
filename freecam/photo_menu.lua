@@ -253,7 +253,8 @@ function M.new(view,actions,existing)
   end
   scrollbar('rows',{x=x+width-18*s,y=content_top-visible_count*row,w=16*s,h=visible_count*row},#rows,visible_count,self.scroll)
   if color_edit then
-   text('COLOR CHANNELS',left,bottom+73*s,width-32*s,16*s,10,T.muted);local hex=self.handle.get(color_edit.id);local bw=(width-44*s)/3
+   text('COLOR CHANNELS',left,bottom+73*s,width-158*s,16*s,10,T.muted);local hex=self.handle.get(color_edit.id);local bw=(width-44*s)/3
+   button('Apply',{x=x+width-120*s,y=bottom+68*s,w=104*s,h=25*s},function()color_edit=nil;drag=nil;self.notice=nil end,'color:apply',true,12)
    for n=1,3 do local v=tonumber(hex:sub(n*2,n*2+1),16);local bx=left+(n-1)*(bw+6*s);text(({'R','G','B'})[n]..' '..v,bx,bottom+51*s,bw,18*s,11,T.white)
     local c={type='color_channel',base=color_edit.id,channel=n,min=0,max=255,step=1};local b={x=bx,y=bottom+29*s,w=bw,h=18*s,c=c,key='channel:'..n}
     surface(b,false,false,b.key,true);rect(bx,b.y,bw*v/255,2*s,T.gold,1,307);hits[#hits+1]=b
