@@ -206,22 +206,14 @@ function M.new(view,actions,existing)
   local opacity=menu_opacity()
   rect(x,bottom,width,top-bottom,T.background,opacity/100,300,false,'photo_panel')
   rect(x,top-1*s,width,1*s,T.gold,.55,303)
-  text('WAR JOURNALIST',left,top-24*s,width-322*s,22*s,14,T.white,310,nil,'title')
-  text(self.warming_up_scene and 'WARMING UP SCENE'or 'PHOTO MODE',left,top-39*s,width-322*s,14*s,10,self.warming_up_scene and T.gold or T.muted)
+  text('WAR JOURNALIST',left,top-24*s,width-210*s,22*s,14,T.white,310,nil,'title')
+  text(self.warming_up_scene and 'WARMING UP SCENE'or 'PHOTO MODE',left,top-39*s,width-210*s,14*s,10,self.warming_up_scene and T.gold or T.muted)
   text(focused and 'MENU FOCUS'or 'CAMERA FOCUS',x+width-164*s,top-39*s,148*s,14*s,10,focused and T.gold or T.muted)
-  local move_bounds={x=x+4*s,y=top-42*s,w=width-302*s,h=40*s,move=true,key='move'}
+  local move_bounds={x=x+4*s,y=top-42*s,w=width-188*s,h=40*s,move=true,key='move'}
   rect(move_bounds.x,move_bounds.y,move_bounds.w,move_bounds.h,T.header,over(move_bounds)and .08 or 0,308,nil,'move_handle')
   if focused then hits[#hits+1]=move_bounds end
   button((focused and 'Camera'or 'Edit menu')..' ['..keys.focus..']',{x=x+width-174*s,y=top-24*s,w=158*s,h=20*s},actions.focus,'focus',false,11)
-  local opacity_bounds={x=x+width-288*s,y=top-39*s,w=100*s,h=35*s,c=opacity_control,key='menu_opacity'}
-  local opacity_track={x=opacity_bounds.x+6*s,y=opacity_bounds.y+6*s,w=88*s,h=3*s};opacity_bounds.track=opacity_track
-  local opacity_ink=focused and(over(opacity_bounds)or drag and drag.c==opacity_control)and T.gold or T.muted
-  local opacity_label=text('Opacity '..string.format('%.0f',opacity)..'%',opacity_bounds.x+6*s,opacity_bounds.y+17*s,88*s,14*s,9,opacity_ink,310,nil,'menu_opacity');opacity_label.control_id='menu_opacity'
-  local track=rect(opacity_track.x,opacity_track.y,opacity_track.w,opacity_track.h,T.border_hover,.85,306,false,'menu_opacity_track');track.control_id='menu_opacity'
-  local fraction=(opacity-opacity_control.min)/(opacity_control.max-opacity_control.min)
-  rect(opacity_track.x,opacity_track.y,opacity_track.w*fraction,opacity_track.h,opacity_ink,1,307)
-  rect(opacity_track.x+(opacity_track.w-4*s)*fraction,opacity_track.y-4*s,4*s,11*s,opacity_ink,1,308,false,'menu_opacity_thumb')
-  reset_regions[#reset_regions+1]=opacity_bounds;if focused then hits[#hits+1]=opacity_bounds end
+
   self.page=math.max(1,math.min(#self.pages,self.page));local tab_widths={};local tab_total=0;local tab_budget=width-32*s
   for i,page in ipairs(self.pages)do tab_widths[i]=math.max(56*s,measure(page.name,12*s)+42*s);tab_total=tab_total+tab_widths[i]end
   local tab_columns=tab_total<=tab_budget and #self.pages or math.ceil(#self.pages/2);local tab_rows=math.ceil(#self.pages/tab_columns)
@@ -301,6 +293,15 @@ function M.new(view,actions,existing)
   button('Toggle HUD',{x=left,y=strip_bottom+29*s,w=120*s,h=21*s},actions.hud,'hud',false,11)
   button('Hide controls ['..keys.hide..']',{x=left+128*s,y=strip_bottom+29*s,w=166*s,h=21*s},actions.hide,'hide',false,11)
   button('Exit photo mode',{x=left+302*s,y=strip_bottom+29*s,w=156*s,h=21*s},actions.exit,'exit',false,11)
+  local opacity_bounds={x=x+width-116*s,y=strip_bottom+27*s,w=100*s,h=25*s,c=opacity_control,key='menu_opacity'}
+  local opacity_track={x=opacity_bounds.x+6*s,y=opacity_bounds.y+3*s,w=88*s,h=3*s};opacity_bounds.track=opacity_track
+  local opacity_ink=focused and(over(opacity_bounds)or drag and drag.c==opacity_control)and T.gold or T.muted
+  local opacity_label=text('Opacity '..string.format('%.0f',opacity)..'%',opacity_bounds.x+6*s,opacity_bounds.y+10*s,88*s,14*s,9,opacity_ink,310,nil,'menu_opacity');opacity_label.control_id='menu_opacity'
+  local track=rect(opacity_track.x,opacity_track.y,opacity_track.w,opacity_track.h,T.border_hover,.85,306,false,'menu_opacity_track');track.control_id='menu_opacity'
+  local fraction=(opacity-opacity_control.min)/(opacity_control.max-opacity_control.min)
+  rect(opacity_track.x,opacity_track.y,opacity_track.w*fraction,opacity_track.h,opacity_ink,1,307)
+  rect(opacity_track.x+(opacity_track.w-4*s)*fraction,opacity_track.y-4*s,4*s,11*s,opacity_ink,1,308,false,'menu_opacity_thumb')
+  reset_regions[#reset_regions+1]=opacity_bounds;if focused then hits[#hits+1]=opacity_bounds end
   text('W/S rows  |  A/D values  |  Q/E tabs  |  Enter edits  |  Right-click resets',left,strip_bottom+6*s,width-32*s,16*s,11,T.muted)
   local grip={x=x+4*s,y=bottom+4*s,w=20*s,h=20*s};local grip_hover=over(grip);local grip_pressed=resize~=nil
   local grip_command=rect(grip.x,grip.y,grip.w,grip.h,grip_pressed and T.pressed or grip_hover and T.field_hover or T.panel,1,320,false,'resize_grip');grip_command.resize=true;grip_command.hovered=grip_hover==true;grip_command.pressed=grip_pressed
