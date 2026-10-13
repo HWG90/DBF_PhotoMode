@@ -9,7 +9,7 @@ The annotated tag `v0.9.5` resolves to that commit.
 | Destination | Recorded status |
 | --- | --- |
 | [GitHub release](https://github.com/HWG90/DBF_PhotoMode/releases/tag/v0.9.5) | BSL, MDL, LLL, and `SHA256SUMS.txt` published. All four public downloads were retrieved and matched the release hashes. |
-| [Nexus files](https://www.nexusmods.com/helldivers2/mods/17248?tab=files) | BSL file **68579** was downloaded through the public manual-download route and its SHA256 matched the release. Flat MDL replacement **68590** cleared scanning and exposes public download controls. Original MDL **68580** was archived after quarantine. Only BSL and MDL are published on Nexus. |
+| [Nexus files](https://www.nexusmods.com/helldivers2/mods/17248?tab=files) | BSL file **68579** and flat MDL replacement **68590** were downloaded through the public manual-download route and their SHA256 hashes matched the validated packages. Original MDL **68580** was archived after quarantine. Only BSL and MDL are published on Nexus. |
 | [Ayaka 0.9.5 update](https://ayakamods.com/mods/war-journalist-helldivers-2-photo-mode.4948/update/7175/) | Main entry updated and the new version's update page verified. The update now records cleared Nexus MDL scanning and flat installation steps. |
 | [Discord announcement](https://discord.com/channels/1260111500522295377/1559027203315073094/1559501698337079316) | Existing thread title and original post updated for release. The feature and bug-fix announcement now records cleared Nexus MDL scanning and flat installation steps. |
 
@@ -21,8 +21,8 @@ A [review request draft](NEXUS-0.9.5-REVIEW-REQUEST.txt) remains unsent; the use
 chose the flat re-upload instead.
 Browser page content verified the changes. A Nexus files-page screenshot now
 records both download entries, their green scan indicators and manual-download
-buttons. The replacement's public Nexus download has not been hash-verified;
-GitHub's replacement download has. Earlier release screenshot capture timed out.
+buttons. The replacement's public Nexus and GitHub downloads are both
+hash-verified. Earlier release screenshot capture timed out.
 
 ## Validation
 
