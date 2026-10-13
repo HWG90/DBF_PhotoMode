@@ -1,0 +1,52 @@
+To: support@nexusmods.com
+Subject: Review request: War Journalist 0.9.5 MDL file 68580 quarantined
+
+Hello Nexus Mods team,
+
+Could you review the automated quarantine of the MDL package for War Journalist 0.9.5, my Helldivers 2 Photo Mode, and let me know which file or behavior caused it?
+
+Mod: https://www.nexusmods.com/helldivers2/mods/17248
+File ID: 68580 (War-Journalist-0.9.5-MDL.zip)
+File page: https://www.nexusmods.com/helldivers2/mods/17248?tab=files&file_id=68580
+Size: 2,257,333 bytes
+SHA256: af5704af9807adf43e7b934ee2e93ba62bf8eba4b72649491a9b1eb0c13517a7
+Linked VirusTotal report: https://www.virustotal.com/gui/file/af5704af9807adf43e7b934ee2e93ba62bf8eba4b72649491a9b1eb0c13517a7
+
+The VirusTotal URL matches the uploaded release's SHA256. The companion BSL file 68579 is available, while this MDL file is quarantined. I do not yet know the reason for the difference and am requesting review rather than assuming a false positive.
+
+The MDL archive intentionally includes an Arsenal-importable asset ZIP and two native DLLs:
+
+- Arsenal/War-Journalist-0.9.5-Assets.zip: bundled game assets needed for decorations, shaders and the Photo light. SHA256 a67fe938b12fc50b74061173a7d0ff5785bc3696d623d191d9caa8d9f1e89a32.
+- dbf_freecam/PhotoCapture_7da458d8a23d.dll: Windows WIC screenshot conversion, including HDR-to-SDR and color-channel handling. SHA256 7da458d8a23d5a94039d33007957c62acce5b45ea4183bdd02e8731d19ff6a62.
+- dbf_freecam/mcm_input_eed2e92830f3.dll: the vendored CowboyBingus keyboard/mouse input component used to manage Photo Mode input. SHA256 d1f84d7a48e49f1927bdad9785d135746f918259e84a38f44aa9f4afae38c6c3. Its 0BSD license and provenance are bundled.
+
+Public release and source:
+https://github.com/HWG90/DBF_PhotoMode/releases/tag/v0.9.5
+https://github.com/HWG90/DBF_PhotoMode/tree/4308eaf8bab42c259953025a04996096afc96ac3
+
+The exact source commit is 4308eaf8bab42c259953025a04996096afc96ac3, tagged v0.9.5. The public GitHub download was retrieved and verified against the same SHA256 above.
+
+Package build instructions are in README.md. On Windows with Python 3 and a Lua 5.1/LuaJIT DLL available (HD2_LUA51_DLL can select it), a fresh checkout can be packaged using:
+
+git clone https://github.com/HWG90/DBF_PhotoMode.git war-journalist-review
+cd war-journalist-review
+git checkout --detach 4308eaf8bab42c259953025a04996096afc96ac3
+py -3 tools/build_release.py --output dist/releases/nexus-review-0.9.5
+py -3 tools/run_tests.py
+py -3 tools/test_packaged_standalone.py dist/releases/nexus-review-0.9.5/War-Journalist-0.9.5-BSL.zip dist/releases/nexus-review-0.9.5/War-Journalist-0.9.5-MDL.zip dist/releases/nexus-review-0.9.5/War-Journalist-0.9.5-LLL.zip
+
+That package builder uses maintained source, checked-in native binaries and hash-checked compiled asset snapshots; it does not require installed-game assets or developer capture folders.
+
+The screenshot converter's C++ source and build script are also public. To build it separately with Visual Studio 2022 Community's MSVC x64 environment and Windows SDK:
+
+py -3 freecam/native/build_photo_capture.py --output dist/native-nexus-review
+py -3 freecam/native/test_photo_capture.py --build dist/native-nexus-review
+
+The converter test additionally requires Pillow. The native build script selects Visual Studio's vcvars64.bat, invokes cl with /LD /MT /EHsc /std:c++17 /O2 /W4 /WX, and links ole32.lib and windowscodecs.lib. This separate build does not replace the vendored release binary automatically, and is not a claim of byte-identical compiler output.
+
+All three final loader packages passed static checks and isolated standalone startup tests. Those are functional/package checks, not a substitute for your security review.
+
+Please let me know the detection details or any changes needed to make the MDL package acceptable. I can provide the relevant build and validation receipts if useful.
+
+Thank you,
+Goose
