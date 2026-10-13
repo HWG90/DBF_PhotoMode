@@ -56,14 +56,28 @@ press(13);assert(find(function(c)return c.ui_role=='dropdown_panel'end));press(8
 for _,c in ipairs(commands)do assert(not c.popup)end
 menu.selection=4;menu.scroll=0;menu.draw(1920,1080,false,false,{focus='TAB',hide='H'});keys[32]=true;tick();keys[32]=false;tick();assert(invoked==2,'Camera focus must never choose menu controls')
 -- Apply is a visible, pointer-accessible way out of the live color picker.
-for _,size in ipairs({{1920,1080},{800,600}})do
+for _,size in ipairs({{1920,1080},{800,600},{640,480}})do
  menu.page=3;menu.selection=1;menu.scroll=0;draw(size[1],size[2]);tick();pointer(field('light_color'),true);tick({click=false});draw(size[1],size[2])
  local channel=find(function(c)return c.ui_key=='channel:1'end);pointer(channel,true);tick({click=false});draw(size[1],size[2]);local edited=values.light_color
  assert(edited:sub(4)=='6080','Color edit changed an untouched channel')
  local apply=find(function(c)return c.ui_key=='color:apply'end);assert(apply.x>=0 and apply.y>=0 and apply.x+apply.w<=size[1]and apply.y+apply.h<=size[2],'Apply is outside the viewport')
  assert(find(function(c)return c.full_text=='Apply'end),'Color editor lacks a visible Apply label')
+ local function check_preview()
+  local swatch=find(function(c)return c.ui_role=='color_preview'and c.control_id=='light_color'end)
+  local hex=find(function(c)return c.ui_role=='color_hex'and c.control_id=='light_color'end)
+  assert(swatch.a==1 and swatch.c[1]==tonumber(values.light_color:sub(2,3),16)and swatch.c[2]==tonumber(values.light_color:sub(4,5),16)and swatch.c[3]==tonumber(values.light_color:sub(6,7),16),'Live swatch differs from current RGB value')
+  assert(hex.text==values.light_color and hex.text==hex.full_text,'Current HEX value is missing or clipped')
+  local hb=hex.text_bounds
+  assert(swatch.x>=0 and swatch.y>=0 and swatch.x+swatch.w<=size[1]and swatch.y+swatch.h<=size[2],'Swatch is outside the viewport')
+  assert(swatch.x+swatch.w<hb.x and hb.x+hb.w<apply.x,'Color preview or HEX overlaps Apply')
+ end
+ check_preview()
+ channel=find(function(c)return c.ui_key=='channel:1'end)
+ tick({x=channel.x+channel.w*.2,y=channel.y+channel.h/2,click=true});draw(size[1],size[2]);check_preview()
+ tick({x=channel.x+channel.w*.8,y=channel.y+channel.h/2,click=true});draw(size[1],size[2]);check_preview()
+ tick({click=false});draw(size[1],size[2]);edited=values.light_color
  pointer(apply,true);tick({click=false});draw(size[1],size[2]);assert(values.light_color==edited,'Apply changed the selected color')
- for _,c in ipairs(commands)do assert(c.ui_key~='color:apply'and c.ui_key~='channel:1','Apply did not close the color editor')end
+ for _,c in ipairs(commands)do assert(c.ui_key~='color:apply'and c.ui_key~='channel:1'and c.ui_role~='color_preview'and c.ui_role~='color_hex','Apply did not close the color editor')end
 end
 draw(800,600);for _,c in ipairs(commands)do if c.type=='text'then assert(measure(c.text,c.size)<=c.text_width+.001);local b=c.text_bounds;assert(b.x>=0 and b.y>=0 and b.x+b.w<=800.001 and b.y+b.h<=600.001)end end
 menu.close();print('Photo panel interaction: native label fitting, hover/press, modal pointer ownership, selected WASD values without mouse movement, closed/open choice cycling, toggle direction, bounds, disabled skips, keyboard reveal and tab transitions passed')

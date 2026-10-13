@@ -253,7 +253,14 @@ function M.new(view,actions,existing)
   end
   scrollbar('rows',{x=x+width-18*s,y=content_top-visible_count*row,w=16*s,h=visible_count*row},#rows,visible_count,self.scroll)
   if color_edit then
-   text('COLOR CHANNELS',left,bottom+73*s,width-158*s,16*s,10,T.muted);local hex=self.handle.get(color_edit.id);local bw=(width-44*s)/3
+   text('COLOR CHANNELS',left,bottom+73*s,148*s,16*s,10,T.muted);local hex=self.handle.get(color_edit.id);local bw=(width-44*s)/3
+   -- The source row may scroll out of view while the channel editor is open.
+   -- Keep its current swatch and exact HEX value beside the editor's own Apply.
+   local swatch={x=left+158*s,y=bottom+71*s,w=52*s,h=20*s}
+   local rgb={tonumber(hex:sub(2,3),16),tonumber(hex:sub(4,5),16),tonumber(hex:sub(6,7),16)}
+   local preview=rect(swatch.x,swatch.y,swatch.w,swatch.h,rgb,1,307,false,'color_preview');preview.control_id=color_edit.id
+   border(swatch,T.white,308)
+   local hex_label=text(hex,left+220*s,bottom+68*s,100*s,25*s,13,T.white);hex_label.ui_role='color_hex';hex_label.control_id=color_edit.id
    button('Apply',{x=x+width-120*s,y=bottom+68*s,w=104*s,h=25*s},function()color_edit=nil;drag=nil;self.notice=nil end,'color:apply',true,12)
    for n=1,3 do local v=tonumber(hex:sub(n*2,n*2+1),16);local bx=left+(n-1)*(bw+6*s);text(({'R','G','B'})[n]..' '..v,bx,bottom+51*s,bw,18*s,11,T.white)
     local c={type='color_channel',base=color_edit.id,channel=n,min=0,max=255,step=1};local b={x=bx,y=bottom+29*s,w=bw,h=18*s,c=c,key='channel:'..n}

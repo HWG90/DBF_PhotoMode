@@ -25,7 +25,7 @@ BASE_REVIEW=ROOT/'dist/releases/photo-scene-depth-review/War-Journalist-Scene-De
 ACTIVE_MODULES=('animation_state.lua','chat_context.lua','look.lua','simulation.lua','simulation_backend.lua',
     'photo_options.lua','lens.lua','composition.lua','postfx.lua','photo_runtime.lua','hud.lua','render_profile.lua',
     'camera_profile.lua','photo_menu.lua','control_legend.lua','screenshot.lua','screenshot_backend.lua',
-    'depth_resource.lua','focus_sampler.lua','photo_lights.lua','subject_backend.lua','subject.lua','director.lua',
+    'depth_resource.lua','focus_sampler.lua','photo_lights.lua','subject_backend.lua','subject.lua','director.lua','ai_backend.lua','ai_control.lua',
     'saved_camera.lua','controller.lua','input_release.lua','input_release_backend.lua','hover_pause.lua',
     'hover_pause_backend.lua','scene_dof_overlay.lua','shader_template_guard.lua','standalone.lua',
     'bsl_startup.lua','mdl.lua','lll.lua','assets/logo_art.lua','assets/helldiver_crest.lua')

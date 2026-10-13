@@ -5,8 +5,9 @@ M.defaults={fov=0,focal_preset=1,roll=0,roll_preset=1,saved_camera_radius=60,loc
  shader=1,shader_opacity=10,shader_scale=1,shader_animate=true,scene_shader=1,scene_strength=100,fog_distance=25,fog_density=50,scene_depth_range=100,vignette=0,vignette_width=18,grain=0,grain_size=1.5,
  frame=1,grid=1,logo=1,logo_size=100,logo_x=90,logo_y=8,logo_opacity=85,logo_color='#FFFFFF',clean_view=false,hide_hud=true,hide_controls=false,
  light_selected=1,light_kind=1,light_enabled=true,light_intensity=3,light_color='#FFFFFF',light_range=8,light_cone=45,light_right=0,light_forward=1,light_up=0,light_follow=false,
- hide_player=false,hide_armour=false,hide_weapons=false,director_slot=1,
+ hide_player=false,hide_armour=false,hide_weapons=false,director_slot=1,ai_behavior=1,
  show_legend=true,legend_open=true,legend_docked=true,legend_tab_y=75,legend_columns=2,legend_x=2,legend_y=2,legend_size=38}
+M.ai_modes={'normal','passive','dummy'}
 M.menu_layout_defaults={menu_x=-1,menu_y=-1,menu_scale=1}
 -- Preset choices are commands/labels. FOV and roll remain the only settings
 -- consumed by the lens; these helpers use the existing 24 mm sensor height.
@@ -41,6 +42,11 @@ function M.pages(reset,recenter,catalog,saved_actions)
  end
  local function director_action(id,label,action)
   return{id=id,type='button',label=label,button_label=label,disabled=true,on_activate=saved_actions and saved_actions[action]or function()end}
+ end
+ local function ai_control()
+  local control=choice('ai_behavior','Enemy behavior',{'Normal','Passive','Dummy'});control.disabled=true
+  control.on_change=function(value)if saved_actions and saved_actions.ai_change then saved_actions.ai_change(value)end end
+  return control
  end
  local camera_controls={
  {id='screenshot',type='button',label='Screenshot',button_label='Take screenshot',disabled=not(saved_actions and saved_actions.screenshot),on_activate=saved_actions and saved_actions.screenshot or function()end},
@@ -107,6 +113,11 @@ function M.pages(reset,recenter,catalog,saved_actions)
  slider('legend_x','Legend horizontal position (%)',0,100,.1),slider('legend_y','Legend vertical position (%)',0,100,.1),slider('legend_size','Legend size (% of screen short edge)',25,70,.1),
  layout_setting('menu_x','Saved menu horizontal position',-1,1),layout_setting('menu_y','Saved menu vertical position',-1,1),layout_setting('menu_scale','Saved menu size',.35,3)}},
  {id='director',name='Director',require_confirmation=false,controls={
+ ai_control(),
+ director_action('ai_reset','Reset AI to Normal','ai_reset'),
+ {id='ai_status',type='text',label='Enemy behavior unavailable: waiting for a verified host mission'},
+ {id='ai_hint',type='text',label='Persists after Photo Mode exits; new enemies follow the selected behavior. Normal restores ordinary hostility.'},
+ {id='ai_limits',type='text',label='Passive allows movement; Dummy also stops voluntary movement. Physics, damage and active attacks can continue.'},
  choice('director_slot','Camera shot slot',{'Shot 1 — empty','Shot 2 — empty','Shot 3 — empty','Shot 4 — empty','Shot 5 — empty'}),
  director_action('director_save','Save relative shot','director_save'),director_action('director_recall','Recall relative shot','director_recall'),director_action('director_clear','Clear selected shot','director_clear'),
  {id='director_status',type='text',label='Shots store camera position and angle relative to the player.'},

@@ -6,7 +6,7 @@ local defaults=dofile(root..'photo_options.lua').defaults
 local clock=100;local provider={now=function()return clock end};DBFMCM={camera_input=provider}
 local vectors,bitmaps={},{};local layouts,created,destroyed,freed=0,0,0,0
 local sr={Vector2=function(...)return {...}end,Vector3=function(...)return {...}end,Vector4=function(...)return {...}end,Color=function(...)return {...}end,
- Application={can_get=function()return true end},
+ Application={can_get=function()return true end,worlds=function()return {3}end},
  World={create_screen_gui=function()created=created+1;return created end,destroy_gui=function()freed=freed+1 end},
  Gui={resolution=function()return 1920,1080 end,material=function(_,name)return {name=name}end,
   bitmap=function(_,name,pos,size,color)bitmaps[#bitmaps+1]={name=name,pos=pos,size=size,color=color};return #bitmaps end,

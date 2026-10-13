@@ -1,10 +1,56 @@
 -- ActionCam photomode adapter. Camera placement stays owned by ActionCam.
 local M={}
-function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,catalog,saved_camera,screenshots,focus_sampler,lights,subject,director,input_release,update_epoch)
+function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,catalog,saved_camera,screenshots,focus_sampler,lights,subject,director,input_release,update_epoch,ai)
     local roll_value;local self={};local api,handle,provider;local held=true;local retry=0;local controls={};local resume_after;local suppress_escape;local panel;local menu_focus=false;local controls_hidden=false;local recovery_menu=false;local focus_edge=false;local hide_edge=false;local slow_edge=false;local lock_edge=false;local escape_edge=false;local screenshot_edge=false
     local subject_pair;local subject_held;local subject_ready=false;local autofocus_write=false;local focus_deadline=0;local focus_elapsed=0;local focus_status='Manual focus';local focus_mode_seen;local menu_startup_reset=false
     local lighting_write=false;local lighting_revision=-1
     self._input_release=input_release;self._input_tick=0
+    self._ai=ai
+    local ai_requested=1;local ai_sync=false;local ai_elapsed=.5;local ai_available=false;local ai_reason='Enemy behavior backend unavailable'
+    function self._set_ai_value(value)
+        if not(handle and controls.ai_behavior)then return end
+        local control=controls.ai_behavior;local disabled=control.disabled
+        control.disabled=false;ai_sync=true
+        local called,ok,why=pcall(handle.set,'ai_behavior',value)
+        ai_sync=false;control.disabled=disabled
+        if not called or ok==false then log('Enemy behavior setting: '..tostring(called and why or ok))end
+    end
+    function self._ai_change(value)
+        if ai_sync then return end
+        local mode=options and options.ai_modes and options.ai_modes[value]
+        if not mode or(mode~='normal'and not(photo.active and ai and ai_available))then
+            self._set_ai_value(ai_requested)
+            return
+        end
+        ai_requested=value
+        if ai then local called,ok,why=pcall(ai.queue,mode);if not called or ok==false then log('Enemy behavior: '..tostring(called and why or ok))end end
+    end
+    function self._reset_ai()
+        ai_requested=1;self._set_ai_value(1)
+        if ai then ai.queue('normal')end
+    end
+    local function stop_ai()
+        if ai and(ai_requested~=1 or ai.mode~='normal')then ai.queue('normal')end
+        ai_requested=1
+        if handle and controls.ai_behavior and handle.get('ai_behavior')~=1 then self._set_ai_value(1)end
+    end
+    function self._refresh_ai(dt)
+        if not controls.ai_behavior then return end
+        ai_elapsed=ai_elapsed+math.max(.001,math.min(.1,tonumber(dt)or 0))
+        if ai and ai_elapsed>=.5 then
+            ai_elapsed=0;local called,ready,why=pcall(ai.ready)
+            ai_available=called and ready==true;ai_reason=called and why or tostring(ready)
+        end
+        -- Normal/Reset remain reachable for an active lease after authority loss.
+        local outstanding=ai and(ai_requested~=1 or ai.pending or ai.count()>0)
+        controls.ai_behavior.disabled=not(ai and((photo.active and ai_available)or outstanding))
+        controls.ai_reset.disabled=not(ai and(ai_available or outstanding))
+        if not ai then controls.ai_status.label='Enemy behavior unavailable: '..ai_reason
+        elseif ai.pending then controls.ai_status.label=ai_requested~=1 and'Enemy behavior: applying on next update'or'Enemy behavior: restoring on next update'
+        elseif ai.count()>0 or ai.mode~='normal'then controls.ai_status.label=ai.status
+        elseif not ai_available then controls.ai_status.label='Enemy behavior unavailable: '..tostring(ai_reason)
+        else controls.ai_status.label='Enemy behavior: Normal (0 affected)'end
+    end
     local director_elapsed=.5;local director_available=false;local director_reason='Director is waiting for a verified player'
     local subject_fields={'hide_player','hide_armour','hide_weapons'}
     local function subject_change()
@@ -171,7 +217,11 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         if roll_value and handle then handle.set('roll',roll_value);roll_value=nil end
         photo.active,photo.pos,photo.locked,photo.lock_pose=false,nil,false,nil
         photo.input={};photo.view=nil;photo.light_context=nil;suppress_escape=nil;menu_focus=false;controls_hidden=false;recovery_menu=false
-        if panel then panel.close()end
+        self._panel_close_pending=nil
+        if panel then
+            local called,ok,why=pcall(panel.close)
+            if not called or ok==false then self._panel_close_pending=tostring(called and why or ok);log('Photo menu cleanup pending: '..self._panel_close_pending)end
+        end
         local restored,reason=true,nil
         if effects then restored,reason=effects.release() end
         if freeze then local ok,why;if self.slowmo_active and handle then ok,why=freeze.start(handle.get('slowmo_speed'))else ok,why=freeze.release()end;if not ok then self.slowmo_active=false;freeze.release();restored,reason=false,why end end
@@ -189,6 +239,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
             local called,ok,why=pcall(self._input_release.finish)
             if not called or ok==false then log('Photo input cleanup: '..tostring(called and why or ok))end
         end
+        if self._panel_close_pending then return false,self._panel_close_pending end
         return restored,reason
     end
     local function bindings()
@@ -241,7 +292,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         local token,why=input.acquire(bindings())
         if not token then self.stop();return false,why end
         provider=input;photo.active,photo.pos=true,nil;controls_hidden=false
-        if subject then subject_change()end;director_elapsed=.5
+        if subject then subject_change()end;director_elapsed=.5;ai_elapsed=.5
         if saved_camera then saved_camera.restore(handle.get('saved_camera_radius'),handle)end
         focus_edge=input.down(handle.get('focus_key'));hide_edge=input.down(handle.get('hide_controls_key'));lock_edge=input.down(handle.get('lock_camera_key'));screenshot_edge=input.down(handle.get('screenshot_key'))
         if freeze and handle.get('freeze_player') and (not input.pause_allowed or input.pause_allowed()) then local ok,why=freeze.start();if why then log(why)end;if ok==false then self.stop();return false,why end end
@@ -354,6 +405,8 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
                     light_remove=lights and function()light_request('remove')end,
                     light_clear=lights and function()light_request('release','removed manually')end,
                     subject_change=subject_change,
+                    ai_change=self._ai_change,
+                    ai_reset=self._reset_ai,
                     director_save=director and function()director_action('save')end,
                     director_recall=director and function()director_action('recall')end,
                     director_clear=director and function()director_action('clear')end,
@@ -390,6 +443,8 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
                 -- Text/status controls live on pages, outside MCM's stored/action index.
                 controls={};for _,page in ipairs(api.mods.dbf_freecam.pages)do for _,control in ipairs(page.controls)do if control.id then controls[control.id]=control end end end
             end
+            -- Session behavior survives Photo exit, but starts Normal after restart.
+            self._set_ai_value(ai_requested)
             if not menu_startup_reset and options and options.reset_menu then
                 local ok,why=options.reset_menu(handle);menu_startup_reset=true
                 if ok==false then log('Photo menu startup reset: '..tostring(why))end
@@ -493,6 +548,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         refresh_lens()
         refresh_lights()
         refresh_subject_director(dt)
+        self._refresh_ai(dt)
         local lock_key=key_down(handle.get('lock_camera_key'))
         if lock_key and not lock_edge and not editing and not api.is_open()then handle.set('lock_camera',not handle.get('lock_camera'))end
         lock_edge=lock_key
@@ -650,7 +706,12 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
     function self.close()
         if saved_camera then saved_camera.clear('shutdown')end
         self.slowmo_active=false
+        stop_ai()
         local ok,why=self.stop()
+        if ai and(ai.pending or ai.count()>0)then
+            if not ai.pending then ai.queue('normal')end
+            return false,ai.status or'Enemy restoration is waiting for an update'
+        end
         if lights then local cleared,reason=lights.release('loader disabled');if not cleared then return false,reason end end
         if subject then local called,cleared,reason=pcall(subject.release);if not called or cleared==false then return false,called and reason or cleared end end
         if ok==false then return false,why end

@@ -24,6 +24,13 @@ function M.new(sr,lens_factory,composition,postfx_factory,log,hud,profile_factor
   local main=sr.Application.main_world()
   for _,candidate in pairs(sr.Application.worlds()or {})do if candidate~=main then return candidate end end
  end
+ local function gui_world_present(owner)
+  if not(sr.Application and type(sr.Application.worlds)=='function')then return nil,'Photo GUI world listing unavailable'end
+  local ok,worlds=pcall(sr.Application.worlds)
+  if not ok or type(worlds)~='table'then return nil,'Photo GUI world lifetime unavailable'end
+  for _,candidate in pairs(worlds)do if owner==candidate then return true end end
+  return false
+ end
  local function advance(dt)
   local elapsed=math.max(0,math.min(.1,dt or 0))
   local api=rawget(_G,'DBFMCM')or rawget(_G,'DBF_PHOTO_STANDALONE_API')
@@ -58,7 +65,14 @@ function M.new(sr,lens_factory,composition,postfx_factory,log,hud,profile_factor
   end
   local ok,why=lens.release();local restored,reason=postfx.release()
   if hud then local done,err=hud.release();if not done then restored,reason=false,err end end
-  if gui then local done,err=pcall(sr.World.destroy_gui,world,gui);if not done then return false,tostring(err)end end
+  if gui then
+   -- World retirement already owns its GUI teardown. Never pass that old
+   -- world/GUI pair back into the native destructor; an unreadable world list
+   -- is not retirement proof, so retain the handle for a later cleanup retry.
+   local present,reason=gui_world_present(world)
+   if present==nil then return false,reason end
+   if present then local done,err=pcall(sr.World.destroy_gui,world,gui);if not done then return false,tostring(err)end end
+  end
   gui,world,camera_world=nil,nil,nil;ids={};signature=nil;shader_name=nil;shader_handle=nil;layout_key=nil;layout_cache=nil
   clock_source,last_clock=nil,nil
   if not ok then return false,why end;if not custom_ok then return false,custom_reason end;return restored,reason

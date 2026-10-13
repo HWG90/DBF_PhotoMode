@@ -29,7 +29,7 @@ keys[84]=true;c.tick(.016);assert(rate==0,'T must no longer be the default slow-
 keys[220]=true;c.tick(.016);assert(rate==.2);keys[220]=false;c.tick(.016);keys[220]=true;c.tick(.016);assert(rate==0);keys[220]=false
 keys[80]=true;c.tick(.016);assert(not photo.active and mode==0 and rate==1);assert(c.close());DBFMCM=nil
 local runtime=dofile(root..'photo_runtime.lua')
-local sr={Gui={resolution=function()return 1920,1080 end},World={create_screen_gui=function()return {}end,destroy_gui=function()end}}
+local sr={Application={worlds=function()return{1}end},Gui={resolution=function()return 1920,1080 end},World={create_screen_gui=function()return {}end,destroy_gui=function()end}}
 local fx=runtime.new(sr,{new=function()return {apply=function()return .9 end,release=function()return true end}end}, {layout=function()return {}end,shaders={''}},
  {new=function()return {apply=function()error('Renderer flag readback mismatch')end,release=function()return true end}end},function()end)
 assert(fx.apply(1,2,3,{0,1,0},{1,0,0},options.defaults,.016)==false);assert(fx.lens_status:find('camera and pause retained',1,true));assert(fx.release())
