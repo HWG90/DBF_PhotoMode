@@ -281,13 +281,21 @@ def verify_095(path, standalone=False):
         else:
             assert manifest['loader'] == 'MDL' and manifest['api'] == 2 and manifest['restart_required'] is True
             assert 'ctx.api==2' in runtime['mod.lua'].decode()
-        asset_zip = files['Arsenal/War-Journalist-0.9.5-Assets.zip']
-        nested = _release_files(io.BytesIO(asset_zip))
-        nested_audit, _ = _release_asset_closure(nested, 'Assets/', False)
-        assert nested_audit == audit, 'Arsenal companion asset closure differs'
-        for name, body in files.items():
-            if name.startswith('GameData/'):
-                assert nested['Assets/'+name.removeprefix('GameData/')] == body, 'Arsenal and manual assets differ'
+        if loader == 'MDL':
+            installer = json.loads(files['manifest.json'])
+            assert installer['Version'] == 1 and installer['Guid'] == '3e25431a-27e8-4b7a-b355-3956c1caa8d8'
+            assert len(installer['Options']) == 1 and installer['Options'][0]['Include'] == ['GameData'], 'MDL Arsenal manifest must deploy assets only'
+            assert all(name.startswith((PREFIX, 'GameData/')) or name in ('manifest.json', 'INSTALL.txt', 'FILES-SHA256.txt') for name in files), 'Foreign flat MDL files'
+            assert not any(name.lower().endswith(('.zip', '.7z', '.rar', '.tar', '.gz', '.cab')) or zipfile.is_zipfile(io.BytesIO(body)) for name, body in files.items()), 'Nested archive in MDL package'
+            assert b'Import this complete MDL ZIP into Arsenal' in files['INSTALL.txt'], 'Flat MDL install instructions missing'
+        else:
+            asset_zip = files['Arsenal/War-Journalist-0.9.5-Assets.zip']
+            nested = _release_files(io.BytesIO(asset_zip))
+            nested_audit, _ = _release_asset_closure(nested, 'Assets/', False)
+            assert nested_audit == audit, 'Arsenal companion asset closure differs'
+            for name, body in files.items():
+                if name.startswith('GameData/'):
+                    assert nested['Assets/'+name.removeprefix('GameData/')] == body, 'Arsenal and manual assets differ'
     for required in ('src/actioncam.lua', 'src/standalone.lua', 'standalone-library.txt'):
         assert required in runtime, 'Private runtime missing: '+required
     code = runtime['src/actioncam.lua'].decode()
@@ -351,7 +359,7 @@ def verify_095(path, standalone=False):
 def verify(path, standalone=False):
     # Dispatch from the immutable package identity, not this checkout's VERSION.
     with zipfile.ZipFile(path) as archive:
-        name = 'manifest.json' if 'manifest.json' in archive.namelist() else PREFIX+'manifest.json'
+        name = PREFIX+'manifest.json' if PREFIX+'manifest.json' in archive.namelist() else 'manifest.json'
         manifest = json.loads(archive.read(name))
     if manifest.get('version') == '0.9.5' or manifest.get('Name') == 'War Journalist 0.9.5':
         return verify_095(path, standalone)

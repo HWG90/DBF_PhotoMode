@@ -87,7 +87,7 @@ def payload(archive):
         startup = body[8:].rstrip(b'\0').decode()
         return 'BSL', startup, embedded_payload(startup)
     prefix = 'dbf_freecam/'
-    assert all(name.startswith((prefix, 'GameData/', 'Arsenal/')) or name in ('INSTALL.txt', 'FILES-SHA256.txt') for name in files)
+    assert all(name.startswith((prefix, 'GameData/', 'Arsenal/')) or name in ('manifest.json', 'INSTALL.txt', 'FILES-SHA256.txt') for name in files)
     files = {name[len(prefix):]: body for name, body in files.items() if name.startswith(prefix)}
     if 'main.lua' in files:
         manifest=json.loads(files['manifest.json'])

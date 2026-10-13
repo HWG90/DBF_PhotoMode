@@ -20,7 +20,7 @@ This is a big one. We have been COOKING.
 [GitHub — all packages, full changelog & checksums](https://github.com/HWG90/DBF_PhotoMode/releases/tag/v0.9.5)
 [Ayaka](https://ayakamods.com/mods/war-journalist-helldivers-2-photo-mode.4948/)
 
-Nexus BSL is available; Nexus quarantined MDL pending review. Get the verified MDL ZIP from GitHub meanwhile.
+BSL and MDL are now available on Nexus. The MDL ZIP has no nested archives and has cleared scanning; all runtime and asset files are unchanged. Copy dbf_freecam into MDL Mods, then import the complete ZIP into Arsenal for its assets, deploy and restart.
 Choose one runtime, deploy its included assets and restart. Native remains the blur-quality baseline; active-hover controller pause and wider scene testing have limits detailed in the release notes.
 
 Thank you to everyone testing this. Go make something worth framing. 📸

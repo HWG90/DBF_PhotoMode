@@ -29,8 +29,12 @@ runtime and its required assets. No separate asset download is needed.
 MCM, DBF-HUD, ActionCam and Link's addon are not prerequisites.
 
 BSL: import the complete ZIP in Arsenal, enable with BSL, deploy and restart.
-MDL/LLL: install the included `dbf_freecam` folder in the loader's Mods folder,
-deploy the asset ZIP bundled inside that same download, and restart.
+MDL: copy `dbf_freecam` into MDL's Mods folder, then import the complete MDL ZIP
+into Arsenal to enable and deploy its `GameData` assets. Restart normally.
+Arsenal installs assets only; the runtime folder must also be installed.
+The MDL package contains no nested archives.
+LLL: install `dbf_freecam` in LLL's Mods folder, deploy the asset ZIP bundled
+inside that same download, and restart.
 Use one Photo Mode runtime at a time. Preserve settings, presets and screenshots.
 See [installation and controls](freecam/README.md) for manual installation.
 

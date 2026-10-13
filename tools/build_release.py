@@ -116,6 +116,18 @@ def asset_files(core,shared,audit,prefix):
         for suffix,body in [('',cpu),('.gpu_resources',gpu),('.stream',b'')]:files[prefix+name+'.patch_0'+suffix]=body
     return files
 
+def flat_mdl_files(files, asset_manifest):
+    """Expose existing GameData to Arsenal without a duplicate nested ZIP."""
+    files=dict(files)
+    files.pop('Arsenal/War-Journalist-'+VERSION+'-Assets.zip',None)
+    manifest=json.loads(json.dumps(asset_manifest))
+    manifest['Description']='Complete War Journalist '+VERSION+' assets for MDL. Copy dbf_freecam to MDL Mods separately. Lighting: Not tested fully.'
+    assert len(manifest['Options'])==1
+    manifest['Options'][0]['Include']=['GameData']
+    files['manifest.json']=json_bytes(manifest)
+    assert not any(name.lower().endswith(('.zip','.7z','.rar','.tar','.gz','.cab')) or zipfile.is_zipfile(io.BytesIO(body)) for name,body in files.items()),'Nested archive in MDL package'
+    return files
+
 def public_docs(files):
     for target,path in [('README.md',ROOT/'README.md'),('KNOWN-ISSUES.md',ROOT/'docs/KNOWN-ISSUES.md'),('RELEASE-NOTES.md',ROOT/'docs'/('RELEASE-'+VERSION+'.md'))]:
         if path.is_file():files[target]=path.read_bytes()
@@ -154,9 +166,9 @@ def build(output):
         'Options':[{'Name':'Complete Photo Mode assets','Include':['Assets']}]})
     assets['ASSET-MANIFEST.json']=json_bytes(audit);assets['INSTALL.txt']=b'Import this complete asset ZIP into HD2Arsenal, enable and deploy, then restart normally. Use exactly one War Journalist runtime loader. All assets are included; no separate mod asset download is required. Lighting: Not tested fully.\n'
     asset_name='War-Journalist-'+VERSION+'-Assets.zip';asset_body=zip_bytes(assets);(output/asset_name).write_bytes(asset_body)
-    # MDL retains its raw GameData route and includes an Arsenal-importable ZIP.
+    # The complete MDL ZIP is directly importable by Arsenal for GameData only.
     with zipfile.ZipFile(mdl)as z:mdl_files={name:z.read(name)for name in z.namelist()if name!='FILES-SHA256.txt'}
-    mdl_files['Arsenal/'+asset_name]=asset_body;mdl.write_bytes(zip_bytes(mdl_files))
+    mdl_files=flat_mdl_files(mdl_files,json.loads(assets['manifest.json']));mdl.write_bytes(zip_bytes(mdl_files))
     lll_files=payload(output);lll_files['main.lua']=(ROOT/'freecam/lll.lua').read_bytes();lll_files['config/defaults.cfg']=b'{}\n'
     modules=sorted(name for name in lll_files if name.startswith('src/')and name.endswith('.lua'))
     lll_files['manifest.json']=json_bytes({'id':'dbf_freecam','name':'War Journalist','version':VERSION,'author':'Goose',
@@ -170,13 +182,14 @@ def build(output):
     paths=[bsl,mdl,lll]
     for path in (mdl,lll):
         with zipfile.ZipFile(path)as z:
-            assert z.read('Arsenal/'+asset_name)==asset_body
+            if path==lll:assert z.read('Arsenal/'+asset_name)==asset_body
+            else:assert json.loads(z.read('manifest.json'))['Options'][0]['Include']==['GameData']
             assert z.read('GameData/9ba626afa44a3aa3.patch_0')==asset_files(core,shared,audit,'GameData/')['GameData/9ba626afa44a3aa3.patch_0']
-    # Refresh the MDL receipt after adding the nested asset installer.
-    mdl_receipt=json.loads((output/'MDL-BUILD-RECEIPT.json').read_text());mdl_receipt['sha256']=sha(mdl.read_bytes());mdl_receipt['bundled_arsenal_asset_zip']=asset_name;(output/'MDL-BUILD-RECEIPT.json').write_bytes(json_bytes(mdl_receipt))
+    # Refresh the MDL receipt after adding the outer Arsenal asset manifest.
+    mdl_receipt=json.loads((output/'MDL-BUILD-RECEIPT.json').read_text());mdl_receipt['sha256']=sha(mdl.read_bytes());mdl_receipt['arsenal_asset_route']='Outer ZIP manifest includes GameData only';mdl_receipt['nested_archives']=False;(output/'MDL-BUILD-RECEIPT.json').write_bytes(json_bytes(mdl_receipt))
     receipt={'version':VERSION,'checked_at_utc':datetime.now(timezone.utc).isoformat(),'assets':audit,
              'artifacts':{p.name:{'sha256':sha(p.read_bytes()),'bytes':p.stat().st_size}for p in paths},
-             'nested_assets':{'name':asset_name,'sha256':sha(asset_body),'bytes':len(asset_body),'distribution':'Embedded inside MDL/LLL; standalone file is local helper only'},'all_assets_bundled_per_loader':True,
+             'nested_assets':{'name':asset_name,'sha256':sha(asset_body),'bytes':len(asset_body),'distribution':'Embedded inside LLL only; standalone file is local helper only'},'mdl_assets':'GameData directly included by outer Arsenal manifest; no nested archives','all_assets_bundled_per_loader':True,
              'source_snapshots_only':True,'game_process_accessed':False,'deployment':'not installed','publication_performed':False}
     (output/'RELEASE-BUILD-RECEIPT.json').write_bytes(json_bytes(receipt));(output/'SHA256SUMS.txt').write_text(''.join(sha(p.read_bytes())+'  '+p.name+'\n'for p in paths))
     print(json.dumps({'output':str(output),**receipt},indent=2));return paths

@@ -6,8 +6,10 @@ BSL ZIP into HD2 Arsenal, enable it alongside BSL, deploy, then restart normally
 The Addon folder contains the complete runtime and all required assets.
 
 MDL: requires MDL API 2. Copy dbf_freecam into
-%LOCALAPPDATA%/MDL/Helldivers2/Mods. Deploy the included Arsenal asset ZIP, or
-install GameData manually as below. Enable War Journalist in MDL and restart.
+%LOCALAPPDATA%/MDL/Helldivers2/Mods. Import this complete MDL ZIP into Arsenal,
+enable and deploy its GameData assets, or install GameData manually as below.
+Arsenal installs the assets only; copying dbf_freecam installs the MDL runtime.
+Enable War Journalist in MDL and restart. No nested archive is required.
 
 LLL: copy dbf_freecam into %LOCALAPPDATA%/LLL/Helldivers2/Mods. Deploy the
 included Arsenal asset ZIP, then enable the addon and restart normally.
@@ -28,7 +30,8 @@ the 9ba626afa44a3aa3 and ee6b1ba7e22d71ed base names. Never replace a different
 mod's patch. Other mods replacing the shader registry need a registration
 merge; use a mod manager with merging support when combining them.
 For LLL the same files are inside its bundled Arsenal asset ZIP's Assets folder.
-Do not deploy both the MDL GameData and its duplicate Arsenal assets.
+For MDL, choose either Arsenal deployment or manual GameData installation,
+not both. The complete MDL ZIP is the Arsenal asset installer.
 
 CONTROLS (DEFAULTS; YOUR SAVED BINDINGS TAKE PRIORITY)
 P: Photo Mode. Pause: screenshot (rebindable). Tab: camera/menu focus.

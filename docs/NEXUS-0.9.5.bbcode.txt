@@ -47,7 +47,7 @@ Existing free camera, camera lock, solo pause/slow motion, 40 decorative overlay
 Requires Bingus Shared Loader v15+ / API 1. Import the complete BSL ZIP into HD2 Arsenal, enable it alongside BSL, deploy and restart normally. Manual patch installation is covered in INSTALL.txt.
 
 [b]MDL — optional alternative[/b]
-Requires MDL API 2. Install the included dbf_freecam folder into MDL Mods, and deploy the asset ZIP included in that same download. GameData files are also supplied for manual installation; use one asset installation method.
+Requires MDL API 2. Copy the included dbf_freecam folder into MDL Mods. Import this complete MDL ZIP into Arsenal to install its GameData assets, enable and deploy, then restart. The package contains no nested archives. GameData is also available for manual installation; use one asset installation method. Arsenal installs the assets only; the MDL runtime folder must still be copied separately.
 
 [b]Nexus provides BSL and MDL. Choose one runtime.[/b] Every ZIP includes all required runtime, shader, material, light and logo resources. No separate asset download is required. MCM, DBF-HUD, ActionCam and Link's Link to Memory are not prerequisites. MCM integration is optional.
 
