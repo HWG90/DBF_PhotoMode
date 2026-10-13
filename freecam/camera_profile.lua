@@ -1,5 +1,38 @@
 -- Verified native world-parameter lens source. Candidate opt-in only.
 local M={};local backend
+local lens_fields={'distance','region','close_distance','close_region'}
+function M.same_lens_values(a,b)
+ if not a or not b then return false end
+ for _,name in ipairs(lens_fields)do
+  local x,y=a[name],b[name]
+  if type(x)~='number'or type(y)~='number'or x~=x or y~=y or math.abs(x)>=math.huge or math.abs(y)>=math.huge or math.abs(x-y)>.0001 then return false end
+ end
+ return true
+end
+function M.same_camera_identity(a,b)
+ for _,name in ipairs({'world_address','native','provider','camera_address','camera_id'})do if a[name]~=b[name]then return false end end
+ return true
+end
+-- Render command packets are temporary observations, not ownership records.
+-- Retain a live owned lens across absent/stock packets; only an independently
+-- validated different source may transfer its ownership.
+function M.retain_lens_source(owned,same_identity,observed,baseline,accept,other_source)
+ if not owned or not same_identity then return false,'Native lens ownership changed'end
+ if not observed or M.same_lens_values(observed,baseline)or accept(observed)then return true end
+ if other_source and other_source(observed)then return false,'Different native lens source'end
+ return true
+end
+function M.changed_source_probe(clock,lookup,interval,retry)
+ interval=interval or .1;retry=retry or 1;local previous;local last=clock()-interval
+ return function(fields)
+  local signature={};for _,name in ipairs(lens_fields)do signature[#signature+1]=string.format('%.9g',fields[name])end
+  signature=table.concat(signature,'|');local time=clock()
+  local delay=signature==previous and retry or interval
+  if time-last<delay then return false end
+  previous,last=signature,time
+  return lookup(fields)==true
+ end
+end
 function M.profile_owner_snapshot(entity,class,instance)
  local function identifier(value)return type(value)=='number'and value==value and value%1==0 and value>=0 and value<4294967295 end
  assert(identifier(entity)and entity>0 and class==0xf7a3101f and identifier(instance),'Native profile owner changed')
@@ -21,6 +54,18 @@ function M.select_lens_source(observed,candidates)
  end
  return selected
 end
+-- A camera can have more than one queued parameter packet. During validation,
+-- prefer the packet for our owned lens instead of treating a stock packet as
+-- proof that the active source changed. A missing match is only an observation;
+-- transfer still requires the separate validated-source continuity decision.
+function M.select_observed_view(candidates,accept)
+ local first
+ for _,fields in ipairs(candidates)do
+  if not first then first=fields end
+  if accept and accept(fields)then return fields end
+ end
+ return first
+end
 -- Queue ownership exists only during part of render. Keep one pending camera
 -- and copied scalar observations for the following frame, never queue pointers.
 function M.observation_cache(identity,observe,clock,ttl)
@@ -32,7 +77,7 @@ function M.observation_cache(identity,observe,clock,ttl)
   local n=assert(value[key],'Native observation field missing: '..key)
   assert(type(n)=='number'and n==n and math.abs(n)<math.huge,'Native observation field invalid: '..key);out[key]=n
  end;return out end
- local function same(a,b)for _,key in ipairs(ids)do if a[key]~=b[key]then return false end end;return true end
+ local function same(a,b)return M.same_camera_identity(a,b)end
  local self={}
  function self.clear()pending,cached=nil,nil end
  function self.request(world,cam,retain)
@@ -181,13 +226,13 @@ local function profile(world,index,entity)
  return self
 end
 
-local function view_fields(native,camera_id)
+local function view_fields(native,camera_id,accept)
  local renderer=ptr(ptr(base+0x23621a8)+0x338);local n=u32(renderer+0x1488);assert(n>0 and n<=64)
  local rows=read(ptr(renderer+0x1490),n*32);local binding
  for i=0,n-1 do local v=ffi.new(u64_type);ffi.copy(v,rows:sub(i*32+1,i*32+8),8);if tonumber(v[0])==native then ffi.copy(v,rows:sub(i*32+9,i*32+16),8);binding=tonumber(v[0])end end
  if not binding then return end
  local gpu={ [0x1b44f1e6]='distance',[0x440008]='region',[0xd28fa04f]='close_distance',[0x388fd484]='close_region'}
- local headers=read(renderer+0x1260,288)
+ local headers=read(renderer+0x1260,288);local views={}
  for j=0,5 do local seen={}
   for _,start in ipairs({8,16})do local p=ffi.new(u64_type);ffi.copy(p,headers:sub(j*48+start+1,j*48+start+8),8);local at=tonumber(p[0])
    for _=1,32 do
@@ -207,10 +252,14 @@ local function view_fields(native,camera_id)
      return ptr(at)
     end)
     if not ran or not next_at then break end
-    if fields then return fields end;at=next_at
+    if fields then
+     if not accept then return fields end
+     views[#views+1]=fields
+    end;at=next_at
    end
   end
  end
+ return M.select_observed_view(views,accept)
 end
 local aliases={focal_distance='distance',focal_region='region',focal_region_start='start',focal_region_end='finish',focal_near_scale='near_scale',focal_far_scale='far_scale',focal_near_max='near_max',focal_far_max='far_max',focal_far_max_close='close_far_max'}
 local function identity(world,cam)
@@ -220,24 +269,33 @@ local function identity(world,cam)
  return {world_address=address,native=native,provider=ptr(native+0x230c78),camera_address=camera,camera_id=u32(camera+4)}
 end
 local observations=M.observation_cache(identity,view_fields,now)
-local function new(sr,world,unit,cam)
- local current=identity(world,cam);local native=current.native
- local observed=view_fields(native,current.camera_id)
- if observed then observations.clear()else observed=observations.request(world,cam)end
- if not observed then return nil,'Waiting for a current native camera view' end
+local function lens_sources(world,native)
  local provider=ptr(native+0x230c78);local capacity=u32(provider+0xc4);assert(capacity>0 and capacity<=4096)
  local entities,classes=ptr(provider+0xc8),ptr(provider+0xd0);local candidates={}
  for i=0,capacity-1 do
   local entity=u32(entities+i*4)
   if entity>0 and u32(classes+i*4)==0xf7a3101f then
    local worked,candidate=pcall(profile,world,i,entity)
-   if worked then candidates[#candidates+1]=candidate end
+   if worked and candidate.valid()then candidates[#candidates+1]=candidate end
   end
  end
+ return candidates
+end
+local function new(sr,world,unit,cam)
+ local current=identity(world,cam);local native=current.native
+ local observed=view_fields(native,current.camera_id)
+ if observed then observations.clear()else observed=observations.request(world,cam)end
+ if not observed then return nil,'Waiting for a current native camera view' end
+ local candidates=lens_sources(world,native)
  local selected=M.select_lens_source(observed,candidates)
  if not selected then return nil,'Current native camera source unavailable'end
  local self={world=world,unit=unit,cam=cam,native_numeric_candidate=true,parameters={}}
- local history=M.selection_history(observed,now);local last_observed=now()
+ local history=M.selection_history(observed,now)
+ local different_source=M.changed_source_probe(now,function(fields)
+  local ok,candidate=pcall(function()return M.select_lens_source(fields,lens_sources(world,native))end)
+  if not ok or not candidate then return false end
+  return candidate.index~=selected.index or not M.same_profile_owner(selected.owner,candidate.owner.entity,candidate.owner.class,candidate.owner.instance)
+ end)
  local function current_fields()local values={};for _,name in ipairs({'distance','region','close_distance','close_region'})do values[name]=selected.read(name)end;return values end
  for alias in pairs(aliases)do self.parameters[alias]=true end
  function self.read(alias)return selected.read(assert(aliases[alias],'Unknown native lens parameter'))end
@@ -248,14 +306,15 @@ local function new(sr,world,unit,cam)
  function self.restore()local ok,why=selected.restore();assert(ok,why);self.retired=why=='retired';return true end
  function self.flush()if not self.retired then assert(selected.valid(),'Native lens source retired');history.record(current_fields())end end
  function self.tick()
-  if not selected.owned()then self.handoff=true;return false end
+  local owned=selected.owned();local same_identity=M.same_camera_identity(current,identity(world,cam))
+  if not owned or not same_identity then self.handoff=true;return false end
   local values,seen=observations.request(world,cam,true)
-  if not values then values=view_fields(native,current.camera_id);seen=now()end
-  if values then
-   if not history.accept(values)then self.handoff=true;return false end
-   last_observed=seen
+  if not values or not(history.accept(values)or M.same_lens_values(values,selected.fields))then
+   local current_view=view_fields(native,current.camera_id,history.accept)
+   if current_view then values=current_view;seen=now()end
   end
-  if now()-last_observed>.5 then self.handoff=true;return false end
+  if values and(not seen or now()<seen or now()-seen>.5)then values=nil end
+  if not M.retain_lens_source(owned,same_identity,values,selected.fields,history.accept,different_source)then self.handoff=true;return false end
   return true
  end
  function self.release()if not self.handoff then observations.clear()end;local ok,why=selected.restore();self.retired=why=='retired';return ok,why end

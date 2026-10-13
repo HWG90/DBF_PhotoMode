@@ -15,12 +15,12 @@ function M.new(sr,world,verify,unit,cam)
  if not supported then return end
  local mapping={dof='dof_enabled',bloom='bloom_enabled'};local self={world=world,unit=unit,cam=cam,parameters={}};local pending={};local frame=0
  for key,name in pairs(mapping)do local ok,value=pcall(sr.Application.render_setting,name);if ok and type(value)=='boolean'then self.parameters[key]=true end end
- local scene
+ local scene;local retired_parameters={}
  local function attach_scene()
   if scene or not M.camera_factory then return end
   local ok,value,why=pcall(M.camera_factory.new,sr,world,unit,cam)
   if ok and type(value)=='table'then
-   scene=value;self.scene_reason=nil;for key,supported in pairs(scene.parameters or{})do self.parameters[key]=supported end
+   scene=value;self.scene_reason=nil;for key,supported in pairs(scene.parameters or{})do self.parameters[key]=supported;retired_parameters[key]=nil end
   else self.scene_reason=tostring(ok and why or value)end
  end
  function self.read(key)
@@ -39,6 +39,7 @@ function M.new(sr,world,verify,unit,cam)
  end
  function self.restore(key,value)
   if mapping[key]then return self.write(key,value)end
+  if not scene and retired_parameters[key]then return true end
   assert(scene,'Native lens source unavailable');return scene.restore(key,value)
  end
  function self.flush()if scene and scene.flush then scene.flush()end end
@@ -47,13 +48,16 @@ function M.new(sr,world,verify,unit,cam)
   for key,command in pairs(pending)do local current=self.read(key)
    if current~=command.value and frame-command.frame>120 then error('Renderer command did not apply: '..key)end
   end
-  if scene and scene.tick and scene.tick()==false then
+  local scene_ready=scene and(not scene.tick or scene.tick()==true)or nil
+  if scene and not scene_ready then
    local done,why=scene.release();assert(done,why)
-   for key in pairs(scene.parameters or{})do self.parameters[key]=nil end;scene=nil
+   for key in pairs(scene.parameters or{})do self.parameters[key]=nil;retired_parameters[key]=true end;scene=nil
   end
+  local previous_scene=scene
   attach_scene();self.native_numeric_candidate=scene and scene.native_numeric_candidate==true or
    (scene==nil and M.camera_factory~=nil and rawget(_G,'DBF_PHOTO_NATIVE_LENS_CANDIDATE')==true)
-  self.native_numeric_ready=scene~=nil and self.native_numeric_candidate and(not scene.tick or scene.tick()==true)or false
+  if scene and scene~=previous_scene then scene_ready=not scene.tick or scene.tick()==true end
+  self.native_numeric_ready=scene~=nil and self.native_numeric_candidate and scene_ready==true or false
  end
  function self.pending(key)if key then return pending[key]~=nil end;return next(pending)~=nil end
  attach_scene()

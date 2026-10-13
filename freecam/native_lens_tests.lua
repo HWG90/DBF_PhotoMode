@@ -2,7 +2,7 @@ local root=rawget(_G,'DBF_PHOTO_TEST_ROOT')or'freecam/'
 local render=dofile(root..'render_profile.lua');local lens=dofile(root..'lens.lua')
 local fields={focal_distance=2,focal_region=30,focal_region_start=1,focal_region_end=1,focal_near_scale=1,focal_far_scale=1,focal_near_max=1,focal_far_max=1,focal_far_max_close=1}
 local baseline={};for k,v in pairs(fields)do baseline[k]=v end
-local flags={dof_enabled=false,bloom_enabled=true};local restored=0;local valid=true;local available=false;local writes=0
+local flags={dof_enabled=false,bloom_enabled=true};local restored=0;local valid=true;local available=false;local writes=0;local ticks=0;local released=0
 local sr={Application={render_setting=function(k)return flags[k]end,set_render_setting=function(k,v)flags[k]=v=='true'end}}
 render.camera_factory={new=function()
  if not available then return end
@@ -10,7 +10,7 @@ render.camera_factory={new=function()
  return {native_numeric_candidate=true,parameters=params,read=function(k)return fields[k]end,
  write=function(k,v)assert(valid);fields[k]=v;writes=writes+1 end,
  restore=function()for k,v in pairs(baseline)do fields[k]=v end;restored=restored+1;return true end,
- release=function()return true end,flush=function()assert(valid)end,tick=function()return valid end}
+ release=function()for k,v in pairs(baseline)do fields[k]=v end;released=released+1;return true end,flush=function()assert(valid)end,tick=function()ticks=ticks+1;return valid end}
 end}
 local profile=assert(render.new(sr,42,function()return true end,7,8));profile.tick()
 assert(not profile.native_numeric_ready and not profile.parameters.focal_distance,'Missing source must keep numeric controls disabled')
@@ -18,6 +18,8 @@ DBF_PHOTO_NATIVE_LENS_CANDIDATE=true;profile.tick()
 assert(profile.native_numeric_candidate and not profile.native_numeric_ready and not profile.parameters.focal_distance,'Configured Native waiting for its packet must expose warming state while retaining the numeric gate')
 DBF_PHOTO_NATIVE_LENS_CANDIDATE=nil
 available=true;profile.tick();assert(profile.native_numeric_ready and profile.parameters.focal_distance,'Late camera source must attach')
+assert(ticks==1,'A newly attached lens must validate once in its owning frame')
+profile.tick();assert(ticks==2 and profile.native_numeric_ready,'An existing lens must not run its retirement check twice per frame')
 DBF_PHOTO_RENDER_PROFILE=profile
 local effect=dofile(root..'postfx.lua').new(sr,lens)
 local opts=dofile(root..'photo_options.lua');local o=opts.read({get=function(k)return opts.defaults[k]end})
@@ -30,6 +32,9 @@ assert(not effect.native_numeric_ready and restored>0 and writes==previous,'Shad
 for k,v in pairs(baseline)do assert(fields[k]==v,'Method switch must restore '..k)end
 o.dof_mode=1;effect.apply(42,o,math.rad(90));assert(effect.native_numeric_ready)
 valid=false;available=false;profile.tick();assert(not profile.native_numeric_ready and not profile.parameters.focal_distance,'Retired source must disable controls')
+assert(released==1 and effect.release(),'Postfx cleanup must accept the numeric source restoration already acknowledged by retirement')
+for k,v in pairs(baseline)do assert(fields[k]==v,'Retirement cleanup changed restored '..k)end
+assert(not pcall(profile.restore,'unknown_parameter',1),'Absent-source restore must not accept an unsupported unowned parameter')
 DBF_PHOTO_RENDER_PROFILE=nil
 print('Native lens: late source attachment, capability gate, physical focus/aperture mapping, Shader switch restore and retired-source disable passed')
 
@@ -115,6 +120,40 @@ assert(signatures.accept({distance=.9,region=.2,close_distance=.9,close_region=.
 assert(not signatures.accept({distance=1.9,region=400,close_distance=1,close_region=3}),'A different active source must retire the old source despite identical camera/world ownership')
 time=1;signatures.record({distance=1.1,region=.3,close_distance=1.1,close_region=.3})
 assert(not signatures.accept({distance=2,region=30,close_distance=1,close_region=1}),'Old source signatures must expire instead of accepting an unchanged foreign camera profile')
+-- Stock and owned packets may coexist for the same camera in different render
+-- queues. Rejecting the first stock packet must not restore an owned source
+-- while another exact-camera packet still contains its current lens values.
+local stock={distance=2,region=30,close_distance=1,close_region=1}
+local owned_view={distance=1.1,region=.3,close_distance=1.1,close_region=.3}
+local foreign_view={distance=1.9,region=400,close_distance=1,close_region=3}
+assert(camera.select_observed_view({stock,owned_view},signatures.accept)==owned_view,'A preceding stock packet must not mask the current owned lens')
+assert(camera.select_observed_view({owned_view,stock},signatures.accept)==owned_view,'Packet queue order must not change the selected owned lens')
+assert(camera.select_observed_view({stock,foreign_view},signatures.accept)==stock and not signatures.accept(stock),'A queue with no owned match must still refuse the source')
+assert(camera.select_observed_view({},signatures.accept)==nil,'An empty queue must remain unavailable')
+assert(camera.select_observed_view({stock,owned_view})==stock,'Cold acquisition retains its original source-selection behavior')
+local lookup_count=0
+local function other_source(values)lookup_count=lookup_count+1;return values==foreign_view end
+for _=1,1000 do assert(camera.retain_lens_source(true,true,nil,stock,signatures.accept,other_source),'A paused empty queue must not retire a still-owned lens')end
+assert(camera.retain_lens_source(true,true,stock,stock,signatures.accept,other_source)and lookup_count==0,'An expired stock queue must not force a handoff or scan')
+assert(camera.retain_lens_source(true,true,owned_view,stock,signatures.accept,other_source)and lookup_count==0,'An own-history packet must retain the source without scanning')
+assert(not camera.retain_lens_source(true,true,foreign_view,stock,signatures.accept,other_source)and lookup_count==1,'A uniquely validated different source must hand off')
+assert(camera.retain_lens_source(true,true,foreign_view,stock,signatures.accept,function()return false end),'An unfamiliar or ambiguous queue alone must not retire a still-owned lens')
+assert(not camera.retain_lens_source(false,true,owned_view,stock,signatures.accept,other_source)and lookup_count==1,'Foreign field ownership must retire immediately without relying on a queue')
+assert(not camera.retain_lens_source(true,false,owned_view,stock,signatures.accept,other_source)and lookup_count==1,'Changed camera identity must retire immediately without relying on a queue')
+local probe_time=0;local probes=0
+local probe=camera.changed_source_probe(function()return probe_time end,function(values)probes=probes+1;return values==foreign_view end)
+assert(probe(foreign_view)and probes==1,'A new unfamiliar signature must be independently inspected')
+for _=1,1000 do probe(foreign_view)end;assert(probes==1,'An unchanged packet must not rescan profiles every frame')
+probe_time=.05;assert(not probe(stock)and probes==1,'Changed packets must still respect the source scan throttle')
+probe_time=.11;assert(not probe(stock)and probes==2,'A throttled change must remain eligible once its interval elapses')
+probe_time=.5;assert(not probe(stock)and probes==2,'An unresolved unchanged packet must not rescan at the changed-packet frequency')
+probe_time=1.12;assert(not probe(stock)and probes==3,'An unresolved signature must retry at the slower cadence')
+local retry_time=0;local found_other=false;local retry_count=0
+local retry_probe=camera.changed_source_probe(function()return retry_time end,function(values)retry_count=retry_count+1;return found_other and values==foreign_view end)
+assert(not retry_probe(foreign_view)and retry_count==1,'A temporarily absent different source must remain unresolved')
+found_other=true;retry_time=.5;assert(not retry_probe(foreign_view)and retry_count==1,'Temporary readiness must retain the bounded retry interval')
+retry_time=1.01;assert(retry_probe(foreign_view)and retry_count==2,'The same queued values must transfer once their validated source becomes available')
+assert(not camera.same_lens_values(stock,{distance=math.huge,region=30,close_distance=1,close_region=1}),'Nonfinite queue values must not match a baseline')
 cache.request(world,cam);queued={native=world.native,id=cam.id,fields=values};assert(cache.observe())
 local a=assert(cache.request(world,cam,true));local b=assert(cache.request(world,cam))
 assert(a.distance==b.distance,'Read-only source revalidation must preserve the exact cached observation for the next factory during handoff')
@@ -122,10 +161,14 @@ local actual={distance=5,region=7};local own={distance=5,region=6};local baselin
 local function read(name)return actual[name]end
 local function write(name,value)actual[name]=value;count=count+1 end
 assert(not camera.owns_fields(own,function()return true end,read),'External parameter changes must retire the source before another setter write')
+assert(not camera.retain_lens_source(camera.owns_fields(own,function()return true end,read),true,owned_view,stock,signatures.accept,other_source),'Queue continuity must not relax the actual foreign-writer guard')
+assert(camera.select_observed_view({stock,owned_view},signatures.accept)==owned_view and not camera.owns_fields(own,function()return true end,read),'A matching queued view must never excuse a foreign write to the owned source')
 local ok,reason=camera.restore_owned(baseline,own,function()return true end,read,write)
 assert(ok and reason=='foreign writer preserved'and actual.distance==2 and actual.region==7 and count==1,'Handoff must restore only still-owned fields and preserve a foreign writer without trapping source release')
 count=0;ok,reason=camera.restore_owned(baseline,own,function()return false end,read,write)
 assert(ok and reason=='retired'and count==0,'Retired world/profile memory must never be written during release')
+assert(camera.select_observed_view({stock,owned_view},signatures.accept)==owned_view and not camera.owns_fields(own,function()return false end,read),'A matching queued view must never excuse retired profile ownership')
+assert(not camera.retain_lens_source(camera.owns_fields(own,function()return false end,read),true,nil,stock,signatures.accept,other_source),'Empty-queue continuity must not relax actual profile retirement')
 local weak=setmetatable({},{__mode='v'})
 do
  local w={address=20,native=120,provider=220};local c={address=320,id=420};weak[1],weak[2]=w,c;cache.request(w,c)
