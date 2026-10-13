@@ -47,7 +47,9 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         if not controls.subject_pose then return end
         local ready,status,caps=false,'Subject pose service unavailable',{}
         if self._poses then
-            local called,a,b,c=pcall(self._poses.refresh,dt)
+            local now;local input=api and api.camera_input
+            if input and type(input.now)=='function'then local ok,value=pcall(input.now);if ok then now=value end end
+            local called,a,b,c=pcall(self._poses.refresh,dt,now)
             if called then ready,status,caps=a,b,c or{}else status=tostring(a)end
         end
         self._pose_available=ready==true;self._pose_caps=caps

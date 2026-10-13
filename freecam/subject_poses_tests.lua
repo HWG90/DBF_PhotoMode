@@ -1,11 +1,12 @@
 local root=rawget(_G,'DBF_PHOTO_TEST_ROOT')or'freecam/'
 local M=dofile(root..'subject_poses.lua')
 local function fixture()
- local x={identity='local:1',paused=true,time=0,delta=0,captures=0,applies=0,restores=0,writes=0,logs={},units={}}
+ local x={identity='local:1',paused=true,time=0,delta=0,frame_reads=0,captures=0,applies=0,restores=0,writes=0,logs={},units={}}
  local function unit()return{bones={10,20},mode='position_and_rotation',component={}}end
  x.units[x.identity]=unit()
  local A={}
  function A.frame()
+  x.frame_reads=x.frame_reads+1
   assert(not x.frame_error,'Transient frame read failed')
   local u=x.units[x.identity];assert(u and not u.retired,'Local subject unavailable')
   return{identity=x.identity,root_handle=u,component=u.component}
@@ -44,6 +45,51 @@ local function fixture()
 end
 local function selected(x,id)assert(x.api.queue(id));assert(x.api.flush());assert(x.api.current()==id and x.api.active and not x.api.pending)end
 local function original(u)assert(u.bones[1]==10 and u.bones[2]==20 and u.mode=='position_and_rotation','Original snapshot was not restored')end
+
+do
+ local x=fixture();x.paused=false
+ assert(not x.api.refresh(.5)and not x.api.queue('salute'),'Unpaused catalog remained available')
+ x.paused=true
+ assert(x.api.refresh(0)and x.api.capabilities.salute,'Paused catalog stayed locked because game delta stopped')
+ assert(x.api.queue('salute')and x.writes==0);assert(x.api.flush()and x.api.active)
+ assert(x.time==0 and x.delta==0,'Availability refresh advanced game time')
+ assert(x.api.release());assert(x.api.flush());original(x.unit())
+ x.paused=false
+ assert(not x.api.refresh(0)and not x.api.queue('wave'),'Zero-delta unpause retained stale pose availability')
+end
+
+do
+ local x=fixture();x.frame_error=true
+ assert(not x.api.refresh(.5,10)and not x.api.queue('salute'),'Failed owner read retained an actionable pose')
+ local before=x.frame_reads;x.frame_error=false
+ assert(not x.api.refresh(0,10.25)and x.frame_reads==before,'Owner retry ignored the real-time cadence')
+ assert(x.api.refresh(0,10.5)and x.api.capabilities.wave,'Paused owner recovery waited for simulation time')
+ assert(x.frame_reads==before+1 and x.writes==0 and x.time==0 and x.delta==0,'Availability retry mutated the scene')
+ assert(x.api.queue('wave'));assert(x.api.flush());assert(x.api.release());assert(x.api.flush());original(x.unit())
+end
+
+do
+ local x=fixture();x.frame_error=true;assert(not x.api.refresh(.5))
+ local before=x.frame_reads;x.frame_error=false;local recovered=false
+ for _=1,30 do if x.api.refresh(0)then recovered=true;break end end
+ assert(recovered and x.api.capabilities.salute,'Clockless paused owner recovery starved beyond 30 refreshes')
+ assert(x.frame_reads==before+1 and x.writes==0,'Clockless owner retry performed extra reads or writes')
+end
+
+do
+ local x=fixture();x.frame_error=true;assert(not x.api.refresh(.5,20))
+ x.frame_error=false;local before=x.frame_reads
+ assert(x.api.refresh(0,19)and x.frame_reads==before+1,'Clock rollback left pose availability stale')
+ assert(x.writes==0 and x.time==0 and x.delta==0)
+end
+
+for _,invalid_clock in ipairs({0/0,math.huge,-math.huge,'not-a-clock'})do
+ local x=fixture();x.frame_error=true;assert(not x.api.refresh(.5,20))
+ local before=x.frame_reads;x.frame_error=false;local recovered=false
+ for _=1,30 do if x.api.refresh(0,invalid_clock)then recovered=true;break end end
+ assert(recovered and x.api.capabilities.taunt,'Invalid input clock prevented bounded paused recovery')
+ assert(x.frame_reads==before+1 and x.writes==0,'Invalid clock caused extra owner reads or scene writes')
+end
 
 do
  local x=fixture();assert(#M.catalog==3 and x.api.capabilities.salute and x.api.capabilities.wave and x.api.capabilities.taunt)

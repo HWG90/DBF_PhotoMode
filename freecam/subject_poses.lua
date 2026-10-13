@@ -73,7 +73,7 @@ function M.new(sr,subject,is_paused,log,data,adapter)
   assert(not data or data.poses[item.id],'Fixed pose catalog has no sampled frame')
   labels[item.id]=item.label
  end
- local owned,request,last;local elapsed=.5
+ local owned,request,last;local elapsed=.5;local last_paused,last_clock;local refresh_calls=0
  local function backend()
   if not adapter then adapter=M.native(sr,subject,data)end
   return adapter
@@ -93,12 +93,28 @@ function M.new(sr,subject,is_paused,log,data,adapter)
   assert(valid==true,why or'Subject restoration ownership unavailable')
   backend().restore(owned);idle('Original pose restored');return true
  end
- function self.refresh(dt)
-  elapsed=elapsed+math.max(0,math.min(.5,tonumber(dt)or 0))
-  if elapsed<.5 then return self.available,self.status,self.capabilities end
-  elapsed=0
+ function self.refresh(dt,now)
+  -- Simulation delta is zero exactly when fixed poses are usable. Read pause
+  -- transitions immediately and use the input clock for periodic owner retries.
+  local pause_ok,pause_value=pcall(paused)
+  if not pause_ok then
+   self.available=false;self.capabilities={};last=nil;last_paused=nil;elapsed=.5
+   self.status=tostring(pause_value);return self.available,self.status,self.capabilities
+  end
+  local has_clock=type(now)=='number'and now==now and math.abs(now)<math.huge
+  local rollback=has_clock and last_clock and now<last_clock
+  local delta=has_clock and last_clock and(now-last_clock)or tonumber(dt)or 0
+  if delta~=delta then delta=0 end
+  last_clock=has_clock and now or nil
+  elapsed=elapsed+math.max(0,math.min(.5,delta));refresh_calls=refresh_calls+1
+  -- Older input providers may lack a clock. Bounded render-call retries still
+  -- recover an unavailable subject while paused, without changing world time.
+  if last_paused==pause_value and not rollback and elapsed<.5 and(has_clock or refresh_calls<30)then
+   return self.available,self.status,self.capabilities
+  end
+  elapsed=0;refresh_calls=0;last_paused=pause_value
   local ok,why=pcall(function()
-   last=backend().frame();self.available=paused();self.capabilities={}
+   last=backend().frame();self.available=pause_value;self.capabilities={}
    for id in pairs(labels)do self.capabilities[id]=self.available end
    if not self.available then self.status='Pause entire action to hold a fixed pose'
    elseif not owned and not request then self.status='Fixed poses ready; the scene stays paused'end

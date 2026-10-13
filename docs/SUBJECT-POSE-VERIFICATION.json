@@ -63,6 +63,18 @@
       "BSL",
       "MDL",
       "LLL"
-    ]
+    ],
+    "additional_user_confirmation": "poses look good"
+  },
+  "readiness_fix": {
+    "checked_at_utc": "2026-10-13T18:00:20.979211+00:00",
+    "cause": "Readiness accumulated simulation delta and stalled below the refresh threshold when the world was paused",
+    "pause_state_changes_immediate": true,
+    "retry_clock": "camera_input.now, with bounded render-call fallback",
+    "live_batch": 304,
+    "live_control_disabled": false,
+    "live_active_pose": "Kneeling thumbs-up - hold [14/18] - variant 9",
+    "live_world_rate": 0,
+    "active_snapshot_preserved_during_refresh": true
   }
 }
