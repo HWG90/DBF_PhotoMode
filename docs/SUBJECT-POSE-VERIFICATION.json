@@ -19,15 +19,16 @@
   "guards": {
     "root_nodes_preserved": [
       1,
-      8
+      7
     ],
     "modified_node_range": [
-      9,
+      8,
       92
     ],
     "generation_world_component_validation": true,
     "snapshot_once_until_reset": true,
-    "restore_before_resume": true
+    "restore_before_resume": true,
+    "body_root_8_only_for_full_body_poses": true
   },
   "verification": {
     "fixture_groups_passed": 52,
@@ -42,6 +43,26 @@
   "limits": [
     "Exit/pause-off/slow-motion cleanup has fixture coverage; fresh in-game acceptance is limited to held pose, switching and Reset.",
     "Mission, respawn and ragdoll transitions require broader live coverage.",
-    "Victory poses are not included."
-  ]
+    "Every catalogue entry has isolated apply, hold, switch and restoration coverage; full-catalogue visual acceptance is pending.",
+    "Paused cape cloth remains in its previous simulated position despite matching root/garment skeleton transforms.",
+    "No props or cooperative participants are spawned; no runtime emote events or world simulation steps are used."
+  ],
+  "expanded_catalogue": {
+    "count": 213,
+    "scope": "Unique sampled clips in audited action graph regions; includes variants and unidentified action frames, not a verified count of released emote items",
+    "first_six_indices_preserved": true,
+    "live_confirmation": "Both look correct; Reset works",
+    "pushup_and_onehand_confirmed": true,
+    "complete_catalogue_live_acceptance": false,
+    "checked_at_utc": "2026-10-13T17:44:15.589497+00:00",
+    "live_menu_count": 213,
+    "live_refresh_batch": 289,
+    "installed_package_verified": true,
+    "fixture_groups_passed": 52,
+    "packaged_standalone_passed": [
+      "BSL",
+      "MDL",
+      "LLL"
+    ]
+  }
 }

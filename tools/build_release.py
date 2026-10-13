@@ -139,6 +139,8 @@ def flat_mdl_files(files, asset_manifest):
 def public_docs(files):
     for target,path in [('README.md',ROOT/'README.md'),('KNOWN-ISSUES.md',ROOT/'docs/KNOWN-ISSUES.md'),('RELEASE-NOTES.md',ROOT/'docs'/('RELEASE-'+VERSION+'.md'))]:
         if path.is_file():files[target]=path.read_bytes()
+    files['SUBJECT-POSE-CATALOGUE.md']=(ROOT/'docs/SUBJECT-POSE-CATALOGUE.md').read_bytes()
+    files['README.md']=files['README.md'].replace(b'(docs/SUBJECT-POSE-CATALOGUE.md)',b'(SUBJECT-POSE-CATALOGUE.md)')
     files['PHOTO-LIGHT-ASSET.md']=(ROOT/'docs/PHOTO-LIGHT-ASSET.md').read_bytes()
     return files
 

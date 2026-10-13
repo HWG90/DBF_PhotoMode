@@ -19,7 +19,7 @@ This source is 0.9.6; the published download above is still 0.9.5.
 - **Light placement tools:** numbered scene indicators, draggable lights with Shift precision, subject-focused portrait/three-point/side rigs, and five lighting setups saved across restarts.
 - **Retained lighting setup:** reopening Photo Mode restores your lights at their previous placements within the same scene. Explicit saved setup slots can also be recalled after restarting.
 - **Stronger shader DoF:** 1x–8x blur strength, 4x by default, with more samples and the accepted color conversion retained.
-- **Subject poses:** select a fixed Salute, Wave, or Taunt while the scene remains paused. Reset restores the original pose before play resumes. Victory poses are not exposed.
+- **Subject poses:** choose from an expanded catalogue of fixed emote/action frames while the scene remains paused, including cooperative variants and push-ups. Reset restores the original pose before play resumes. Unidentified clips retain descriptive development labels; see the [pose catalogue](docs/SUBJECT-POSE-CATALOGUE.md) for coverage and limits.
 - **Color editing:** explicit Apply, with a live color swatch and HEX value visible while adjusting RGB.
 - **Subject hiding:** nested equipment is included, fixing the reported floating parts.
 - **Cleanup guards:** menu-close failures still allow other cleanup, and GUI teardown checks world lifetime. HDR/SDR and other display-setting crashes remain unresolved.

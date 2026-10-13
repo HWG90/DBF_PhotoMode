@@ -1,7 +1,9 @@
-"""Reproducibly sample three authored poses offline; never access a game process.
+"""Reproducibly sample an authored pose catalogue offline; never access a game process.
 
-The exact decoder in subject_pose_decoder.lua is copied from Epic-LUT
+The decoder in subject_pose_decoder.lua is derived from Epic-LUT
 src/preview/player_authored_clip.lua at 9d4f69e9a67f68124cf2b3aeb50425eab797e57e.
+Its sole format adjustment bounds ignored subtype-2 marker times independently
+of the clip's trimmed duration, following the pinned SDK's marker semantics.
 Copyright (C) 2026 HWG90, Zero-Clause BSD. Format reference: HD2SDK Community
 Edition 5a886256e54db52b5d228335eae20ce796f87fc0. Game resources are build inputs
 only, supplied with --cache; the runtime module has no cache/decoder dependency.
@@ -16,9 +18,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DECODER = Path(__file__).with_name('subject_pose_decoder.lua')
-DECODER_SHA = '268e6e3629c2c9dd6d2aca8f0a9b90d4bfbccaa5ab9efb942cca23ef817783a0'
-DEFAULT_CACHE = ROOT.parent / 'Epic-LUT/dist/review/preview-poses-20261010/runtime-cache-v2/6E3A4E8C89BE8D376F34B8118FAFE3048756B96B7BDF3F3110306193B7B0945F'
+DECODER_SHA = 'c6161ffcd3ce96666c88890d93dfd8410a119466a8e55f4748b6264020b15ca2'
+UPSTREAM_DECODER_SHA = '268e6e3629c2c9dd6d2aca8f0a9b90d4bfbccaa5ab9efb942cca23ef817783a0'
+DEFAULT_CACHE = ROOT / 'dist/review/all-emotes-096/cache'
 DEFAULT_OUTPUT = ROOT / 'freecam/assets/subject_pose_frames.lua'
+DEFAULT_CATALOG = Path(__file__).with_name('subject_pose_catalog.json')
 FILES = {
     'unit': '4d1c334d294dfa97.e0a48d0be9a7453f.bin',
     'bones': '4d1c334d294dfa97.18dead01056b72e9.bin',
@@ -30,17 +34,24 @@ FILES = {
     'taunt': 'a4950a590f729419.931e336d7646cc26.bin',
     'highfive': '75205314048dcdaa.931e336d7646cc26.bin',
 }
-POSES = {'salute': ('Salute', 'hold', 0), 'wave': ('Wave', 'wave', .58), 'taunt': ('Taunt', 'taunt', .4)}
+POSES = {}
+SPECS = {}
 
-# This extension runs inside the unchanged decoder's lexical scope. It exposes
+# This extension runs inside the pinned decoder's lexical scope. It exposes
 # the exact per-node local matrix before FK, and the original sampler output.
 EXTENSION = r'''
-function Clip.subject_frames(folder)
+function Clip.subject_frames(folder,specs)
  local set=Clip.load(folder);local out={};local function row(...)local t={...};for i,v in ipairs(t)do t[i]=tostring(v)end;out[#out+1]=table.concat(t,'\t')end
+ for _,spec in ipairs(specs)do
+  local f=assert(io.open(folder..'/'..spec.resource..'.931e336d7646cc26.bin','rb'));local bytes=f:read(Clip.MAX_BYTES+1);f:close()
+  assert(#bytes<=Clip.MAX_BYTES,'Catalogue clip size bound');set.clips[spec.id]=animation(bytes,#set.names)
+ end
+ Clip.POSES=specs
  local function vector(v)local t={};for i,x in ipairs(v)do t[i]=string.format('%.17g',x)end;return table.concat(t,',')end
  row('R',#set.nodes,#set.names)
  for i,node in ipairs(set.nodes)do row('N',i,node.parent,node.bone or 0,node.name or '')end
- for _,id in ipairs({'salute','wave','taunt'})do
+ for _,spec in ipairs(specs)do
+  local id=spec.id
   local spec=Clip.find_pose(id);local clip=set.clips[spec.clip];local original=Clip.sample(set,0,id)
   row('P',id,spec.clip,string.format('%.17g',spec.time),string.format('%.17g',clip.duration))
   for i,node in ipairs(set.nodes)do
@@ -116,7 +127,9 @@ def parse_and_validate(text):
             id, clip, at, duration = row[1], row[2], float(row[3]), float(row[4])
             label, expected_clip, expected_time = POSES[id]
             assert clip == expected_clip and at == expected_time and 0 <= at <= duration < 60
-            poses[id] = {'label': label, 'resource': FILES[clip].split('.')[0], 'time': at, 'duration': duration, 'nodes': {}}
+            poses[id] = {'label': label, 'resource': SPECS[id]['resource'], 'time': at, 'duration': duration, 'nodes': {}}
+            for key in ('full_body', 'event', 'event_hash', 'layer', 'state', 'phase', 'label_source'):
+                if key in SPECS[id]: poses[id][key] = SPECS[id][key]
             locals_ref[id], model_ref[id] = {}, {}
         elif row[0] == 'T':
             id, i = row[1], int(row[2])
@@ -167,26 +180,58 @@ def lua_value(value):
     raise TypeError(type(value))
 
 
-def build(cache, output, dll, check=False):
+def build(cache, output, dll, check=False, catalog=DEFAULT_CATALOG):
+    global POSES, SPECS
+    specs = json.loads(catalog.read_text(encoding='utf-8'))['poses']
+    assert 3 <= len(specs) <= 256 and [p['id'] for p in specs[:3]] == ['salute', 'wave', 'taunt']
+    assert len({p['id'] for p in specs}) == len(specs)
+    for p in specs:
+        assert p['id'].replace('_', '').isalnum() and len(p['resource']) == 16
+        assert all(c in '0123456789abcdef' for c in p['resource'])
+        assert isinstance(p['time'], (int, float)) and p['time'] >= 0
+        p['clip'] = p['id']
+    SPECS = {p['id']: p for p in specs}
+    POSES = {p['id']: (p['label'], p['id'], p['time']) for p in specs}
+    manifest = json.loads(catalog.read_text(encoding='utf-8'))
+    graph_name = manifest.get('graph_resource', '4d1c334d294dfa97')
+    if '.' not in graph_name:
+        graph_name += '.a486d4045106165c.bin'
+    graph_sha = hashlib.sha256((cache / graph_name).read_bytes()).hexdigest()
+    assert graph_sha == manifest['graph_sha256'], 'Catalogue graph identity changed'
     decoder = DECODER.read_bytes()
     assert hashlib.sha256(decoder).hexdigest() == DECODER_SHA, 'Pinned decoder changed'
     # Normalize only for lexical insertion; provenance hashes the exact copy.
     source = decoder.decode().replace('\r\n', '\n')
     assert source.endswith('return Clip\n')
     source = source[:-len('return Clip\n')] + EXTENSION
-    hashes = {name: hashlib.sha256((cache / name).read_bytes()).hexdigest() for name in FILES.values()}
-    chunk = ('local Clip=(function()\n'+source+'\nend)()\nreturn Clip.subject_frames('+lua_value(cache.resolve().as_posix())+')').encode()
+    files = dict.fromkeys([*FILES.values(), *(p['resource']+'.931e336d7646cc26.bin' for p in specs)])
+    hashes = {name: hashlib.sha256((cache / name).read_bytes()).hexdigest() for name in files}
+    # Tracing changes sub-ulp matrix arithmetic once a larger catalogue heats up.
+    # Interpret offline so identical inputs produce identical generated bytes.
+    chunk = ('if jit then jit.off() end\nlocal Clip=(function()\n'+source+'\nend)()\nreturn Clip.subject_frames('+lua_value(cache.resolve().as_posix())+','+lua_value(specs)+')').encode()
     rig, poses, error = parse_and_validate(lua_result(chunk, dll))
     result = {'version': 1, 'build': {'game_timestamp': 0x6AB3B43F, 'exe_timestamp': 0x6AB382E4},
               'rig': {'resource': '4d1c334d294dfa97', 'node_count': 107, 'bone_count': 90, 'nodes': rig},
-              'poses': poses, 'provenance': {'decoder_sha256': DECODER_SHA,
+              'poses': poses, 'catalog': [{'id': p['id'], 'label': p['label']} for p in specs], 'provenance': {'decoder_sha256': DECODER_SHA,
               'decoder_source': 'Epic-LUT/src/preview/player_authored_clip.lua',
               'decoder_revision': '9d4f69e9a67f68124cf2b3aeb50425eab797e57e',
-              'sdk_revision': '5a886256e54db52b5d228335eae20ce796f87fc0', 'resource_sha256': hashes}}
+              'decoder_upstream_sha256': UPSTREAM_DECODER_SHA,
+              'decoder_adjustment': 'Ignore bounded subtype-2 event marker times beyond trimmed clip duration; transform keys remain duration-bound.',
+              'sdk_revision': '5a886256e54db52b5d228335eae20ce796f87fc0', 'resource_sha256': hashes,
+              'catalog_sha256': hashlib.sha256(catalog.read_bytes()).hexdigest(), 'graph_sha256': graph_sha}}
     header = '-- Generated by tools/build_subject_pose_frames.py; local PQS frames, not animation events.\n-- 1-based scene-node indexes and parents; preserve live placement anchors and restore borrowed poses.\n'
-    body = header + 'return {\n' + ',\n'.join(' ['+lua_value(k)+']='+lua_value(v) for k, v in result.items()) + '\n}\n'
+    # Each pose gets its own prototype, keeping a large catalogue below LuaJIT's
+    # per-function constant limit without external runtime assets or loaders.
+    fields = []
+    for key, value in result.items():
+        if key == 'poses':
+            encoded_poses = ',\n'.join(' ['+lua_value(id)+']=(function() return '+lua_value(pose)+' end)()' for id, pose in value.items())
+            fields.append(' ["poses"]={\n'+encoded_poses+'\n }')
+        else:
+            fields.append(' ['+lua_value(key)+']='+lua_value(value))
+    body = header + 'return {\n' + ',\n'.join(fields) + '\n}\n'
     # Parse the emitted module in the isolated interpreter as a final syntax/count check.
-    loaded = lua_result(('local d=(function()\n'+body+'\nend)();assert(d.rig.node_count==107 and #d.rig.nodes==107);for _,id in ipairs({"salute","wave","taunt"})do assert(#d.poses[id].nodes==107)end;return "ok"').encode(), dll)
+    loaded = lua_result(('local d=(function()\n'+body+'\nend)();assert(d.rig.node_count==107 and #d.rig.nodes==107);for _,p in ipairs(d.catalog)do assert(#d.poses[p.id].nodes==107)end;return "ok"').encode(), dll)
     assert loaded == 'ok'
     encoded = body.encode()
     if check:
@@ -200,9 +245,10 @@ def build(cache, output, dll, check=False):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--cache', type=Path, default=DEFAULT_CACHE, help='Explicit directory containing the exact nine decoded resources')
+    parser.add_argument('--cache', type=Path, default=DEFAULT_CACHE, help='Directory containing the pinned rig and verified catalogue clip resources')
     parser.add_argument('--output', type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument('--catalog', type=Path, default=DEFAULT_CATALOG, help='Verified clip, held-time and label catalogue')
     parser.add_argument('--lua-dll', type=Path, default=Path(os.environ.get('HD2_LUA51_DLL', 'C:/Program Files (x86)/Steam/steamapps/common/Helldivers 2/bin/lua51.dll')))
     parser.add_argument('--check', action='store_true', help='Validate inputs and compare without rewriting output')
     args = parser.parse_args()
-    build(args.cache, args.output, args.lua_dll, args.check)
+    build(args.cache, args.output, args.lua_dll, args.check, args.catalog)

@@ -432,6 +432,7 @@ def package_bsl(output,version=None,dof_candidate=False):
         'INSTALL.txt':(ROOT/'README.md').read_bytes(),'Source/bsl_startup.lua':(ROOT/'bsl_startup.lua').read_bytes()}
     for name,body in files.items():
         if name.startswith('assets/'):package[name]=body
+        if name in ('README.md','SUBJECT-POSE-CATALOGUE.md'):package[name]=body
     notes=ROOT.parent/'docs'/('RELEASE-'+version+'.md')
     if not notes.is_file():notes=ROOT.parent/('RELEASE-'+version+'.md')
     if notes.is_file():package['RELEASE-NOTES.md']=notes.read_bytes()

@@ -282,7 +282,11 @@ local function animation(bytes, count)
             bone = math.floor(a / 16) + (b % 64) * 16
             time = ((a % 16) * 65536 + d * 256 + c) / 1000
         end
-        assert(time >= 0 and time <= duration + 0.101, 'Authored animation key time bound')
+        -- Subtype 2 carries an event hash, not a bone transform. Some clips
+        -- retain markers after their trimmed duration; sampling ignores them
+        -- exactly as the pinned SDK does. Keep transform keys duration-bound.
+        local marker = kind == 0 and subtype == 2
+        assert(time >= 0 and time <= (marker and 60 or duration + 0.101), 'Authored animation key time bound')
         local field, value
         if kind == 3 then
             field, value = 'q', compressed_rotation(r)

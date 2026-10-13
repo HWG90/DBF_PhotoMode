@@ -29,15 +29,15 @@ function M.native(sr,subject,data)
   end
   local lease={frame=frame,original={},mode=U.animation_bone_mode(unit)}
   assert(type(lease.mode)=='string','Subject bone transfer mode unavailable')
-  -- Preserve world placement/root/boss (1..8), collision nodes and unnamed
-  -- gameplay attachments. Child equipment inherits the posed skeleton.
-  for i=9,92 do lease.original[i]=sr.Matrix4x4Box(U.local_pose(unit,i))end
+  -- Preserve world placement/root (1..7), collision nodes and unnamed
+  -- gameplay attachments. Body-root 8 is needed for poses such as push-ups.
+  for i=8,92 do lease.original[i]=sr.Matrix4x4Box(U.local_pose(unit,i))end
   return lease
  end
  local function poses(id)
   if compiled[id]then return compiled[id]end
   local source=assert(data.poses[id],'Unknown subject pose');local out={}
-  for i=9,92 do
+  for i=8,92 do
    local pose=source.nodes[i];local q=pose.q;local sign=q[4]<0 and-1 or 1
    local w=math.max(-1,math.min(1,q[4]*sign));local sine=math.sqrt(math.max(0,1-w*w));local axis=V(1,0,0)
    if sine>1e-7 then axis=V(q[1]*sign/sine,q[2]*sign/sine,q[3]*sign/sine)end
@@ -50,12 +50,15 @@ function M.native(sr,subject,data)
  function adapter.apply(lease,id)
   local values=poses(id);checked(lease.frame,true)
   U.set_animation_bone_mode(lease.frame.root_handle,'ignore')
-  for i=9,92 do U.set_local_pose(lease.frame.root_handle,i,values[i]:unbox())end
+  for i=8,92 do
+   local value=i==8 and not data.poses[id].full_body and lease.original[i]or values[i]
+   U.set_local_pose(lease.frame.root_handle,i,value:unbox())
+  end
   sr.World.update_unit(lease.frame.world,lease.frame.root_handle)
  end
  function adapter.restore(lease)
   checked(lease.frame,false)
-  for i=9,92 do U.set_local_pose(lease.frame.root_handle,i,lease.original[i]:unbox())end
+  for i=8,92 do U.set_local_pose(lease.frame.root_handle,i,lease.original[i]:unbox())end
   U.set_animation_bone_mode(lease.frame.root_handle,lease.mode)
   sr.World.update_unit(lease.frame.world,lease.frame.root_handle)
  end

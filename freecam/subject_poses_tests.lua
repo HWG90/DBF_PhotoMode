@@ -133,11 +133,64 @@ do
  U.set_animation_bone_mode=function(u,m)assert(u==unit and alive);mode=m end
  local subject={pose_frame=function()return{local_owner=true,identity='native:1',root_handle=unit,world=world}end,pose_valid=function()return alive end}
  local a=M.native(sr,subject,data);local frame=a.frame();bad_parent=true;assert(not pcall(a.capture,frame)and#writes==0,'Changed bone parent accepted');bad_parent=false
- local lease=a.capture(frame);a.prepare('wave');a.apply(lease,'wave');assert(mode=='ignore'and#writes==84 and updates==1)
- for _,i in ipairs(writes)do assert(i>=9 and i<=92,'Placement/gameplay node mutated')end
+ local lease=a.capture(frame);a.prepare('wave');a.apply(lease,'wave');assert(mode=='ignore'and#writes==85 and updates==1)
+ for _,i in ipairs(writes)do assert(i>=8 and i<=92,'Placement/gameplay node mutated')end
  for _,i in ipairs({1,2,5,8,93,107})do assert(values[i].tag==i,'Root/boss/collision anchor changed')end
- a.apply(lease,'taunt');a.restore(lease);assert(mode=='position_and_rotation'and updates==3)
+ data.poses.taunt.full_body=true;a.apply(lease,'taunt');assert(values[8].tag==nil,'Full-body pose kept the old body orientation');a.apply(lease,'salute');assert(values[8].tag==8,'Switching back failed to restore the original body anchor');a.restore(lease);assert(mode=='position_and_rotation'and updates==4);data.poses.taunt.full_body=nil
  for i=1,107 do assert(values[i].tag==i,'Original native pose snapshot was overwritten')end
+ -- Exercise every actual generated entry through the service and native
+ -- adapter, including transitions between upper-body and full-body samples.
+ -- A catalog count alone cannot establish that its frames are usable.
+ local Options=dofile(root..'photo_options.lua');assert(Options.set_subject_poses(data.catalog))
+ local phase='menu';local set_pose,set_mode=U.set_local_pose,U.set_animation_bone_mode
+ U.set_local_pose=function(...)assert(phase=='update','Catalog bone write escaped the update');return set_pose(...)end
+ U.set_animation_bone_mode=function(...)assert(phase=='update','Catalog mode write escaped the update');return set_mode(...)end
+ local service=M.new(sr,subject,function()return true end,nil,data)
+ assert(service.refresh(.5)and service.catalog==data.catalog)
+ local function finite(v)return type(v)=='number'and v==v and math.abs(v)<math.huge end
+ local function anchors()
+  for i=1,107 do if i<8 or i>92 then assert(values[i].tag==i,'Catalog entry changed placement, collision or attachment anchor '..i)end end
+ end
+ local function apply_entry(entry)
+  local source=assert(data.poses[entry.id],'Catalog entry has no frame')
+  assert(source.label==entry.label and finite(source.time)and finite(source.duration)and source.time>=0 and source.time<=source.duration,'Catalog metadata and sampled clip disagree')
+  assert(#source.nodes==107,'Incomplete sampled skeleton')
+  for i=1,107 do
+   local node=source.nodes[i]
+   assert(#node.p==3 and#node.q==4 and#node.s==3,'Malformed sampled transform')
+   for _,field in ipairs({'p','q','s'})do for _,v in ipairs(node[field])do assert(finite(v),'Nonfinite '..entry.id..' transform '..i)end end
+   local norm=0;for _,v in ipairs(node.q)do norm=norm+v*v end
+   assert(math.abs(norm-1)<.0001,'Nonunit sampled rotation '..entry.id..' node '..i)
+  end
+  local before=#writes;phase='menu'
+  assert(service.capabilities[entry.id]and service.queue(entry.id)and#writes==before,'Selection wrote bones or rejected a catalog entry')
+  phase='update';assert(service.flush(),entry.id..' could not apply')
+  assert(service.current()==entry.id and service.active and not service.pending and mode=='ignore','Catalog selection did not hold the requested pose')
+  anchors()
+  for i=8,92 do
+   if i==8 and not source.full_body then assert(values[i].tag==i,'Upper-body pose failed to restore body anchor')
+   else
+    for axis=1,3 do assert(math.abs(values[i].p[axis]-source.nodes[i].p[axis])<1e-7,'Selected entry applied a different frame')end
+    assert(finite(values[i].q.angle),'Native rotation conversion produced a nonfinite angle')
+   end
+  end
+  assert(service.after_update()and service.current()==entry.id,'Catalog entry could not remain held')
+ end
+ for _,entry in ipairs(data.catalog)do apply_entry(entry)end
+ -- Reverse switching exercises returning from later full-body frames to the
+ -- original upper-body entries without recapturing an already-posed snapshot.
+ for index=#data.catalog,1,-1 do apply_entry(data.catalog[index])end
+ phase='menu';local before=#writes;assert(service.queue_stop()and#writes==before,'Reset wrote from the menu')
+ phase='update';assert(service.flush()and not service.active and not service.pending and mode=='position_and_rotation')
+ for i=1,107 do assert(values[i].tag==i,'Catalog switching lost the original transform '..i)end
+ -- A fresh capture/reset for each frame also checks the standalone selection
+ -- path that users take when returning to the menu between photos.
+ for _,entry in ipairs(data.catalog)do
+  apply_entry(entry);phase='menu';assert(service.release());phase='update';assert(service.flush())
+  for i=1,107 do assert(values[i].tag==i,'Catalog entry did not restore independently: '..entry.id)end
+ end
+ print('Generated pose catalog: '..#data.catalog..' real entries validated, selected, held, switched both ways and independently restored; all scene anchors retained')
+ U.set_local_pose,U.set_animation_bone_mode=set_pose,set_mode
  alive=false;local before=#writes;assert(not pcall(a.apply,lease,'salute')and not pcall(a.restore,lease)and#writes==before,'Stale native component received writes')
 end
 print('Fixed subject poses: zero-time selection/hold, original-snapshot switching, reset/exit/unpause, stale ownership, read/partial-write recovery, request cancellation and real native adapter guards passed')

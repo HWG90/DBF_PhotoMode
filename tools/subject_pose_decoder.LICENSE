@@ -6,7 +6,10 @@ Permission to use, copy, modify, and/or distribute this software for any purpose
 
 THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-subject_pose_decoder.lua is an exact copy of Epic-LUT/src/preview/player_authored_clip.lua
+subject_pose_decoder.lua is derived from Epic-LUT/src/preview/player_authored_clip.lua
 at revision 9d4f69e9a67f68124cf2b3aeb50425eab797e57e.
-SHA-256: 268e6e3629c2c9dd6d2aca8f0a9b90d4bfbccaa5ab9efb942cca23ef817783a0.
+Upstream SHA-256: 268e6e3629c2c9dd6d2aca8f0a9b90d4bfbccaa5ab9efb942cca23ef817783a0.
+Local adjustment: ignored subtype-2 event markers may have bounded timestamps
+outside a trimmed clip's duration; bone transform keys remain duration-bound.
+This follows the pinned SDK's separate treatment of event marker records.
 Only the offline generator imports this decoder; the runtime uses sampled pose data.
