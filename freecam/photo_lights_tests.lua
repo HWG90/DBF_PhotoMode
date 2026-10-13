@@ -146,6 +146,52 @@ local prior_manager=manager;local marker=function()return true end;manager.updat
 manager=M.new(sr,nil,manager);assert(manager==prior_manager and manager.update_from_photo==marker,'Empty refresh changed shared manager identity')
 assert(manager.tick(a,camera));assert(manager.create({}));assert(not pcall(M.new,sr,nil,manager),'Refresh abandoned an owned light')
 assert(manager.release());assert(manager.queue('create',{}));assert(not pcall(M.new,sr,nil,manager),'Refresh abandoned queued work');assert(manager.queue('release'));assert(manager.flush(a,camera))
+-- Full Photo exit keeps only numeric setup data; update-time re-entry creates
+-- fresh units at the saved placements. The world handle alone is insufficient:
+-- this game can reuse it for a different mission/ship generation.
+local epoch=70
+manager.scene_context=function()return main,epoch end
+assert(manager.tick(a,camera));assert(manager.create({kind='spot',cone=75,right=2,forward=3,up=4,intensity=123,color='#10A0FF',range=44}))
+local fixed=units[next_id];local fixed_id=manager.list()[1].id
+assert(manager.create({enabled=false,intensity=9,follow_camera=true}));local followed=units[next_id];local followed_id=manager.list()[2].id
+assert(manager.tick(a,moved));assert(manager.select(1))
+local fixed_pos={unpack(fixed.pos)};local followed_pos={unpack(followed.pos)}
+assert(manager.queue('update',{intensity=999}));assert(manager.queue('release','photo mode exited'))
+fail_destroy=true;assert(not manager.flush(nil,nil)and manager.count()==2)
+local retained=assert(manager.saved_setup());assert(#retained.definitions==2 and retained.definitions[1].values.intensity==123,'Exit saved uncommitted menu edits')
+retained.definitions[1].anchor.position[1]=999;assert(manager.saved_setup().definitions[1].anchor.position[1]==10,'Retained definition leaked mutable state')
+for _,definition in ipairs(manager.saved_setup().definitions)do
+ assert(definition.unit==nil and definition.world==nil and definition.light==nil and type(definition.anchor.position[1])=='number','Retained setup kept native handles')
+end
+fail_destroy=false;assert(manager.flush(nil,nil));assert(manager.count()==0 and not fixed.alive and not followed.alive)
+local suspended_serial=next_id;assert(manager.flush(nil,nil));assert(next_id==suspended_serial and manager.saved_setup(),'Inactive update discarded or respawned setup')
+-- Empty in-place migration retains setup, provider and shared callback identity.
+local shared_retained=manager;manager=M.new(sr,nil,manager);assert(manager==shared_retained and manager.saved_setup())
+assert(not manager.flush(a,malformed)and next_id==suspended_serial and manager.saved_setup(),'Unavailable camera restored or discarded retained placement')
+resource=false;assert(not manager.flush(a,moved_again)and manager.count()==0 and manager.saved_setup(),'Temporary missing asset discarded retained lights');resource=true
+fail_component=true;fail_destroy=true;assert(not manager.flush(a,moved_again)and manager.count()==1 and manager.saved_setup(),'Failed restoration abandoned owned cleanup')
+fail_component=false;fail_destroy=false;assert(manager.flush(a,moved_again));assert(manager.count()==2 and not manager.saved_setup())
+local reopened_fixed=units[next_id-1];local reopened_followed=units[next_id]
+assert(reopened_fixed~=fixed and reopened_followed~=followed and reopened_fixed.pos[1]==fixed_pos[1]and reopened_fixed.pos[2]==fixed_pos[2]and reopened_fixed.pos[3]==fixed_pos[3],'Re-entry reused a stale unit or changed fixed placement')
+assert(reopened_followed.pos[1]==followed_pos[1]and reopened_followed.pos[2]==followed_pos[2],'Initial follow placement was not retained')
+local restored_values,restored_index=manager.selected();assert(restored_index==1 and restored_values.kind=='spot'and restored_values.cone==75 and restored_values.intensity==123 and restored_values.color=='#10A0FF'and restored_values.range==44)
+assert(manager.list()[1].id==fixed_id and manager.list()[2].id==followed_id and not reopened_followed.light.enabled,'Selection, identity or disabled state changed on re-entry')
+assert(manager.flush(a,moved_again));assert(manager.count()==2 and reopened_fixed.pos[1]==fixed_pos[1]and reopened_followed.pos[1]==200,'Follow setting did not resume or duplicated lights')
+fail_intensity_once=true;assert(not manager.update({intensity=500}));assert(manager.release('photo mode exited'));assert(manager.flush(a,camera));assert(manager.selected().intensity==123 and manager.count()==2,'Successful edit rollback was lost when reopening')
+assert(manager.remove(1));assert(manager.release('photo mode exited'));assert(manager.flush(a,camera));assert(manager.count()==1 and manager.list()[1].id==followed_id,'Removed light resurrected')
+assert(manager.queue('release','removed manually'));assert(manager.flush(a,camera));assert(not manager.saved_setup());assert(manager.flush(a,camera)and manager.count()==0,'Remove all resurrected setup')
+assert(manager.create({}));assert(manager.release('photo mode exited'));local retired_destroyed=#destroyed;epoch=epoch+1
+assert(manager.flush(nil,nil)and not manager.saved_setup());assert(manager.flush(a,camera)and manager.count()==0 and#destroyed==retired_destroyed,'Reused world handle restored a previous scene')
+assert(manager.create({}));local live_retired=units[next_id];local alive_api=sr.Unit.alive;local stale_reads=0
+sr.Unit.alive=function(unit)if unit==live_retired then stale_reads=stale_reads+1;error('stale generation')end;return alive_api(unit)end
+epoch=epoch+1;assert(#manager.markers()==0 and stale_reads==0,'Render marker dereferenced a retired scene generation')
+assert(manager.flush(a,camera)and manager.count()==0 and stale_reads==0,'Epoch retirement dereferenced an old owned unit');sr.Unit.alive=alive_api
+assert(manager.create({}));assert(manager.release('photo mode exited'));local provider=manager.scene_context;manager.scene_context=function()error('generation temporarily unavailable')end
+assert(not manager.flush(a,camera)and manager.saved_setup()and manager.count()==0,'Unknown scene identity restored or discarded setup');manager.scene_context=provider
+assert(manager.flush(a,camera)and manager.count()==1);assert(manager.close('loader disabled'));assert(not manager.saved_setup())
+assert(manager.tick(a,camera));assert(manager.create({}));assert(manager.release('photo mode exited'));main=b;worlds={a,b}
+assert(manager.flush(nil,nil)and not manager.saved_setup());assert(manager.flush(b,camera)and manager.count()==0,'Different live world reused retained setup');main=a
+assert(manager.tick(a,camera));assert(manager.create({}));assert(manager.release('photo mode exited'));assert(manager.clear());assert(manager.flush(a,camera)and manager.count()==0,'Explicit clear while suspended left retained definitions')
 local options=dofile(root..'photo_options.lua');local controller_factory=dofile(root..'controller.lua')
 local previous_api=DBFMCM;local values={};local controls={};local open=false;local owned=false
 local api={camera_input={down=function()return false end,focused=function()return true end,
@@ -173,8 +219,8 @@ api.handle.set('hide_controls',true);controller.tick(.016);assert(manager.count(
 open=true;controller.tick(.016);assert(manager.count()==1,'MCM input handoff removed photo lighting');open=false
 assert(controller.stop());assert(manager.count()==1 and manager.pending and photo.light_context==nil,'Photo exit performed render-phase destruction')
 assert(manager.flush(nil,nil));assert(manager.count()==0)
-controls.toggle.on_activate();photo.light_context={world=a,position=camera.position,forward=camera.forward,right=camera.right,up=camera.up}
-assert(manager.flush(a,photo.light_context));controller.tick(.016);controls.light_add.on_activate();assert(manager.flush(a,photo.light_context));assert(manager.count()==1)
+controls.toggle.on_activate();photo.light_context={world=a,position=moved.position,forward=moved.forward,right=moved.right,up=moved.up}
+assert(manager.flush(a,photo.light_context));controller.tick(.016);assert(manager.count()==1 and manager.selected().intensity==7 and units[next_id].pos[1]==10,'Controller re-entry required Add light or lost placement/settings')
 assert(controller.close());assert(manager.count()==0 and not manager.pending and not owned,'Loader close did not perform final owned cleanup')
 DBFMCM=previous_api
 -- The owning MCM core rejects writes to disabled controls. Exercise its real

@@ -129,6 +129,7 @@ end
 local DBF_PHOTO_LIGHTS=(function()
 __PHOTO_LIGHTS__
 end)().new(sr,log)
+DBF_PHOTO_LIGHTS.scene_context=function()return target and target.world,WORLD.epoch end
 H.dbf_subject_backend=(function()
 __SUBJECT_BACKEND__
 end)()

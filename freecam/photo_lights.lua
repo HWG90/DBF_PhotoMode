@@ -56,17 +56,41 @@ function M.new(sr,log,reuse,handoff)
    assert(finite(handoff.serial)and handoff.serial==math.floor(handoff.serial)and handoff.serial>=maximum_id,'Invalid photo light serial')
    assert(finite(handoff.selected)and handoff.selected==math.floor(handoff.selected)and handoff.selected>=0 and handoff.selected<=#handoff.records and(#handoff.records==0 or handoff.selected>0),'Invalid photo light selection')
    assert(handoff.frame==nil or context(handoff.frame),'Invalid photo light camera handoff')
+   assert(handoff.scene_epoch==nil or(finite(handoff.scene_epoch)and handoff.scene_epoch>=0 and handoff.scene_epoch==math.floor(handoff.scene_epoch)),'Invalid photo light scene generation')
   else assert(reuse.count()==0,'Photo light refresh requires an empty idle manager')end
  else assert(handoff==nil,'Photo light handoff requires its existing manager')end
+ local saved=reuse and callable(reuse.saved_setup)and reuse.saved_setup()or nil
  local self=reuse or{};self.status=M.testing_status..' - Photo lighting is waiting for a camera';self.available=false;self.revision=reuse and(self.revision or 0)+1 or 0;self.pending=false
  local records=handoff and handoff.records or{};local selected=handoff and handoff.selected or 0;local world=handoff and handoff.world;local frame=handoff and context(handoff.frame);local serial=handoff and handoff.serial or 0;local queue={}
+ local scene_epoch=handoff and handoff.scene_epoch;local scene_key=world and tostring(world);local scene_verified=false;local restoring=false;local spawn
+ if scene_epoch~=nil then for _,record in ipairs(records)do record.scene_epoch=scene_epoch end end
  local W,U,L,A=sr.World or{},sr.Unit or{},sr.Light or{},sr.Application or{}
+ -- The game reuses its main-world handle between ship and mission. The camera
+ -- owner supplies its generation even while Photo Mode is closed. Retained
+ -- definitions contain only scalar settings, numeric bases and a scene stamp.
+ local function observe_scene(candidate,camera)
+  local current,epoch=candidate,camera and camera.scene_epoch
+  if callable(self.scene_context)then
+   local ok,value,generation=pcall(self.scene_context)
+   if not ok then scene_verified=false;return false end
+   current,epoch=value,generation
+  end
+  scene_verified=finite(epoch)and epoch>=0 and epoch==math.floor(epoch)
+  if not scene_verified then return false end
+  local key=current and tostring(current)
+  local changed=(scene_epoch~=nil and scene_epoch~=epoch)or(scene_key~=nil and key~=nil and scene_key~=key)
+  scene_epoch=epoch;if key then scene_key=key end
+  if saved and(saved.epoch~=epoch or(key and saved.scene_key~=key))then saved=nil;self.revision=self.revision+1 end
+  return changed
+ end
  local function world_live(candidate)
   if not candidate or type(A.worlds)~='function'then return false end
   local ok,worlds=pcall(A.worlds);if not ok or type(worlds)~='table'then return false end
   for _,item in pairs(worlds)do if item==candidate then return true end end;return false
  end
  local function owned_live(record)
+  if record.scene_epoch~=nil and not scene_verified then return nil,'scene identity unavailable'end
+  if record.scene_epoch~=nil and scene_epoch~=nil and record.scene_epoch~=scene_epoch then return false,'retired'end
   if not world_live(record.world)then return false,'retired'end
   local ok,alive=pcall(U.alive,record.unit)
   if not ok then return nil,tostring(alive)end
@@ -155,6 +179,7 @@ function M.new(sr,log,reuse,handoff)
   return ran,not ran and tostring(err)or nil
  end
  function self.count()return#records end
+ function self.saved_setup()return saved and copy(saved)or nil end
  function self.selected()
   local record=records[selected];return record and copy(record.values)or nil,selected,#records
  end
@@ -162,6 +187,7 @@ function M.new(sr,log,reuse,handoff)
   local out={};for i,record in ipairs(records)do out[i]={id=record.id,values=copy(record.values),selected=i==selected,error=record.error}end;return out
  end
  function self.markers()
+  observe_scene()
   local S,V,Q=sr.Script or{},sr.Vector3 or{},sr.Matrix4x4 or{}
   if type(V)~='table'then V={}end
   local get_count,set_count=S.temp_count,S.set_temp_count
@@ -196,17 +222,38 @@ function M.new(sr,log,reuse,handoff)
   if not finite(index)or index~=math.floor(index)or not records[index]then return fail('Choose an existing photo light')end
   selected=index;self.revision=self.revision+1;return true
  end
- function self.release(reason)
+ local function release(reason,preserve)
+  observe_scene()
+  if preserve and not saved and#records>0 and scene_verified and scene_key==tostring(world)then
+   local definitions={};local saved_selected;local selected_id=records[selected]and records[selected].id
+   for _,record in ipairs(records)do
+    if(record.initialized==true or(record.initialized==nil and not record.error))and(record.scene_epoch==nil or record.scene_epoch==scene_epoch)then
+     definitions[#definitions+1]={id=record.id,values=copy(record.values),anchor=copy(record.anchor)}
+     if record.id==selected_id then saved_selected=#definitions end
+    end
+   end
+   if#definitions>0 then saved={definitions=definitions,selected=saved_selected or 1,epoch=scene_epoch,scene_key=scene_key,serial=serial}end
+  elseif not preserve then saved=nil end
   local first
   for i=#records,1,-1 do local ok,why=remove_at(i);if not ok then first=first or why end end
   self.available=false;frame=nil;queue={};self.pending=false
   if first then return fail(first)end
-  world=nil;selected=0;status(reason and('Photo lights cleared: '..reason)or'Photo lights cleared');return true
+  world=nil;selected=0;restoring=false
+  status(saved and'Photo light setup retained until camera reopens'or(reason and('Photo lights cleared: '..reason)or'Photo lights cleared'));return true
+ end
+ function self.release(reason)
+  return release(reason,reason=='photo mode exited'or reason=='camera closed')
  end
  function self.tick(candidate,camera)
-  if world and candidate~=world then local ok,why=self.release('scene changed');if not ok then return false,why end end
+  local changed=observe_scene(candidate,camera)
+  if world and(changed or(candidate and candidate~=world))then local ok,why=release('scene changed',false);if not ok then return false,why end end
   if not candidate then return self.release('camera closed')end
   world=candidate;frame=context(camera)
+  if scene_epoch~=nil and not scene_verified then return fail('Photo lighting is waiting for scene identity')end
+  if restoring then
+   for i=#records,1,-1 do local ok,why=remove_at(i);if not ok then return fail(why)end end
+   restoring=false
+  end
   for i=#records,1,-1 do
    local record=records[i];local alive,why=owned_live(record)
    if alive==false then table.remove(records,i);if i<selected then selected=selected-1 end;selected=math.min(selected,#records);self.revision=self.revision+1
@@ -225,20 +272,37 @@ function M.new(sr,log,reuse,handoff)
   local ready,why=self.ready(candidate)
   if not ready then return fail(why)end
   if not frame then return fail('Photo lighting is waiting for camera placement')end
+  if saved then
+   if not scene_verified then return fail('Retained photo lights are waiting for scene identity')end
+   if saved.scene_key~=tostring(candidate)or saved.epoch~=scene_epoch then saved=nil
+   else
+    local setup=saved
+    for _,definition in ipairs(setup.definitions)do
+     local done,reason=spawn(definition.values,definition.anchor,definition.id)
+     if not done then
+      restoring=true
+      for i=#records,1,-1 do local cleared=remove_at(i);if not cleared then break end end
+      return fail('Photo light restoration pending: '..tostring(reason))
+     end
+    end
+    selected=math.max(1,math.min(setup.selected,#records));serial=math.max(serial,setup.serial);saved=nil;self.revision=self.revision+1
+   end
+  end
   status(#records==0 and'Add up to three photo lights'or('Photo light '..selected..' of '..#records));return true
  end
- function self.create(values)
+ spawn=function(values,anchor,id)
   local ready,why,caps=self.ready();if not ready then return fail(why)end
   if not frame then return fail('Photo lighting is waiting for camera placement')end
   if#records>=M.maximum then return fail('Three photo lights are already placed')end
   local o,err=clean(values);if not o then return fail(err)end
   if o.kind=='spot'and not caps.spot then return fail('Spot lights are unavailable in this engine')end
   local ran,unit=pcall(function()
-   local b=frame;local p={};for i=1,3 do p[i]=b.position[i]+b.right[i]*o.right+b.forward[i]*o.forward+b.up[i]*o.up end
+   local b=anchor;local p={};for i=1,3 do p[i]=b.position[i]+b.right[i]*o.right+b.forward[i]*o.forward+b.up[i]*o.up end
    return W.spawn_unit(world,sr.IdString64.from_hex(M.resource),sr.Vector3(unpack(p)),sr.Quaternion.look(sr.Vector3(unpack(b.forward)),sr.Vector3(unpack(b.up))))
   end)
   if not ran or not unit then return fail('Photo light could not spawn: '..tostring(unit))end
-  serial=serial+1;local record={id=serial,world=world,unit=unit,values=o,anchor=copy(frame),caps=caps};records[#records+1]=record;selected=#records
+  serial=math.max(serial,id)
+  local record={id=id,world=world,scene_epoch=scene_epoch,unit=unit,values=o,anchor=copy(anchor),caps=caps,initialized=false};records[#records+1]=record;selected=#records
   -- Register the owned unit before component lookup so partial initialization
   -- is still removable, including a failed destroy that needs a retry.
   local got,light=pcall(function()
@@ -248,7 +312,12 @@ function M.new(sr,log,reuse,handoff)
   if got and light then record.light=light else record.error='Photo light unit has no accessible light component'end
   local ok,reason=false,record.error;if record.light then ok,reason=apply(record)end
   if not ok then record.error=reason;local removed,cleanup=remove_at(selected);return fail(tostring(reason)..(removed and''or('; '..tostring(cleanup))))end
+  record.initialized=true
   self.revision=self.revision+1;status('Photo light '..selected..' added');if log then log(self.status)end;return true
+ end
+ function self.create(values)
+  if saved then return fail('Retained photo lights are still restoring')end
+  return spawn(values,frame,serial+1)
  end
  function self.update(values)
   local record=records[selected];if not record then return fail('Add a photo light first')end
@@ -308,7 +377,8 @@ function M.new(sr,log,reuse,handoff)
   end
   return true
  end
- self.clear=self.release;self.close=self.release
+ function self.clear(reason)return release(reason,false)end
+ self.close=self.clear
  return self
 end
 return M
