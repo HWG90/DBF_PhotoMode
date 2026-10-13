@@ -10,7 +10,8 @@ function M.new(view,actions,existing)
  local legend=M.legend_factory and M.legend_factory.new(view)
  local self=existing or{page=1,scroll=0,selection=1,size_scale=1};local nav_held={};local nav_time={};local nav_ready=false;local last_focus
  local rows={};local selected_hit;local hits={};local held=false;local drag;local resize;local scroll_drag;local move_panel;local geometry;local panel_bounds;local pointer_x,pointer_y;local pressed_key
- local layout_initialized=existing~=nil;local layout_dirty=false
+ local layout_initialized=existing~=nil;local layout_dirty=false;local opacity_dirty=false
+ local opacity_control={id='menu_opacity',type='slider',min=10,max=100,step=1,fine_step=1,default=38}
  self.editing_value=nil;self.bound_key=nil;if legend and self.handle then legend.bind(self.handle)end
  local key_capture;local armed=false;local baseline={};local color_edit;local popup;local popup_close_on_release=false;local popup_scroll=0;local visible_count=1;local popup_count=1;local text_edit;local reset_regions={};local right_held
  local finish_number
@@ -18,6 +19,19 @@ function M.new(view,actions,existing)
  local function stored_layout(key)
   if not self.handle or type(self.handle.get)~='function'then return end
   local ok,value=pcall(self.handle.get,key);if ok and type(value)=='number'and value==value and math.abs(value)<math.huge then return value end
+ end
+ local function menu_opacity()
+  local v=opacity_dirty and self.menu_opacity or stored_layout('menu_opacity')or self.menu_opacity or opacity_control.default
+  if type(v)~='number'or v~=v then v=opacity_control.default end
+  return math.max(opacity_control.min,math.min(opacity_control.max,v))
+ end
+ local function finish_opacity()
+  if not opacity_dirty then return end;opacity_dirty=false
+  -- A same-object live migration can preview the slider before its saved key
+  -- is registered. Fresh registrations persist one write per gesture.
+  if stored_layout('menu_opacity')==nil then return end
+  local ok,result=pcall(self.handle.set,'menu_opacity',self.menu_opacity)
+  if not ok or result==false then self.notice='Menu opacity could not be saved' end
  end
  function self.persist_layout()
   if not geometry or not self.handle then return false end
@@ -32,12 +46,12 @@ function M.new(view,actions,existing)
   if not ok or result==false then self.notice='Menu layout could not be saved';return false end
   self.panel_x=stored_layout('menu_x');self.panel_y=stored_layout('menu_y');self.size_scale=stored_layout('menu_scale');layout_dirty=false;return true
  end
- local function finish_layout()if layout_dirty then layout_dirty=false;self.persist_layout()end end
+ local function finish_layout()if layout_dirty then layout_dirty=false;self.persist_layout()end;finish_opacity()end
  function self.close()blur_number();finish_layout();if self.light_gizmos then self.light_gizmos.cancel()end;if legend then legend.clear()end;view.release();panel_bounds=nil;hits={};drag=nil;resize=nil;scroll_drag=nil;move_panel=nil;key_capture=nil;text_edit=nil;color_edit=nil;popup=nil;popup_close_on_release=false;self.bound_key=nil;self.editing_value=nil;self.notice=nil;nav_ready=false;held=false;right_held=nil;pointer_x,pointer_y=nil,nil;pressed_key=nil end
  local function suspend_input()blur_number();finish_layout();if self.light_gizmos then self.light_gizmos.cancel()end;if legend then legend.clear()end;nav_ready=false;held=false;right_held=nil;drag=nil;resize=nil;scroll_drag=nil;move_panel=nil;pressed_key=nil;pointer_x,pointer_y=nil,nil end
  function self.suspend()suspend_input();panel_bounds=nil;if legend then view.draw({})end end
  function self.bind(handle,pages)
-  if self.handle~=handle then blur_number();text_edit=nil;self.editing_value=nil end;self.handle=handle;self.pages=pages;if legend then legend.bind(handle)end
+  if self.handle~=handle then blur_number();finish_opacity();text_edit=nil;self.editing_value=nil end;self.handle=handle;self.pages=pages;if legend then legend.bind(handle)end
   if not layout_initialized then
    local x,y,size=stored_layout('menu_x'),stored_layout('menu_y'),stored_layout('menu_scale')
    self.panel_x=x and x>=0 and x<=1 and x or nil;self.panel_y=y and y>=0 and y<=1 and y or nil
@@ -56,13 +70,15 @@ function M.new(view,actions,existing)
   return tostring(v)
  end
  local function slider_value(c)
+  if c==opacity_control then return menu_opacity()end
   if c.type=='color_channel'then return tonumber(self.handle.get(c.base):sub(c.channel*2,c.channel*2+1),16)end
   return self.handle.get(c.id)
  end
  local function write_slider(c,v,step)
   if c.disabled then return end
   v=c.min+math.floor((v-c.min)/step+.5)*step;v=math.min(c.max,math.max(c.min,v))
-  if c.type=='color_channel'then
+  if c==opacity_control then self.menu_opacity=v;opacity_dirty=true
+  elseif c.type=='color_channel'then
    local hex=self.handle.get(c.base);local rgb={tonumber(hex:sub(2,3),16),tonumber(hex:sub(4,5),16),tonumber(hex:sub(6,7),16)}
    rgb[c.channel]=v;self.handle.set(c.base,string.format('#%02X%02X%02X',unpack(rgb)))
   else self.handle.set(c.id,v)end
@@ -127,6 +143,7 @@ function M.new(view,actions,existing)
  end
  local function reset_default(c)
   if not c or c.disabled or c.default==nil or not({slider=true,toggle=true,choice=true,keybind=true,color=true})[c.type]then return false end
+  if c==opacity_control then write_slider(c,c.default,c.step);finish_opacity();drag=nil;return true end
   local called,ok,why=pcall(self.handle.set,c.id,c.default)
   if not called or ok==false then self.notice=tostring(called and why or ok);return false end
   text_edit=nil;self.editing_value=nil;popup=nil;popup_close_on_release=false;drag=nil;color_edit=nil;self.notice=nil;return true
@@ -186,15 +203,25 @@ function M.new(view,actions,existing)
    if selected then rect(b.x,b.y,b.w,2*s,T.gold,1,306)end
    b.action=action;b.key=key;hits[#hits+1]=b
   end
-  rect(x,bottom,width,top-bottom,T.background,.38,300,false,'photo_panel')
+  local opacity=menu_opacity()
+  rect(x,bottom,width,top-bottom,T.background,opacity/100,300,false,'photo_panel')
   rect(x,top-1*s,width,1*s,T.gold,.55,303)
-  text('WAR JOURNALIST',left,top-24*s,width-210*s,22*s,14,T.white,310,nil,'title')
-  text(self.warming_up_scene and 'WARMING UP SCENE'or 'PHOTO MODE',left,top-39*s,width-210*s,14*s,10,self.warming_up_scene and T.gold or T.muted)
+  text('WAR JOURNALIST',left,top-24*s,width-322*s,22*s,14,T.white,310,nil,'title')
+  text(self.warming_up_scene and 'WARMING UP SCENE'or 'PHOTO MODE',left,top-39*s,width-322*s,14*s,10,self.warming_up_scene and T.gold or T.muted)
   text(focused and 'MENU FOCUS'or 'CAMERA FOCUS',x+width-164*s,top-39*s,148*s,14*s,10,focused and T.gold or T.muted)
-  local move_bounds={x=x+4*s,y=top-42*s,w=width-188*s,h=40*s,move=true,key='move'}
+  local move_bounds={x=x+4*s,y=top-42*s,w=width-302*s,h=40*s,move=true,key='move'}
   rect(move_bounds.x,move_bounds.y,move_bounds.w,move_bounds.h,T.header,over(move_bounds)and .08 or 0,308,nil,'move_handle')
   if focused then hits[#hits+1]=move_bounds end
   button((focused and 'Camera'or 'Edit menu')..' ['..keys.focus..']',{x=x+width-174*s,y=top-24*s,w=158*s,h=20*s},actions.focus,'focus',false,11)
+  local opacity_bounds={x=x+width-288*s,y=top-39*s,w=100*s,h=35*s,c=opacity_control,key='menu_opacity'}
+  local opacity_track={x=opacity_bounds.x+6*s,y=opacity_bounds.y+6*s,w=88*s,h=3*s};opacity_bounds.track=opacity_track
+  local opacity_ink=focused and(over(opacity_bounds)or drag and drag.c==opacity_control)and T.gold or T.muted
+  local opacity_label=text('Opacity '..string.format('%.0f',opacity)..'%',opacity_bounds.x+6*s,opacity_bounds.y+17*s,88*s,14*s,9,opacity_ink,310,nil,'menu_opacity');opacity_label.control_id='menu_opacity'
+  local track=rect(opacity_track.x,opacity_track.y,opacity_track.w,opacity_track.h,T.border_hover,.85,306,false,'menu_opacity_track');track.control_id='menu_opacity'
+  local fraction=(opacity-opacity_control.min)/(opacity_control.max-opacity_control.min)
+  rect(opacity_track.x,opacity_track.y,opacity_track.w*fraction,opacity_track.h,opacity_ink,1,307)
+  rect(opacity_track.x+(opacity_track.w-4*s)*fraction,opacity_track.y-4*s,4*s,11*s,opacity_ink,1,308,false,'menu_opacity_thumb')
+  reset_regions[#reset_regions+1]=opacity_bounds;if focused then hits[#hits+1]=opacity_bounds end
   self.page=math.max(1,math.min(#self.pages,self.page));local tab_widths={};local tab_total=0;local tab_budget=width-32*s
   for i,page in ipairs(self.pages)do tab_widths[i]=math.max(56*s,measure(page.name,12*s)+42*s);tab_total=tab_total+tab_widths[i]end
   local tab_columns=tab_total<=tab_budget and #self.pages or math.ceil(#self.pages/2);local tab_rows=math.ceil(#self.pages/tab_columns)
@@ -270,7 +297,7 @@ function M.new(view,actions,existing)
   end
   local hint=hovered_control or rows[self.selection];local label=hint and tostring(hint.label or '')or 'Photo settings'
   text(hint and hint.disabled and 'Unavailable in this scene' or text_edit and(text_edit.error or(text_edit.typing and 'Enter / Space saves  |  Esc cancels  |  Ctrl+A replaces' or text_edit.c.fine_step and 'A/D step  |  Shift+A/D fine  |  Esc cancels' or 'Type number or A/D step  |  Enter / Space saves  |  Esc cancels'))or key_capture and 'Press the new shortcut  |  Esc cancels' or self.notice or(label..(hint and hint.type=='slider'and '  |  Shift+drag fine  |  Enter edits'or '  |  A/D changes  |  Enter edits')),left+24*s,bottom+1*s,width-56*s,12*s,10,hint and hint.disabled and T.disabled or T.muted)
-  rect(x,strip_bottom,width,54*s,T.background,.4,300,false,'photo_controls_strip');rect(x,strip_bottom+54*s,width,1*s,T.border,.5,301)
+  rect(x,strip_bottom,width,54*s,T.background,math.min(1,opacity/100+.02),300,false,'photo_controls_strip');rect(x,strip_bottom+54*s,width,1*s,T.border,.5,301)
   button('Toggle HUD',{x=left,y=strip_bottom+29*s,w=120*s,h=21*s},actions.hud,'hud',false,11)
   button('Hide controls ['..keys.hide..']',{x=left+128*s,y=strip_bottom+29*s,w=166*s,h=21*s},actions.hide,'hide',false,11)
   button('Exit photo mode',{x=left+302*s,y=strip_bottom+29*s,w=156*s,h=21*s},actions.exit,'exit',false,11)

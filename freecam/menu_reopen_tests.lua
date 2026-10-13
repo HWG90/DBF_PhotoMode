@@ -8,8 +8,8 @@ for _,standalone in ipairs({true,false})do
  local saved={enabled=true,toggle_key=80,focus_key=9,hide_controls_key=72,speed=4.5,hide_controls=true,focus_distance=1.405,aperture=2,hide_hud=false,
   dof=true,dof_mode=2,exposure=1.5,contrast=110,saturation=80,scene_shader=3,scene_strength=45,
   show_legend=false,legend_open=false,legend_docked=false,legend_tab_y=22,legend_columns=1,legend_x=72,legend_y=58,legend_size=64,
-  menu_x=.73,menu_y=.54,menu_scale=.85}
- local expected_layout={menu_x=saved.menu_x,menu_y=saved.menu_y,menu_scale=saved.menu_scale}
+  menu_x=.73,menu_y=.54,menu_scale=.85,menu_opacity=62}
+ local expected_layout={menu_x=saved.menu_x,menu_y=saved.menu_y,menu_scale=saved.menu_scale,menu_opacity=saved.menu_opacity}
  local menu_keys={'hide_controls','show_legend','legend_open','legend_docked','legend_tab_y','legend_columns','legend_x','legend_y','legend_size'}
  local function check_menu_defaults()for _,key in ipairs(menu_keys)do assert(saved[key]==options.defaults[key],'Startup must reset only menu layout: '..key)end end
  local function check_photo_values()
@@ -58,8 +58,22 @@ for _,standalone in ipairs({true,false})do
    local bounds;for _,command in ipairs(commands)do if command.ui_role=='photo_panel'then bounds=command;break end end;assert(bounds)
    gesture('resize_grip',-bounds.w*(ratio-1),bounds.h*(ratio-1))
   end
+  local function opacity(percent)
+   local target,bounds;for _,command in ipairs(commands)do
+    if command.ui_role=='menu_opacity_track'then target=command elseif command.ui_role=='photo_panel'then bounds=command end
+   end;assert(target and bounds)
+   local before,stored=saves,saved.menu_opacity
+   mouse={x=target.x+target.w*.5,y=target.y+target.h*.5,click=true};tick()
+   mouse.x=target.x+target.w*(percent-10)/90;tick();tick()
+   assert(saves==before and saved.menu_opacity==stored,'Opacity drag must preview without writing settings each frame')
+   for _,command in ipairs(commands)do
+    if command.ui_role=='photo_panel'then assert(command.a==percent/100 and command.x==bounds.x and command.y==bounds.y,'Opacity must change only the background, not move the window')end
+    if command.type=='text'then assert(command.a==1,'Menu text must remain fully readable')end
+   end
+   mouse.click=false;tick();tick();assert(saved.menu_opacity==percent and saves==before+1,'Opacity release must persist exactly once')
+  end
   tick()
-  return {photo=photo,api=api,adapter=adapter,tick=tick,press=press,click=click,drag=drag,resize=resize,rebind=rebind,panel=function()return current_panel end,
+  return {photo=photo,api=api,adapter=adapter,tick=tick,press=press,click=click,drag=drag,resize=resize,opacity=opacity,rebind=rebind,panel=function()return current_panel end,
    visible=function()return #commands>0 end,owned=function()return owned end,pauses=function()return pauses end}
  end
  local session=launch();check_menu_defaults();check_photo_values()
@@ -69,8 +83,10 @@ for _,standalone in ipairs({true,false})do
  assert(session.photo.active and session.visible()and session.owned())
  session.press(9);session.drag(-120,80);session.resize(.9)
  assert(math.abs(saved.menu_scale-.765)<1e-9 and saved.menu_x~=.73 and saved.menu_y~=.54,'Dragging and resizing must reach the real stored schema')
+ session.opacity(76)
  for key in pairs(expected_layout)do expected_layout[key]=saved[key]end
  assert(session.api.mods.dbf_freecam.controls.menu_x.page.id=='composition'and options.defaults.menu_x==nil,'Geometry must use registered Composition storage and stay outside photo resets')
+ assert(session.api.mods.dbf_freecam.controls.menu_opacity.layout_storage and options.defaults.menu_opacity==nil,'Opacity must be persistent menu storage outside photo resets')
  session.click('exit')
  assert(not session.photo.active and not session.owned()and not session.visible(),'Mouse Exit must release photo input and view')
  session.rebind()
@@ -108,4 +124,4 @@ for _,standalone in ipairs({true,false})do
  else assert(not session.owned()and not session.visible(),'Shared disabled state must remain guarded')end
  assert(session.adapter.close());DBFMCM=nil;DBF_PHOTO_STANDALONE_API=nil
 end
-print('Photo menu startup: main position/size survive real shared/private Core restart, exact-once drag/resize saves, navigation/drawer reset, photo values/bindings retained, mouse Exit/Hide/P and standalone disabled recovery passed')
+print('Photo menu startup: main position/size/opacity survive real shared/private Core restart, exact-once drag/resize/opacity saves, readable text, navigation/drawer reset, photo values/bindings retained, mouse Exit/Hide/P and standalone disabled recovery passed')

@@ -34,7 +34,7 @@ function M.set_subject_poses(catalog)
  return true
 end
 M.light_presets={'key_fill_rim','portrait','dramatic_side'}
-M.menu_layout_defaults={menu_x=-1,menu_y=-1,menu_scale=1}
+M.menu_layout_defaults={menu_x=-1,menu_y=-1,menu_scale=1,menu_opacity=38}
 -- Preset choices are commands/labels. FOV and roll remain the only settings
 -- consumed by the lens; these helpers use the existing 24 mm sensor height.
 M.focal_presets={false,24,35,50,85,135}
@@ -48,7 +48,7 @@ function M.pages(reset,recenter,catalog,saved_actions)
  local function slider(id,label,min,max,step)return {id=id,type='slider',label=label,default=M.defaults[id],min=min,max=max,step=step,commit_on_blur=true,fine_step=(id=='focus_distance'or id=='fov')and .001 or nil,disabled=({focus_distance=true,aperture=true,exposure=true,saturation=true,contrast=true,scene_strength=true,fog_distance=true,fog_density=true,scene_depth_range=true})[id]}end
  local function choice(id,label,choices)return {id=id,type='choice',label=label,default=M.defaults[id],choices=choices,presentation='dropdown',disabled=id=='scene_shader'or id=='subject_pose'or nil}end
  local function toggle(id,label)return {id=id,type='toggle',label=label,default=M.defaults[id]}end
- local function layout_setting(id,label,min,max)return{id=id,type='slider',label=label,default=M.menu_layout_defaults[id],min=min,max=max,step=.000001,layout_storage=true,commit_on_blur=true}end
+ local function layout_setting(id,label,min,max,step)return{id=id,type='slider',label=label,default=M.menu_layout_defaults[id],min=min,max=max,step=step or .000001,layout_storage=true,commit_on_blur=true}end
  local function lens_control(control)
   control.on_change=function(value)if saved_actions and saved_actions.lens_change then saved_actions.lens_change(control.id,value)end end
   return control
@@ -145,7 +145,7 @@ function M.pages(reset,recenter,catalog,saved_actions)
  toggle('clean_view','Hide guides and logo'),toggle('hide_hud','Hide gameplay HUD'),toggle('hide_controls','Hide photo controls'),
  toggle('show_legend','Show controls legend'),toggle('legend_open','Expand controls flyout'),toggle('legend_docked','Dock controls to left screen edge'),slider('legend_tab_y','Controls dock tab height (%)',0,100,.1),choice('legend_columns','Controls legend columns',{'Two','Three'}),
  slider('legend_x','Legend horizontal position (%)',0,100,.1),slider('legend_y','Legend vertical position (%)',0,100,.1),slider('legend_size','Legend size (% of screen short edge)',25,70,.1),
- layout_setting('menu_x','Saved menu horizontal position',-1,1),layout_setting('menu_y','Saved menu vertical position',-1,1),layout_setting('menu_scale','Saved menu size',.35,3)}},
+ layout_setting('menu_x','Saved menu horizontal position',-1,1),layout_setting('menu_y','Saved menu vertical position',-1,1),layout_setting('menu_scale','Saved menu size',.35,3),layout_setting('menu_opacity','Menu background opacity',10,100,1)}},
  {id='director',name='Director',require_confirmation=false,controls={
  ai_control(),
  director_action('ai_reset','Reset AI to Normal','ai_reset'),

@@ -63,5 +63,35 @@ for _,resolution in ipairs({{1920,1080},{3840,2160}})do
  local fresh=factory.new(view,actions);fresh.bind(handle,menu.pages);fresh.draw(w,h,true,false,keys)
  near(role('photo_panel').x,original.x);near(role('photo_panel').y,original.y);fresh.close();moving.close()
 end
+-- The compact title slider has its own hit area and remains usable during an
+-- existing-panel migration whose older MCM schema has no opacity key yet.
+local opacity_commands;local focus_calls=0
+local opacity_view={draw=function(c)opacity_commands=c end,release=function()opacity_commands={}end}
+local opacity_actions={focus=function()focus_calls=focus_calls+1 end,hud=function()end,hide=function()end,exit=function()end}
+local opacity_menu=factory.new(opacity_view,opacity_actions);opacity_menu.bind(handle,menu.pages)
+local function opacity_draw(focused,w,h)opacity_menu.draw(w or 1920,h or 1080,focused~=false,false,keys)end
+local function opacity_role(role)for _,c in ipairs(opacity_commands)do if c.ui_role==role then return c end end;error('Missing '..role)end
+local function opacity_tick(x,y,click)opacity_menu.tick({x=x,y=y,click=click},function()return false end)end
+opacity_draw();near(opacity_role('photo_panel').a,.38)
+for _,resolution in ipairs({{640,480},{1920,1080},{3840,2160}})do
+ opacity_draw(true,unpack(resolution));local track=opacity_role('menu_opacity_track');local move=opacity_role('move_handle');local focus
+ for _,c in ipairs(opacity_commands)do if c.ui_key=='focus'then focus=c end end;assert(focus)
+ assert(move.x+move.w<track.x and track.x+track.w<focus.x,'Opacity must not overlap title dragging or camera focus')
+ for _,c in ipairs(opacity_commands)do if c.type=='text'then assert(c.a==1);local b=c.text_bounds;assert(b.x>=0 and b.y>=0 and b.x+b.w<=resolution[1]+.001 and b.y+b.h<=resolution[2]+.001)end end
+end
+opacity_draw();local track=opacity_role('menu_opacity_track');local panel_before=opacity_role('photo_panel');local y=track.y+track.h/2
+opacity_tick(track.x+track.w/2,y,true);assert(opacity_menu.scene_input_blocked(),'Opacity drag must own pointer input')
+opacity_tick(track.x-track.w,y,true);opacity_draw();near(opacity_role('photo_panel').a,.1)
+opacity_tick(track.x+track.w*2,y,true);opacity_draw();near(opacity_role('photo_panel').a,1)
+opacity_tick(nil,nil,false);opacity_draw();assert(not opacity_menu.scene_input_blocked())
+near(opacity_role('photo_panel').x,panel_before.x);near(opacity_role('photo_panel').y,panel_before.y);assert(focus_calls==0)
+opacity_menu.close();opacity_draw();near(opacity_role('photo_panel').a,1)
+assert(factory.new(opacity_view,opacity_actions,opacity_menu)==opacity_menu);opacity_draw();near(opacity_role('photo_panel').a,1)
+track=opacity_role('menu_opacity_track');opacity_tick(track.x,y,true);opacity_draw();near(opacity_role('photo_panel').a,.1)
+opacity_draw(false);opacity_tick(track.x+track.w,y,true);opacity_tick(nil,nil,false);opacity_draw();near(opacity_role('photo_panel').a,.1)
+local focus;for _,c in ipairs(opacity_commands)do if c.ui_key=='focus'then focus=c end end
+opacity_tick(focus.x+focus.w/2,focus.y+focus.h/2,true);opacity_tick(nil,nil,false);assert(focus_calls==1,'Camera focus button must keep its independent action')
+opacity_menu.close()
 print('Photo menu resize: proportional controls/fonts, session size, viewport bounds, focus ownership, slider and opaque dropdown passed')
 print('Photo menu movement: ship HUD clearance, real title drag of panel/footer at 1920/4K, unchanged values, camera-focus guard, close/open retention, same-object live migration, viewport clamp and fresh startup defaults passed')
+print('Photo menu opacity: title-area separation, 10–100% bounds, full-opacity text, pointer ownership, camera-focus cancellation, close/reopen and schema-compatible live migration passed')

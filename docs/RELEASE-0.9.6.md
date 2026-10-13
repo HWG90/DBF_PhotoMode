@@ -6,6 +6,7 @@ solo-only enemy behavior.
 
 ## Changes since 0.9.5
 
+- **Menu opacity:** a small slider at the top-right adjusts the menu background from 10% to 100% while keeping text readable. The setting survives restarts; right-click restores the original 38% opacity.
 - **Solo enemy behavior in Director:** choose Normal, Passive, or Dummy, or use **Reset AI to Normal**. The chosen mode continues after closing the menu or exiting Photo Mode, with bounded discovery of new enemies. A game restart starts at Normal. Joining players cancel the mode and restore owned changes. The user confirmed live persistence and Reset.
 - **Enemy behavior recovery:** transient scene/respawn read failures suspend writes without clearing the selected mode. Dummy renews its owned movement flag even when a borrowed detector is unavailable, and cleanup restores movement independently of that detector. Unknown network authority still cancels suppression safely. These recovery cases have fixture coverage; live verification is pending.
 - **Photo light placements are retained:** reopening Photo Mode restores the previous setup in the same scene, without adding lights again. Explicit saved lighting slots also survive restarts.
