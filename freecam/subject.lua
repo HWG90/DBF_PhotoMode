@@ -1,11 +1,15 @@
 -- Renderer-only subject visibility. Backends must prove exact local ownership
 -- and expose the actual mesh pass mask before any proper engine setter runs.
 local M={}
-function M.new(backend,log)
- local self={status='Subject controls are waiting for a verified player',capabilities={},pending=false};local owned={};local identity;local queued;local desired;local refresh_elapsed=.5
+function M.new(backend,log,reuse)
+ if reuse then assert(type(reuse)=='table'and type(reuse.count)=='function'and reuse.count()==0 and not reuse.pending,'Subject refresh requires restored, idle ownership')end
+ local self=reuse or{};self.status='Subject controls are waiting for a verified player';self.capabilities={};self.pending=false;self.available=false
+ local owned={};local identity;local queued;local desired;local refresh_elapsed=.5;local hold_elapsed=0
  log=log or function()end
  local function restore(record)
-  if not backend.valid(record.part)then return true end
+  local valid,why=backend.valid(record.part,record.mesh)
+  if valid==false then return true end
+  assert(valid==true,why or'Subject restore owner unavailable')
   local current=backend.read(record.part,record.mesh)
   if current~=record.written then return true end -- A different visibility writer owns its mask.
   backend.write(record.part,record.mesh,record.before~=0)
@@ -13,7 +17,7 @@ function M.new(backend,log)
   return true
  end
  function self.release()
-  desired=nil;queued=nil;self.pending=false
+  desired=nil;queued=nil;self.pending=false;hold_elapsed=0
   local failed={};local reason
   for key,record in pairs(owned)do
    local ok,why=pcall(restore,record)
@@ -66,7 +70,7 @@ function M.new(backend,log)
   for name,parts in pairs(context.groups)do
    if options[name]==true and self.capabilities[name]then
     for _,part in ipairs(parts)do
-     for mesh=1,part.mesh_count do wanted[part.identity..':'..mesh]={part=part,mesh=mesh}end
+     for mesh=1,part.mesh_count do wanted[part.identity..':'..tostring(part.mesh_objects and part.mesh_objects[mesh]or mesh)]={part=part,mesh=mesh}end
     end
    end
   end
@@ -79,9 +83,11 @@ function M.new(backend,log)
   end
   for key,row in pairs(wanted)do
    if not backend.valid(row.part)then return false,'Subject ownership changed' end
+   if backend.owned and not backend.owned(row.part)then return false,'Subject attachment ownership changed'end
    local current=backend.read(row.part,row.mesh);local previous=owned[key]
    if previous then
     if current~=previous.written then return false,'Subject visibility changed by another owner' end
+    previous.part=row.part;previous.mesh=row.mesh
    elseif current==255 then
     local record={part=row.part,mesh=row.mesh,before=current,written=0};owned[key]=record
     local done,why=pcall(backend.write,row.part,row.mesh,false)
@@ -102,11 +108,14 @@ function M.new(backend,log)
   if self.pending then
    local request=queued;queued=nil;self.pending=false
    if request.release then desired=nil;return self.release()end
-   refresh_elapsed=.5;local ok,why=self.apply(request);desired=request;return ok,why
+   refresh_elapsed=.5;hold_elapsed=0;local ok,why=self.apply(request);desired=request;return ok,why
   end
-  if desired and next(owned)then
-   refresh_elapsed=refresh_elapsed+math.max(.001,math.min(.1,tonumber(dt)or 0))
-   if refresh_elapsed>=.5 then refresh_elapsed=0;local request=desired;local ok,why=self.apply(request);desired=request;return ok,why end
+  local hiding=false;for _,value in pairs(desired or{})do if value==true then hiding=true;break end end
+  if hiding then
+   -- Capability polling must not reset the update-time attachment refresh.
+   -- A new mesh can appear even when every original mesh was already hidden.
+   hold_elapsed=hold_elapsed+math.max(.001,math.min(.1,tonumber(dt)or 0))
+   if hold_elapsed>=.5 then hold_elapsed=0;local request=desired;local ok,why=self.apply(request);desired=request;return ok,why end
   end
   return true
  end

@@ -30,4 +30,16 @@ local before=#writes;assert(subject.queue({hide_player=true})and subject.pending
 assert(subject.flush(.016)and subject.count()==2 and #writes==before+2,'Only the owning update flush may apply the renderer setters')
 assert(subject.queue(nil)and subject.flush(.016)and subject.count()==0)
 assert(subject.queue({hide_player=true}));assert(subject.release()and not subject.pending);assert(subject.flush(.016)and subject.count()==0,'Shutdown release must cancel a queued hide before it can execute')
+-- Attached parts can appear while visibility is held, including when the
+-- initial selection needed no writes. Capability polling has a separate clock.
+masks['helmet:2']={0,0};masks['cape:3']={0};context.groups.hide_player={helmet,cape}
+assert(subject.queue({hide_player=true})and subject.flush(.016)and subject.count()==0)
+local barrel={identity='barrel:8',mesh_count=1};masks['barrel:8']={255};context.groups.hide_player={helmet,cape,barrel}
+for i=1,6 do subject.refresh(.1);assert(subject.flush(.1))end
+assert(masks['barrel:8'][1]==0 and subject.count()==1,'New attachment escaped hide because original meshes were invisible or capability polling starved updates')
+local held_writes=#writes;for i=1,6 do subject.refresh(.1);assert(subject.flush(.1))end
+assert(#writes==held_writes,'Attachment refresh repeated unchanged engine setters')
+context.groups.hide_player={helmet,cape};for i=1,6 do assert(subject.flush(.1))end
+assert(masks['barrel:8'][1]==255 and subject.count()==0,'Detached equipment did not regain its original visibility')
+assert(subject.queue(nil)and subject.flush(.016));context.groups.hide_player={helmet,cape};masks['helmet:2']={255,0};masks['cape:3']={255}
 print('Subject visibility: local-only proof, overlapping groups, original invisible rows, write coalescing, foreign/retired ownership, handoff and retry cleanup passed')
