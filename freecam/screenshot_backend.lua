@@ -110,6 +110,12 @@ function M.new(sr,verify)
   -- RGB10 storage alone. The standalone converter retains an SDR RGB10 mode.
   if result.format==24 and target and target.format==16 and target.hdr_enabled==true and target.hdr10_output_verified==true then
    result.color_encoding='hdr10-pq-bt2020';result.white_nits=203
+  elseif result.format==28 and target and target.format==0 and target.kind==4 and target.mips==1 and target.array==1 and
+   target.hdr_enabled==false and target.width==result.width and target.height==result.height and
+   size==148+result.width*result.height*4 and integer(header,20)==result.width*4 then
+   -- The verified engine SDR back-buffer writer labels BGRA bytes as DXGI28.
+   -- Preserve generic DDS interpretation; only this exact live profile swaps.
+   result.color_encoding='sdr-bgra-engine'
   else result.color_encoding='srgb'end
   result.hdr_enabled=target and target.hdr_enabled
   result.path=path;return true,result

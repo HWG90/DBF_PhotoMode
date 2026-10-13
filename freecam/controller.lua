@@ -1,27 +1,200 @@
 -- ActionCam photomode adapter. Camera placement stays owned by ActionCam.
 local M={}
-function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,catalog,saved_camera,screenshots)
-    local roll_value;local self={};local api,handle,provider;local held=true;local retry=0;local controls={};local resume_after;local suppress_escape;local panel;local menu_focus=false;local controls_hidden=false;local recovery_menu=false;local focus_edge=false;local hide_edge=false;local slow_edge=false;local lock_edge=false;local escape_edge=false
+function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,catalog,saved_camera,screenshots,focus_sampler,lights,subject,director,input_release,update_epoch)
+    local roll_value;local self={};local api,handle,provider;local held=true;local retry=0;local controls={};local resume_after;local suppress_escape;local panel;local menu_focus=false;local controls_hidden=false;local recovery_menu=false;local focus_edge=false;local hide_edge=false;local slow_edge=false;local lock_edge=false;local escape_edge=false;local screenshot_edge=false
+    local subject_pair;local subject_held;local subject_ready=false;local autofocus_write=false;local focus_deadline=0;local focus_elapsed=0;local focus_status='Manual focus';local focus_mode_seen;local menu_startup_reset=false
+    local lighting_write=false;local lighting_revision=-1
+    self._input_release=input_release;self._input_tick=0
+    local director_elapsed=.5;local director_available=false;local director_reason='Director is waiting for a verified player'
+    local subject_fields={'hide_player','hide_armour','hide_weapons'}
+    local function subject_change()
+        if not subject or not photo.active or not handle then return end
+        local values={};for _,id in ipairs(subject_fields)do values[id]=handle.get(id)==true end
+        local called,ok,why=pcall(subject.queue,values)
+        if not called or ok==false then log('Photo subject: '..tostring(called and why or ok))end
+    end
+    local function director_action(action)
+        if not director or not handle then return false end
+        local called,ok,why=pcall(director[action],handle.get('director_slot'),handle)
+        if not called or ok==false then log('Photo Director: '..tostring(called and why or ok));if controls.director_status then controls.director_status.label=tostring(called and why or ok)end end
+        if action=='recall'and called and ok~=false then roll_value=nil end
+        director_elapsed=.5;return called and ok~=false
+    end
+    local function refresh_subject_director(dt)
+        if controls.subject_status then
+            local ready,why,caps=false,'Subject renderer unavailable',{}
+            if subject then local called,a,b,c=pcall(subject.refresh,dt);if called then ready,why,caps=a,b,c or{}else why=tostring(a)end end
+            for _,id in ipairs(subject_fields)do if controls[id]then controls[id].disabled=not(photo.active and ready and caps[id])end end
+            controls.subject_status.label=subject and subject.status or why
+        end
+        if controls.director_status then
+            director_elapsed=director_elapsed+math.max(.001,math.min(.1,tonumber(dt)or 0))
+            if director and director_elapsed>=.5 then
+                director_elapsed=0;local called,a,b=pcall(director.ready)
+                director_available=called and a==true;director_reason=called and b or tostring(a)
+            end
+            local index=handle.get('director_slot');local occupied=director and director.occupied(index)
+            controls.director_slot.choices=director and director.list()or controls.director_slot.choices
+            controls.director_save.disabled=not(photo.active and director_available and photo.pos and photo.view)
+            controls.director_recall.disabled=not(photo.active and director_available and occupied)
+            controls.director_clear.disabled=not occupied
+            controls.director_status.label=director and(director_available and director.status or director_reason)or'Director player context unavailable'
+        end
+    end
+    local lens_preset_write=false
+    local function lens_change(id,value)
+        if lens_preset_write or not handle or not options then return end
+        if id=='focal_preset'then
+            local target=options.preset_fov and options.preset_fov(value)
+            if target then lens_preset_write=true;local ran,ok,why=pcall(handle.set,'fov',target);lens_preset_write=false;if not ran or ok==false then log('Lens preset: '..tostring(ran and why or ok))end end
+        elseif id=='fov'then
+            if handle.get('focal_preset')~=1 then handle.set('focal_preset',1)end
+        elseif id=='roll_preset'then
+            local target=options.roll_presets and options.roll_presets[value]
+            if target~=nil and target~=false then roll_value=nil;lens_preset_write=true;local ran,ok,why=pcall(handle.set,'roll',target);lens_preset_write=false;if not ran or ok==false then log('Tilt shortcut: '..tostring(ran and why or ok))end end
+        elseif id=='roll'then
+            if handle.get('roll_preset')~=1 then handle.set('roll_preset',1)end
+        end
+    end
+    local function refresh_lens()
+        if not options or not handle then return end
+        if controls.focal_length_status and options.focal_length then
+            local mm=options.focal_length(effects and effects.fov)
+            controls.focal_length_status.label=mm and('Focal length: '..string.format('%.1f mm',mm)..(handle.get('fov')==0 and' (gameplay)'or''))or'Focal length: waiting for camera'
+        end
+        if controls.focal_preset then
+            local target=options.preset_fov(handle.get('focal_preset'))
+            if target and math.abs(handle.get('fov')-target)>.0011 then handle.set('focal_preset',1)end
+        end
+        if controls.roll_preset then
+            local target=options.roll_presets[handle.get('roll_preset')]
+            if target~=nil and target~=false and math.abs((roll_value or handle.get('roll'))-target)>.01 then handle.set('roll_preset',1)end
+        end
+    end
+    local light_fields={light_enabled='enabled',light_intensity='intensity',light_color='color',light_range='range',light_cone='cone',light_right='right',light_forward='forward',light_up='up',light_follow='follow_camera'}
+    local function light_request(action,value)
+        if not lights or not photo.active then return false end
+        local ok,why=lights.queue(action,value)
+        if not ok then log('Photo lighting: '..tostring(why))end
+        return ok,why
+    end
+    local function light_values()
+        local values={kind=handle.get('light_kind')==2 and'spot'or'omni'}
+        for id,key in pairs(light_fields)do values[key]=handle.get(id)end;return values
+    end
+    local function light_change(id,value)
+        if lighting_write or not lights or not photo.active then return end
+        if id=='light_selected'then light_request('select',value)
+        elseif id=='light_kind'then light_request('update',{kind=value==2 and'spot'or'omni'})
+        elseif light_fields[id]then light_request('update',{[light_fields[id]]=value})end
+    end
+    local function refresh_lights()
+        if not controls.light_add then return end
+        local context=photo.active and photo.light_context
+        local ready,why,caps=false,'Photo lighting is waiting for a camera',{}
+        if lights and context then ready,why,caps=lights.ready(context.world);caps=caps or{}end
+        local values,index,count;if lights then values,index,count=lights.selected()end;count=count or 0
+        local available=ready and context~=nil;local selected=available and values~=nil
+        controls.light_add.disabled=not available or count>=3
+        controls.light_selected.disabled=not selected
+        controls.light_selected.choices={};for i=1,math.max(1,count)do controls.light_selected.choices[i]='Light '..i end
+        for id in pairs(light_fields)do if controls[id]then controls[id].disabled=not selected end end
+        controls.light_kind.disabled=not selected
+        controls.light_kind.choices=caps.spot and{'Point','Spot'}or{'Point'}
+        controls.light_range.disabled=not(selected and caps.range)
+        controls.light_cone.disabled=not(selected and caps.spot and values.kind=='spot')
+        controls.light_place.disabled=not selected;controls.light_remove.disabled=not selected;controls.light_clear.disabled=count==0
+        controls.light_status.label=ready and lights.status or why
+        if lights and not lights.pending and lighting_revision~=lights.revision then
+            if selected and handle then
+                local updates={light_selected=index,light_kind=values.kind=='spot'and 2 or 1}
+                for id,key in pairs(light_fields)do if controls[id]and not controls[id].disabled then updates[id]=values[key]end end
+                for id,value in pairs(updates)do if controls[id].disabled or handle.get(id)==value then updates[id]=nil end end
+                lighting_write=true
+                local called,accepted,err=pcall(function()
+                    if next(updates)==nil then return true end
+                    if handle.set_many then return handle.set_many(updates)end
+                    for id,value in pairs(updates)do local ok,why=handle.set(id,value);if ok==false then return false,why end end
+                    return true
+                end)
+                lighting_write=false
+                if not called or accepted==false then log('Photo lighting readback: '..tostring(called and err or accepted));return end
+            end
+            lighting_revision=lights.revision
+        end
+    end
+    local function focus_message(message)focus_status=message;if controls.focus_status then controls.focus_status.label=message end end
+    local function clear_subject_click()
+        subject_pair=nil;subject_held=nil;subject_ready=false
+    end
+    local function sample_focus(u,v,prefix)
+        if not focus_sampler or type(focus_sampler.sample)~='function'then focus_message('Auto-focus unavailable');return false end
+        local called,distance,why=pcall(focus_sampler.sample,u,v)
+        if not called or type(distance)~='number'or distance~=distance or distance<=0 or distance==math.huge then
+            focus_message(prefix..': '..tostring(called and why or distance or 'No scene depth'));return false
+        end
+        local control=controls.focus_distance;local minimum=control and control.min or .1;local maximum=control and control.max or 200
+        distance=math.max(minimum,math.min(maximum,math.floor(distance*1000+.5)/1000))
+        local success=true;local reason
+        if math.abs((handle.get('focus_distance')or 0)-distance)>=.0005 then
+            autofocus_write=true;local invoked,result,err=pcall(handle.set,'focus_distance',distance);autofocus_write=false
+            success=invoked and result~=false;reason=invoked and err or result
+        end
+        if not success then focus_message(prefix..': '..tostring(reason));return false end
+        if photo.options then photo.options.focus_distance=distance end
+        focus_message(prefix..': '..string.format('%.3f m',distance));return true
+    end
+    local function subject_click(input,w,h,time)
+        if not input or not panel.contains_pointer or not subject_ready then
+            subject_pair=nil;subject_held=input and input.click or nil;subject_ready=input~=nil;return
+        end
+        local pressed=input.click and not subject_held;subject_held=input.click
+        local x,y=input.x,input.y
+        if type(x)~='number'or type(y)~='number'or x~=x or y~=y or w<=0 or h<=0 or x<0 or x>w or y<0 or y>h or panel.contains_pointer(x,y)then subject_pair=nil;return end
+        if subject_pair and(time<subject_pair.time or time-subject_pair.time>.35)then subject_pair=nil end
+        if not pressed then return end
+        local prior=subject_pair
+        if prior and(x-prior.x)^2+(y-prior.y)^2<=64 then
+            subject_pair=nil
+            -- Native menu coordinates use bottom-left; scene depth uses top-left.
+            sample_focus(x/w,1-y/h,'Subject focus')
+        else subject_pair={x=x,y=y,time=time}end
+    end
     function self.stop(preserve_resume)
+        self._pending_start=nil
+        clear_subject_click();focus_deadline=0;focus_mode_seen=nil;screenshot_edge=false
+        if focus_sampler and focus_sampler.release then local ok,why=pcall(focus_sampler.release);if not ok then log('Auto-focus cleanup: '..tostring(why))end end
         if screenshots then screenshots.cancel()end
+        if lights and(lights.count()>0 or lights.pending)then lights.queue('release','photo mode exited')end
+        if subject and(subject.count()>0 or subject.pending)then subject.queue(nil)end
         if not preserve_resume then resume_after=nil end
         if roll_value and handle then handle.set('roll',roll_value);roll_value=nil end
         photo.active,photo.pos,photo.locked,photo.lock_pose=false,nil,false,nil
-        photo.input={};photo.view=nil;suppress_escape=nil;menu_focus=false;controls_hidden=false;recovery_menu=false
+        photo.input={};photo.view=nil;photo.light_context=nil;suppress_escape=nil;menu_focus=false;controls_hidden=false;recovery_menu=false
         if panel then panel.close()end
         local restored,reason=true,nil
         if effects then restored,reason=effects.release() end
         if freeze then local ok,why;if self.slowmo_active and handle then ok,why=freeze.start(handle.get('slowmo_speed'))else ok,why=freeze.release()end;if not ok then self.slowmo_active=false;freeze.release();restored,reason=false,why end end
+        if freeze and freeze.needs_input_capture and freeze.needs_input_capture()then
+            return false,reason or'Gameplay time restoration is pending; retaining input capture'
+        end
         if provider then
             local ok,why=provider.release()
             if ok==false then return false,why end
             provider=nil
+        end
+        -- Provider.release acknowledges native gate and Window restoration.
+        -- Only now may a cached gameplay KEYUP/mouseUP reach the game again.
+        if self._input_release then
+            local called,ok,why=pcall(self._input_release.finish)
+            if not called or ok==false then log('Photo input cleanup: '..tostring(called and why or ok))end
         end
         return restored,reason
     end
     local function bindings()
         local keys={}
         for _,name in ipairs({'forward','back','left','right','up','down'}) do keys[name]=handle.get(name..'_key') end
+        keys.screenshot=handle.get('screenshot_key')
         return keys
     end
     local function key_down(key)
@@ -31,11 +204,27 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         end
         return down
     end
+    local function game_chat_active()
+        -- The input service supplies an authoritative game text-entry reader.
+        -- Physical keys and window foreground state do not identify chat.
+        local reader=api and api.camera_input and api.camera_input.chat_active
+        if type(reader)~='function'then return false end
+        local ok,active=pcall(reader);return ok and active==true
+    end
+    function self.request_screenshot()
+        if not photo.active or not screenshots then return false,'Open Photo Mode first'end
+        clear_subject_click()
+        local called,ok,why=pcall(screenshots.request)
+        if not called or ok==false then local reason=called and why or ok;log('Screenshot: '..tostring(reason));return false,reason end
+        return true
+    end
     local function set_hidden(hidden)
+        if hidden then clear_subject_click()end
         controls_hidden=hidden
         return handle.set('hide_controls',hidden)
     end
     local function switch_focus()
+        clear_subject_click()
         local next_focus=not menu_focus
         if panel and not next_focus then
             if panel.blur then
@@ -47,7 +236,23 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         if provider and provider.set_focus then local ok,why=provider.set_focus(menu_focus);if not ok then log(tostring(why))end end
         return true
     end
+    function self._start_camera()
+        local input=api.camera_input
+        local token,why=input.acquire(bindings())
+        if not token then self.stop();return false,why end
+        provider=input;photo.active,photo.pos=true,nil;controls_hidden=false
+        if subject then subject_change()end;director_elapsed=.5
+        if saved_camera then saved_camera.restore(handle.get('saved_camera_radius'),handle)end
+        focus_edge=input.down(handle.get('focus_key'));hide_edge=input.down(handle.get('hide_controls_key'));lock_edge=input.down(handle.get('lock_camera_key'));screenshot_edge=input.down(handle.get('screenshot_key'))
+        if freeze and handle.get('freeze_player') and (not input.pause_allowed or input.pause_allowed()) then local ok,why=freeze.start();if why then log(why)end;if ok==false then self.stop();return false,why end end
+        log('freecam: on');return true
+    end
+    function self._input_epoch()
+        if not update_epoch then return self._input_tick end
+        local ok,value=pcall(update_epoch);return ok and type(value)=='number'and value==value and value or nil
+    end
     local function toggle(reveal_hidden)
+        if self._pending_start then return self.stop()end
         if recovery_menu then
             local start=handle and handle.get('enabled')
             local ok,why=self.stop();if ok==false or not start then return ok,why end
@@ -66,7 +271,8 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
                 provider=input;local ok,err=input.set_focus(true)
                 if ok==false then self.stop();return false,err end
                 recovery_menu=true;menu_focus=true;controls_hidden=false
-                panel.page,panel.selection,panel.scroll=1,1,0;escape_edge=input.down(27)
+                local controls_page=1;for index,page in ipairs(panel.pages or{})do if page.id=='camera'then controls_page=index;break end end
+                panel.page,panel.selection,panel.scroll=controls_page,1,0;escape_edge=input.down(27)
                 return true
             end
             return false,'Freecam is disabled; enable it in MCM'
@@ -74,16 +280,26 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         if not can_start()then return false,'Camera is unavailable'end
         local input=api.camera_input
         if not input then return false,'Install the MCM freecam input candidate first' end
-        local token,why=input.acquire(bindings())
-        if not token then return false,why end
-        provider=input;photo.active,photo.pos=true,nil;controls_hidden=false
-        if saved_camera then saved_camera.restore(handle.get('saved_camera_radius'),handle)end
-        focus_edge=input.down(handle.get('focus_key'));hide_edge=input.down(handle.get('hide_controls_key'));lock_edge=input.down(handle.get('lock_camera_key'))
-        if freeze and handle.get('freeze_player') and (not input.pause_allowed or input.pause_allowed()) then local ok,why=freeze.start();if why then log(why)end;if ok==false then self.stop();return false,why end end
-        log('freecam: on');return true
+        if not self._input_release then return self._start_camera()end
+        -- The release must be consumed with gameplay running, before we hide
+        -- engine input or apply the Photo pause. Never freeze a pending entry.
+        self.slowmo_active=false
+        if freeze then local ok,why=freeze.release();if ok==false then return false,why end end
+        local before=self._input_epoch();if before==nil then return false,'Gameplay update proof is unavailable'end
+        local called,ok,why=pcall(self._input_release.begin)
+        if not called or ok~=true then self.stop();return false,called and why or ok end
+        local preparing=freeze and freeze.prepare and handle.get('freeze_player')and(not input.pause_allowed or input.pause_allowed())
+        if preparing then
+            local prepared,reason=freeze.prepare()
+            if prepared~=true then self.stop();return false,reason end
+        end
+        self._pending_start={epoch=before,tick=self._input_tick,frames=0,elapsed=0,input=input,handle=handle,hover=preparing}
+        return true
     end
     local function inform_toggle(reveal_hidden) if api.is_open() then local closed,why=api.close();if closed==false then log(tostring(why));return end end;local ok,why=toggle(reveal_hidden);if ok==false then log('freecam: '..tostring(why)) end end
     function self.tick(dt)
+        self._input_tick=self._input_tick+1
+        if self._input_release then pcall(self._input_release.tick,photo.active and provider~=nil)end
         local current=rawget(_G,'DBFMCM')or rawget(_G,'DBF_PHOTO_STANDALONE_API')
         if current~=api then
             self.slowmo_active=false
@@ -116,18 +332,36 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
                 {id='lock_camera_key',type='keybind',label='Lock / unlock camera',default=76},
                 {id='slowmo_key',type='keybind',label='Prototype slow-motion toggle (solo)',default=220},
                 {id='slowmo_speed',type='slider',label='Prototype simulation speed',default=0.2,min=0.05,max=1,step=0.05},
+                {id='screenshot_key',type='keybind',label='Screenshot key',default=19},
                 {id='controls',type='text',label='Defaults: P toggles | WASD moves | Shift/Ctrl rise/descend | Q/E roll | Wheel: speed | L: lock camera | Backslash: slow motion | Escape: exit'},
             }}}}
             if options then
+                local bindings_page=definition.pages[1];local kept={};local camera_controls={};local moved={}
+                for _,id in ipairs({'speed','wheel_step','look_sensitivity','roll_speed','freeze_player','slowmo_speed'})do moved[id]=true end
+                for _,control in ipairs(bindings_page.controls)do if moved[control.id]then moved[control.id]=control else kept[#kept+1]=control end end
+                for _,id in ipairs({'speed','wheel_step','look_sensitivity','roll_speed','freeze_player','slowmo_speed'})do camera_controls[#camera_controls+1]=moved[id]end
+                bindings_page.controls=kept
                 local pages=options.pages(function()options.reset(handle,controls)end,function()
                     if saved_camera then saved_camera.clear('returned to player')end
                     local was_active=photo.active;local ok,why=self.stop();if not ok then log(tostring(why));return end
                     if was_active then resume_after=.1 end
                 end,catalog,{
+                    camera_controls=camera_controls,
+                    lens_change=lens_change,
+                    light_change=light_change,
+                    light_add=lights and function()light_request('create',light_values())end,
+                    light_place=lights and function()light_request('place_at_camera')end,
+                    light_remove=lights and function()light_request('remove')end,
+                    light_clear=lights and function()light_request('release','removed manually')end,
+                    subject_change=subject_change,
+                    director_save=director and function()director_action('save')end,
+                    director_recall=director and function()director_action('recall')end,
+                    director_clear=director and function()director_action('clear')end,
                     save=saved_camera and function()local ok,why=saved_camera.save(handle.get('saved_camera_radius'));if not ok then log(tostring(why))end end,
                     clear=saved_camera and function()saved_camera.clear('cleared manually')end,
-                    screenshot=screenshots and function()if photo.active then local ok,why=screenshots.request();if not ok then log(tostring(why))end end end})
-                for _,page in ipairs(pages)do definition.pages[#definition.pages+1]=page end
+                    screenshot=screenshots and function()self.request_screenshot()end})
+                definition.pages={};for _,page in ipairs(pages)do definition.pages[#definition.pages+1]=page end
+                definition.pages[#definition.pages+1]=bindings_page
             end
             for _,page in ipairs(definition.pages)do for _,control in ipairs(page.controls)do
                 if control.type=='slider'then control.commit_on_blur=true end
@@ -142,11 +376,23 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
             handle.set=function(key,value)
                 local ok,why=stored_set(key,value)
                 if key=='hide_controls'and ok~=false then controls_hidden=value end
+                if key=='focus_distance'and not autofocus_write and ok~=false then
+                    -- Typed values, slider drags and manual A/D edits take
+                    -- priority over any automatic focus mode, including MCM.
+                    if controls.focus_mode then stored_set('focus_mode',1)end;clear_subject_click();focus_deadline=0
+                    focus_message('Manual focus: '..string.format('%.3f m',handle.get('focus_distance')))
+                elseif key=='focus_mode'and ok~=false then
+                    focus_deadline=0;clear_subject_click()
+                elseif key=='hide_controls'and value and ok~=false then clear_subject_click()end
                 return ok,why
             end
             if api.mods and api.mods.dbf_freecam then
                 -- Text/status controls live on pages, outside MCM's stored/action index.
                 controls={};for _,page in ipairs(api.mods.dbf_freecam.pages)do for _,control in ipairs(page.controls)do if control.id then controls[control.id]=control end end end
+            end
+            if not menu_startup_reset and options and options.reset_menu then
+                local ok,why=options.reset_menu(handle);menu_startup_reset=true
+                if ok==false then log('Photo menu startup reset: '..tostring(why))end
             end
             if menu_factory and api.create_photo_view then
                 panel=menu_factory.new(api.create_photo_view(),{
@@ -162,8 +408,8 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
                     end
                     visible[#visible+1]=q
                 end end
-                -- Visibility belongs to this photo session. Preserve old saved hidden
-                -- flags, while each fresh entry and P reveal starts with a visible UI.
+                -- Visibility belongs to this photo session. Fresh entry and P
+                -- reveal recover it, while startup resets the saved UI layout once.
                 local panel_handle={};for key,value in pairs(handle)do panel_handle[key]=value end
                 panel_handle.get=function(key)if key=='hide_controls'then return controls_hidden end;return handle.get(key)end
                 panel_handle.set=function(key,value)if key=='hide_controls'then return set_hidden(value)end;return handle.set(key,value)end
@@ -177,10 +423,16 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         end
         local editing=panel and(panel.editing_key()or(panel.editing_text and panel.editing_text()))
         local key=key_down(handle.get('toggle_key'))
-        if key and not held and not api.is_open() and not editing then inform_toggle(true) end
+        if key and not held and not api.is_open() and not editing then
+            local opening=not self._pending_start and(not photo.active and not recovery_menu or photo.active and controls_hidden)
+            if not(opening and game_chat_active())then inform_toggle(true)end
+        end
         held=key
+        local screenshot_key=key_down(handle.get('screenshot_key'))
+        if screenshot_key and not screenshot_edge and photo.active and not recovery_menu and provider and api.camera_input.focused()and not api.is_open()and not editing and not game_chat_active()and screenshots and not screenshots.active()then self.request_screenshot()end
+        screenshot_edge=screenshot_key
         local slow_key=key_down(handle.get('slowmo_key'))
-        if slow_key and not slow_edge and not editing and not api.is_open()and freeze then
+        if slow_key and not slow_edge and not editing and not api.is_open()and freeze and not self._pending_start then
             self.slowmo_active=not self.slowmo_active
             local rate=self.slowmo_active and handle.get('slowmo_speed')or (photo.active and handle.get('freeze_player')and 0 or nil)
             local ok,why;if rate then ok,why=freeze.start(rate)else ok,why=freeze.release()end
@@ -213,26 +465,60 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
             else panel.tick(provider.menu_sample(),provider.down)end
             escape_edge=escape;photo.input={};return
         end
+        if self._pending_start then
+            local waiting=self._pending_start
+            waiting.frames=waiting.frames+1;waiting.elapsed=waiting.elapsed+math.max(.001,math.min(.1,tonumber(dt)or 0))
+            if waiting.input~=api.camera_input or waiting.handle~=handle or not handle.get('enabled')or not can_start()or not api.camera_input.focused()or api.is_open()or game_chat_active()or key_down(27)then self.stop();return end
+            local current=self._input_epoch()
+            if self._input_tick>waiting.tick and current and current>waiting.epoch then
+                local called,ready,why=pcall(self._input_release.entry_ready)
+                if called and ready==true then
+                    local neutral,reason=true,nil
+                    if waiting.hover then neutral,reason=freeze.ready()end
+                    waiting.reason=reason
+                    if neutral then
+                        self._pending_start=nil;local ok,problem=self._start_camera();if ok==false then log('freecam: '..tostring(problem))end
+                    end
+                elseif not called or self._input_release.pending==false then
+                    self.stop();log('freecam: input release could not be verified: '..tostring(called and why or ready));return
+                end
+            end
+            if self._pending_start then
+                if waiting.frames>=120 or waiting.elapsed>=.5 then self.stop();log('freecam: '..tostring(waiting.reason or'timed out waiting for an unpaused gameplay update and input release'))end
+                photo.input={};return
+            end
+        end
         if not photo.active then self.stop(true);return end
         if not handle.get('enabled') or not can_start() then self.stop();return end
+        refresh_lens()
+        refresh_lights()
+        refresh_subject_director(dt)
         local lock_key=key_down(handle.get('lock_camera_key'))
         if lock_key and not lock_edge and not editing and not api.is_open()then handle.set('lock_camera',not handle.get('lock_camera'))end
         lock_edge=lock_key
         local focus_key=key_down(handle.get('focus_key'))
         local hide_key=key_down(handle.get('hide_controls_key'))
         if panel and focus_key and not focus_edge and not api.is_open()and not panel.editing_key()and(not editing or (panel.editing_text and panel.editing_text()and panel.blur))then
-            switch_focus()
+            if menu_focus or not game_chat_active()then switch_focus()end
         end
         if panel and hide_key and not hide_edge and not editing then
-            local hidden=not controls_hidden;set_hidden(hidden)
-            if hidden then menu_focus=false;if provider and provider.set_focus then provider.set_focus(false)end end
+            if not controls_hidden or not game_chat_active()then
+                local hidden=not controls_hidden;set_hidden(hidden)
+                if hidden then menu_focus=false;if provider and provider.set_focus then provider.set_focus(false)end end
+            end
         end
         focus_edge,hide_edge=focus_key,hide_key
         if menu_focus and controls_hidden then menu_focus=false;if provider and provider.set_focus then provider.set_focus(false)end end
         if options then photo.options=options.read(handle);photo.options.hide_controls=controls_hidden;if roll_value then photo.options.roll=roll_value end end
         local capturing=screenshots and screenshots.active()
         if capturing and photo.options then photo.options.hide_hud=true;photo.options.grid=1 end
+        if panel then panel.warming_up_scene=effects and effects.warming_up_scene==true or false end
         if effects then
+            if controls.known_issues then
+                controls.known_issues.label=effects.native_dof_ready==true and 'Native focus and aperture active.' or
+                    effects.native_dof_candidate==true and 'Native lens source waiting; Shader preview remains available.' or
+                    'Manual native focus/aperture unavailable; use Shader preview.'
+            end
             for _,entry in ipairs({{'lens_status','lens_status'},{'color_status','color_status'},{'shader_status','shader_status'},{'scene_status','scene_status'}})do
                 if controls[entry[1]]and effects[entry[2]]then controls[entry[1]].label=effects[entry[2]]end
             end
@@ -240,7 +526,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
             for _,key in ipairs({'dof','focus_distance','aperture','exposure','saturation','contrast','bloom','scene_shader','scene_strength','fog_distance','fog_density','scene_depth_range'})do
                 if controls[key]then
                     if key=='focus_distance'or key=='aperture'then
-                        controls[key].disabled=not(effects.custom_dof_candidate==true and effects.custom_dof_ready==true and effects.parameters and effects.parameters[key])
+                        controls[key].disabled=not(((effects.custom_dof_candidate==true and effects.custom_dof_ready==true)or(effects.native_dof_candidate==true and effects.native_dof_ready==true))and effects.parameters and effects.parameters[key])
                     elseif key=='dof'and effects.custom_dof_candidate==true and effects.custom_dof_ready==true then
                         controls[key].disabled=not(effects.parameters and effects.parameters[key])
                     else controls[key].disabled=not(parameters and parameters[key])end
@@ -250,11 +536,21 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
                 if controls[key]then controls[key].disabled=not(effects.custom_dof_candidate==true and effects.custom_dof_ready==true)end
             end
         end
+        local focus_available=focus_sampler and type(focus_sampler.sample)=='function'and controls.focus_distance and not controls.focus_distance.disabled
+        -- Manual remains selectable when depth/lens support is temporarily
+        -- unavailable; automatic modes report waiting instead of trapping it.
+        if controls.focus_mode then controls.focus_mode.disabled=false end
         if freeze then
             local ok,why=freeze.hold();if ok==false then self.stop();if why then log(why)end;return end
         end
-        -- MCM takes the input lease while the photo and solo pause stay active.
+        -- A hover pause depends on continuous gameplay input suppression. Resume
+        -- before handing off or releasing that input lease, including focus loss.
+        if freeze and freeze.needs_input_capture and freeze.needs_input_capture()and(api.is_open()or not api.camera_input.focused()or not provider)then
+            self.slowmo_active=false;self.stop();log('Photo pause ended before gameplay input capture was released');return
+        end
+        -- Other pauses may retain their existing MCM/focus handoff behavior.
         if api.is_open()then
+            clear_subject_click()
             if screenshots then screenshots.cancel()end
             if panel then panel.close()end
             suppress_escape=true
@@ -263,6 +559,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
             return
         end
         if not api.camera_input.focused()then
+            clear_subject_click()
             if screenshots then screenshots.cancel()end
             if panel and panel.suspend then panel.suspend()end
             if provider then local ok,why=provider.release();if ok then provider=nil elseif why then log(tostring(why))end end
@@ -272,6 +569,28 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         if not provider then
             local token=api.camera_input.acquire(bindings());if not token then return end;provider=api.camera_input
             if provider.set_focus and menu_focus then provider.set_focus(true)end
+        end
+        local focus_mode=controls.focus_mode and handle.get('focus_mode')or 1
+        if capturing or controls_hidden or not menu_focus or not focus_available or editing or focus_mode~=2 then clear_subject_click()end
+        focus_elapsed=focus_elapsed+math.max(0,tonumber(dt)or 0)
+        local timer=focus_sampler and focus_sampler.now or provider.now;local time=focus_elapsed
+        if timer then local ok,value=pcall(timer);if ok and type(value)=='number'and value==value and math.abs(value)<math.huge then time=value end end
+        if focus_mode~=focus_mode_seen then focus_mode_seen=focus_mode;focus_deadline=0
+            clear_subject_click()
+            if focus_mode==1 then focus_message('Manual focus: '..string.format('%.3f m',controls.focus_distance and handle.get('focus_distance')or 5))
+            elseif focus_mode==2 then focus_message('Double-click a scene subject to lock focus.')end
+        end
+        if controls.focus_hint then
+            local key=handle.get('focus_key');local label=key==9 and 'TAB'or key>=32 and key<=126 and string.char(key)or('VK '..key)
+            controls.focus_hint.label=focus_mode==2 and(menu_focus and 'Double-click a scene subject. Hold Shift for 0.001 m focus steps.'or 'Press '..label..' for the cursor, then double-click a scene subject.')or 'Hold Shift for 0.001 m focus steps.'
+        end
+        if focus_mode==2 and not focus_available then focus_message('Subject focus: waiting for scene depth')end
+        if focus_mode==3 and not focus_available then focus_message('Center focus: waiting for scene depth')end
+        if focus_mode==3 and focus_available and not capturing and not editing then
+            if time>=focus_deadline then
+                focus_deadline=time+math.max(.5,tonumber(focus_sampler.interval)or 1)
+                sample_focus(.5,.5,'Center focus')
+            end
         end
         if panel then
             local w,h=api.photo_resolution()
@@ -285,8 +604,13 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
             if menu_focus then
                 local escape=key_down(27)
                 if escape and not escape_edge and not panel.editing_key()then
+                    clear_subject_click()
                     if not panel.dismiss()then menu_focus=false;provider.set_focus(false);suppress_escape=true end
-                else panel.tick(provider.menu_sample(),provider.down)end
+                else
+                    local input=provider.menu_sample()
+                    if focus_mode==2 and focus_available and not controls_hidden and not editing then subject_click(input,w,h,time)end
+                    panel.tick(input,provider.down)
+                end
                 escape_edge=escape
                 photo.input={sequence=photo.sample_sequence or 0,mouse_x=0,mouse_y=0,wheel=0,dt=0};return
             end
@@ -326,10 +650,16 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
     function self.close()
         if saved_camera then saved_camera.clear('shutdown')end
         self.slowmo_active=false
-        local ok,why=self.stop();if ok==false then return false,why end
+        local ok,why=self.stop()
+        if lights then local cleared,reason=lights.release('loader disabled');if not cleared then return false,reason end end
+        if subject then local called,cleared,reason=pcall(subject.release);if not called or cleared==false then return false,called and reason or cleared end end
+        if ok==false then return false,why end
+        if freeze and freeze.cleanup_pending and freeze.cleanup_pending()then return false,'Hover restoration is waiting for a resumed update'end
+        if self._input_release and self._input_release.pending then return false,self._input_release.status or'Photo input readback is pending'end
         if handle then handle.unregister();handle=nil end
         return true
     end
+    function self.entry_pending()return self._pending_start~=nil end
     return self
 end
 return M

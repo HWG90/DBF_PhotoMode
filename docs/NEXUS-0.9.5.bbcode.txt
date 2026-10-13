@@ -1,0 +1,73 @@
+[size=6][color=#F4CA35][b]WAR JOURNALIST 0.9.5[/b][/color][/size]
+[size=3]HELLDIVERS 2 • PHOTO MODE[/size]
+
+Stop the action. Find your angle. Build the shot.
+
+0.9.5 is a major update: Native focus and aperture, autofocus, a rebuilt photo menu, Director presets, photo lights, a corrected full-resolution compositor, and a long list of fixes from hands-on testing.
+
+[size=4][color=#F4CA35][b]A PROPER LENS[/b][/color][/size]
+[b]Native camera DoF[/b] now exposes focus distance and aperture. [b]Double-click a subject[/b] to focus repeatedly, or enable [b]Center auto-focus[/b] to track the center of the frame. There are 24/35/50/85/135 mm lens presets, roll/portrait shortcuts, and fine focus steps down to 0.001 m.
+
+[b]Shader DoF[/b] offers 32/64-sample round or hexagonal bokeh. Its full-resolution compositor now allows scene effects and color grading alongside DoF. The former dim/cool tint and focused-color rectangle were corrected. Native remains the blur-quality baseline; Shader remains a preview.
+
+[size=4][color=#F4CA35][b]A NEW PHOTO STUDIO[/b][/color][/size]
+[list]
+[*]Compact photo menu with separate Camera, Lens, Color, Effects, Lighting, Composition, Director and Subject controls.
+[*]Move and resize the menu; its position and size survive restarts.
+[*]Contextual controls drawer docks to the left edge, with a movable tab, and hides with the photo controls.
+[*]W/S navigates rows, A/D changes values or dropdown options, and Q/E changes tabs. No mouse hover required.
+[*]Hold Shift while dragging sliders for one-tenth sensitivity. Typed values commit when clicking away.
+[*]Director stores five camera positions and angles relative to the player, retained through restarts.
+[*]Hide the player, armour/helmet, or carried weapons for the composition.
+[*]Updated Helldiver crest, actual Super Earth insignia, and seven curated Helldivers logo variants. Meme/duplicate artwork removed.
+[/list]
+
+[size=4][color=#F4CA35][b]LIGHT THE SCENE[/b][/color][/size]
+Add up to three owned point or spot lights. Adjust color, intensity up to 10,000, range up to 1,000 m, cone, placement and camera follow. On-screen indicators show their position; remove individual lights or clear them all. Photo lights are cleaned up on exit.
+
+[b]Mission light asset fix: Not tested fully.[/b] This release includes a dedicated light unit so spawning no longer relies on a ship-only prefab. The earlier ship light worked in-game; the new mission asset has offline validation and still needs broader live testing.
+
+[size=4][color=#F4CA35][b]BUG FIXES THAT MATTER[/b][/color][/size]
+[list]
+[*]Native focus/aperture now follows the current camera/profile instance instead of retaining an unusable camera reference.
+[*]All seven animation-state readers reject missing/dead units and absent animation graphs. The guarded ragdoll/respawn test stayed running.
+[*]The reported hoverpack + melee pause/resume crash passed its reproduction test with a new data-only pause guard. Automatic thrust is neutralized before zero time and restored after resuming.
+[*]Held keyboard/mouse controls are released around Photo Mode transitions. Active-hover guarded pause refuses connected or unidentified controllers.
+[*]Fixed the photo menu failing to reopen after closing it through the interface.
+[*]Typing the Photo Mode key in game chat no longer opens the menu.
+[*]Removed Tab-related menu jitter; saved menu placement is retained.
+[*]Corrected SDR screenshot red/blue channel order and HDR-to-PNG brightness/color conversion.
+[*]Added a rebindable screenshot shortcut, Pause by default, plus a WARMING UP SCENE status while render resources load.
+[/list]
+
+Existing free camera, camera lock, solo pause/slow motion, 40 decorative overlays, framing guides, vignette, grain and scene treatments remain available. Scene treatments include Negative, Monochrome, Posterize, Duotone, Solarize, Inverted depth, Thermal depth, Depth contours and Depth fog, plus exposure/contrast/saturation.
+
+[size=4][color=#F4CA35][b]ONE COMPLETE DOWNLOAD FOR YOUR LOADER[/b][/color][/size]
+[b]BSL — recommended main file[/b]
+Requires Bingus Shared Loader v15+ / API 1. Import the complete BSL ZIP into HD2 Arsenal, enable it alongside BSL, deploy and restart normally. Manual patch installation is covered in INSTALL.txt.
+
+[b]MDL — optional alternative[/b]
+Requires MDL API 2. Install the included dbf_freecam folder into MDL Mods, and deploy the asset ZIP included in that same download. GameData files are also supplied for manual installation; use one asset installation method.
+
+[b]Nexus provides BSL and MDL. Choose one runtime.[/b] Every ZIP includes all required runtime, shader, material, light and logo resources. No separate asset download is required. MCM, DBF-HUD, ActionCam and Link's Link to Memory are not prerequisites. MCM integration is optional.
+
+When upgrading, preserve settings/presets/screenshots, disable the older Photo Mode runtime and original ActionCam, and replace any older separate Photo asset candidate with the matching bundled assets. Restart after deploying assets.
+
+[size=4][color=#F4CA35][b]DEFAULT CONTROLS[/b][/color][/size]
+[b]P[/b] Photo Mode • [b]Tab[/b] camera/menu focus • [b]Pause[/b] screenshot • [b]H[/b] hide controls
+[b]WASD[/b] camera movement • [b]Shift/Ctrl[/b] rise/descend • [b]Mousewheel[/b] speed • [b]Q/E[/b] roll • [b]L[/b] camera lock
+In menu focus: [b]W/S[/b] rows • [b]A/D[/b] values • [b]Q/E[/b] tabs • [b]Enter[/b] edit • [b]Escape[/b] cancel • [b]Right-click[/b] reset
+All bindings are configurable; saved bindings take priority.
+
+[b]Screenshots:[/b] BSL saves to %LOCALAPPDATA%/DBF/PhotoMode/Screenshots; MDL saves to its mod folder's Screenshots directory. Some ship UI may remain visible. Pause uses the mod's capture; it does not intercept Windows Print Screen.
+
+[size=4][color=#F4CA35][b]TESTING NOTES[/b][/color][/size]
+Pause and slow motion require a verified solo session. Freecam remains available in multiplayer. Guarded hover pause resumes before losing input capture. The hoverpack fix covers the reported reproduction, not every equipment/controller combination.
+
+The compositor's HDR tint/exposure correction was accepted with neutral grading, Scene effect None and Shader DoF enabled. SDR compositor parity and every effect combination are not fully verified. Blurred HDR highlights above GUI white remain limited by the GUI carrier. Native DoF remains the quality baseline.
+
+Light fix: [b]Not tested fully[/b]. No general alt-tab or HDR/SDR-switching crash fix is claimed. AI passive/dummy controls are not integrated in 0.9.5. Shader registry conflicts with other shader packs require merging.
+
+[size=4][color=#F4CA35][b]SOURCE & CREDITS[/b][/color][/size]
+[url=https://github.com/HWG90/DBF_PhotoMode][b]Source, documentation and GitHub downloads[/b][/url]
+Camera foundation: [url=https://www.nexusmods.com/helldivers2/mods/16752]ActionCam by HuedPurple[/url]. Native UI/font reader: CowboyBingus (0BSD). Selected native reader work: Link (MIT). Licenses and individual logo source/author attribution are bundled. Helldivers 2 and Arrowhead artwork belongs to its respective owners. Please send bug reports with the loader, scene/equipment, and steps to reproduce.

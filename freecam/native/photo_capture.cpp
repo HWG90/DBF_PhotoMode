@@ -89,9 +89,61 @@ void hdr10_bytes(float r, float g, float b, float white_nits,
     const float scale = 1.0F / (white_nits + luminance);
     red = linear_byte(sr * scale); green = linear_byte(sg * scale); blue = linear_byte(sb * scale);
 }
+using Color = std::array<float, 3>;
+using Matrix = std::array<Color, 3>;
+Color multiply(const Matrix& matrix, const Color& color) {
+    Color result{};
+    for (size_t i = 0; i < result.size(); ++i)
+        result[i] = matrix[i][0] * color[0] + matrix[i][1] * color[1] + matrix[i][2] * color[2];
+    return result;
+}
+void native_sdr_bytes(float r, float g, float b,
+                      uint8_t& red, uint8_t& green, uint8_t& blue) {
+    // The game's SDR final compositor converts the already tone-mapped PQ
+    // scene with these exact float32 constants. Preserve that display transform
+    // rather than applying a second Reinhard curve. Its normalization is fixed;
+    // the legacy white_nits argument does not affect encoding 2.
+    // Source: aaac81ae5fbabc7c-ace8 final-compositor DXBC, read-only disassembly.
+    constexpr Matrix pre{{
+        {{0.9599400162696838F, 0.010470000095665455F, 0.007029999978840351F}},
+        {{0.0016199999954551458F, 0.9996899962425232F, 0.0014900000533089042F}},
+        {{0.005289999768137932F, 0.023830000311136246F, 1.0501600503921509F}}
+    }};
+    constexpr Matrix xyz{{
+        {{0.6624541878700256F, 0.13400420546531677F, 0.15618768334388733F}},
+        {{0.2722287178039551F, 0.6740817427635193F, 0.053689517080783844F}},
+        {{-0.005574649665504694F, 0.00406073359772563F, 1.0103391408920288F}}
+    }};
+    constexpr Matrix adapt{{
+        {{1.6410233974456787F, -0.32480329275131226F, -0.23642469942569733F}},
+        {{-0.663662850856781F, 1.6153316497802734F, 0.016756348311901093F}},
+        {{0.011721894145011902F, -0.008284442126750946F, 0.9883948564529419F}}
+    }};
+    constexpr Matrix rgb{{
+        {{3.2409698963165283F, -1.5373831987380981F, -0.4986107647418976F}},
+        {{-0.9692436456680298F, 1.8759675025939941F, 0.04155505821108818F}},
+        {{0.05563008040189743F, -0.20397695899009705F, 1.056971549987793F}}
+    }};
+    Color value = multiply(pre, Color{{r, g, b}});
+    for (float& channel : value) channel = (channel - 0.001F) * 0.0036363769322633743F;
+    value = multiply(xyz, value);
+    const float sum = std::max(value[0] + value[1] + value[2], 0.0001F);
+    const float x = value[0] / sum, y = value[1] / sum;
+    const float luminance = std::pow(std::clamp(value[1], 0.0F, 65504.0F), 0.9811000227928162F);
+    const float ratio = luminance / std::max(y, 0.0001F);
+    value = Color{{ratio * x, luminance, ratio * (1.0F - x - y)}};
+    value = multiply(rgb, multiply(xyz, multiply(adapt, value)));
+    auto byte = [](float channel) {
+        return static_cast<uint8_t>(std::floor(std::pow(std::clamp(channel, 0.0F, 1.0F),
+                                                       0.4544999897480011F) * 255.0F + 0.5F));
+    };
+    // The frame-varying native +/-1 byte chroma dither is intentionally omitted
+    // from a deterministic PNG. The display transfer itself is preserved.
+    red = byte(value[0]); green = byte(value[1]); blue = byte(value[2]);
+}
 DWORD convert(const wchar_t* input_path, const wchar_t* output_path,
               uint32_t encoding, float white_nits) {
-    if (encoding > 1 || (encoding == 1 && (!std::isfinite(white_nits) || white_nits <= 0 || white_nits > 10000)))
+    if (encoding > 3 || (encoding == 1 && (!std::isfinite(white_nits) || white_nits <= 0 || white_nits > 10000)))
         return ERROR_INVALID_PARAMETER;
     if (!input_path || !output_path || !*input_path || !*output_path ||
         wcsnlen(input_path, 32761) > 32760 || wcsnlen(output_path, 32701) > 32700)
@@ -120,6 +172,11 @@ DWORD convert(const wchar_t* input_path, const wchar_t* output_path,
         word(header + 132) != 3 || (word(header + 136) & 4) || word(header + 140) != 1)
         return ERROR_BAD_FORMAT;
     uint32_t format = word(header + 128);
+    // A verified SDR engine back-buffer capture advertises RGBA8 (28), but its
+    // native BGRA surface bytes are preserved by save_render_target. This
+    // explicit engine profile is deliberately unavailable for generic DDS or
+    // typeless aliases; normal encoding 0 continues to honor the DDS header.
+    if (encoding == 3 && format != 28) return ERROR_NOT_SUPPORTED;
     // Back-buffer readbacks may expose typeless storage. Use its compatible
     // screenshot interpretation, without changing component order or precision.
     switch (format) {
@@ -140,9 +197,9 @@ DWORD convert(const wchar_t* input_path, const wchar_t* output_path,
     }
     // Storage format does not imply a color space. Only an explicit HDR10
     // capture profile may request PQ/BT.2020 decoding; SDR RGB10 stays intact.
-    if (encoding == 1 && format != 24) return ERROR_NOT_SUPPORTED;
+    if ((encoding == 1 || encoding == 2) && format != 24) return ERROR_NOT_SUPPORTED;
     std::array<float, 1024> pq{};
-    if (encoding == 1) for (size_t i = 0; i < pq.size(); ++i) pq[i] = pq_nits(static_cast<float>(i) / 1023.0F);
+    if (encoding == 1 || encoding == 2) for (size_t i = 0; i < pq.size(); ++i) pq[i] = pq_nits(static_cast<float>(i) / 1023.0F);
     const uint32_t tight_pitch = width * pixel_bytes;
     const uint32_t pitch = (flags & 8) ? word(header + 20) : tight_pitch;
     if (pitch < tight_pitch || pitch > kMaxRowPitch ||
@@ -206,13 +263,19 @@ DWORD convert(const wchar_t* input_path, const wchar_t* output_path,
                 uint8_t* output_pixel = row.data() + size_t(x) * 4;
                 uint8_t red, green, blue;
                 if (format == 28 || format == 29) {
-                    red = source_pixel[0]; green = source_pixel[1]; blue = source_pixel[2];
+                    if (encoding == 3) {
+                        blue = source_pixel[0]; green = source_pixel[1]; red = source_pixel[2];
+                    } else {
+                        red = source_pixel[0]; green = source_pixel[1]; blue = source_pixel[2];
+                    }
                 } else if (format == 87 || format == 91 || format == 88 || format == 93) {
                     blue = source_pixel[0]; green = source_pixel[1]; red = source_pixel[2];
                 } else if (format == 24) {
                     const uint32_t packed = word(source_pixel);
                     if (encoding == 1) {
                         hdr10_bytes(pq[packed & 1023], pq[(packed >> 10) & 1023], pq[(packed >> 20) & 1023], white_nits, red, green, blue);
+                    } else if (encoding == 2) {
+                        native_sdr_bytes(pq[packed & 1023], pq[(packed >> 10) & 1023], pq[(packed >> 20) & 1023], red, green, blue);
                     } else {
                         red = static_cast<uint8_t>(((packed & 1023) * 255 + 511) / 1023);
                         green = static_cast<uint8_t>((((packed >> 10) & 1023) * 255 + 511) / 1023);

@@ -11,7 +11,9 @@ def capture_library_name():
     if not re.fullmatch(r'PhotoCapture(?:64|_[0-9a-f]{12,64})\.dll',name):raise ValueError('Invalid owned screenshot library name')
     return name
 
-def patch(source,dof_candidate=False,scene_candidate=False):
+def patch(source,dof_candidate=False,scene_candidate=False,native_candidate=False,combined_scene_candidate=False):
+    if combined_scene_candidate and not dof_candidate:raise ValueError('Combined compositor requires DoF factory')
+    if combined_scene_candidate and scene_candidate:raise ValueError('Combined compositor replaces the separate scene pass')
     def replace(old,new):
         nonlocal source
         if source.count(old)!=1: raise ValueError('ActionCam source contract changed: '+old[:70])
@@ -21,6 +23,15 @@ def patch(source,dof_candidate=False,scene_candidate=False):
     # Event/error logs still use the original immediate writer.
     source,count=re.subn(r'(CFG\.LOG_EVERY\s*=\s*)1\.0\b',r'\g<1>30.0',source,count=1)
     if count!=1: raise ValueError('ActionCam diagnostic interval contract changed')
+    # A living ragdoll/respawn Unit can temporarily have no animation graph.
+    # pcall cannot catch the native copier's null dereference. Guard all Photo
+    # readers privately, retaining the original vendor source and SDK namespace.
+    animation_guard=(ROOT/'animation_state.lua').read_text(encoding='utf-8')
+    declaration='local H = {}   -- helper functions used by apply() (kept in one table: Lua allows max 60 outside variables per function)'
+    replace(declaration,declaration+'\nH.dbf_animation_get_state=(function()\n'+animation_guard+'\nend)().new(sr)')
+    if source.count('pcall(sr.Unit.animation_get_state,')!=7:
+        raise ValueError('ActionCam animation reader contract changed')
+    source=source.replace('pcall(sr.Unit.animation_get_state,','pcall(H.dbf_animation_get_state,')
     # Freecam keys belong to MCM; profile/restart bindings continue using MBM.
     source=re.sub(r'^  \{id = \'actioncam\.photo_[^\n]+\n','',source,flags=re.M)
     controller=(ROOT/'controller.lua').read_text(encoding='utf-8')
@@ -33,12 +44,27 @@ end)()
 local DBF_SIMULATION_BACKEND=(function()
 __SIMULATION_BACKEND__
 end)().new(sr)
+do
+ local backend=(function()
+__HOVER_PAUSE_BACKEND__
+end)()
+ local guard=(function()
+__HOVER_PAUSE__
+end)()
+ local ok,value=pcall(backend.new,sr)
+ H.dbf_hover_pause_backend=ok and value or nil
+ H.dbf_hover_pause=guard.new(H.dbf_hover_pause_backend)
+ if not ok then log('Hover pause reader unavailable: '..tostring(value))end
+end
 local DBF_PLAYER_FREEZE=(function()
 __SIMULATION__
-end)().new(sr,function()return anchor and anchor.unit,target and target.world,anchor~=nil and not anchor.spectate and not known_body(anchor.unit) and not SPEC.active and not SAFE.gate end,DBF_SIMULATION_BACKEND)
+end)().new(sr,function()return anchor and anchor.unit,target and target.world,anchor~=nil and not anchor.spectate and not known_body(anchor.unit) and not SPEC.active and not SAFE.gate end,DBF_SIMULATION_BACKEND,H.dbf_hover_pause)
 local DBF_PHOTO_OPTIONS=(function()
 __PHOTO_OPTIONS__
 end)()
+H.dbf_game_chat=(function()
+__CHAT_CONTEXT__
+end)().new()
 local DBF_PHOTO_LENS=(function()
 __PHOTO_LENS__
 end)()
@@ -47,6 +73,9 @@ __PHOTO_COMPOSITION__
 end)()
 DBF_PHOTO_COMPOSITION.logo_art=(function()
 __LOGO_ART__
+end)()
+DBF_PHOTO_COMPOSITION.logo_art[2]=(function()
+__HELLDIVER_CREST__
 end)()
 local DBF_PHOTO_POSTFX=(function()
 __PHOTO_POSTFX__
@@ -67,6 +96,9 @@ end)().new(sr,DBF_PHOTO_LENS,DBF_PHOTO_COMPOSITION,DBF_PHOTO_POSTFX,log,DBF_PHOT
 local DBF_PHOTO_MENU=(function()
 __PHOTO_MENU__
 end)()
+DBF_PHOTO_MENU.legend_factory=(function()
+__CONTROL_LEGEND__
+end)()
 local DBF_PHOTO_SCREENSHOT=(function()
 __SCREENSHOT__
 end)()
@@ -83,6 +115,74 @@ do
  end)
  if ok then DBF_SCREENSHOTS=value else log('Screenshot capture unavailable: '..tostring(value))end
 end
+local DBF_FOCUS_SAMPLER
+do
+ local depth=(function()
+__FOCUS_DEPTH__
+end)()
+ local focus=(function()
+__FOCUS_SAMPLER__
+end)()
+ local ok,value=pcall(function()return focus.new(sr,depth.new(sr))end)
+ if ok then DBF_FOCUS_SAMPLER=value else log('Autofocus unavailable: '..tostring(value))end
+end
+local DBF_PHOTO_LIGHTS=(function()
+__PHOTO_LIGHTS__
+end)().new(sr,log)
+H.dbf_subject_backend=(function()
+__SUBJECT_BACKEND__
+end)()
+do
+ local ok,value=pcall(H.dbf_subject_backend.new,sr)
+ H.dbf_subject_backend=ok and value or nil
+ if not ok then log('Subject renderer unavailable: '..tostring(value))end
+end
+H.dbf_subject=(function()
+__SUBJECT__
+end)().new(H.dbf_subject_backend,log)
+H.dbf_director=(function()
+__DIRECTOR__
+end)().new(PHOTO,function()
+ if H.dbf_subject_backend then return H.dbf_subject_backend.frame()end
+ return nil,'Local player context unavailable'
+end,rawget(_G,'DBF_PHOTO_PACKAGE_ROOT')and(rawget(_G,'DBF_PHOTO_PACKAGE_ROOT')..'/director-shots.ini'),log)
+H.dbf_input_epoch=0
+do
+ local backend=(function()
+__INPUT_RELEASE_BACKEND__
+end)()
+ local control=(function()
+__INPUT_RELEASE__
+end)()
+ local ok,value=pcall(function()return control.new(backend.new(sr),log)end)
+ if ok then H.dbf_input_release=value else
+  local reason='Photo input release unavailable: '..tostring(value)
+  H.dbf_input_release={begin=function()return false,reason end,finish=function()return true end,tick=function()end}
+  log(reason)
+ end
+end
+-- Called after the previous update returns. Positive World delta and restored
+-- Photo time policy are required before the deferred entry may acquire input.
+H.dbf_input_after_update=function(...)
+ if target and world_alive(target.world)then
+  local delta=try(sr.World.delta_time,target.world)
+  if type(delta)=='number'and delta>=0 and delta<math.huge then
+   if DBF_PLAYER_FREEZE.rate()>0 and delta>0 and not PHOTO.active then H.dbf_input_epoch=H.dbf_input_epoch+1 end
+   if H.dbf_hover_pause_backend then H.dbf_hover_pause_backend.after_update(delta)end
+   H.dbf_hover_pause.after_update()
+  end
+ end
+ return ...
+end
+H.dbf_input_before_update=function()
+ if DBF_PLAYER_FREEZE.needs_input_capture()then
+  local api=rawget(_G,'DBFMCM')or rawget(_G,'DBF_PHOTO_STANDALONE_API')
+  local input=api and api.camera_input
+  local focused=input and input.focused and input.focused()
+  if not focused or api.is_open()then DBF_PLAYER_FREEZE.release();return end
+  DBF_PLAYER_FREEZE.hold()
+ end
+end
 local DBF_SAVED_CAMERA=(function()
 __SAVED_CAMERA__
 end)().new(PHOTO,function()
@@ -92,10 +192,21 @@ end)().new(PHOTO,function()
 end,log)
 local DBF_FREECAM=(function()
 __CONTROLLER__
-end)().new(PHOTO,CFG,function()return target~=nil and anchor~=nil and not SPEC.active end,log,DBF_PLAYER_FREEZE,DBF_PHOTO_OPTIONS,DBF_PHOTO_RUNTIME,DBF_PHOTO_MENU,DBF_PHOTO_COMPOSITION,DBF_SAVED_CAMERA,DBF_SCREENSHOTS)
+end)().new(PHOTO,CFG,function()return target~=nil and anchor~=nil and not SPEC.active end,log,DBF_PLAYER_FREEZE,DBF_PHOTO_OPTIONS,DBF_PHOTO_RUNTIME,DBF_PHOTO_MENU,DBF_PHOTO_COMPOSITION,DBF_SAVED_CAMERA,DBF_SCREENSHOTS,DBF_FOCUS_SAMPLER,DBF_PHOTO_LIGHTS,H.dbf_subject,H.dbf_director,H.dbf_input_release,function()return H.dbf_input_epoch end)
 PHOTO.dbf_stop=DBF_FREECAM.stop
 PHOTO.dbf_clear_saved=DBF_SAVED_CAMERA.clear
+DBF_PHOTO_LIGHTS.update_from_photo=function()
+ local context=PHOTO.active and PHOTO.light_context
+ local ok,why=DBF_PHOTO_LIGHTS.flush(context and context.world,context)
+ if not ok and DBF_PHOTO_LIGHTS.pending then log('Photo lighting: '..tostring(why))end
+end
+DBF_PHOTO_LIGHTS.cache_camera=function()
+ if not PHOTO.active or not target or not world_alive(target.world)then PHOTO.light_context=nil;return end
+ local pose=try(sr.Camera.world_pose,target.cam);if not pose then PHOTO.light_context=nil;return end
+ PHOTO.light_context={world=target.world,position={xyz(M.translation(pose))},forward={xyz(M.forward(pose))},right={xyz(M.right(pose))},up={xyz(M.up(pose))}}
+end
 local function bindings_step()
+  H.dbf_game_chat.attach(rawget(_G,'DBFMCM')or rawget(_G,'DBF_PHOTO_STANDALONE_API'))
   local ok,why=pcall(DBF_FREECAM.tick,last_dt)
   if not ok then DBF_FREECAM.stop();log('freecam error: '..tostring(why)) end
 end
@@ -118,7 +229,10 @@ return {new=function(runtime_sr)
  return DBF_PHOTO_DOF.new(runtime_sr,DBF_PHOTO_DEPTH.new(runtime_sr),true,DBF_PHOTO_SHADER_TEMPLATE_GUARD.new(runtime_sr))
 end}
 end)()
-""".replace('__PHOTO_DEPTH__',(ROOT/'depth_resource.lua').read_text(encoding='utf-8')).replace('__PHOTO_DOF__',(ROOT/'dof_overlay.lua').read_text(encoding='utf-8')).replace('__PHOTO_SHADER_TEMPLATE_GUARD__',(ROOT/'shader_template_guard.lua').read_text(encoding='utf-8'))
+""".replace('__PHOTO_DEPTH__',(ROOT/'depth_resource.lua').read_text(encoding='utf-8')).replace('__PHOTO_DOF__',(ROOT/('scene_dof_overlay.lua'if combined_scene_candidate else 'dof_overlay.lua')).read_text(encoding='utf-8')).replace('__PHOTO_SHADER_TEMPLATE_GUARD__',(ROOT/'shader_template_guard.lua').read_text(encoding='utf-8'))
+        if combined_scene_candidate:
+            template=photo_assets.hash64(re.search(r"^M.shader='([^']+)'$",(ROOT/'scene_dof_overlay.lua').read_text(encoding='utf-8'),re.M).group(1))>>32
+            candidate=candidate.replace('DBF_PHOTO_SHADER_TEMPLATE_GUARD.new(runtime_sr)',f'DBF_PHOTO_SHADER_TEMPLATE_GUARD.new(runtime_sr,nil,0x{template:08x})')
     if scene_candidate:
         candidate+="""local DBF_PHOTO_SCENE_FACTORY=(function()
 local DEPTH=(function()
@@ -138,9 +252,9 @@ end}
 end)()
 """.replace('__SCENE_DEPTH__',(ROOT/'depth_resource.lua').read_text(encoding='utf-8')).replace('__SCENE_OVERLAY__',(ROOT/'scene_overlay.lua').read_text(encoding='utf-8')).replace('__SCENE_GUARD__',(ROOT/'shader_template_guard.lua').read_text(encoding='utf-8'))
     hook=hook.replace('__PHOTO_DOF_CANDIDATE__',candidate).replace('__PHOTO_DOF_ARGUMENT__',',DBF_PHOTO_DOF_FACTORY'if dof_candidate else ',nil'if scene_candidate else '').replace('__PHOTO_SCENE_ARGUMENT__',',DBF_PHOTO_SCENE_FACTORY'if scene_candidate else '').replace('__CAPTURE_LIBRARY__',capture_library_name())
-    for token,filename in [('__PHOTO_OPTIONS__','photo_options.lua'),('__PHOTO_LENS__','lens.lua'),('__PHOTO_COMPOSITION__','composition.lua'),('__PHOTO_POSTFX__','postfx.lua'),('__PHOTO_RUNTIME__','photo_runtime.lua'),('__PHOTO_HUD__','hud.lua'),('__PHOTO_PROFILE__','render_profile.lua'),('__PHOTO_MENU__','photo_menu.lua'),('__LOGO_ART__','assets/logo_art.lua'),('__CAMERA_PROFILE__','camera_profile.lua'),('__SAVED_CAMERA__','saved_camera.lua')]:
+    for token,filename in [('__PHOTO_OPTIONS__','photo_options.lua'),('__PHOTO_LENS__','lens.lua'),('__PHOTO_COMPOSITION__','composition.lua'),('__PHOTO_POSTFX__','postfx.lua'),('__PHOTO_RUNTIME__','photo_runtime.lua'),('__PHOTO_HUD__','hud.lua'),('__PHOTO_PROFILE__','render_profile.lua'),('__PHOTO_MENU__','photo_menu.lua'),('__CONTROL_LEGEND__','control_legend.lua'),('__LOGO_ART__','assets/logo_art.lua'),('__CAMERA_PROFILE__','camera_profile.lua'),('__SAVED_CAMERA__','saved_camera.lua')]:
         hook=hook.replace(token,(ROOT/filename).read_text(encoding='utf-8'))
-    for token,filename in [('__SCREENSHOT__','screenshot.lua'),('__SCREENSHOT_BACKEND__','screenshot_backend.lua')]:
+    for token,filename in [('__SCREENSHOT__','screenshot.lua'),('__SCREENSHOT_BACKEND__','screenshot_backend.lua'),('__FOCUS_DEPTH__','depth_resource.lua'),('__FOCUS_SAMPLER__','focus_sampler.lua'),('__PHOTO_LIGHTS__','photo_lights.lua'),('__CHAT_CONTEXT__','chat_context.lua'),('__HELLDIVER_CREST__','assets/helldiver_crest.lua'),('__SUBJECT_BACKEND__','subject_backend.lua'),('__SUBJECT__','subject.lua'),('__DIRECTOR__','director.lua'),('__INPUT_RELEASE__','input_release.lua'),('__INPUT_RELEASE_BACKEND__','input_release_backend.lua'),('__HOVER_PAUSE__','hover_pause.lua'),('__HOVER_PAUSE_BACKEND__','hover_pause_backend.lua')]:
         hook=hook.replace(token,(ROOT/filename).read_text(encoding='utf-8'))
     replace('-- One frame of Photo Mode: fly the detached camera and place it.',hook+'\n-- One frame of Photo Mode: fly the detached camera and place it.')
     replace("  if PHOTO_REF and PHOTO_REF.active then", "  if PHOTO_REF and PHOTO_REF.dbf_clear_saved and (reason=='death'or reason=='world gone'or reason=='restart'or reason=='shutdown')then PHOTO_REF.dbf_clear_saved(reason)end\n  if PHOTO_REF and PHOTO_REF.dbf_stop then PHOTO_REF.dbf_stop() end\n  if PHOTO_REF and PHOTO_REF.active then")
@@ -176,19 +290,26 @@ end
 
 """+source[last:]
     replace('  pcall(bindings_step)', '  -- Photo input is sampled in render, independently of simulation time.')
+    replace('  if previous_update then return previous_update(dt, ...) end', '  H.dbf_input_before_update()\n  if previous_update then return H.dbf_input_after_update(previous_update(dt, ...)) end\n  return H.dbf_input_after_update()')
     replace('    counts.render = counts.render + 1', '    bindings_step()\n    counts.render = counts.render + 1')
-    replace('  pcall(options_step)', '  -- Freecam owns the sole MCM registration; ActionCam options are disabled.')
+    replace('    pcall(H.flicker_watch)', '    pcall(DBF_PHOTO_LIGHTS.cache_camera)\n    pcall(H.flicker_watch)')
+    replace("  if type(previous) ~= 'function' then return end\n  render_hooked = true",
+            "  if type(previous) ~= 'function' then return end\n  previous=DBF_PHOTO_PROFILE.camera_factory.after_render(previous,function()return PHOTO.active end,log)\n  render_hooked = true")
+    replace('  pcall(options_step)', '  -- Freecam owns the sole MCM registration; ActionCam options are disabled.\n  pcall(DBF_PHOTO_LIGHTS.update_from_photo)\n  pcall(H.dbf_subject.flush,last_dt)')
     source=source.replace("CFG.LOG_NAME   = 'ActionCam.log'", "CFG.LOG_NAME   = 'Freecam.log'")
     source=source.replace("'ActionCam_previous.log'", "'Freecam_previous.log'")
     source=source.replace('CFG.EXTRACT_RESEARCH      = true', 'CFG.EXTRACT_RESEARCH      = false')
     source=source.replace("'ActionCam v' .. CFG.VERSION .. ' started:", "'Freecam camera foundation started:")
-    source+='''\nlocal dbf_previous_shutdown=rawget(_G,'shutdown')
+    source+='''\nupdate=DBF_PHOTO_PROFILE.camera_factory.around_update(update,function()return PHOTO.active end,log)
+local dbf_previous_shutdown=rawget(_G,'shutdown')
 shutdown=function(...)
   DBF_FREECAM.close()
   drop_all('shutdown')
   if dbf_previous_shutdown then return dbf_previous_shutdown(...) end
 end
 '''
+    if native_candidate:
+        source="rawset(_G,'DBF_PHOTO_NATIVE_LENS_CANDIDATE',true)\n"+source
     return source
 
 def payload_files(output):
@@ -209,6 +330,7 @@ def payload_files(output):
         if hashlib.sha256(body).hexdigest()!=identity['runtime_sha256'][name]:raise ValueError('Vendored native identity mismatch: '+name)
         files[name]=body
     files['LICENSE-Bingus.txt']=(vendor/'LICENSE-Bingus.txt').read_bytes()
+    files['LICENSE-Link.txt']=(vendor/'LICENSE-Link.txt').read_bytes()
     files['VENDOR-PROVENANCE.json']=(vendor/'PROVENANCE.json').read_bytes()
     for path in (ROOT/'assets').glob('*.png'):files['assets/'+path.name]=path.read_bytes()
     return files
@@ -271,7 +393,7 @@ def package_bsl(output,version=None,dof_candidate=False):
         'Addon/ee6b1ba7e22d71ed.patch_0.gpu_resources':registry_gpu,'PROVENANCE.json':files['PROVENANCE.json'],
         'ASSET-MANIFEST.json':(json.dumps(asset_audit,indent=2)+'\n').encode(),
         'VENDOR-PROVENANCE.json':files['VENDOR-PROVENANCE.json'],
-        'LICENSE-Bingus.txt':files['LICENSE-Bingus.txt'],'README.md':(ROOT.parent/'README.md').read_bytes(),
+        'LICENSE-Bingus.txt':files['LICENSE-Bingus.txt'],'LICENSE-Link.txt':files['LICENSE-Link.txt'],'README.md':(ROOT.parent/'README.md').read_bytes(),
         'INSTALL.txt':(ROOT/'README.md').read_bytes(),'Source/bsl_startup.lua':(ROOT/'bsl_startup.lua').read_bytes()}
     for name,body in files.items():
         if name.startswith('assets/'):package[name]=body
@@ -323,7 +445,7 @@ def build(archive,output,dof_candidate=False):
     finally:lua.lua_close(state)
     output.mkdir(parents=True,exist_ok=True)
     (output/'ActionCam-Freecam.lua').write_bytes(result)
-    modules=[ROOT/name for name in ['photo_options.lua','lens.lua','composition.lua','postfx.lua','photo_runtime.lua','hud.lua','render_profile.lua','camera_profile.lua','saved_camera.lua','photo_menu.lua']]
+    modules=[ROOT/name for name in ['photo_options.lua','lens.lua','composition.lua','postfx.lua','photo_runtime.lua','photo_lights.lua','hud.lua','render_profile.lua','camera_profile.lua','chat_context.lua','saved_camera.lua','photo_menu.lua','control_legend.lua','input_release.lua','input_release_backend.lua']]
     if dof_candidate:modules.extend([ROOT/'depth_resource.lua',ROOT/'dof_overlay.lua',ROOT/'shader_template_guard.lua'])
     (output/'PROVENANCE.json').write_text(json.dumps({'source_archive':origin,'source_sha256':origin_hash,
         'dof_candidate_preview':bool(dof_candidate),

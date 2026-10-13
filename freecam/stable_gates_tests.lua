@@ -28,7 +28,7 @@ api.create_photo_view=function()return {}end;api.photo_resolution=function()retu
 DBFMCM=api;DBF_PHOTO_RENDER_PROFILE={parameters=native_caps}
 local effects={parameters=native_caps,release=function()return true end}
 local menu={new=function()
- panel={bind=function()end,close=function()end,dismiss=function()return true end,draw=function()end,tick=function()end,editing_key=function()return editing end}
+ panel={bind=function(_,pages)panel.pages=pages end,close=function()end,dismiss=function()return true end,draw=function()end,tick=function()end,editing_key=function()return editing end}
  return panel
 end}
 local photo={};local controller=dofile(root..'controller.lua').new(photo,{},function()return true end,function()end,nil,options,effects,menu,catalog)
@@ -56,6 +56,20 @@ handle.set('focus_distance',2);handle.set('aperture',1.2)
 effects.custom_dof_ready=false;tick()
 assert(mod.controls.focus_distance.disabled and mod.controls.aperture.disabled,'Losing candidate readiness must immediately close numeric gates')
 assert(not pcall(handle.set,'focus_distance',3),'Unavailable candidate edits must be rejected')
+panel.notice='Screenshot saved';local focus_text
+for _,page in ipairs(panel.pages)do for _,control in ipairs(page.controls)do if control.id=='focus_status'then focus_text=control end end end
+local prior_focus_status=assert(focus_text).label
+effects.warming_up_scene=true;tick()
+assert(panel.warming_up_scene and panel.notice=='Screenshot saved'and focus_text.label==prior_focus_status,'Warming indicator must not overwrite screenshot or autofocus notices')
+effects.warming_up_scene=false;tick();assert(not panel.warming_up_scene and panel.notice=='Screenshot saved','Warming indicator must clear independently of existing notices')
+local drawn;local real_menu=dofile(root..'photo_menu.lua').new({draw=function(commands)drawn=commands end,release=function()end},{focus=function()end,hud=function()end,hide=function()end,exit=function()end})
+real_menu.bind(handle,options.pages(function()end,function()end,catalog));real_menu.notice='Screenshot saved';real_menu.warming_up_scene=true
+local function has_text(label)for _,command in ipairs(drawn)do if command.type=='text'and command.full_text==label then return true end end;return false end
+real_menu.draw(1920,1080,true,false,{focus='TAB',hide='H'})
+assert(has_text('WARMING UP SCENE')and has_text('Screenshot saved'),'Exact warming header and screenshot notice must both be rendered')
+real_menu.warming_up_scene=false;real_menu.draw(1920,1080,true,false,{focus='TAB',hide='H'})
+assert(has_text('PHOTO MODE')and not has_text('WARMING UP SCENE')and real_menu.notice=='Screenshot saved','Ready scene must restore ordinary subtitle without clearing notices')
+real_menu.close()
 assert(controller.close()and not owned);DBFMCM=nil;DBF_PHOTO_RENDER_PROFILE=nil
 
 -- Even if an installed experimental asset remains available, release runtime
@@ -74,6 +88,20 @@ assert(custom_seen==false and runtime.custom_dof_ready==false and not runtime.pa
 assert(native_caps.focus_distance and native_caps.aperture,'The release capability mask must not mutate an external profile')
 for _,name in ipairs(queries)do assert(not name:find('mods/dbf_photo/',1,true),'Experimental material queried: '..name)end
 assert(runtime.release())
+assert(not runtime.warming_up_scene,'Unsupported public lens controls must not advertise startup warming')
+-- Existing candidate readiness controls the banner; no artificial delay.
+local candidate_postfx={parameters={dof=true,bloom=true},native_numeric_candidate=true,native_numeric_ready=false,
+ apply=function()return true,'Native lens source waiting'end,release=function()return true end}
+local waiting=dofile(root..'photo_runtime.lua').new(sr,{new=function()return {apply=function()return .9 end,release=function()return true end}end},
+ {shaders={''},layout=function()return {}end},{new=function()return candidate_postfx end},function()end)
+assert(waiting.apply(1,2,10,{0,1,0},{1,0,0},values,0)and waiting.warming_up_scene,'Initial candidate readiness must explain disabled native lens controls')
+candidate_postfx.native_numeric_ready=true
+assert(waiting.apply(1,2,10,{0,1,0},{1,0,0},values,0)and not waiting.warming_up_scene,'Readiness must clear warming immediately')
+candidate_postfx.native_numeric_ready=false
+assert(waiting.apply(1,2,10,{0,1,0},{1,0,0},values,0)and not waiting.warming_up_scene,'A later readiness failure must preserve ordinary error status instead of claiming initial warming')
+assert(waiting.release())
+assert(waiting.apply(1,2,10,{0,1,0},{1,0,0},values,0)and waiting.warming_up_scene,'A new scene lifecycle must reset initial readiness state')
+assert(waiting.release())
 print('Stable release gates: no scene settings/assets, capability masks, L edge/lock behavior, input editing suppression and UI world routing passed')
 
 -- This game emits DXGI_UNKNOWN for one verified HDR RGB10 back-buffer format.

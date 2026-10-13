@@ -1,79 +1,74 @@
-War Journalist - Helldivers 2 Photo Mode
+War Journalist 0.9.5 - Helldivers 2 Photo Mode
 
-0.7 Preview
+CHOOSE ONE LOADER PACKAGE
+BSL (recommended): requires Bingus Shared Loader v15+ / API 1. Import the full
+BSL ZIP into HD2 Arsenal, enable it alongside BSL, deploy, then restart normally.
+The Addon folder contains the complete runtime and all required assets.
 
-NOTICE: When Shader DoF is enabled, scene effects and color controls are grayed out.
-The menu displays "Shader DoF Enabled. Scene Effects disabled".
-Turn DoF OFF or select Native camera mode to use scene effects.
+MDL: requires MDL API 2. Copy dbf_freecam into
+%LOCALAPPDATA%/MDL/Helldivers2/Mods. Deploy the included Arsenal asset ZIP, or
+install GameData manually as below. Enable War Journalist in MDL and restart.
 
-BSL is the recommended main download and requires only Bingus Shared Loader
-v15 or newer. The ZIP includes the camera, private menu/input, PNG capture,
-40 decorative shader overlays, shader DoF, and scene preview assets. MCM, DBF-HUD and ActionCam downloads
-are not required. HD2 Arsenal is an optional way to install the BSL ZIP;
-enable it alongside BSL, deploy, then restart normally. MDL API 2 is the
-alternative loader; its ZIP includes both the loose addon and GameData assets. Install only one Photo Mode package.
-MCM is optional. With MCM, configure Photo Mode there; without it, use the
-photo menu Controls page. Disable the original ActionCam before installing.
-If an older incompatible MCM is installed, disable or update it before using
-Photo Mode; its existing input owner is never replaced by this addon.
+LLL: copy dbf_freecam into %LOCALAPPDATA%/LLL/Helldivers2/Mods. Deploy the
+included Arsenal asset ZIP, then enable the addon and restart normally.
+LLL downloads are hosted on GitHub; Nexus offers BSL and MDL.
 
-MANUAL ASSET INSTALL (NO MOD MANAGER REQUIRED)
-With the game closed, copy the included patch files from Addon (BSL) or
-GameData (MDL) into Helldivers 2/data. For each archive base, rename patch_0
-to the next unused patch_N after existing patches, using the same N for its
-.patch_N, .patch_N.gpu_resources and .patch_N.stream files. Preserve the
-9ba626afa44a3aa3 and ee6b1ba7e22d71ed base names. Never overwrite another
-mod. Restart normally. MDL users must also copy dbf_freecam into
-%LOCALAPPDATA%/MDL/Helldivers2/Mods and enable it in MDL.
-Settings for standalone controls use %LOCALAPPDATA%/DBF/PhotoMode/settings.
-To remove the manual installation, remove only the patch triplets you added
-and the loose addon folder (MDL). Other mods replacing the default shader
-registry can conflict; merge the registrations when combining shader packs.
+All runtime, shader, material, light and logo resources are included in each
+loader download. No separate asset download, MCM, DBF-HUD, ActionCam, or Link's
+Link to Memory is required. MCM integration is optional. Disable older Photo
+Mode runtimes and the original ActionCam; keep only one Photo Mode runtime.
+Preserve saved settings, camera presets and Screenshots when upgrading.
+Replace an older separate Photo asset package with the matching bundled assets.
 
-P: photo mode. WASD: move. Shift/Ctrl: rise/descend. Mousewheel: speed.
-Q/E: roll in camera focus, tabs in menu focus. Tab: camera/menu focus.
-In menu focus W/S selects rows; A/D adjusts values or cycles choices without hover.
-Shift+A/D gives 0.001 m focus steps. Valid typed values also save on leaving the field.
-L: lock/unlock the camera. Backslash: prototype slow motion (solo).
-H: hide controls. Enter/Space: choose/edit. Escape: cancel/leave.
-All bindings are configurable. Resizing the menu scales its text and controls.
-Click a numeric value or press Enter/Space to type. Enter/Space saves, Escape
-cancels, and right-click resets an enabled setting to its default.
+MANUAL ASSET INSTALL
+With the game closed, copy the patch triplets from Addon (BSL) or GameData
+(MDL) into Helldivers 2/data. For each base, use the next unused patch_N and
+use that same N for its CPU, .gpu_resources and .stream companions. Preserve
+the 9ba626afa44a3aa3 and ee6b1ba7e22d71ed base names. Never replace a different
+mod's patch. Other mods replacing the shader registry need a registration
+merge; use a mod manager with merging support when combining them.
+For LLL the same files are inside its bundled Arsenal asset ZIP's Assets folder.
+Do not deploy both the MDL GameData and its duplicate Arsenal assets.
 
-Save Camera Position retains the shot while you stay within its configured
-5-60 m radius. Leaving the radius, returning to the player, changing scenes,
-death or restarting clears it. Saved positions last for this session only.
+CONTROLS (DEFAULTS; YOUR SAVED BINDINGS TAKE PRIORITY)
+P: Photo Mode. Pause: screenshot (rebindable). Tab: camera/menu focus.
+Camera: WASD move, Shift/Ctrl rise/descend, mousewheel speed, Q/E roll,
+L lock camera, H hide controls. Menu: W/S rows, A/D values, Q/E tabs.
+Enter edits a value; Enter or clicking away commits it, Escape cancels.
+Right-click resets. Hold Shift while dragging for one-tenth slider sensitivity.
+Focus distance steps: 0.01 m, or 0.001 m with Shift.
+Double-click a subject outside the menu in menu focus to focus on it. Center
+auto-focus continually follows center-screen depth. Manual edits override it.
+Drag the title bar to move the menu. Resize with its corner grip. Position
+and size survive restarts. The left-edge controls drawer has a movable tab.
 
-Solo mode pauses native player animation and simulation/AI. The native DLL
-refuses pause and slow motion with other/joining players or unknown state.
-Freecam can still work in multiplayer. Focus loss keeps the solo pause.
+LENS, DIRECTOR AND LIGHTING
+Native camera has adjustable focus/aperture. Shader (preview) adds 32/64-sample
+round/hex bokeh. Full-resolution scene effects and color grading can be used
+alongside Shader DoF. WARMING UP SCENE means resources are still loading.
+Director stores five camera positions/angles relative to the player; these
+presets survive restarts. The separate temporary Save Camera action retains
+a shot only within its configured radius and current scene/session.
+Lighting supports up to three owned point/spot lights, intensity up to 10,000,
+range up to 1,000 m, color, placement offsets, camera follow and location markers.
+The dedicated mission light asset fix is included: Not tested fully. Lights
+and subject visibility changes are cleaned up when leaving Photo Mode.
 
-BSL screenshots are saved in %LOCALAPPDATA%/DBF/PhotoMode/Screenshots.
-The MDL package uses its mod folder's Screenshots directory. Capture temporarily hides
-photo controls and requesting game HUD hiding, then restoring your settings.
-Use Steam screenshots as an alternative.
+PAUSE AND CAPTURE
+Pause and slow motion require a verified solo session. Freecam can still be
+used in multiplayer. Guarded hoverpack pause neutralizes automatic thrust
+before zero time, checks released inputs, then restores thrust after resuming.
+Active-hover pause is refused with connected or unidentified controllers.
+Losing input capture during guarded hover pause resumes the simulation first.
+The reported hoverpack + melee pause/resume reproduction passed in development;
+this is not a claim that every equipment combination is covered.
+BSL PNGs: %LOCALAPPDATA%/DBF/PhotoMode/Screenshots.
+MDL/LLL PNGs: dbf_freecam/Screenshots. The Pause shortcut uses the addon capture,
+not Windows Print Screen. Ship UI may remain visible in some captures.
 
-SHADER DOF / PREVIEW LIMITS
-Choose Shader preview for working depth-aware focus distance and aperture/f-stop.
-32/64 samples and round/hex bokeh are available. Blur uses a 960x540 color source;
-focused pixels retain the original full-resolution scene. Final bokeh quality
-remains under review. All 42 shader libraries, 42 materials and 317 registry IDs
-are bundled; no separate DoF asset package is required.
-
-Native game engine DoF is still nonfunctional for manual focus/aperture control;
-its numeric controls remain disabled. The native toggle uses the game's existing
-effect and does not implement an adjustable lens.
-
-Scene color/depth effects and exposure/contrast/saturation are included as
-unverified previews. They are gated while Shader DoF is ON; turn DoF OFF or select
-native camera mode to test them. Scene color uses a 960x540 source; neutral
-controls preserve the original image. HDR-aware PNG conversion is included,
-but ship UI may remain visible. Steam screenshots remain an alternative.
-Disable older Photo Mode packages, the LLL addon, and any separate DoF asset
-candidate. Only BSL and MDL are offered in 0.7. No alt-tab crash fix is claimed.
-
-CREDITS
-Camera discovery/photo foundation: ActionCam 2.3.1 by HuedPurple
-(https://www.nexusmods.com/helldivers2/mods/16752).
-Bingus native UI/font reader: CowboyBingus (0BSD, included license).
-Helldivers 2 and Arrowhead artwork remains property of its respective owners.
+See RELEASE-NOTES.md and KNOWN-ISSUES.md for features and validation limits.
+Camera foundation: ActionCam 2.3.1 by HuedPurple.
+Bingus native UI/font reader: CowboyBingus (0BSD license included).
+Selected native reader work: Link (MIT license included). Link's addon is not
+required. Artwork remains property of its respective owners; original logo
+sources and author attribution are bundled in assets/logos.

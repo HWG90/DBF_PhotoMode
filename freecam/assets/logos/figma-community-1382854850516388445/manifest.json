@@ -1,0 +1,48 @@
+{
+  "collected_utc": "2026-10-12T22:05:05.329464+00:00",
+  "source_files": 1,
+  "source_page": "https://www.figma.com/community/file/1382854850516388445/helldivers-2-logo-stratagems",
+  "title": "Helldivers 2 Logo & Stratagems",
+  "author": "gehryguest",
+  "author_url": "https://www.figma.com/@guestit",
+  "license": "CC BY 4.0",
+  "license_url": "https://creativecommons.org/licenses/by/4.0/",
+  "license_evidence": "The public community page explicitly displays Licensed under CC BY 4.0.",
+  "acquisition": "Exported the existing, already-open community-derived Figma design through the read-only download_assets connector. No document creation or canvas edits.",
+  "entries": [
+    {
+      "file": "Helldivers_2_Alt_Logo.svg",
+      "node_name": "Helldivers 2 Alt Logo",
+      "node_id": "2:4056",
+      "bytes": 3819,
+      "sha256": "acdf2f7cb71ef968090ca829bd048d9530e85e0aafc531b1b554eef4c6250308",
+      "svg": {
+        "width": "1375",
+        "height": "550",
+        "viewBox": "0 0 1375 550",
+        "background": "Transparent vector asset; opaque frame-export background excluded."
+      },
+      "joke_or_meme": false,
+      "export_bytes_preserved": true
+    }
+  ],
+  "excluded_exports": [
+    {
+      "reason": "The ordinary whole-frame SVG export contains an opaque #F5F5F5 background. It is retained only in dist/review/figma-logo-export-1382854850516388445.",
+      "file": "frame-export.svg",
+      "sha256": "1f25fd4ffd71d68a758dd8ab96e5f7466671581e9334a98a5fd7ef72acd84e9a"
+    }
+  ],
+  "stratagem_icons": "Not collected; this request was limited to relevant logo/emblem artwork.",
+  "access_limits": "The community page was readable in the existing Chrome tab. Its existing Figma design was readable/exportable through the connector. No access blocker remained. The general web fetcher failed, but the browser and connector succeeded.",
+  "runtime_integration": "Source SVG only; no game texture/material conversion or runtime edits.",
+  "preview": {
+    "file": "Helldivers_2_Alt_Logo-preview.png",
+    "format": "png",
+    "width": 1400,
+    "height": 560,
+    "background": "Transparent",
+    "source": "Rendered from the unchanged transparent SVG for inspection; not a separate logo design.",
+    "sha256": "dab93eaf4be3697993dcb1a95e8de4ee660a4a52aa287bb8ef24ecb800aedf67"
+  }
+}

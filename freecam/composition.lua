@@ -1,4 +1,4 @@
--- Resolution-independent overlay geometry. Logos are original vector emblems.
+-- Resolution-independent overlay geometry. Credited logo meshes are embedded.
 local M={}
 M.shaders={'','crt_scan','crt_phosphor','bayer','ion_noise','sweep','checker_fine','checker_coarse','diagonal_weave','dot_matrix','glass_sheen','brushed_steel','hammered_metal','ceramic','thermal','warning_hatch','pulse','circuit','hex_cells','heat_shimmer','blueprint','carbon','ribbed_alloy','oxidized_copper','etched_scale','micro_mesh','triangular_grille','caution_dots','ceramic_cracks','iridescent','amber_glass','cobalt_glass','frosted','gunmetal','leather','hazard_red','rail_glints','energy_threads','grid_nodes','stipple_gradient','prismatic'}
 M.shader_names={'None','CRT scanlines','RGB phosphor','Ordered dither','Ion interference','Scanner sweep','Fine checker dither','Coarse VGA checker','Diagonal weave','Dot matrix','Glass sheen','Brushed steel','Hammered metal','Ceramic enamel','Thermal glow','Warning hatch','Warning pulse','Circuit traces','Hex-like cell lattice','Heat shimmer tint','Blueprint cross grid','Carbon weave','Ribbed alloy','Oxidized copper','Etched calibration','Micro mesh','Triangular grille','Caution dot tape','Cracked ceramic','Iridescent coating','Amber instrument glass','Cobalt instrument glass','Frosted diffusion','Gunmetal stipple','Grip leather','Red emergency hatch','Rail glints','Energy threads','PCB nodes','Stipple shading','Prismatic facets'}
@@ -50,9 +50,14 @@ function M.layout(w,h,o,seconds)
   local a=(o.logo_opacity or 85)/100;local hex=o.logo_color or '#FFFFFF';local c={tonumber(hex:sub(2,3),16),tonumber(hex:sub(4,5),16),tonumber(hex:sub(6,7),16)}
   local function mark(rx,ry,rw,rh)rect(lx+rx*size,ly+ry*size,rw*size,rh*size,a,c)end
   if M.logo_art and M.logo_art[o.logo]then
-   local art=M.logo_art[o.logo];local factor=2*size/art.width;local ax=lx-size;local ay=ly-art.height*factor/2
+   local art=M.logo_art[o.logo];local factor=2*size/math.max(art.width,art.height);local ax=lx-art.width*factor/2;local ay=ly-art.height*factor/2
    if hex=='#FFFFFF'then c=art.color end
-   for _,r in ipairs(art.rects)do rect(ax+r[1]*factor,ay+(art.height-r[2]-r[4])*factor,r[3]*factor,r[4]*factor,a,c)end
+   for _,r in ipairs(art.rects or{})do rect(ax+r[1]*factor,ay+(art.height-r[2]-r[4])*factor,r[3]*factor,r[4]*factor,a,c)end
+   for _,t in ipairs(art.triangles or{})do
+    local p={ax+t[1]*factor,ay+(art.height-t[2])*factor,ax+t[3]*factor,ay+(art.height-t[4])*factor,ax+t[5]*factor,ay+(art.height-t[6])*factor}
+    local lowx,highx=math.min(p[1],p[3],p[5]),math.max(p[1],p[3],p[5]);local lowy,highy=math.min(p[2],p[4],p[6]),math.max(p[2],p[4],p[6])
+    out[#out+1]={type='triangle',points=p,x=lowx,y=lowy,w=highx-lowx,h=highy-lowy,a=a,c=c}
+   end
   elseif o.logo==2 then
    -- Winged skull: vector geometry retains sharp edges at any resolution.
    mark(-.2,-.1,.4,.45);mark(-.14,-.28,.28,.2)

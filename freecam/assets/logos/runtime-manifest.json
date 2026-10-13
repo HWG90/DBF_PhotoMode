@@ -1,0 +1,88 @@
+{
+  "compiled_runtime": "freecam/assets/logo_art.lua",
+  "runtime_dependencies": [],
+  "source_art_unchanged": true,
+  "tintable_monochrome_geometry": true,
+  "entries": [
+    {
+      "index": 4,
+      "name": "Super Earth crest",
+      "source": "freecam/assets/logos/alphaccca/Super_Earth.svg",
+      "source_sha256": "679ad3a2334c794a971e466e41602cadf17e8d520140fc7cd88e50ff2e928b9d",
+      "width": 1189,
+      "height": 1536,
+      "triangles": 1212,
+      "source_mask_iou": 0.9904883976976157
+    },
+    {
+      "index": 7,
+      "name": "Helldivers 2 \u2014 wide",
+      "source": "freecam/assets/logos/steamgriddb-5403655/originals/sgdb-139968-official-en-r-dsgnd.png",
+      "source_sha256": "300fb54e54f6b65bdb39b73f5987f1e81fc14feaae4c1013703b43152ae5725d",
+      "width": 1536,
+      "height": 119,
+      "triangles": 1297,
+      "source_mask_iou": 0.9781404558578519
+    },
+    {
+      "index": 8,
+      "name": "Helldivers 2 \u2014 compact",
+      "source": "freecam/assets/logos/steamgriddb-5403655/originals/sgdb-139970-official-en-r-dsgnd.png",
+      "source_sha256": "22ca1122095e4a2f5ddf478884010be6f68491f81dbc8d8a772a4d4b5afeea6e",
+      "width": 797,
+      "height": 160,
+      "triangles": 189,
+      "source_mask_iou": 0.9838990493505693
+    },
+    {
+      "index": 9,
+      "name": "Helldivers II crest",
+      "source": "freecam/assets/logos/steamgriddb-5403655/originals/sgdb-108334-official-en-hiddenegg.png",
+      "source_sha256": "2a60304f4c2dc7512b34a2c71ec7131a17704e7731934a56552a93579c5b982b",
+      "width": 1536,
+      "height": 416,
+      "triangles": 113,
+      "source_mask_iou": 0.9867803716905309
+    },
+    {
+      "index": 10,
+      "name": "Super Citizen Edition",
+      "source": "freecam/assets/logos/steamgriddb-5403655/originals/sgdb-108191-official-en-cluckendip.png",
+      "source_sha256": "6b79188392994784bee6e798bf89b77a27535f481c48732818a4f49f628da551",
+      "width": 1536,
+      "height": 432,
+      "triangles": 556,
+      "source_mask_iou": 0.9852760830241898
+    },
+    {
+      "index": 11,
+      "name": "Omens of Tyranny",
+      "source": "freecam/assets/logos/steamgriddb-5403655/originals/sgdb-139972-official-en-r-dsgnd.png",
+      "source_sha256": "ab3778e25d13121886d397110a859c1163c4bea339ecdffae5a29f0926de717e",
+      "width": 1536,
+      "height": 432,
+      "triangles": 2181,
+      "source_mask_iou": 0.9806000522610837
+    },
+    {
+      "index": 12,
+      "name": "Heart of Democracy",
+      "source": "freecam/assets/logos/steamgriddb-5403655/originals/sgdb-139966-official-en-r-dsgnd.png",
+      "source_sha256": "d9280de9727d39c027053a72043f182d1de934ac8543239b5e1c76f7a563abc7",
+      "width": 1536,
+      "height": 425,
+      "triangles": 2457,
+      "source_mask_iou": 0.9803234409190372
+    },
+    {
+      "index": 13,
+      "name": "Into the Unjust",
+      "source": "freecam/assets/logos/steamgriddb-5403655/originals/sgdb-148760-official-en-r-dsgnd.png",
+      "source_sha256": "bbb04ddc0652b4df9476a4c63e0c71c084c1a72c7f151be776b6a5816a872ab0",
+      "width": 1536,
+      "height": 427,
+      "triangles": 1786,
+      "source_mask_iou": 0.9827067669172932
+    }
+  ]
+}

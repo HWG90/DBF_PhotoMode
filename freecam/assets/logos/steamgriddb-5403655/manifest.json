@@ -1,0 +1,374 @@
+{
+  "catalog_url": "https://www.steamgriddb.com/game/5403655/logos",
+  "catalog_api": "https://www.steamgriddb.com/api/public/search/assets",
+  "game_id": 5403655,
+  "game_name": "Helldivers II",
+  "collected_utc": "2026-10-12T21:22:49.106233+00:00",
+  "browser_reported_logo_total": 71,
+  "public_catalog_pages": [
+    {
+      "total": 69,
+      "limit": 48,
+      "current_page": 0,
+      "has_hidden_assets": true
+    },
+    {
+      "total": 69,
+      "limit": 48,
+      "current_page": 1,
+      "has_hidden_assets": true
+    }
+  ],
+  "catalog_entries": 8,
+  "unique_original_files": 8,
+  "original_total_bytes": 1264403,
+  "transparent_files": 8,
+  "limitations": [
+    "The game page reports 71 logos; its unauthenticated public catalog exposes 69 and reports hidden assets. Hidden entries were not requested."
+  ],
+  "originals_unchanged": true,
+  "runtime_integration": "0.9.5 embeds seven additional tintable picker meshes in freecam/assets/logo_art.lua; the existing main stacked wordmark is retained. No external runtime asset dependency.",
+  "entries": [
+    {
+      "id": 105609,
+      "source_page": "https://www.steamgriddb.com/logo/105609",
+      "download_url": "https://cdn2.steamgriddb.com/logo/0abe10cc20cfedb109fd9cee834adc18.png",
+      "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/0abe10cc20cfedb109fd9cee834adc18.png",
+      "uploader": "Orion1189",
+      "uploader_profile": "https://www.steamgriddb.com/profile/76561197970841939",
+      "style": "official",
+      "language": "en",
+      "mime": "image/png",
+      "animated": false,
+      "tags": {
+        "nsfw": false,
+        "humor": false,
+        "epilepsy": false
+      },
+      "upload_date_unix": 1707555574,
+      "notes": null,
+      "license": null,
+      "license_status": "No per-asset license field listed in the public catalog.",
+      "file": "originals/sgdb-105609-official-en-orion1189.png",
+      "bytes": 25214,
+      "sha256": "3ff2feaddaa94065f0957ea30994243566616f87388148687572c9ba785d24e2",
+      "image": {
+        "format": "PNG",
+        "mode": "P",
+        "width": 3886,
+        "height": 1508,
+        "alpha_extrema": [
+          0,
+          255
+        ],
+        "has_transparent_pixels": true,
+        "frames": 1,
+        "icc_profile_present": false,
+        "gamma": null,
+        "srgb_intent": null,
+        "png_text": {}
+      },
+      "design_family": "Main stacked wordmark",
+      "selection_reason": "Clean 3886x1508 white original without the tiny TM mark; retains the standard Roman II, skull and wings layout."
+    },
+    {
+      "id": 139968,
+      "source_page": "https://www.steamgriddb.com/logo/139968",
+      "download_url": "https://cdn2.steamgriddb.com/logo/c469a6d123d89869a33da175b9c9a5e3.png",
+      "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/c469a6d123d89869a33da175b9c9a5e3.png",
+      "uploader": "r_dsgnd",
+      "uploader_profile": "https://www.steamgriddb.com/profile/76561198355292092",
+      "style": "official",
+      "language": "en",
+      "mime": "image/png",
+      "animated": false,
+      "tags": {
+        "nsfw": false,
+        "humor": false,
+        "epilepsy": false
+      },
+      "upload_date_unix": 1747924943,
+      "notes": null,
+      "license": null,
+      "license_status": "No per-asset license field listed in the public catalog.",
+      "file": "originals/sgdb-139968-official-en-r-dsgnd.png",
+      "bytes": 150378,
+      "sha256": "300fb54e54f6b65bdb39b73f5987f1e81fc14feaae4c1013703b43152ae5725d",
+      "image": {
+        "format": "PNG",
+        "mode": "LA",
+        "width": 2042,
+        "height": 164,
+        "alpha_extrema": [
+          0,
+          255
+        ],
+        "has_transparent_pixels": true,
+        "frames": 1,
+        "icc_profile_present": false,
+        "gamma": null,
+        "srgb_intent": null,
+        "png_text": {}
+      },
+      "design_family": "Wide wordmark",
+      "selection_reason": "High-resolution 2042x164 wordmark without the large central emblem; a distinct very wide layout."
+    },
+    {
+      "id": 139970,
+      "source_page": "https://www.steamgriddb.com/logo/139970",
+      "download_url": "https://cdn2.steamgriddb.com/logo/766409c54434415bf61c5a5fde55f8ce.png",
+      "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/766409c54434415bf61c5a5fde55f8ce.png",
+      "uploader": "r_dsgnd",
+      "uploader_profile": "https://www.steamgriddb.com/profile/76561198355292092",
+      "style": "official",
+      "language": "en",
+      "mime": "image/png",
+      "animated": false,
+      "tags": {
+        "nsfw": false,
+        "humor": false,
+        "epilepsy": false
+      },
+      "upload_date_unix": 1747925130,
+      "notes": null,
+      "license": null,
+      "license_status": "No per-asset license field listed in the public catalog.",
+      "file": "originals/sgdb-139970-official-en-r-dsgnd.png",
+      "bytes": 11661,
+      "sha256": "22ca1122095e4a2f5ddf478884010be6f68491f81dbc8d8a772a4d4b5afeea6e",
+      "image": {
+        "format": "PNG",
+        "mode": "RGBA",
+        "width": 798,
+        "height": 161,
+        "alpha_extrema": [
+          0,
+          255
+        ],
+        "has_transparent_pixels": true,
+        "frames": 1,
+        "icc_profile_present": false,
+        "gamma": null,
+        "srgb_intent": null,
+        "png_text": {}
+      },
+      "design_family": "Compact wordmark and skull",
+      "selection_reason": "Compact horizontal yellow wordmark with the skull beneath; distinct from the large stacked Roman II version."
+    },
+    {
+      "id": 108334,
+      "source_page": "https://www.steamgriddb.com/logo/108334",
+      "download_url": "https://cdn2.steamgriddb.com/logo/f75a494d68eae549179996c4610bda0c.png",
+      "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/f75a494d68eae549179996c4610bda0c.png",
+      "uploader": "HiddenEgg",
+      "uploader_profile": "https://www.steamgriddb.com/profile/76561199045105518",
+      "style": "official",
+      "language": "en",
+      "mime": "image/png",
+      "animated": false,
+      "tags": {
+        "nsfw": false,
+        "humor": false,
+        "epilepsy": false
+      },
+      "upload_date_unix": 1710573623,
+      "notes": "<p>Alternate Textless White Logo</p>\n",
+      "license": null,
+      "license_status": "No per-asset license field listed in the public catalog.",
+      "file": "originals/sgdb-108334-official-en-hiddenegg.png",
+      "bytes": 17923,
+      "sha256": "2a60304f4c2dc7512b34a2c71ec7131a17704e7731934a56552a93579c5b982b",
+      "image": {
+        "format": "PNG",
+        "mode": "P",
+        "width": 3440,
+        "height": 932,
+        "alpha_extrema": [
+          0,
+          255
+        ],
+        "has_transparent_pixels": true,
+        "frames": 1,
+        "icc_profile_present": false,
+        "gamma": null,
+        "srgb_intent": null,
+        "png_text": {}
+      },
+      "design_family": "Textless skull and wings",
+      "selection_reason": "3440x932 transparent white emblem without any wordmark; useful at small overlay sizes."
+    },
+    {
+      "id": 108191,
+      "source_page": "https://www.steamgriddb.com/logo/108191",
+      "download_url": "https://cdn2.steamgriddb.com/logo/1157644f95346860466c397f9812dc71.png",
+      "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/1157644f95346860466c397f9812dc71.png",
+      "uploader": "CluckenDip",
+      "uploader_profile": "https://www.steamgriddb.com/profile/76561198120642113",
+      "style": "official",
+      "language": "en",
+      "mime": "image/png",
+      "animated": false,
+      "tags": {
+        "nsfw": false,
+        "humor": false,
+        "epilepsy": false
+      },
+      "upload_date_unix": 1710373820,
+      "notes": "<p><strong><a href=\"https://image.api.playstation.com/vulcan/ap/rnd/202309/2115/249a75447b653d4118ee62f1a733ad8ee66beaa0e11ea60b.png\">PS logo</a> <code>Super Citizen Edition</code></strong><br />\n<em><a href=\"https://image.api.playstation.com/vulcan/ap/rnd/202305/2319/f3727885c39dbadbc0950230cbdd66b2f7f4474e50e412e7.png\">&gt;standard</a></em></p>\n",
+      "license": null,
+      "license_status": "No per-asset license field listed in the public catalog.",
+      "file": "originals/sgdb-108191-official-en-cluckendip.png",
+      "bytes": 24424,
+      "sha256": "6b79188392994784bee6e798bf89b77a27535f481c48732818a4f49f628da551",
+      "image": {
+        "format": "PNG",
+        "mode": "P",
+        "width": 2106,
+        "height": 592,
+        "alpha_extrema": [
+          0,
+          255
+        ],
+        "has_transparent_pixels": true,
+        "frames": 1,
+        "icc_profile_present": false,
+        "gamma": null,
+        "srgb_intent": null,
+        "png_text": {}
+      },
+      "design_family": "Super Citizen Edition",
+      "selection_reason": "2106x592 clean yellow edition banner with subtitle and star row; highest-resolution clean representative of this edition design."
+    },
+    {
+      "id": 139972,
+      "source_page": "https://www.steamgriddb.com/logo/139972",
+      "download_url": "https://cdn2.steamgriddb.com/logo/0f7b9b83733c9da270c355799dd79920.png",
+      "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/0f7b9b83733c9da270c355799dd79920.png",
+      "uploader": "r_dsgnd",
+      "uploader_profile": "https://www.steamgriddb.com/profile/76561198355292092",
+      "style": "official",
+      "language": "en",
+      "mime": "image/png",
+      "animated": false,
+      "tags": {
+        "nsfw": false,
+        "humor": false,
+        "epilepsy": false
+      },
+      "upload_date_unix": 1747926035,
+      "notes": null,
+      "license": null,
+      "license_status": "No per-asset license field listed in the public catalog.",
+      "file": "originals/sgdb-139972-official-en-r-dsgnd.png",
+      "bytes": 628528,
+      "sha256": "ab3778e25d13121886d397110a859c1163c4bea339ecdffae5a29f0926de717e",
+      "image": {
+        "format": "PNG",
+        "mode": "RGBA",
+        "width": 2021,
+        "height": 590,
+        "alpha_extrema": [
+          0,
+          255
+        ],
+        "has_transparent_pixels": true,
+        "frames": 1,
+        "icc_profile_present": false,
+        "gamma": null,
+        "srgb_intent": null,
+        "png_text": {}
+      },
+      "design_family": "Omens of Tyranny",
+      "selection_reason": "2021x590 distressed update banner with its original subtitle and wing artwork."
+    },
+    {
+      "id": 139966,
+      "source_page": "https://www.steamgriddb.com/logo/139966",
+      "download_url": "https://cdn2.steamgriddb.com/logo/e82c5ca920d9246e5922769a8d383df0.png",
+      "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/e82c5ca920d9246e5922769a8d383df0.png",
+      "uploader": "r_dsgnd",
+      "uploader_profile": "https://www.steamgriddb.com/profile/76561198355292092",
+      "style": "official",
+      "language": "en",
+      "mime": "image/png",
+      "animated": false,
+      "tags": {
+        "nsfw": false,
+        "humor": false,
+        "epilepsy": false
+      },
+      "upload_date_unix": 1747923232,
+      "notes": null,
+      "license": null,
+      "license_status": "No per-asset license field listed in the public catalog.",
+      "file": "originals/sgdb-139966-official-en-r-dsgnd.png",
+      "bytes": 326258,
+      "sha256": "d9280de9727d39c027053a72043f182d1de934ac8543239b5e1c76f7a563abc7",
+      "image": {
+        "format": "PNG",
+        "mode": "LA",
+        "width": 2043,
+        "height": 580,
+        "alpha_extrema": [
+          0,
+          255
+        ],
+        "has_transparent_pixels": true,
+        "frames": 1,
+        "icc_profile_present": false,
+        "gamma": null,
+        "srgb_intent": null,
+        "png_text": {}
+      },
+      "design_family": "Heart of Democracy",
+      "selection_reason": "2043x580 named update banner with distinct angular wing strips and star/skull placement."
+    },
+    {
+      "id": 148760,
+      "source_page": "https://www.steamgriddb.com/logo/148760",
+      "download_url": "https://cdn2.steamgriddb.com/logo/f32f3fb8595c6ee41adf6555478a0b00.png",
+      "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/f32f3fb8595c6ee41adf6555478a0b00.png",
+      "uploader": "r_dsgnd",
+      "uploader_profile": "https://www.steamgriddb.com/profile/76561198355292092",
+      "style": "official",
+      "language": "en",
+      "mime": "image/png",
+      "animated": false,
+      "tags": {
+        "nsfw": false,
+        "humor": false,
+        "epilepsy": false
+      },
+      "upload_date_unix": 1757150397,
+      "notes": null,
+      "license": null,
+      "license_status": "No per-asset license field listed in the public catalog.",
+      "file": "originals/sgdb-148760-official-en-r-dsgnd.png",
+      "bytes": 80017,
+      "sha256": "bbb04ddc0652b4df9476a4c63e0c71c084c1a72c7f151be776b6a5816a872ab0",
+      "image": {
+        "format": "PNG",
+        "mode": "LA",
+        "width": 2131,
+        "height": 592,
+        "alpha_extrema": [
+          0,
+          255
+        ],
+        "has_transparent_pixels": true,
+        "frames": 1,
+        "icc_profile_present": false,
+        "gamma": null,
+        "srgb_intent": null,
+        "png_text": {}
+      },
+      "design_family": "Into the Unjust",
+      "selection_reason": "2131x592 named update banner with the original distressed lettering and asymmetric angular wing artwork."
+    }
+  ],
+  "source_catalog_entries": 69,
+  "source_unique_original_files": 67,
+  "curation_file": "curation.json",
+  "curated_utc": "2026-10-12T21:52:26.482653+00:00",
+  "humor_or_meme_branding_excluded": true
+}

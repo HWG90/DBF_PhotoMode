@@ -38,11 +38,12 @@ def srgb(value):
 with tempfile.TemporaryDirectory(prefix='photo-native-test-') as directory:
     folder=Path(directory)
     tested=0
-    def good(name,data,width,height,expected,color=False,tolerance=0):
+    def good(name,data,width,height,expected,color=False,tolerance=0,encoding=None,white=203.0):
         global tested
         source=folder/(name+'.dds');output=folder/(name+'.png')
         source.write_bytes(data)
-        result=color_convert(str(source),str(output),1,203.0)if color else convert(str(source),str(output))
+        mode=encoding if encoding is not None else 1 if color else None
+        result=color_convert(str(source),str(output),mode,white)if mode is not None else convert(str(source),str(output))
         assert result==1,(name,ctypes.get_last_error())
         opened=Image.open(output);assert opened.info.get('srgb')==0,'Output must identify its sRGB color space'
         image=opened.convert('RGBA')
@@ -79,12 +80,53 @@ with tempfile.TemporaryDirectory(prefix='photo-native-test-') as directory:
     expected2020=[(221,0,0,255),(0,173,0,255),(0,0,194,255),(100,202,0,255)]
     payload=b''.join(struct.pack('<I',r|(g<<10)|(b<<20))for r,g,b in colors2020)
     good('hdr10-gamut',header(4,1,24,16)+payload,4,1,expected2020,color=True,tolerance=2)
+    # Independently evaluated double-precision vectors from the extracted native
+    # final-compositor constants (NATIVE-SDR-DISPLAY-TRANSFER.json), not from this
+    # converter. The 203-nit anchor should reach byte 223, rather than legacy
+    # Reinhard's byte 188; 1/10/100-nit midtones also constrain the exponent.
+    native_gray=[0,21,58,163,223,255,255]
+    payload=b''.join(struct.pack('<I',v|(v<<10)|(v<<20))for v in pq_codes)
+    for format in (24,23):
+        good('native-display-neutral-'+str(format),header(7,1,format,28)+payload,7,1,
+             [(v,v,v,255)for v in native_gray],encoding=2,white=0,tolerance=1)
+    native_codes=colors2020+[(350,500,620)]
+    native_rgb=[(207,0,0,255),(0,173,0,255),(0,0,175,255),(114,230,0,255),(0,154,255,255)]
+    payload=b''.join(struct.pack('<I',r|(g<<10)|(b<<20))for r,g,b in native_codes)
+    good('native-display-gamut',header(5,1,24,20)+payload,5,1,native_rgb,encoding=2,white=0,tolerance=1)
+    # Mode 2's normalization is fixed by the game. The compatibility parameter
+    # is ignored, including values that must remain invalid for legacy mode 1.
+    sample=header(1,1,24,4)+struct.pack('<I',594|(594<<10)|(594<<20))
+    for i,white in enumerate((0,80,203,1000,float('nan'),float('inf'))):
+        good('native-fixed-normalization-'+str(i),sample,1,1,[(223,223,223,255)],encoding=2,white=white,tolerance=1)
+    # Explicit mode 0 must match the original export byte-for-byte for both
+    # 8-bit SDR and SDR RGB10. Storage precision alone must never select HDR.
+    for format,pixels,expected_pixels in [(28,bytes((12,34,56,0)),[(12,34,56,255)]),
+                                          (24,struct.pack('<I',51|(300<<10)|(700<<20)),[expected10[3]])]:
+        data=header(1,1,format,4)+pixels
+        good('sdr-explicit-'+str(format),data,1,1,expected_pixels,encoding=0,white=0)
+        original=folder/f'sdr-original-{format}.png';source=folder/f'sdr-explicit-{format}.dds'
+        assert convert(str(source),str(original))==1
+        assert original.read_bytes()==(folder/f'sdr-explicit-{format}.png').read_bytes(),'SDR output must remain byte-identical'
+    # Retained native engine SDR capture: exact DXGI 28 header, source dimensions
+    # 3840x2160/pitch15360, and ship-name pixel (390,70) = [0,233,255,255].
+    # Its independently visible gold must become [255,233,0], while generic DDS
+    # mode 0 still interprets the same bytes as cyan. No broad decoder change.
+    engine_pixels=bytes((0,233,255,255,0,0,255,255,50,100,200,255))
+    engine_sample=header(3,1,28,12)+engine_pixels
+    good('engine-sdr-bgra',engine_sample,3,1,[(255,233,0,255),(255,0,0,255),(200,100,50,255)],encoding=3,white=0)
+    good('generic-same-engine-bytes',engine_sample,3,1,[(0,233,255,255),(0,0,255,255),(50,100,200,255)],encoding=0,white=0)
+    for format,pixel_size in ((27,4),(29,4),(87,4),(24,4),(10,8),(2,16)):
+        source=folder/f'wrong-engine-format-{format}.dds';output=folder/f'wrong-engine-format-{format}.png'
+        source.write_bytes(header(1,1,format,pixel_size)+bytes(pixel_size))
+        assert color_convert(str(source),str(output),3,0)==0 and ctypes.get_last_error()==50 and not output.exists()
     source=folder/'profile.dds';source.write_bytes(header(1,1,24,4)+struct.pack('<I',520|(520<<10)|(520<<20)))
-    for encoding,white in [(2,203),(1,0),(1,float('nan')),(1,float('inf')),(1,10001)]:
+    for encoding,white in [(4,203),(0xffffffff,0),(1,0),(1,float('nan')),(1,float('inf')),(1,10001)]:
         output=folder/f'bad-profile-{encoding}-{white}.png'
         assert color_convert(str(source),str(output),encoding,white)==0 and ctypes.get_last_error()==87 and not output.exists()
-    source.write_bytes(header(1,1,28,4)+bytes((12,34,56,0)));output=folder/'wrong-hdr-format.png'
-    assert color_convert(str(source),str(output),1,203)==0 and ctypes.get_last_error()==50 and not output.exists()
+    source.write_bytes(header(1,1,28,4)+bytes((12,34,56,0)))
+    for encoding in (1,2):
+        output=folder/f'wrong-hdr-format-{encoding}.png'
+        assert color_convert(str(source),str(output),encoding,203)==0 and ctypes.get_last_error()==50 and not output.exists()
     values=[(0,.0031308,.5),(1,float('nan'),float('inf')),(-float('inf'),2,-.1)]
     for format,code,bytes_per_pixel in ((10,'e',8),(2,'f',16),(9,'e',8),(1,'f',16)):
         payload=b''.join(struct.pack('<'+code*4,*pixel,0)for pixel in values)
@@ -105,5 +147,6 @@ with tempfile.TemporaryDirectory(prefix='photo-native-test-') as directory:
         source=folder/(name+'.dds');output=folder/(name+'.png');source.write_bytes(data)
         assert convert(str(source),str(output))==0,name
         assert not output.exists(),name
+        assert color_convert(str(source),str(output),3,0)==0 and not output.exists(),('engine-profile',name)
     assert not list(folder.glob('*.tmp-*')),'All partial sibling files must be cleaned'
-print(f'{tested} valid DDS conversions, {len(bad)} malformed/unsupported rejections, Unicode paths, input preservation, atomic no-overwrite, and temp cleanup passed')
+print(f'{tested} valid DDS conversions, {len(bad)} malformed/unsupported rejections, native display anchors/gamut, engine SDR BGRA profile and six wrong-format rejections, legacy HDR compatibility, SDR byte identity, Unicode paths, input preservation, atomic no-overwrite, and temp cleanup passed')

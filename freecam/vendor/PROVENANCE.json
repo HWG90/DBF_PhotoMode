@@ -14,7 +14,9 @@
     "font.lua": "83f7e1fd6076f6f86bc86bdb8ae302bfc2b0e5902ceae1a2041420b3b722dcc0",
     "store.lua": "3bc9a632382be9591a6119c576d9c0b2f33bd0fef9db8103de00c0cff87f4382",
     "view.lua": "3f2e45fdaa2981529e3bb8bf62a6ede71637d081b3c53d0f8ae2f27cf6aa6f2a",
-    "PhotoCapture_f37e408d89cd.dll": "f37e408d89cd8c8fd222039ab13e4614e887cdd2c552050c632ccb223bc70b53"
+    "PhotoCapture_f37e408d89cd.dll": "f37e408d89cd8c8fd222039ab13e4614e887cdd2c552050c632ccb223bc70b53",
+    "PhotoCapture_455c13a828a8.dll": "455c13a828a8229d9da887d797e394ba3901024a4811c7e50f1f4736a8a6f564",
+    "PhotoCapture_7da458d8a23d.dll": "7da458d8a23d5a94039d33007957c62acce5b45ea4183bdd02e8731d19ff6a62"
   },
   "native_encoding": "hex; decoded only by package builder",
   "native_runtime": "Windows built-in APIs; static CRT",
@@ -30,7 +32,31 @@
       "baseline_sha256": "be5cc8c9930fa4de342d3afb3ce8be184c4f1208dcab1f7fcab67991ea1a6bd7",
       "sha256": "f37e408d89cd8c8fd222039ab13e4614e887cdd2c552050c632ccb223bc70b53",
       "change": "Color-aware HDR10 PQ/BT2020 to SDR sRGB PNG conversion selected by verified live back-buffer HDR state; hash filename preserves loaded old DLL."
+    },
+    "PhotoCapture_455c13a828a8.dll": {
+      "baseline_library": "PhotoCapture_f37e408d89cd.dll",
+      "baseline_sha256": "f37e408d89cd8c8fd222039ab13e4614e887cdd2c552050c632ccb223bc70b53",
+      "sha256": "455c13a828a8229d9da887d797e394ba3901024a4811c7e50f1f4736a8a6f564",
+      "change": "Explicit encoding 2 reproduces the native game SDR final-compositor display transfer for HDR10 captures, removing additional Reinhard dimming; fixed native nits normalization ignores white_nits. Legacy encoding 1 and generic SDR encoding 0 preserved; native frame-varying chroma dither omitted for deterministic PNG."
+    },
+    "PhotoCapture_7da458d8a23d.dll": {
+      "baseline_library": "PhotoCapture_455c13a828a8.dll",
+      "baseline_sha256": "455c13a828a8229d9da887d797e394ba3901024a4811c7e50f1f4736a8a6f564",
+      "sha256": "7da458d8a23d5a94039d33007957c62acce5b45ea4183bdd02e8731d19ff6a62",
+      "change": "Keeps encoding 2 native HDR-to-SDR display transfer and adds encoding 3 exclusively for verified SDR engine BGRA payload mislabeled exact DXGI RGBA8 28. Generic encoding 0 and legacy encoding 1 unchanged; white_nits ignored for fixed native profiles."
     }
   },
-  "capture_library": "PhotoCapture_f37e408d89cd.dll"
+  "capture_library": "PhotoCapture_7da458d8a23d.dll",
+  "chat_context_credit": {
+    "project": "Link's Link to Memory",
+    "author": "Link",
+    "license": "MIT",
+    "license_file": "LICENSE-Link.txt",
+    "license_sha256": "fab9af433f20baf14c55bd56796b63d8decf084fbbd08a4acd5769ad95ec22f7",
+    "adapted_from": "scripts/hd2_chat.lua is_open and scripts/hd2_addresses.lua CHAT_MANAGER/CHAT_FEED/CHAT_OPEN",
+    "standalone_reader": "freecam/chat_context.lua",
+    "addon_dependency": false,
+    "game_build_stamp": "6AB3B43F",
+    "behavior": "Read-only chat widget open byte; ignores game chat messages and sends no input or chat"
+  }
 }

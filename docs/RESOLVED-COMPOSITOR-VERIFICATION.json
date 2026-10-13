@@ -1,0 +1,18 @@
+{
+  "development_build": true,
+  "shader_gpu_sha256": "f5960f63e1247ac40af4bb37ccbd59ac26c9168aad9eb40936c082c9ddf40194",
+  "tested_pid": 73604,
+  "user_accepted_colors": true,
+  "user_confirmation": "the color compositor is perfect now",
+  "scope": "HDR, neutral color controls, scene effect None, active Shader DoF",
+  "registration_evidence": "dist/dof-investigation-20261011/RESOLVED-V2-REGISTRATION-73604.json",
+  "capture_analysis": "dist/dof-investigation-20261011/dev-live-73604/COLOR-PARITY-73604.json",
+  "stable_scene_pixels": 285696,
+  "median_luminance_on_off_ratio": 0.9747915267944336,
+  "median_relative_luminance_error": 0.02520844340324402,
+  "limitations": [
+    "SDR compositor colors remain unverified.",
+    "Blurred HDR highlights above GUI white remain limited by the GUI carrier.",
+    "These captures establish the correction of the tint and exposure failure, not exact all-pixel identity or Native blur quality."
+  ]
+}

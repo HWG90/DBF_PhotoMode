@@ -1,0 +1,66 @@
+{
+  "timestamp_utc": "2026-10-13T09:00:15.632262+00:00",
+  "version": "0.9-dev.20261013.3",
+  "process_id": 86644,
+  "data_only": true,
+  "native_hover_hook_included": false,
+  "live_positive_time_trial": {
+    "entity": 549,
+    "original_definition_float": 6,
+    "override": 0,
+    "control_z_before": 1,
+    "control_after": [
+      0,
+      0,
+      0
+    ],
+    "samples": 8,
+    "positive_dt_range": [
+      0.00912,
+      0.00948
+    ],
+    "flight_flag_remained_active": true,
+    "original_restored": 6
+  },
+  "live_basic_zero_pause": {
+    "owned_guard_zero_acquisitions": 4,
+    "resumes": 4,
+    "user_report": "Paused and resumed safely; manual resume",
+    "rate_after": 1,
+    "override_restored": 6
+  },
+  "hover_melee_reproduction_verified": true,
+  "verification_updated_utc": "2026-10-13T09:21:28Z",
+  "live_hover_melee_reproduction": {
+    "user_confirmation": "works",
+    "scope": "The original reported hoverpack + melee + Photo Mode zero-time pause/resume reproduction in the development runtime",
+    "confirmation_context": "User confirmed the original reproduction before requesting the 0.9.5 release. An earlier attempt that did not open Photo Mode is excluded from this result.",
+    "separate_from_basic_cycles": true,
+    "trace_evidence": "dist/review/hoverpack-input-20261013/hover-zero-86644.txt",
+    "trace_observed": {
+      "owned_guard_started": true,
+      "zero_world_dt_observed": true,
+      "flight_flag_remained_active": true,
+      "control_and_jump_remained_zero": true,
+      "rate_after": 1,
+      "override_restored": 6,
+      "guard_after": "idle",
+      "automatic_resume": false
+    },
+    "evidence_boundary": "The user's report establishes the melee reproduction result; the trace separately establishes guarded zero-time pause and restored runtime state. This does not establish universal stability or full release-package cold-start behavior."
+  },
+  "known_limits": [
+    "First supervised timeout used simulation time and did not fire; replaced with real-time research watchdog",
+    "Native scheduler versus Lua callback ordering not independently established; admission also requires observed neutral game controls",
+    "Connected or unidentified controllers refuse guarded hover pause",
+    "Full packaged startup not yet live verified"
+  ],
+  "source_sha256": {
+    "hover_pause.lua": "dc9e7216251e8b1a34152a60626423f61bf86a3445eac46de8e5e679155340b8",
+    "hover_pause_backend.lua": "bb89feb72fdbc006dc639ebbd86dfa950b09ccfb13931f809eb4aaeb94fc15e5",
+    "simulation.lua": "4d08f6bdd21a6056e84822be4d72de88dacdc2ada55ecf0a1736fe32763e366b",
+    "controller.lua": "c2b8a2d4d45a3289434be552feb93dc4a16f0964d05308d2591f90b2cf458314",
+    "input_release.lua": "a6064b6336b2a73c52612a03f3bdec710c8b8630e7140634c682c89c92a5185c",
+    "input_release_backend.lua": "4f77c27837d08eb56d6af28efc70eec2965fe70ac92b68294d23b29902a62d0f"
+  }
+}

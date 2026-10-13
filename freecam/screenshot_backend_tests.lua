@@ -40,5 +40,11 @@ sr.Application.save_render_target=function(_,path)calls=calls+1;files[path]='not
 assert(not backend.capture('C:/Shots/invalid.dds'))
 sr.Application.save_render_target=function()error('Native capture refused')end
 assert(not backend.capture('C:/Shots/exception.dds'))
+local sdr_width=2;local sdr_hdr=false
+local sdr_backend=assert(factory.new(sr,function()return true,{format=0,width=sdr_width,height=2,kind=4,mips=1,array=1,hdr_enabled=sdr_hdr}end))
+sr.Application.save_render_target=function(_,path)files[path]=body end
+ok,result=sdr_backend.capture('C:/Shots/engine-sdr.dds');assert(ok and result.color_encoding=='sdr-bgra-engine','Verified native SDR RGBA-labelled BGRA needs the engine-specific converter')
+sdr_width=3;ok,result=sdr_backend.capture('C:/Shots/unmatched-sdr.dds');assert(ok and result.color_encoding=='srgb','Do not swap channels for an unverified surface shape')
+sdr_width=2;sdr_hdr=true;ok,result=sdr_backend.capture('C:/Shots/non-sdr-state.dds');assert(ok and result.color_encoding=='srgb','The SDR correction requires a verified live SDR flag')
 io.open=original_open
 print('Photo screenshot backend: existing-target guard, absolute DDS path, no overwrite, file/header/dimension validation and failure reporting passed')

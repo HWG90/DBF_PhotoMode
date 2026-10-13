@@ -1,14 +1,11 @@
-# Known issues in 0.7 Preview
+# Known issues in 0.9.5
 
-NOTICE: When Shader DoF is enabled, scene effects and color controls are grayed out.
-The menu displays "Shader DoF Enabled. Scene Effects disabled".
-Turn DoF OFF or select Native camera mode to use scene effects.
-
-- Native game engine DoF is still nonfunctional for manual focus/aperture control. Native numeric controls remain disabled; the native toggle only uses the existing engine effect. Use Shader preview for adjustable focus/aperture.
-- Shader DoF blur samples a 960x540 color source. Focused pixels retain the original full-resolution scene; final bokeh quality remains under review.
-- Scene effects and exposure/contrast/saturation are unverified previews. They are gated while Shader DoF is ON because the passes do not yet share grading. Scene color also uses a 960x540 source.
-- Built-in HDR-aware PNG capture may retain ship UI. Steam screenshots remain an alternative.
-- Shader packs replacing the default shader registry require an explicit registration merge.
-- Pause and slow motion require a verified solo session. No unrelated alt-tab crash fix is claimed.
-
-BSL and MDL are the only published packages for this preview.
+- **Mission photo-light asset fix: Not tested fully.** Dedicated light assets are now bundled so spawning no longer relies on a ship-only prefab. The earlier ship light was demonstrated live; the new asset path has offline validation only. Availability still requires the correct assets to be loaded after restart.
+- Native focus/aperture and camera-instance recovery were user-tested during development. This does not prove every scene, game update, ragdoll or transition. Controls wait for a validated current camera rather than writing through a stale one.
+- Shader DoF and scene grading share a full-resolution compositor. HDR tint/exposure was accepted with neutral grading, no scene effect and active Shader DoF. SDR compositor parity and every effect combination remain unverified. Blurred HDR energy above GUI white remains limited by the GUI carrier. Native remains the blur-quality baseline.
+- WARMING UP SCENE may remain briefly after launch or display changes while resources stabilize. Install all assets included with your chosen loader package and restart after changing them.
+- The reported hoverpack + melee pause/resume reproduction passed with the data-only guard. This is limited test coverage. Connected or unidentified controllers refuse active-hover guarded pause. Pause and slow motion require a verified solo session.
+- Screenshot conversion includes SDR channel and HDR brightness fixes; ship UI may still appear. The rebindable Pause shortcut is fixture-tested; this release does not claim a separate live keyboard-trigger validation or intercept Windows Print Screen.
+- AI passive/dummy controls are not integrated into this release. Director currently provides camera presets.
+- Shader packs replacing the default shader registry require a registration merge. Run only one Photo Mode runtime loader at a time.
+- No general alt-tab crash fix or HDR/SDR switching crash fix is claimed. Newly bundled logos, mission lights and complete release cold-start behavior have not all received fresh live acceptance.

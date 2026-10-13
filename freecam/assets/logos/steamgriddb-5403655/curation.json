@@ -1,0 +1,2923 @@
+{
+  "curated_utc": "2026-10-12T21:52:26.482653+00:00",
+  "source_catalog_url": "https://www.steamgriddb.com/game/5403655/logos",
+  "method": "Visual review of all 67 originals in the full contact sheet, plus enlarged comparisons of the main wordmark and banner layouts. Grouped by geometry and meaningful artwork, ignoring minor color, crop, scale, glow, localization and replacement-wording differences.",
+  "original_catalog_entries": 69,
+  "original_unique_files": 67,
+  "selected_entries": 8,
+  "selected_unique_files": 8,
+  "rejected_entries": 61,
+  "pruned_unique_files": 59,
+  "full_collection_backup": "dist/review/logo-collection-originals",
+  "backup_manifest_sha256": "7e53c49f30ccfb1962391408f2a0daecc058a03c4c15cb458e560717aad2bd68",
+  "groups": [
+    {
+      "family": "Main stacked wordmark",
+      "representative_id": 105609,
+      "selection_reason": "Clean 3886x1508 white original without the tiny TM mark; retains the standard Roman II, skull and wings layout.",
+      "collapsed_ids": [
+        105467,
+        108199,
+        169593,
+        107514,
+        165122,
+        129557,
+        113777,
+        106071,
+        133084,
+        113984,
+        106132,
+        104146,
+        160792,
+        106288,
+        97248,
+        121372,
+        123575
+      ],
+      "reason": "Same stacked Roman II/skull/wings template; collapses recolors, slight crop/size/glow changes, localized text and parody replacement wording."
+    },
+    {
+      "family": "Wide wordmark",
+      "representative_id": 139968,
+      "selection_reason": "High-resolution 2042x164 wordmark without the large central emblem; a distinct very wide layout.",
+      "collapsed_ids": [
+        148762,
+        139969,
+        144340
+      ],
+      "reason": "Same wide text-only layout with color, texture or replacement-wording changes."
+    },
+    {
+      "family": "Compact wordmark and skull",
+      "representative_id": 139970,
+      "selection_reason": "Compact horizontal yellow wordmark with the skull beneath; distinct from the large stacked Roman II version.",
+      "collapsed_ids": [
+        141394,
+        144342
+      ],
+      "reason": "Same compact wordmark/emblem proportions with recoloring or alternate theme wording."
+    },
+    {
+      "family": "Textless skull and wings",
+      "representative_id": 108334,
+      "selection_reason": "3440x932 transparent white emblem without any wordmark; useful at small overlay sizes.",
+      "collapsed_ids": [
+        108333
+      ],
+      "reason": "Yellow recolor of the same textless emblem."
+    },
+    {
+      "family": "Super Citizen Edition",
+      "representative_id": 108191,
+      "selection_reason": "2106x592 clean yellow edition banner with subtitle and star row; highest-resolution clean representative of this edition design.",
+      "collapsed_ids": [
+        104145,
+        106782,
+        110513,
+        111294,
+        151547,
+        122519
+      ],
+      "reason": "Same clean banner/edition-star design with recoloring, localized or replacement wording, smaller dimensions or tiny rendering differences."
+    },
+    {
+      "family": "Omens of Tyranny",
+      "representative_id": 139972,
+      "selection_reason": "2021x590 distressed update banner with its original subtitle and wing artwork.",
+      "collapsed_ids": [
+        128611,
+        165271,
+        129012,
+        163395,
+        147908
+      ],
+      "reason": "Same named update banner, including clean recreations, recolors, localized subtitle or tiny TM changes."
+    },
+    {
+      "family": "Heart of Democracy",
+      "representative_id": 139966,
+      "selection_reason": "2043x580 named update banner with distinct angular wing strips and star/skull placement.",
+      "collapsed_ids": [
+        145092
+      ],
+      "reason": "Black recolor of the same Heart of Democracy banner."
+    },
+    {
+      "family": "Into the Unjust",
+      "representative_id": 148760,
+      "selection_reason": "2131x592 named update banner with the original distressed lettering and asymmetric angular wing artwork.",
+      "collapsed_ids": [
+        158650
+      ],
+      "reason": "Same Into the Unjust banner template with subtitle replacement, parody wording, localization or unfinished background block."
+    }
+  ],
+  "rejected": [
+    {
+      "entry": {
+        "id": 105467,
+        "source_page": "https://www.steamgriddb.com/logo/105467",
+        "download_url": "https://cdn2.steamgriddb.com/logo/37e4da73a1e31d55eb7c2340433d683c.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/37e4da73a1e31d55eb7c2340433d683c.png",
+        "uploader": "Akela",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561197981066031",
+        "style": "official",
+        "language": "en",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": false,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1707389231,
+        "notes": "<p>Wasn't a fan of how blurry the other two were on here so I took the Steam _2x logo, made it yellow, cropped it better, and removed the trademark.</p>\n",
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-105467-official-en-akela.png",
+        "bytes": 27107,
+        "sha256": "8c63618e0520da33aa0454e0c6deff6c63885b56b8d2485aa1dcb0c6f279409e",
+        "image": {
+          "format": "PNG",
+          "mode": "RGBA",
+          "width": 1250,
+          "height": 485,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": 105609,
+      "design_family": "Main stacked wordmark",
+      "reason": "Same stacked Roman II/skull/wings template; collapses recolors, slight crop/size/glow changes, localized text and parody replacement wording."
+    },
+    {
+      "entry": {
+        "id": 108199,
+        "source_page": "https://www.steamgriddb.com/logo/108199",
+        "download_url": "https://cdn2.steamgriddb.com/logo/75eec3e3a4ec4323809ab18c543a27d7.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/75eec3e3a4ec4323809ab18c543a27d7.png",
+        "uploader": "CluckenDip",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561198120642113",
+        "style": "white",
+        "language": "en",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": false,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1710376688,
+        "notes": "<p><em><strong>White</strong> | <a href=\"https://www.steamgriddb.com/logo/169593\">Black</a></em></p>\n",
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-108199-white-en-cluckendip.png",
+        "bytes": 24572,
+        "sha256": "d71c71bcf02818f1f29b162d4a18a9e69d374e3a914f7635c0eb73484f7a1ca3",
+        "image": {
+          "format": "PNG",
+          "mode": "P",
+          "width": 3935,
+          "height": 1508,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": 105609,
+      "design_family": "Main stacked wordmark",
+      "reason": "Same stacked Roman II/skull/wings template; collapses recolors, slight crop/size/glow changes, localized text and parody replacement wording."
+    },
+    {
+      "entry": {
+        "id": 169593,
+        "source_page": "https://www.steamgriddb.com/logo/169593",
+        "download_url": "https://cdn2.steamgriddb.com/logo/afd4b0886c4743441488580ca8045ad8.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/afd4b0886c4743441488580ca8045ad8.png",
+        "uploader": "CluckenDip",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561198120642113",
+        "style": "black",
+        "language": "en",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": false,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1779104447,
+        "notes": "<p><em><a href=\"https://www.steamgriddb.com/logo/108199\">White</a> | <strong>Black</strong></em></p>\n",
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-169593-black-en-cluckendip.png",
+        "bytes": 24572,
+        "sha256": "18d9018e076d8673d1e6ad93b7509f4680d9869a75aca6d948eda235fa4a986b",
+        "image": {
+          "format": "PNG",
+          "mode": "P",
+          "width": 3935,
+          "height": 1508,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": 105609,
+      "design_family": "Main stacked wordmark",
+      "reason": "Same stacked Roman II/skull/wings template; collapses recolors, slight crop/size/glow changes, localized text and parody replacement wording."
+    },
+    {
+      "entry": {
+        "id": 107514,
+        "source_page": "https://www.steamgriddb.com/logo/107514",
+        "download_url": "https://cdn2.steamgriddb.com/logo/614fc57cde2ee383718d4f4c462b5fba.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/614fc57cde2ee383718d4f4c462b5fba.png",
+        "uploader": "Nidias",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561198251098632",
+        "style": "custom",
+        "language": "en",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": false,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1709644776,
+        "notes": "<p>black with gritty texture</p>\n",
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-107514-custom-en-nidias.png",
+        "bytes": 38881,
+        "sha256": "7d842d7483adc79e9e2331c8c72bf8e26bfa663adee2ee9b3d4d4e53833ed7e7",
+        "image": {
+          "format": "PNG",
+          "mode": "P",
+          "width": 636,
+          "height": 248,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": 105609,
+      "design_family": "Main stacked wordmark",
+      "reason": "Same stacked Roman II/skull/wings template; collapses recolors, slight crop/size/glow changes, localized text and parody replacement wording."
+    },
+    {
+      "entry": {
+        "id": 165122,
+        "source_page": "https://www.steamgriddb.com/logo/165122",
+        "download_url": "https://cdn2.steamgriddb.com/logo/58683c2f7657a29851307b322db34659.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/58683c2f7657a29851307b322db34659.png",
+        "uploader": "Dogo314",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561198864526631",
+        "style": "official",
+        "language": "en",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": false,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1774388327,
+        "notes": "<p>Source: <a href=\"https://image.api.playstation.com/vulcan/ap/rnd/202305/2319/f3727885c39dbadbc0950230cbdd66b2f7f4474e50e412e7.png\">PlayStation</a></p>\n",
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-165122-official-en-dogo314.png",
+        "bytes": 11788,
+        "sha256": "f8bbb8cff37986bf0b794d942bea9b9179491b4f6735303b86914d963358dd13",
+        "image": {
+          "format": "PNG",
+          "mode": "P",
+          "width": 1369,
+          "height": 526,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": 105609,
+      "design_family": "Main stacked wordmark",
+      "reason": "Same stacked Roman II/skull/wings template; collapses recolors, slight crop/size/glow changes, localized text and parody replacement wording."
+    },
+    {
+      "entry": {
+        "id": 129557,
+        "source_page": "https://www.steamgriddb.com/logo/129557",
+        "download_url": "https://cdn2.steamgriddb.com/logo/be6f10d5332234db965c09b9c93d498d.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/be6f10d5332234db965c09b9c93d498d.png",
+        "uploader": "Dyńka",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561199088564768",
+        "style": "white",
+        "language": "pl",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": false,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1735495442,
+        "notes": null,
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-129557-white-pl-dy-ka.png",
+        "bytes": 39275,
+        "sha256": "e84f1b21571d3209f5b99ab8f00346eb8a736cf29933b01d04a567a6b640c5d9",
+        "image": {
+          "format": "PNG",
+          "mode": "LA",
+          "width": 3886,
+          "height": 1508,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": 105609,
+      "design_family": "Main stacked wordmark",
+      "reason": "Same stacked Roman II/skull/wings template; collapses recolors, slight crop/size/glow changes, localized text and parody replacement wording."
+    },
+    {
+      "entry": {
+        "id": 113777,
+        "source_page": "https://www.steamgriddb.com/logo/113777",
+        "download_url": "https://cdn2.steamgriddb.com/logo/41eb994ab72c7ac3af9ba6ffa1304cad.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/41eb994ab72c7ac3af9ba6ffa1304cad.png",
+        "uploader": "uyle",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561198164341115",
+        "style": "official",
+        "language": "ru",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": false,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1717322241,
+        "notes": null,
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-113777-official-ru-uyle.png",
+        "bytes": 39692,
+        "sha256": "5e59e5c896be406b3e74b8e6d6280dddc3b8e44df683f2c56c0d95bb03d2eb44",
+        "image": {
+          "format": "PNG",
+          "mode": "LA",
+          "width": 3560,
+          "height": 1501,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": 105609,
+      "design_family": "Main stacked wordmark",
+      "reason": "Same stacked Roman II/skull/wings template; collapses recolors, slight crop/size/glow changes, localized text and parody replacement wording."
+    },
+    {
+      "entry": {
+        "id": 106071,
+        "source_page": "https://www.steamgriddb.com/logo/106071",
+        "download_url": "https://cdn2.steamgriddb.com/logo/e011f62d887c3a9b296001390c5352b3.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/e011f62d887c3a9b296001390c5352b3.png",
+        "uploader": "warlord",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561198322077829",
+        "style": "official",
+        "language": "ru",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": false,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1708043595,
+        "notes": null,
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-113777-official-ru-uyle.png",
+        "bytes": 39692,
+        "sha256": "5e59e5c896be406b3e74b8e6d6280dddc3b8e44df683f2c56c0d95bb03d2eb44",
+        "image": {
+          "format": "PNG",
+          "mode": "LA",
+          "width": 3560,
+          "height": 1501,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        },
+        "duplicate_of": 113777
+      },
+      "representative_id": 105609,
+      "design_family": "Main stacked wordmark",
+      "reason": "Same stacked Roman II/skull/wings template; collapses recolors, slight crop/size/glow changes, localized text and parody replacement wording."
+    },
+    {
+      "entry": {
+        "id": 133084,
+        "source_page": "https://www.steamgriddb.com/logo/133084",
+        "download_url": "https://cdn2.steamgriddb.com/logo/30d8cb078c72a87000b7de6b42a2bb38.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/30d8cb078c72a87000b7de6b42a2bb38.png",
+        "uploader": "bosd",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561198022718642",
+        "style": "official",
+        "language": "en",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": false,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1739790237,
+        "notes": "<p>old official logo pre EoF</p>\n",
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-133084-official-en-bosd.png",
+        "bytes": 9607,
+        "sha256": "447445028bfb92bd3bec9ea8309799546a63386c37a3b2dd3da14cd1f3bd6986",
+        "image": {
+          "format": "PNG",
+          "mode": "LA",
+          "width": 636,
+          "height": 248,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": 105609,
+      "design_family": "Main stacked wordmark",
+      "reason": "Same stacked Roman II/skull/wings template; collapses recolors, slight crop/size/glow changes, localized text and parody replacement wording."
+    },
+    {
+      "entry": {
+        "id": 113984,
+        "source_page": "https://www.steamgriddb.com/logo/113984",
+        "download_url": "https://cdn2.steamgriddb.com/logo/5b008f17eb0cb9ad467fe5768d117427.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/5b008f17eb0cb9ad467fe5768d117427.png",
+        "uploader": "Nicksterno",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561198132379208",
+        "style": "white",
+        "language": "uk",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": false,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1717462573,
+        "notes": null,
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-113984-white-uk-nicksterno.png",
+        "bytes": 28621,
+        "sha256": "f246265aa3bd1232daba4a70ea953989d082096e02b531a46ddec06dfefb5c1d",
+        "image": {
+          "format": "PNG",
+          "mode": "P",
+          "width": 3886,
+          "height": 1508,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": 105609,
+      "design_family": "Main stacked wordmark",
+      "reason": "Same stacked Roman II/skull/wings template; collapses recolors, slight crop/size/glow changes, localized text and parody replacement wording."
+    },
+    {
+      "entry": {
+        "id": 106132,
+        "source_page": "https://www.steamgriddb.com/logo/106132",
+        "download_url": "https://cdn2.steamgriddb.com/logo/e2e00e92ccef9a3dd943cb7c2a6a462b.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/e2e00e92ccef9a3dd943cb7c2a6a462b.png",
+        "uploader": "Monack",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561198126796274",
+        "style": "official",
+        "language": "en",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": false,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1708062826,
+        "notes": null,
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-106132-official-en-monack.png",
+        "bytes": 207785,
+        "sha256": "340780baa991b101aaefd3e299f5bb6ce7e6d411e928ec30898660624be9cae7",
+        "image": {
+          "format": "PNG",
+          "mode": "LA",
+          "width": 3308,
+          "height": 1335,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": 105609,
+      "design_family": "Main stacked wordmark",
+      "reason": "Same stacked Roman II/skull/wings template; collapses recolors, slight crop/size/glow changes, localized text and parody replacement wording."
+    },
+    {
+      "entry": {
+        "id": 104146,
+        "source_page": "https://www.steamgriddb.com/logo/104146",
+        "download_url": "https://cdn2.steamgriddb.com/logo/3cd51a22948d29fe5b92de6dee576501.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/3cd51a22948d29fe5b92de6dee576501.png",
+        "uploader": "MassiveGoods",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561197970763370",
+        "style": "official",
+        "language": "en",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": false,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1706111853,
+        "notes": null,
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-104146-official-en-massivegoods.png",
+        "bytes": 44409,
+        "sha256": "d01f211dd6e92c7886680ef630fe5b8d8a108bd930a279ac8b33d1ee0f9425ad",
+        "image": {
+          "format": "PNG",
+          "mode": "P",
+          "width": 1883,
+          "height": 740,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": 105609,
+      "design_family": "Main stacked wordmark",
+      "reason": "Same stacked Roman II/skull/wings template; collapses recolors, slight crop/size/glow changes, localized text and parody replacement wording."
+    },
+    {
+      "entry": {
+        "id": 160792,
+        "source_page": "https://www.steamgriddb.com/logo/160792",
+        "download_url": "https://cdn2.steamgriddb.com/logo/5b27b364af7e5ef725784bec746dbb91.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/5b27b364af7e5ef725784bec746dbb91.png",
+        "uploader": "Battle Engineer",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561198145396989",
+        "style": "official",
+        "language": "en",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": false,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1770295465,
+        "notes": "<p>2/5/2026 ARG logo</p>\n",
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-160792-official-en-battle-engineer.png",
+        "bytes": 18601,
+        "sha256": "4cb3a1aa6850c1486852afa338b1b8e564b02e94e3dcc2cdb3d1be617ca66201",
+        "image": {
+          "format": "PNG",
+          "mode": "P",
+          "width": 3886,
+          "height": 1508,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": 105609,
+      "design_family": "Main stacked wordmark",
+      "reason": "Same stacked Roman II/skull/wings template; collapses recolors, slight crop/size/glow changes, localized text and parody replacement wording."
+    },
+    {
+      "entry": {
+        "id": 106288,
+        "source_page": "https://www.steamgriddb.com/logo/106288",
+        "download_url": "https://cdn2.steamgriddb.com/logo/ba58b28a8052477462e69bf3ebc76fb7.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/ba58b28a8052477462e69bf3ebc76fb7.png",
+        "uploader": "Besli",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561197970967510",
+        "style": "white",
+        "language": "en",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": false,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1708225238,
+        "notes": "<p>Logo remade by Jonny Severn!</p>\n",
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-106288-white-en-besli.png",
+        "bytes": 47484,
+        "sha256": "fd39427bee85e49959bea318d8803c99c0013c77c521035c98bdcf1325f6d1c1",
+        "image": {
+          "format": "PNG",
+          "mode": "P",
+          "width": 2248,
+          "height": 866,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": 105609,
+      "design_family": "Main stacked wordmark",
+      "reason": "Same stacked Roman II/skull/wings template; collapses recolors, slight crop/size/glow changes, localized text and parody replacement wording."
+    },
+    {
+      "entry": {
+        "id": 97248,
+        "source_page": "https://www.steamgriddb.com/logo/97248",
+        "download_url": "https://cdn2.steamgriddb.com/logo/32d32773f19f2f421ebc2d41da4ef5a9.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/32d32773f19f2f421ebc2d41da4ef5a9.png",
+        "uploader": "GraphicDesignismypassion",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561198091550376",
+        "style": "official",
+        "language": "en",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": false,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1699652252,
+        "notes": "<p>removed the &quot;TM&quot;, cropped it and increased the size</p>\n",
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-97248-official-en-graphicdesignismypassion.png",
+        "bytes": 44409,
+        "sha256": "95c9fc207d469705469c762c63ff47bb2b5f2b615e41239a18b1e4d66cd7972f",
+        "image": {
+          "format": "PNG",
+          "mode": "P",
+          "width": 1883,
+          "height": 740,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": 105609,
+      "design_family": "Main stacked wordmark",
+      "reason": "Same stacked Roman II/skull/wings template; collapses recolors, slight crop/size/glow changes, localized text and parody replacement wording."
+    },
+    {
+      "entry": {
+        "id": 109776,
+        "source_page": "https://www.steamgriddb.com/logo/109776",
+        "download_url": "https://cdn2.steamgriddb.com/logo/c31f44edeb9250193778a13fc58f75de.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/c31f44edeb9250193778a13fc58f75de.png",
+        "uploader": "Blueninja08",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561198257673889",
+        "style": "official",
+        "language": "en",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": true,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1712490702,
+        "notes": "<p>PG Family Friendly Liberation</p>\n",
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-109776-official-en-blueninja08.png",
+        "bytes": 34059,
+        "sha256": "c9f60709de52844e786b277fa2d3231c2f0aed054ccbbd16b9842636a4eee727",
+        "image": {
+          "format": "PNG",
+          "mode": "P",
+          "width": 3886,
+          "height": 1508,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": null,
+      "design_family": "Joke/meme branding",
+      "reason": "Excluded joke/meme branding: Heckdivers. The source catalog explicitly tags this logo as humor.",
+      "category": "joke_or_meme"
+    },
+    {
+      "entry": {
+        "id": 110495,
+        "source_page": "https://www.steamgriddb.com/logo/110495",
+        "download_url": "https://cdn2.steamgriddb.com/logo/2a5cfaea8bd17e8fa12ec2f21480cdb4.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/2a5cfaea8bd17e8fa12ec2f21480cdb4.png",
+        "uploader": "Nakabashi",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561198075067340",
+        "style": "white",
+        "language": "en",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": true,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1713432575,
+        "notes": "<p>☢ every fken time ☢</p>\n",
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-110495-white-en-nakabashi.png",
+        "bytes": 30198,
+        "sha256": "270250b68e02e5fd50795c74d045210dc06e5254d74fd67786246f938479be98",
+        "image": {
+          "format": "PNG",
+          "mode": "P",
+          "width": 3935,
+          "height": 1508,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": null,
+      "design_family": "Joke/meme branding",
+      "reason": "Excluded joke/meme branding: Friendly Fire. The source catalog explicitly tags this logo as humor.",
+      "category": "joke_or_meme"
+    },
+    {
+      "entry": {
+        "id": 113986,
+        "source_page": "https://www.steamgriddb.com/logo/113986",
+        "download_url": "https://cdn2.steamgriddb.com/logo/b5d737b4ccad070a7ccae6fa6674d1dd.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/b5d737b4ccad070a7ccae6fa6674d1dd.png",
+        "uploader": "Nicksterno",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561198132379208",
+        "style": "white",
+        "language": "uk",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": true,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1717462769,
+        "notes": null,
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-113986-white-uk-nicksterno.png",
+        "bytes": 35267,
+        "sha256": "afeab274c3fadeef75b54b867b417600c442ec6a627e153df472c2b3a7287820",
+        "image": {
+          "format": "PNG",
+          "mode": "P",
+          "width": 3886,
+          "height": 1508,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": null,
+      "design_family": "Joke/meme branding",
+      "reason": "Excluded joke/meme branding: parody wordmark. The source catalog explicitly tags this logo as humor.",
+      "category": "joke_or_meme"
+    },
+    {
+      "entry": {
+        "id": 111015,
+        "source_page": "https://www.steamgriddb.com/logo/111015",
+        "download_url": "https://cdn2.steamgriddb.com/logo/62fa3eb030ac2fcfceecf027d2c27403.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/62fa3eb030ac2fcfceecf027d2c27403.png",
+        "uploader": "GopSalt",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561199438949531",
+        "style": "white",
+        "language": "ru",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": true,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1714148794,
+        "notes": null,
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-111015-white-ru-gopsalt.png",
+        "bytes": 23640,
+        "sha256": "eb628a9f5d0b7e2e48a81c53c861c93dfb2cbf15db81a940a64ec0e1851169d1",
+        "image": {
+          "format": "PNG",
+          "mode": "LA",
+          "width": 1874,
+          "height": 494,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": null,
+      "design_family": "Joke/meme branding",
+      "reason": "Excluded joke/meme branding: parody wordmark. The source catalog explicitly tags this logo as humor.",
+      "category": "joke_or_meme"
+    },
+    {
+      "entry": {
+        "id": 111543,
+        "source_page": "https://www.steamgriddb.com/logo/111543",
+        "download_url": "https://cdn2.steamgriddb.com/logo/754178c7e95e33bb6a571623d48c0f99.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/754178c7e95e33bb6a571623d48c0f99.png",
+        "uploader": "pancakesplatter",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561197989154152",
+        "style": "official",
+        "language": "en",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": true,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1714778190,
+        "notes": "<p>terrible concept but funni joek. someone please make a good version pls</p>\n",
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-111543-official-en-pancakesplatter.png",
+        "bytes": 9254,
+        "sha256": "fb31095c1705d7a7237ece69ca45bdb775693191c9965960648129ac03eb2071",
+        "image": {
+          "format": "PNG",
+          "mode": "LA",
+          "width": 631,
+          "height": 248,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": null,
+      "design_family": "Joke/meme branding",
+      "reason": "Excluded joke/meme branding: PSN Login. The source catalog explicitly tags this logo as humor.",
+      "category": "joke_or_meme"
+    },
+    {
+      "entry": {
+        "id": 111544,
+        "source_page": "https://www.steamgriddb.com/logo/111544",
+        "download_url": "https://cdn2.steamgriddb.com/logo/f1f8d83ce93eb0303f145e548e07b97c.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/f1f8d83ce93eb0303f145e548e07b97c.png",
+        "uploader": "pancakesplatter",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561197989154152",
+        "style": "official",
+        "language": "en",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": true,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1714778452,
+        "notes": "<p>funni meme logo but in yellow</p>\n",
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-111544-official-en-pancakesplatter.png",
+        "bytes": 24559,
+        "sha256": "5470096f35c89e1bee1495bf1cb2b2e779289f8494ed76a59fb7196a1f8a4607",
+        "image": {
+          "format": "PNG",
+          "mode": "RGBA",
+          "width": 631,
+          "height": 248,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": null,
+      "design_family": "Joke/meme branding",
+      "reason": "Excluded joke/meme branding: PSN Login. The source catalog explicitly tags this logo as humor.",
+      "category": "joke_or_meme"
+    },
+    {
+      "entry": {
+        "id": 114863,
+        "source_page": "https://www.steamgriddb.com/logo/114863",
+        "download_url": "https://cdn2.steamgriddb.com/logo/6f8993a4a8ac821b549f065f5a4fe430.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/6f8993a4a8ac821b549f065f5a4fe430.png",
+        "uploader": "Sylverstone14",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561198025021804",
+        "style": "official",
+        "language": "en",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": true,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1718563938,
+        "notes": "<p>Not even a smidge.</p>\n",
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-114863-official-en-sylverstone14.png",
+        "bytes": 59559,
+        "sha256": "deea601cf15fe9cf2790892e605e18172f38493c89d7809687563360efd73aeb",
+        "image": {
+          "format": "PNG",
+          "mode": "LA",
+          "width": 3886,
+          "height": 1508,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": null,
+      "design_family": "Joke/meme branding",
+      "reason": "Excluded joke/meme branding: Politics? In this game? Nope.. The source catalog explicitly tags this logo as humor.",
+      "category": "joke_or_meme"
+    },
+    {
+      "entry": {
+        "id": 126993,
+        "source_page": "https://www.steamgriddb.com/logo/126993",
+        "download_url": "https://cdn2.steamgriddb.com/logo/92e046b3bfde21047600bbf9167b52a2.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/92e046b3bfde21047600bbf9167b52a2.png",
+        "uploader": "josc",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561198303959612",
+        "style": "custom",
+        "language": "pt",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": true,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1732348234,
+        "notes": "<p>VAI BRASILIAM!</p>\n",
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-126993-custom-pt-josc.png",
+        "bytes": 32721,
+        "sha256": "f3641c3db864c6b5cb6e7620d6ba4602ae90114e826595180b10dfe5e9a45036",
+        "image": {
+          "format": "PNG",
+          "mode": "P",
+          "width": 4583,
+          "height": 1508,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": null,
+      "design_family": "Joke/meme branding",
+      "reason": "Excluded joke/meme branding: Brasildivers. The source catalog explicitly tags this logo as humor.",
+      "category": "joke_or_meme"
+    },
+    {
+      "entry": {
+        "id": 113985,
+        "source_page": "https://www.steamgriddb.com/logo/113985",
+        "download_url": "https://cdn2.steamgriddb.com/logo/f8f53c2854ae996830d077f48b064ede.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/f8f53c2854ae996830d077f48b064ede.png",
+        "uploader": "Nicksterno",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561198132379208",
+        "style": "white",
+        "language": "uk",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": true,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1717462768,
+        "notes": "<p>Quote of Taras Shevchenko</p>\n",
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-113985-white-uk-nicksterno.png",
+        "bytes": 25203,
+        "sha256": "c9ba4169969a897e102050a3f6aec898e081cccbebecbca65e771127e3cee36e",
+        "image": {
+          "format": "PNG",
+          "mode": "P",
+          "width": 3886,
+          "height": 1508,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": null,
+      "design_family": "Joke/meme branding",
+      "reason": "Excluded joke/meme branding: parody wordmark. The source catalog explicitly tags this logo as humor.",
+      "category": "joke_or_meme"
+    },
+    {
+      "entry": {
+        "id": 110496,
+        "source_page": "https://www.steamgriddb.com/logo/110496",
+        "download_url": "https://cdn2.steamgriddb.com/logo/d836fa739e046bea0090e07084e879e5.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/d836fa739e046bea0090e07084e879e5.png",
+        "uploader": "Nakabashi",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561198075067340",
+        "style": "white",
+        "language": "en",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": true,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1713432799,
+        "notes": "<p>⇧⇩⇨⇦⇧</p>\n",
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-110496-white-en-nakabashi.png",
+        "bytes": 31028,
+        "sha256": "18ea9543eef871527e48abcc1e872917f6281ce466231b79c32ab90fabfa4bda",
+        "image": {
+          "format": "PNG",
+          "mode": "P",
+          "width": 3886,
+          "height": 1508,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": null,
+      "design_family": "Joke/meme branding",
+      "reason": "Excluded joke/meme branding: Stratagem-arrow parody wordmark. The source catalog explicitly tags this logo as humor.",
+      "category": "joke_or_meme"
+    },
+    {
+      "entry": {
+        "id": 175892,
+        "source_page": "https://www.steamgriddb.com/logo/175892",
+        "download_url": "https://cdn2.steamgriddb.com/logo/1408bc4aba020a3d324a1948e2bb542b.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/1408bc4aba020a3d324a1948e2bb542b.png",
+        "uploader": "Montrik",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561198853974976",
+        "style": "official",
+        "language": "ru",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": true,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1785400895,
+        "notes": "<p>Шрифт - Octosquares</p>\n",
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-175892-official-ru-montrik.png",
+        "bytes": 27600,
+        "sha256": "210de63532c9b1f785dde9240e8187eeead8dd456add2fdeec33fbdb8e114023",
+        "image": {
+          "format": "PNG",
+          "mode": "LA",
+          "width": 611,
+          "height": 172,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": null,
+      "design_family": "Joke/meme branding",
+      "reason": "Excluded joke/meme branding: parody wordmark. The source catalog explicitly tags this logo as humor.",
+      "category": "joke_or_meme"
+    },
+    {
+      "entry": {
+        "id": 162759,
+        "source_page": "https://www.steamgriddb.com/logo/162759",
+        "download_url": "https://cdn2.steamgriddb.com/logo/1c09db5e08c1a87381bfd4ab9164aa69.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/1c09db5e08c1a87381bfd4ab9164aa69.png",
+        "uploader": "dUmer1987",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561199074085810",
+        "style": "custom",
+        "language": "ru",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": true,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1772210014,
+        "notes": null,
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-162759-custom-ru-dumer1987.png",
+        "bytes": 40320,
+        "sha256": "a3129c8a1eded71091ace45fa0bb1308466a79dd9300a942c9481798422dde49",
+        "image": {
+          "format": "PNG",
+          "mode": "P",
+          "width": 2418,
+          "height": 940,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": null,
+      "design_family": "Joke/meme branding",
+      "reason": "Excluded joke/meme branding: parody wordmark. The source catalog explicitly tags this logo as humor.",
+      "category": "joke_or_meme"
+    },
+    {
+      "entry": {
+        "id": 111636,
+        "source_page": "https://www.steamgriddb.com/logo/111636",
+        "download_url": "https://cdn2.steamgriddb.com/logo/daa181337f9fb25b5122ef9df114446d.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/daa181337f9fb25b5122ef9df114446d.png",
+        "uploader": "Da Docta",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561198154550065",
+        "style": "white",
+        "language": "pl",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": true,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1714926944,
+        "notes": "<p>Szambonurki II</p>\n",
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-111636-white-pl-da-docta.png",
+        "bytes": 33423,
+        "sha256": "c5b51ee5fbe177f4270b952e6de21c82ae06b720f3ded09f39af20722ad76d7f",
+        "image": {
+          "format": "PNG",
+          "mode": "P",
+          "width": 3893,
+          "height": 1513,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": null,
+      "design_family": "Joke/meme branding",
+      "reason": "Excluded joke/meme branding: parody wordmark. The source catalog explicitly tags this logo as humor.",
+      "category": "joke_or_meme"
+    },
+    {
+      "entry": {
+        "id": 162551,
+        "source_page": "https://www.steamgriddb.com/logo/162551",
+        "download_url": "https://cdn2.steamgriddb.com/logo/470c25e56ac0e9afd71698c2f2321364.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/470c25e56ac0e9afd71698c2f2321364.png",
+        "uploader": "Junifil",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561199217303617",
+        "style": "custom",
+        "language": "en",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": true,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1771968538,
+        "notes": "<p>eepy.</p>\n",
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-162551-custom-en-junifil.png",
+        "bytes": 26698,
+        "sha256": "e71ad81ceccebd011b42e142369fe3a6e17954b37645bfea5a9cdf8d9a1f156f",
+        "image": {
+          "format": "PNG",
+          "mode": "P",
+          "width": 3886,
+          "height": 1508,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": null,
+      "design_family": "Joke/meme branding",
+      "reason": "Excluded joke/meme branding: Beddivers. The source catalog explicitly tags this logo as humor.",
+      "category": "joke_or_meme"
+    },
+    {
+      "entry": {
+        "id": 111679,
+        "source_page": "https://www.steamgriddb.com/logo/111679",
+        "download_url": "https://cdn2.steamgriddb.com/logo/e7212c01887809d982c07285563ec38e.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/e7212c01887809d982c07285563ec38e.png",
+        "uploader": "sirattano",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561198271153229",
+        "style": "official",
+        "language": "en",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": true,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1714962025,
+        "notes": "<p>Thanks, Louis Rossmann. <a href=\"https://youtu.be/I2VA0eum6w4?t=6\">https://youtu.be/I2VA0eum6w4?t=6</a></p>\n",
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-111679-official-en-sirattano.png",
+        "bytes": 44155,
+        "sha256": "5ace4e6722ca0e1a344374ae71a90d7bdb6ec78fa39a51ba5ef29c3865485974",
+        "image": {
+          "format": "PNG",
+          "mode": "LA",
+          "width": 4096,
+          "height": 1508,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": null,
+      "design_family": "Joke/meme branding",
+      "reason": "Excluded joke/meme branding: parody wordmark. The source catalog explicitly tags this logo as humor.",
+      "category": "joke_or_meme"
+    },
+    {
+      "entry": {
+        "id": 121372,
+        "source_page": "https://www.steamgriddb.com/logo/121372",
+        "download_url": "https://cdn2.steamgriddb.com/logo/22684fbf9b3094daf31b9efe9c615c72.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/22684fbf9b3094daf31b9efe9c615c72.png",
+        "uploader": "SilkyFin",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561199198374358",
+        "style": "official",
+        "language": "en",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": false,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1725405830,
+        "notes": "<p>CHAOS DIVERS VERA LIBERTAS</p>\n",
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-121372-official-en-silkyfin.png",
+        "bytes": 361307,
+        "sha256": "c72c45ff27f1c93c644216b36c76378e030ae0d725bfd6356c8b320cc6f41774",
+        "image": {
+          "format": "PNG",
+          "mode": "RGBA",
+          "width": 3875,
+          "height": 1508,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": 105609,
+      "design_family": "Main stacked wordmark",
+      "reason": "Same stacked Roman II/skull/wings template; collapses recolors, slight crop/size/glow changes, localized text and parody replacement wording."
+    },
+    {
+      "entry": {
+        "id": 123575,
+        "source_page": "https://www.steamgriddb.com/logo/123575",
+        "download_url": "https://cdn2.steamgriddb.com/logo/4c3a066f87c18c2fc6b4e29f34f5f498.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/4c3a066f87c18c2fc6b4e29f34f5f498.png",
+        "uploader": "Karas",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561198017550284",
+        "style": "official",
+        "language": "ru",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": false,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1728561745,
+        "notes": "<p>Гооооооооооооооооооооооооооооооооооооооол!</p>\n",
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-123575-official-ru-karas.png",
+        "bytes": 59381,
+        "sha256": "5b779250f2993269a319d1d1b27beab6bc0f38acb5b353b7e585226a371b214c",
+        "image": {
+          "format": "PNG",
+          "mode": "RGBA",
+          "width": 1233,
+          "height": 468,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": 105609,
+      "design_family": "Main stacked wordmark",
+      "reason": "Same stacked Roman II/skull/wings template; collapses recolors, slight crop/size/glow changes, localized text and parody replacement wording."
+    },
+    {
+      "entry": {
+        "id": 148762,
+        "source_page": "https://www.steamgriddb.com/logo/148762",
+        "download_url": "https://cdn2.steamgriddb.com/logo/2808a84f91b1ae666466a4cbe2dc3d8c.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/2808a84f91b1ae666466a4cbe2dc3d8c.png",
+        "uploader": "r_dsgnd",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561198355292092",
+        "style": "official",
+        "language": "en",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": false,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1757150481,
+        "notes": "<p>from 'Into the Unjust' Logo</p>\n",
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-148762-official-en-r-dsgnd.png",
+        "bytes": 24994,
+        "sha256": "26d8398cb69f403e880bafc43c66fbabe16529dab2f43d7f981c5ee21a00c702",
+        "image": {
+          "format": "PNG",
+          "mode": "P",
+          "width": 2127,
+          "height": 167,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": 139968,
+      "design_family": "Wide wordmark",
+      "reason": "Same wide text-only layout with color, texture or replacement-wording changes."
+    },
+    {
+      "entry": {
+        "id": 139969,
+        "source_page": "https://www.steamgriddb.com/logo/139969",
+        "download_url": "https://cdn2.steamgriddb.com/logo/c41c16a4ef3d0ef33a98b00f86780935.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/c41c16a4ef3d0ef33a98b00f86780935.png",
+        "uploader": "r_dsgnd",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561198355292092",
+        "style": "official",
+        "language": "en",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": false,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1747924950,
+        "notes": null,
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-139969-official-en-r-dsgnd.png",
+        "bytes": 5713,
+        "sha256": "f4e315f124586f740b65bd9f2f34b0471978bb6d7981ac9f62d26e93abe0e225",
+        "image": {
+          "format": "PNG",
+          "mode": "P",
+          "width": 1580,
+          "height": 124,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": 139968,
+      "design_family": "Wide wordmark",
+      "reason": "Same wide text-only layout with color, texture or replacement-wording changes."
+    },
+    {
+      "entry": {
+        "id": 144340,
+        "source_page": "https://www.steamgriddb.com/logo/144340",
+        "download_url": "https://cdn2.steamgriddb.com/logo/b5289f8bcea3e902c2dd42d140acb5ad.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/b5289f8bcea3e902c2dd42d140acb5ad.png",
+        "uploader": "Plop999",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561198216935831",
+        "style": "official",
+        "language": "en",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": false,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1752522466,
+        "notes": "<p>HALO 3 ODST Themed Helldivers Logo</p>\n",
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-144340-official-en-plop999.png",
+        "bytes": 3114,
+        "sha256": "cd60d8c652a5a889561c0908517fadb498274fbee0f85e33758cfb317ef54acc",
+        "image": {
+          "format": "PNG",
+          "mode": "LA",
+          "width": 379,
+          "height": 41,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": 139968,
+      "design_family": "Wide wordmark",
+      "reason": "Same wide text-only layout with color, texture or replacement-wording changes."
+    },
+    {
+      "entry": {
+        "id": 141394,
+        "source_page": "https://www.steamgriddb.com/logo/141394",
+        "download_url": "https://cdn2.steamgriddb.com/logo/24c7252868d3a24021a45e00dd4b44e3.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/24c7252868d3a24021a45e00dd4b44e3.png",
+        "uploader": "Plop999",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561198216935831",
+        "style": "official",
+        "language": "en",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": false,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1749397514,
+        "notes": "<p>VERA LIBERTAS</p>\n",
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-141394-official-en-plop999.png",
+        "bytes": 20664,
+        "sha256": "98a56c11085120f30a89576a3e81b3bccd7d6d1cda16f0193a60714c09270077",
+        "image": {
+          "format": "PNG",
+          "mode": "RGBA",
+          "width": 798,
+          "height": 159,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": 139970,
+      "design_family": "Compact wordmark and skull",
+      "reason": "Same compact wordmark/emblem proportions with recoloring or alternate theme wording."
+    },
+    {
+      "entry": {
+        "id": 144342,
+        "source_page": "https://www.steamgriddb.com/logo/144342",
+        "download_url": "https://cdn2.steamgriddb.com/logo/a433cd348b2b9b4731cb4ea6aaa33934.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/a433cd348b2b9b4731cb4ea6aaa33934.png",
+        "uploader": "Plop999",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561198216935831",
+        "style": "official",
+        "language": "en",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": false,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1752522972,
+        "notes": "<p>Alternate HALO 3 ODST themed Helldivers logo</p>\n",
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-144342-official-en-plop999.png",
+        "bytes": 12537,
+        "sha256": "d4e5aac8dd92ebd6389d5b2c5af1e7fa2e1be54582250d9f8fdb2052d4d9d484",
+        "image": {
+          "format": "PNG",
+          "mode": "RGBA",
+          "width": 798,
+          "height": 161,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": 139970,
+      "design_family": "Compact wordmark and skull",
+      "reason": "Same compact wordmark/emblem proportions with recoloring or alternate theme wording."
+    },
+    {
+      "entry": {
+        "id": 108333,
+        "source_page": "https://www.steamgriddb.com/logo/108333",
+        "download_url": "https://cdn2.steamgriddb.com/logo/a74f062b27392bf0f037ea6ad9459a66.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/a74f062b27392bf0f037ea6ad9459a66.png",
+        "uploader": "HiddenEgg",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561199045105518",
+        "style": "official",
+        "language": "en",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": false,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1710573385,
+        "notes": "<p>Alternate Textless Yellow logo</p>\n",
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-108333-official-en-hiddenegg.png",
+        "bytes": 17923,
+        "sha256": "48eaf669b9009dcb9624014ce7f4892efac55f01a6339900d4ce11805796c0cd",
+        "image": {
+          "format": "PNG",
+          "mode": "P",
+          "width": 3440,
+          "height": 932,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": 108334,
+      "design_family": "Textless skull and wings",
+      "reason": "Yellow recolor of the same textless emblem."
+    },
+    {
+      "entry": {
+        "id": 104145,
+        "source_page": "https://www.steamgriddb.com/logo/104145",
+        "download_url": "https://cdn2.steamgriddb.com/logo/3458d004586a7398c9b8eb0209df37a3.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/3458d004586a7398c9b8eb0209df37a3.png",
+        "uploader": "MassiveGoods",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561197970763370",
+        "style": "official",
+        "language": "en",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": false,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1706111680,
+        "notes": null,
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-104145-official-en-massivegoods.png",
+        "bytes": 85436,
+        "sha256": "9df9bfaa1a0175a4da9b3b003e2cf88631bad5c745ab7d6b7bd12ed15cc7cad1",
+        "image": {
+          "format": "PNG",
+          "mode": "RGBA",
+          "width": 1245,
+          "height": 351,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": 108191,
+      "design_family": "Super Citizen Edition",
+      "reason": "Same clean banner/edition-star design with recoloring, localized or replacement wording, smaller dimensions or tiny rendering differences."
+    },
+    {
+      "entry": {
+        "id": 106782,
+        "source_page": "https://www.steamgriddb.com/logo/106782",
+        "download_url": "https://cdn2.steamgriddb.com/logo/821a89b05f1cae4aef684684a279e66e.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/821a89b05f1cae4aef684684a279e66e.png",
+        "uploader": "TheWaslijn",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561198072882347",
+        "style": "white",
+        "language": "en",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": false,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1708796876,
+        "notes": "<p>MassiveGoods's logo, but white</p>\n",
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-106782-white-en-thewaslijn.png",
+        "bytes": 16447,
+        "sha256": "726bcd82fefe7063be6dde0ea1883fc027d0f64ed1d78ad8b9429c3966630ad4",
+        "image": {
+          "format": "PNG",
+          "mode": "P",
+          "width": 1245,
+          "height": 351,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": 108191,
+      "design_family": "Super Citizen Edition",
+      "reason": "Same clean banner/edition-star design with recoloring, localized or replacement wording, smaller dimensions or tiny rendering differences."
+    },
+    {
+      "entry": {
+        "id": 110513,
+        "source_page": "https://www.steamgriddb.com/logo/110513",
+        "download_url": "https://cdn2.steamgriddb.com/logo/19378c63057eb7c626f4f8ca31196407.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/19378c63057eb7c626f4f8ca31196407.png",
+        "uploader": "Lky_Flamingo",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561198029648227",
+        "style": "official",
+        "language": "en",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": false,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1713453926,
+        "notes": null,
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-110513-official-en-lky-flamingo.png",
+        "bytes": 63940,
+        "sha256": "d0cc69018e8e88bd49c716f6b6d65f1e3c4d5b720e3ffb3248464c0e289d1f6b",
+        "image": {
+          "format": "PNG",
+          "mode": "RGBA",
+          "width": 1245,
+          "height": 316,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": 108191,
+      "design_family": "Super Citizen Edition",
+      "reason": "Same clean banner/edition-star design with recoloring, localized or replacement wording, smaller dimensions or tiny rendering differences."
+    },
+    {
+      "entry": {
+        "id": 111294,
+        "source_page": "https://www.steamgriddb.com/logo/111294",
+        "download_url": "https://cdn2.steamgriddb.com/logo/25de510c6bf82a1d93bc0754caf4c9b1.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/25de510c6bf82a1d93bc0754caf4c9b1.png",
+        "uploader": "ImaginaryJaffer🎮",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561198330040509",
+        "style": "official",
+        "language": "en",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": false,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1714398231,
+        "notes": null,
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-111294-official-en-imaginaryjaffer.png",
+        "bytes": 115398,
+        "sha256": "12e7654f54c04377f0d8f7b9dd49bea4aa047b713d07c7275df1da984cabc8f4",
+        "image": {
+          "format": "PNG",
+          "mode": "RGBA",
+          "width": 1113,
+          "height": 330,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": 108191,
+      "design_family": "Super Citizen Edition",
+      "reason": "Same clean banner/edition-star design with recoloring, localized or replacement wording, smaller dimensions or tiny rendering differences."
+    },
+    {
+      "entry": {
+        "id": 151547,
+        "source_page": "https://www.steamgriddb.com/logo/151547",
+        "download_url": "https://cdn2.steamgriddb.com/logo/bea18599ec9c26be71517c017f2b6684.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/bea18599ec9c26be71517c017f2b6684.png",
+        "uploader": "Boss228",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561198976522080",
+        "style": "official",
+        "language": "ru",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": false,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1760033049,
+        "notes": null,
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-151547-official-ru-boss228.png",
+        "bytes": 138935,
+        "sha256": "722328ae7c45e902fabfb2351590b8e716408de5662971d0998817f344ccfa90",
+        "image": {
+          "format": "PNG",
+          "mode": "RGBA",
+          "width": 950,
+          "height": 262,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": 108191,
+      "design_family": "Super Citizen Edition",
+      "reason": "Same clean banner/edition-star design with recoloring, localized or replacement wording, smaller dimensions or tiny rendering differences."
+    },
+    {
+      "entry": {
+        "id": 122519,
+        "source_page": "https://www.steamgriddb.com/logo/122519",
+        "download_url": "https://cdn2.steamgriddb.com/logo/ff8a777f774160654aae94375bc8ccab.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/ff8a777f774160654aae94375bc8ccab.png",
+        "uploader": "LOEDITGO",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561198093074152",
+        "style": "custom",
+        "language": "th",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": false,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1727141756,
+        "notes": null,
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-122519-custom-th-loeditgo.png",
+        "bytes": 266647,
+        "sha256": "d9ff81327597c22cce84bd5cb61fbd4f7015dcaec52d653248d1e8be076a16e9",
+        "image": {
+          "format": "PNG",
+          "mode": "LA",
+          "width": 2560,
+          "height": 860,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": 108191,
+      "design_family": "Super Citizen Edition",
+      "reason": "Same clean banner/edition-star design with recoloring, localized or replacement wording, smaller dimensions or tiny rendering differences."
+    },
+    {
+      "entry": {
+        "id": 128611,
+        "source_page": "https://www.steamgriddb.com/logo/128611",
+        "download_url": "https://cdn2.steamgriddb.com/logo/b2f88aedbfa827f897182edda900c1c1.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/b2f88aedbfa827f897182edda900c1c1.png",
+        "uploader": "WinterPR",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561198138804562",
+        "style": "white",
+        "language": "en",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": false,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1734148315,
+        "notes": "<p>Omens of Tyranny logo recreation (clean)</p>\n",
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-128611-white-en-winterpr.png",
+        "bytes": 37867,
+        "sha256": "4bf705d3d47d26ee490af6579afc31c627d8e5a5ec29110576ad983bba21ae57",
+        "image": {
+          "format": "PNG",
+          "mode": "LA",
+          "width": 2106,
+          "height": 592,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": 139972,
+      "design_family": "Omens of Tyranny",
+      "reason": "Same named update banner, including clean recreations, recolors, localized subtitle or tiny TM changes."
+    },
+    {
+      "entry": {
+        "id": 165271,
+        "source_page": "https://www.steamgriddb.com/logo/165271",
+        "download_url": "https://cdn2.steamgriddb.com/logo/9f3c293f5adabc8f6cf65aadc918b215.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/9f3c293f5adabc8f6cf65aadc918b215.png",
+        "uploader": "CrAzYpEnGuIn",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561198150294682",
+        "style": "custom",
+        "language": "en",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": false,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1774545723,
+        "notes": "<p>Made based on the Omens of Tyranny update logo, removed the Trademark symbol.</p>\n",
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-165271-custom-en-crazypenguin.png",
+        "bytes": 43352,
+        "sha256": "c55e596d57bd71002b5895ec9d62e800731808121a909c7fbc4896e3f1a20d2d",
+        "image": {
+          "format": "PNG",
+          "mode": "RGBA",
+          "width": 2106,
+          "height": 592,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": 139972,
+      "design_family": "Omens of Tyranny",
+      "reason": "Same named update banner, including clean recreations, recolors, localized subtitle or tiny TM changes."
+    },
+    {
+      "entry": {
+        "id": 129012,
+        "source_page": "https://www.steamgriddb.com/logo/129012",
+        "download_url": "https://cdn2.steamgriddb.com/logo/826d1a226d3e3899f4eda97e0a97dabe.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/826d1a226d3e3899f4eda97e0a97dabe.png",
+        "uploader": "SlendyKoala",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561199251239653",
+        "style": "custom",
+        "language": "en",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": false,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1734737442,
+        "notes": "<p>Yellow Omens Of Tyranny</p>\n",
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-129012-custom-en-slendykoala.png",
+        "bytes": 36149,
+        "sha256": "87cc034b1c1ff8bab77233e9bd1e629e95485649b79ca03e07e05c6edf2c3124",
+        "image": {
+          "format": "PNG",
+          "mode": "RGBA",
+          "width": 2048,
+          "height": 575,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": 139972,
+      "design_family": "Omens of Tyranny",
+      "reason": "Same named update banner, including clean recreations, recolors, localized subtitle or tiny TM changes."
+    },
+    {
+      "entry": {
+        "id": 163395,
+        "source_page": "https://www.steamgriddb.com/logo/163395",
+        "download_url": "https://cdn2.steamgriddb.com/logo/c5c9fac82c661398c36e3adc1a03c856.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/c5c9fac82c661398c36e3adc1a03c856.png",
+        "uploader": "JF0117",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561198864387418",
+        "style": "official",
+        "language": "en",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": false,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1772745422,
+        "notes": null,
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-163395-official-en-jf0117.png",
+        "bytes": 42744,
+        "sha256": "6f630d2a3701918fce29333d2c2a7e3cef5476e1a5ba33ccff502dcb8378f79b",
+        "image": {
+          "format": "PNG",
+          "mode": "LA",
+          "width": 1920,
+          "height": 540,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": 139972,
+      "design_family": "Omens of Tyranny",
+      "reason": "Same named update banner, including clean recreations, recolors, localized subtitle or tiny TM changes."
+    },
+    {
+      "entry": {
+        "id": 147908,
+        "source_page": "https://www.steamgriddb.com/logo/147908",
+        "download_url": "https://cdn2.steamgriddb.com/logo/50b0d1ccdf9d54c7708d29de8c8fef98.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/50b0d1ccdf9d54c7708d29de8c8fef98.png",
+        "uploader": "AZER0X",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561198068659544",
+        "style": "official",
+        "language": "fr",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": false,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1756220616,
+        "notes": "<p>French logo without TM</p>\n<p><a href=\"https://www.steamgriddb.com/collection/20294\">HELLDIVERS II COLLECTION</a></p>\n",
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-147908-official-fr-azer0x.png",
+        "bytes": 185246,
+        "sha256": "a7a06aae99d48277795b5b4cb79dbe31c695e6ce512b3f3d2390ccbfd8e32b56",
+        "image": {
+          "format": "PNG",
+          "mode": "LA",
+          "width": 1255,
+          "height": 344,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": 139972,
+      "design_family": "Omens of Tyranny",
+      "reason": "Same named update banner, including clean recreations, recolors, localized subtitle or tiny TM changes."
+    },
+    {
+      "entry": {
+        "id": 145092,
+        "source_page": "https://www.steamgriddb.com/logo/145092",
+        "download_url": "https://cdn2.steamgriddb.com/logo/ac5fe1cb7f2231fcaa6b7d6ce877a043.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/ac5fe1cb7f2231fcaa6b7d6ce877a043.png",
+        "uploader": "GlaZim",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561198165962618",
+        "style": "official",
+        "language": "en",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": false,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1753327772,
+        "notes": "<p>For flashy background such as ↑→↓↓↓</p>\n",
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-145092-official-en-glazim.png",
+        "bytes": 192663,
+        "sha256": "214f9b7f56683b28ed5542ad375f7f28433aa5848edc4db4c262fbe89de9a367",
+        "image": {
+          "format": "PNG",
+          "mode": "P",
+          "width": 2050,
+          "height": 592,
+          "alpha_extrema": [
+            0,
+            250
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": 139966,
+      "design_family": "Heart of Democracy",
+      "reason": "Black recolor of the same Heart of Democracy banner."
+    },
+    {
+      "entry": {
+        "id": 158650,
+        "source_page": "https://www.steamgriddb.com/logo/158650",
+        "download_url": "https://cdn2.steamgriddb.com/logo/0bb4707e86127ffed22e1ecd1847115d.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/0bb4707e86127ffed22e1ecd1847115d.png",
+        "uploader": "ManOfManyTalents",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561199089041660",
+        "style": "custom",
+        "language": "en",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": false,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1768017346,
+        "notes": "<p>An edit of the &quot;Into The Unjust&quot; logo, removing the text and making it look closer to the original logo.</p>\n",
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-158650-custom-en-manofmanytalents.png",
+        "bytes": 97000,
+        "sha256": "c6ad8844b8f2eaa62b52b12e94e14c3ab2f034115ce4254629cbed2631a2d688",
+        "image": {
+          "format": "PNG",
+          "mode": "LA",
+          "width": 2131,
+          "height": 922,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": 148760,
+      "design_family": "Into the Unjust",
+      "reason": "Same Into the Unjust banner template with subtitle replacement, parody wording, localization or unfinished background block."
+    },
+    {
+      "entry": {
+        "id": 161167,
+        "source_page": "https://www.steamgriddb.com/logo/161167",
+        "download_url": "https://cdn2.steamgriddb.com/logo/fbfc9cb055b355c0590ccc3824b99d4b.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/fbfc9cb055b355c0590ccc3824b99d4b.png",
+        "uploader": "SnapShotYt",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561199122121852",
+        "style": "custom",
+        "language": "en",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": false,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1770614247,
+        "notes": null,
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-161167-custom-en-snapshotyt.png",
+        "bytes": 62471,
+        "sha256": "8f2454324bfbd8226b5bcf5a15b532aa7045840677b6e573a3e2b28209f3b344",
+        "image": {
+          "format": "PNG",
+          "mode": "LA",
+          "width": 2131,
+          "height": 592,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": null,
+      "design_family": "Joke/meme branding",
+      "reason": "Excluded joke/meme branding: Shafts of Despair parody update banner. The artwork visibly replaces the game/update name with a parody.",
+      "category": "joke_or_meme"
+    },
+    {
+      "entry": {
+        "id": 161733,
+        "source_page": "https://www.steamgriddb.com/logo/161733",
+        "download_url": "https://cdn2.steamgriddb.com/logo/3a781c9408c731a5a066a5b25bac9a39.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/3a781c9408c731a5a066a5b25bac9a39.png",
+        "uploader": "Qu3lquun",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561199129370452",
+        "style": "official",
+        "language": "ja",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": false,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1771186658,
+        "notes": null,
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-161733-official-ja-qu3lquun.png",
+        "bytes": 40348,
+        "sha256": "07aaaf61d6a58a11c8fce188f4031569a996bf1ee127a8b37177af7fcfc39cb2",
+        "image": {
+          "format": "PNG",
+          "mode": "LA",
+          "width": 1234,
+          "height": 342,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": null,
+      "design_family": "Joke/meme branding",
+      "reason": "Excluded joke/meme branding: Mikudivers parody update banner. The artwork visibly replaces the game/update name with a parody.",
+      "category": "joke_or_meme"
+    },
+    {
+      "entry": {
+        "id": 161732,
+        "source_page": "https://www.steamgriddb.com/logo/161732",
+        "download_url": "https://cdn2.steamgriddb.com/logo/56deaf82a743146f027849c3f7985db7.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/56deaf82a743146f027849c3f7985db7.png",
+        "uploader": "Qu3lquun",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561199129370452",
+        "style": "official",
+        "language": "pl",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": false,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1771186284,
+        "notes": null,
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-161732-official-pl-qu3lquun.png",
+        "bytes": 34883,
+        "sha256": "d8830461c38c6c4eb58b6e8c01fb82bc726bbdadb7340dc4526971ba95a2c915",
+        "image": {
+          "format": "PNG",
+          "mode": "LA",
+          "width": 1234,
+          "height": 342,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": null,
+      "design_family": "Joke/meme branding",
+      "reason": "Excluded joke/meme branding: Mikudivers parody update banner. The artwork visibly replaces the game/update name with a parody.",
+      "category": "joke_or_meme"
+    },
+    {
+      "entry": {
+        "id": 161731,
+        "source_page": "https://www.steamgriddb.com/logo/161731",
+        "download_url": "https://cdn2.steamgriddb.com/logo/a839758356962eacb4ca8903d3f396ca.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/a839758356962eacb4ca8903d3f396ca.png",
+        "uploader": "Qu3lquun",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561199129370452",
+        "style": "official",
+        "language": "en",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": false,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1771186232,
+        "notes": null,
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-161732-official-pl-qu3lquun.png",
+        "bytes": 34883,
+        "sha256": "d8830461c38c6c4eb58b6e8c01fb82bc726bbdadb7340dc4526971ba95a2c915",
+        "image": {
+          "format": "PNG",
+          "mode": "LA",
+          "width": 1234,
+          "height": 342,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        },
+        "duplicate_of": 161732
+      },
+      "representative_id": null,
+      "design_family": "Joke/meme branding",
+      "reason": "Excluded joke/meme branding: Mikudivers parody update banner. The artwork visibly replaces the game/update name with a parody.",
+      "category": "joke_or_meme"
+    },
+    {
+      "entry": {
+        "id": 161730,
+        "source_page": "https://www.steamgriddb.com/logo/161730",
+        "download_url": "https://cdn2.steamgriddb.com/logo/7124987b4f02334a076ed39eb00831b3.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/7124987b4f02334a076ed39eb00831b3.png",
+        "uploader": "Qu3lquun",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561199129370452",
+        "style": "official",
+        "language": "fr",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": false,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1771185012,
+        "notes": null,
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-161730-official-fr-qu3lquun.png",
+        "bytes": 39061,
+        "sha256": "10dcad8de3863b2c53572c0b6c899f600e7cc25ed649890de846ea1ac7a6c512",
+        "image": {
+          "format": "PNG",
+          "mode": "LA",
+          "width": 1234,
+          "height": 342,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": null,
+      "design_family": "Joke/meme branding",
+      "reason": "Excluded joke/meme branding: Mikudivers parody update banner. The artwork visibly replaces the game/update name with a parody.",
+      "category": "joke_or_meme"
+    },
+    {
+      "entry": {
+        "id": 177199,
+        "source_page": "https://www.steamgriddb.com/logo/177199",
+        "download_url": "https://cdn2.steamgriddb.com/logo/29b3f9ee605755cb152eeb9eeba8638b.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/29b3f9ee605755cb152eeb9eeba8638b.png",
+        "uploader": "BedrockBen",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561199280752131",
+        "style": "official",
+        "language": "en",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": false,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1786594764,
+        "notes": "<p>Official logo from Steam</p>\n",
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-177199-official-en-bedrockben.png",
+        "bytes": 31063,
+        "sha256": "2f0985a972785534dc88bba6a0efc3c93c57157773d4c4844642d526cf98c837",
+        "image": {
+          "format": "PNG",
+          "mode": "LA",
+          "width": 620,
+          "height": 176,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": null,
+      "design_family": "Small unselected update banner",
+      "reason": "Small 620x176 update banner with a closely related wing/skull layout. Preserved in the full collection; its former selected representative (Devoid of Content) was removed as a joke.",
+      "category": "similar_layout"
+    },
+    {
+      "entry": {
+        "id": 147345,
+        "source_page": "https://www.steamgriddb.com/logo/147345",
+        "download_url": "https://cdn2.steamgriddb.com/logo/393761e32aa190cbc757db476a0ea57e.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/393761e32aa190cbc757db476a0ea57e.png",
+        "uploader": "BookAboutBirds",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561198089621524",
+        "style": "official",
+        "language": "en",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": false,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1755659674,
+        "notes": "<p>An edit of The Photoshop Guy's Halo ODST 2 logo to fit better with the collection I've created.</p>\n",
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-147345-official-en-bookaboutbirds.png",
+        "bytes": 88653,
+        "sha256": "3e63ef866f90f4be8e286684fff4922c6b98ba641ffe557d999135607525a520",
+        "image": {
+          "format": "PNG",
+          "mode": "RGBA",
+          "width": 736,
+          "height": 192,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": null,
+      "reason": "Excluded joke/meme branding: Halo ODST 2 parody. The artwork visibly replaces the game/update name with a parody.",
+      "design_family": "Joke/meme branding",
+      "category": "joke_or_meme"
+    },
+    {
+      "entry": {
+        "id": 105963,
+        "source_page": "https://www.steamgriddb.com/logo/105963",
+        "download_url": "https://cdn2.steamgriddb.com/logo/938051cc6938e379018dc3ab037a08e2.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/938051cc6938e379018dc3ab037a08e2.png",
+        "uploader": "The Photoshop Guy",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561197976593553",
+        "style": "official",
+        "language": "en",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": true,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1707972393,
+        "notes": "<p>someone was gonna make this joke...</p>\n",
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-105963-official-en-the-photoshop-guy.png",
+        "bytes": 783179,
+        "sha256": "dd866f05717e1ae35d18703fd49110e2febc3155302cc2353259632d2fc5f8b1",
+        "image": {
+          "format": "PNG",
+          "mode": "RGBA",
+          "width": 2652,
+          "height": 636,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": null,
+      "reason": "Excluded joke/meme branding: parody wordmark. The source catalog explicitly tags this logo as humor.",
+      "design_family": "Joke/meme branding",
+      "category": "joke_or_meme"
+    },
+    {
+      "entry": {
+        "id": 160580,
+        "source_page": "https://www.steamgriddb.com/logo/160580",
+        "download_url": "https://cdn2.steamgriddb.com/logo/36c0531946029c76d49a24a8959d6c26.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/36c0531946029c76d49a24a8959d6c26.png",
+        "uploader": "WSKyleJ",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561198994628277",
+        "style": "official",
+        "language": "en",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": false,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1770133992,
+        "notes": null,
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-160580-official-en-wskylej.png",
+        "bytes": 1922490,
+        "sha256": "c4d188e09bd0b78f492fd46c58e57c988e79e911296911df2719032308d73417",
+        "image": {
+          "format": "PNG",
+          "mode": "RGBA",
+          "width": 1198,
+          "height": 1756,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": null,
+      "reason": "Steam Deck/product-cover mockup, rather than a clean standalone game logo."
+    },
+    {
+      "entry": {
+        "id": 179765,
+        "source_page": "https://www.steamgriddb.com/logo/179765",
+        "download_url": "https://cdn2.steamgriddb.com/logo/2b107750246da0e2d3b0ead6d00e15ec.png",
+        "thumbnail_url": "https://cdn2.steamgriddb.com/logo_thumb/2b107750246da0e2d3b0ead6d00e15ec.png",
+        "uploader": "Protasio1968",
+        "uploader_profile": "https://www.steamgriddb.com/profile/76561199624808575",
+        "style": "official",
+        "language": "en",
+        "mime": "image/png",
+        "animated": false,
+        "tags": {
+          "nsfw": false,
+          "humor": true,
+          "epilepsy": false
+        },
+        "upload_date_unix": 1788255691,
+        "notes": null,
+        "license": null,
+        "license_status": "No per-asset license field listed in the public catalog.",
+        "file": "originals/sgdb-179765-official-en-protasio1968.png",
+        "bytes": 588858,
+        "sha256": "174fa3720248001920034eb767b5e6ad1ee818cac6e6bd9c0fe2b605011c2bdf",
+        "image": {
+          "format": "PNG",
+          "mode": "RGBA",
+          "width": 2132,
+          "height": 657,
+          "alpha_extrema": [
+            0,
+            255
+          ],
+          "has_transparent_pixels": true,
+          "frames": 1,
+          "icc_profile_present": false,
+          "gamma": null,
+          "srgb_intent": null,
+          "png_text": {}
+        }
+      },
+      "representative_id": null,
+      "design_family": "Joke/meme branding",
+      "category": "joke_or_meme",
+      "reason": "Excluded joke/meme branding: Devoid of Content. The source catalog explicitly tags this logo as humor."
+    }
+  ],
+  "policy": "Exclude all clearly humorous/parody branding, in addition to duplicate and near-duplicate layouts.",
+  "humor_audit": {
+    "audited_utc": "2026-10-12T21:52:26.482653+00:00",
+    "removed_active_ids": [
+      179765
+    ],
+    "excluded_joke_or_meme_ids": [
+      105963,
+      109776,
+      110495,
+      110496,
+      111015,
+      111543,
+      111544,
+      111636,
+      111679,
+      113985,
+      113986,
+      114863,
+      126993,
+      147345,
+      161167,
+      161730,
+      161731,
+      161732,
+      161733,
+      162551,
+      162759,
+      175892,
+      179765
+    ],
+    "confirmed_previously_excluded": {
+      "Beddivers": 162551,
+      "Brasildivers": 126993
+    }
+  }
+}

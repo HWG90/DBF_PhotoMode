@@ -15,41 +15,49 @@ function M.new(sr,world,verify,unit,cam)
  if not supported then return end
  local mapping={dof='dof_enabled',bloom='bloom_enabled'};local self={world=world,unit=unit,cam=cam,parameters={}};local pending={};local frame=0
  for key,name in pairs(mapping)do local ok,value=pcall(sr.Application.render_setting,name);if ok and type(value)=='boolean'then self.parameters[key]=true end end
+ local scene
+ local function attach_scene()
+  if scene or not M.camera_factory then return end
+  local ok,value,why=pcall(M.camera_factory.new,sr,world,unit,cam)
+  if ok and type(value)=='table'then
+   scene=value;self.scene_reason=nil;for key,supported in pairs(scene.parameters or{})do self.parameters[key]=supported end
+  else self.scene_reason=tostring(ok and why or value)end
+ end
  function self.read(key)
-  local value=sr.Application.render_setting(assert(mapping[key]));assert(type(value)=='boolean','Renderer flag changed type')
+  if not mapping[key]then assert(scene,'Native lens source unavailable');return scene.read(key)end
+  local value=sr.Application.render_setting(mapping[key]);assert(type(value)=='boolean','Renderer flag changed type')
   local current=value and 1 or 0;local command=pending[key]
   if command and command.value==current then pending[key]=nil end
   return current
  end
  function self.write(key,value)
+  if not mapping[key]then assert(scene,'Native lens source unavailable');return scene.write(key,value)end
   if pending[key]and pending[key].value==value then return end
   if not pending[key]and self.read(key)==value then return end
-  -- The Boolean overload serializes the key slot, not the requested value, on this build.
-  -- The string overload directly queues the intended SJSON literal.
-  sr.Application.set_render_setting(assert(mapping[key]),value~=0 and 'true'or 'false')
+  sr.Application.set_render_setting(mapping[key],value~=0 and 'true'or 'false')
   pending[key]={value=value,frame=frame}
  end
+ function self.restore(key,value)
+  if mapping[key]then return self.write(key,value)end
+  assert(scene,'Native lens source unavailable');return scene.restore(key,value)
+ end
+ function self.flush()if scene and scene.flush then scene.flush()end end
  function self.tick()
   frame=frame+1
-  for key,command in pairs(pending)do
-   local current=self.read(key)
+  for key,command in pairs(pending)do local current=self.read(key)
    if current~=command.value and frame-command.frame>120 then error('Renderer command did not apply: '..key)end
   end
+  if scene and scene.tick and scene.tick()==false then
+   local done,why=scene.release();assert(done,why)
+   for key in pairs(scene.parameters or{})do self.parameters[key]=nil end;scene=nil
+  end
+  attach_scene();self.native_numeric_candidate=scene and scene.native_numeric_candidate==true or
+   (scene==nil and M.camera_factory~=nil and rawget(_G,'DBF_PHOTO_NATIVE_LENS_CANDIDATE')==true)
+  self.native_numeric_ready=scene~=nil and self.native_numeric_candidate and(not scene.tick or scene.tick()==true)or false
  end
  function self.pending(key)if key then return pending[key]~=nil end;return next(pending)~=nil end
- if M.camera_factory then
-  local ok,scene=pcall(M.camera_factory.new,sr,world,unit,cam)
-  if ok and scene then
-   for key,value in pairs(scene.parameters)do self.parameters[key]=value end
-   local flag_read,flag_write=self.read,self.write
-   function self.read(key)if mapping[key]then return flag_read(key)end;return scene.read(key)end
-   function self.write(key,value)if mapping[key]then return flag_write(key,value)end;return scene.write(key,value)end
-   function self.restore(key,value)
-    if mapping[key]then return flag_write(key,value)end;return scene.restore(key)
-   end
-   function self.flush()scene.flush()end
-  else self.scene_reason=tostring(scene)end
- end
+ attach_scene()
+
  return self
 end
 return M

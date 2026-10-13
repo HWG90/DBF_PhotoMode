@@ -1,0 +1,60 @@
+{
+  "collected_utc": "2026-10-12T22:00:43.378813+00:00",
+  "source_files": 2,
+  "author": "Alphaccca",
+  "runtime_integration": "0.9.5 embeds Super_Earth.svg as tintable picker geometry at existing index 4; HD_Logo.svg remains source reference. No external runtime asset dependency.",
+  "entries": [
+    {
+      "file": "Super_Earth.svg",
+      "bytes": 21087,
+      "sha256": "679ad3a2334c794a971e466e41602cadf17e8d520140fc7cd88e50ff2e928b9d",
+      "author": "Alphaccca",
+      "author_url": "https://github.com/Alphaccca",
+      "source_page": "https://gist.github.com/Alphaccca/71f148c625adf8e46685ff28f4693d5a",
+      "gist_revision": "01f4788ab2e5dad9ea1175650512e187b1be45aa",
+      "raw_url": "https://gist.githubusercontent.com/Alphaccca/71f148c625adf8e46685ff28f4693d5a/raw/fcf76b3d71be07a35881372926becc4f32be0392/Super_Earth.svg",
+      "license": null,
+      "license_status": "No license file or license statement listed in the public gist.",
+      "svg": {
+        "viewBox": "0 0 1320 2000",
+        "width": "1320",
+        "height": "2000",
+        "element_counts": {
+          "defs": 1,
+          "path": 1,
+          "style": 1,
+          "svg": 1
+        },
+        "external_references": []
+      },
+      "joke_or_meme": false,
+      "original_bytes_preserved": true
+    },
+    {
+      "file": "HD_Logo.svg",
+      "bytes": 770,
+      "sha256": "339676551e6b3e5deadc533bb2a0902ff170387a05189f6417a6ea6960e60e78",
+      "author": "Alphaccca",
+      "author_url": "https://github.com/Alphaccca",
+      "source_page": "https://gist.github.com/Alphaccca/5aef6b8c1ef1e7dbe6491a9a64f5f179",
+      "gist_revision": "017df5accfb65b158dc55872f7a5bd4a3e986bc2",
+      "raw_url": "https://gist.githubusercontent.com/Alphaccca/5aef6b8c1ef1e7dbe6491a9a64f5f179/raw/374fdfede69fd565e2fe5152cdac5aa69cca771a/HD_Logo.svg",
+      "license": null,
+      "license_status": "No license file or license statement listed in the public gist.",
+      "svg": {
+        "viewBox": "0 0 1354 146",
+        "width": "1354",
+        "height": "146",
+        "element_counts": {
+          "defs": 1,
+          "path": 1,
+          "style": 1,
+          "svg": 1
+        },
+        "external_references": []
+      },
+      "joke_or_meme": false,
+      "original_bytes_preserved": true
+    }
+  ]
+}

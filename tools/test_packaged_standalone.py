@@ -187,6 +187,10 @@ def verify(archive):
     assert len(capture_names)==1, 'Exactly one active packaged screenshot DLL required'
     capture_name=capture_names[0]
     libraries = {native_name: files[native_name], capture_name: files[capture_name]}
+    if 'hover-library.txt' in files:
+        hover_name=files['hover-library.txt'].decode().strip()
+        assert hover_name.startswith('PhotoHoverGuard_') and hover_name.endswith('.dll')
+        libraries[hover_name]=files[hover_name]
     imports = {}
     with tempfile.TemporaryDirectory(prefix='photo-standalone-') as scratch:
         isolated = Path(scratch)

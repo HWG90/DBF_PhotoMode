@@ -38,8 +38,10 @@ function M.native_converter(path,folder)
  end
  kernel.CreateDirectoryW(wide(folder),nil)
  return function(input,output,metadata)
-  local encoding=metadata and metadata.color_encoding=='hdr10-pq-bt2020'and 1 or 0
-  local result=native.PhotoDDSConvertColor(wide(input),wide(output),encoding,metadata and metadata.white_nits or 203)
+  -- Mode 2 uses the game's fixed SDR display transform; white_nits is ignored.
+  local color=metadata and metadata.color_encoding
+  local encoding=color=='hdr10-pq-bt2020'and 2 or color=='sdr-bgra-engine'and 3 or 0
+  local result=native.PhotoDDSConvertColor(wide(input),wide(output),encoding,0)
   local error_code=kernel.GetLastError();return result==1,'PNG conversion failed ('..tonumber(error_code)..')'
  end
 end

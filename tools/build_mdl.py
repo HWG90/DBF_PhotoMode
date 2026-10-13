@@ -9,10 +9,10 @@ import zipfile
 ROOT=Path(__file__).resolve().parents[1]
 
 
-def package(output):
+def package(output,version=None,payload_factory=None):
     specification=importlib.util.spec_from_file_location('photo_build',ROOT/'freecam/build.py')
     build=importlib.util.module_from_spec(specification);specification.loader.exec_module(build)
-    files=build.payload_files(output);version=(ROOT/'VERSION').read_text().strip()
+    files=(payload_factory or build.payload_files)(output);version=version or(ROOT/'VERSION').read_text().strip()
     source=files['src/actioncam.lua'].decode()
     # MDL teardown cannot remove camera wrappers safely. Keep those wrappers
     # inert after owned cleanup, without calling another provider's shutdown.

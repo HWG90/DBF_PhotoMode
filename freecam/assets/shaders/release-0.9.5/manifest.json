@@ -1,0 +1,34 @@
+{
+  "version": "0.9.5",
+  "base_core_rows_sha256": "9014b93afd6b6368de12b69d5d82ce05920c3df9205fcb1f8e1ab11207af9906",
+  "base_shared_rows_sha256": "a9a999989e60f3dffa6880a0de2e07b8006722dbf4c10fe0f4e209cbc8e38f9b",
+  "base_reference_zip_sha256": "be8b821b545a8146d8c340aa552a3c6dc02b70c39376d3e8bc9e054391ebc866",
+  "pairs": [
+    {
+      "label": "resolved",
+      "shader": "mods/dbf_photo/shaders/scene_dof_resolved_v2_8a8fd1f00bd99bfa",
+      "material": "mods/dbf_photo/materials/scene_dof_resolved_v2_8a8fd1f00bd99bfa",
+      "files": {
+        "resolved.gpu": "f5960f63e1247ac40af4bb37ccbd59ac26c9168aad9eb40936c082c9ddf40194",
+        "resolved.material.bin": "a61d4af8e3c217b71f0bd6d92184f67e49ef610cf37c54ca51d3535f0f5c47a6",
+        "resolved.hlsl": "8a8fd1f00bd99bfa772db8af71f3c5003f5c7f8a90f4b304597f1a9825e4cf84"
+      },
+      "color_resource_name": "output_target",
+      "native_vertex_byte_identity": true,
+      "native_parameter_and_binding_abi_preserved": true
+    },
+    {
+      "label": "legacy",
+      "shader": "mods/dbf_photo/shaders/scene_dof_combined_v1",
+      "material": "mods/dbf_photo/materials/scene_dof_combined_v1",
+      "files": {
+        "legacy.gpu": "57c20a36c7af45f4805884f4e2c45e0b7dd67f27586f7456e889c494005ae722",
+        "legacy.material.bin": "044d2924b5a5674edb3e28fa55615f3eafa0f0f2227f7d8bf4d5f720b176ee00",
+        "legacy.hlsl": "a5da0e1c75ea4056867cfffe9530d277965448d10b3a2311be80046a2253e12a"
+      },
+      "color_resource_name": "hdr1",
+      "native_vertex_byte_identity": true,
+      "native_parameter_and_binding_abi_preserved": true
+    }
+  ]
+}

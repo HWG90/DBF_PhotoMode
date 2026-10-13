@@ -15,6 +15,7 @@ local status;for _,page in ipairs(api.mods.dbf_freecam.pages)do for _,control in
 assert(status and status.label==effects.shader_status,'Runtime status must update registered text controls, outside MCM stored-value index')
 effects.shader_status='';c.tick(.016);assert(status.label=='')
 keys[9]=true;c.tick(.016);assert(mode==1 and photo.input.dt==0 and rate==0);keys[9]=false
+keys[69]=true;c.tick(.016);keys[69]=false;c.tick(.016) -- Lens follows Camera actions.
 keys[13]=true;c.tick(.016);keys[13]=false;c.tick(.016);keys[80]=true;c.tick(.016);assert(photo.active and rate==0,'Numeric editing owns the photo-toggle shortcut');keys[80]=false
 keys[27]=true;c.tick(.016);keys[27]=false;c.tick(.016);assert(mode==1 and photo.active,'Escape cancels numeric entry before leaving menu')
 keys[72]=true;c.tick(.016);assert(mode==3 and #commands==0 and rate==0);keys[72]=false
@@ -40,10 +41,50 @@ for _,standalone in ipairs({false,true})do
  local visible;local factory={new=function()return {bind=function(_,pages)visible=pages end,close=function()end,editing_key=function()return false end}end}
  if standalone then DBFMCM=nil;DBF_PHOTO_STANDALONE_API=a else DBFMCM=a;DBF_PHOTO_STANDALONE_API=nil end
  keys={};local ctrl=controller.new({}, {},function()return true end,function()end,nil,options,nil,factory);ctrl.tick(.016)
- assert(visible and (#visible==(standalone and 5 or 4)));assert((visible[1].id=='camera')==standalone)
+ assert(visible and (#visible==(standalone and 9 or 8)));assert(visible[1].id=='camera_tools'and visible[2].id=='lens');assert((visible[#visible].id=='camera')==standalone)
+ local owners={};for _,page in ipairs(a.mods.dbf_freecam.pages)do for _,control in ipairs(page.controls)do assert(not owners[control.id],'Control duplicated while moving Camera actions: '..control.id);owners[control.id]=page.id end end
+ for _,id in ipairs({'screenshot','lock_camera','save_camera','clear_saved_camera','recenter','speed','wheel_step','look_sensitivity','roll_speed','freeze_player','slowmo_speed'})do assert(owners[id]=='camera_tools','Camera action missing: '..id)end
+ for _,id in ipairs({'fov','roll','dof','dof_mode','focus_mode','focus_distance','aperture','dof_quality','bokeh_shape'})do assert(owners[id]=='lens','Photographic control must be separate: '..id)end
+ for _,id in ipairs({'light_add','light_selected','light_enabled','light_kind','light_intensity','light_color','light_range','light_cone','light_right','light_forward','light_up','light_follow','light_place','light_remove','light_clear'})do assert(owners[id]=='lighting','Light control must stay on its own page: '..id)end
+ assert(visible[1].controls[1].id=='screenshot'and visible[1].controls[2].id=='lock_camera','Common Camera actions must appear first')
+ local expected={'Camera','Lens','Color','Effects','Lighting','Composition','Director','Subject'};if standalone then expected[#expected+1]='Controls'end
+ for index,name in ipairs(expected)do assert(visible[index].name==name,'Unexpected photo navigation order')end
+ local layout_commands;local layout_keys={}
+ local layout=panel.new({draw=function(value)layout_commands=value end,release=function()end},{focus=function()end,hide=function()end,hud=function()end,exit=function()end})
+ layout.bind(a.mods.dbf_freecam.handle,visible)
+ local viewport_w,viewport_h=1920,1080
+ local function draw_layout()layout.draw(viewport_w,viewport_h,true,false,{focus='TAB',hide='H',slowmo='\\'})end
+ local function tab_press(key)layout_keys[key]=true;layout.tick({click=false,dt=.016},function(k)return layout_keys[k]or false end);draw_layout();layout_keys[key]=false;layout.tick({click=false,dt=.016},function(k)return layout_keys[k]or false end);draw_layout()end
+ local function check_layout()
+  local tabs={};local backing;local strip
+  for _,command in ipairs(layout_commands)do
+   if command.ui_role=='photo_panel'then backing=command elseif command.ui_role=='photo_controls_strip'then strip=command end
+   if command.ui_key and command.ui_key:match('^tab:')and command.ui_role=='button'then tabs[#tabs+1]=command end
+   if command.type=='rect'then assert(command.x>=0 and command.y>=0 and command.x+command.w<=viewport_w+.001 and command.y+command.h<=viewport_h+.001,'Compact photo surface escaped viewport')end
+  end
+  assert(backing and backing.x>viewport_w/2 and backing.y>viewport_h/5 and backing.h<viewport_h/3 and backing.a<.6,'Photo panel must be shallow, translucent and clear of the ship HUD')
+  assert(strip and strip.y+strip.h<backing.y and layout.contains_pointer(strip.x+strip.w/2,strip.y+strip.h/2),'Persistent footer must own its pointer surface')
+  assert(#tabs==#visible,'Every category must stay reachable')
+  for index,tab in ipairs(tabs)do
+   local found=false
+   for _,command in ipairs(layout_commands)do local bounds=command.text_bounds
+    if bounds and command.full_text==visible[index].name and bounds.x>=tab.x and bounds.x+bounds.w<=tab.x+tab.w+.001 and bounds.y==tab.y then found=true;assert(command.text==command.full_text,'Category name truncated')end
+   end
+   assert(found,'Missing readable category label')
+   for other=index+1,#tabs do local b=tabs[other];assert(tab.x+tab.w<=b.x or b.x+b.w<=tab.x or tab.y+tab.h<=b.y or b.y+b.h<=tab.y,'Category tabs overlapped')end
+  end
+ end
+ for _,resolution in ipairs({{1920,1080},{3840,2160}})do viewport_w,viewport_h=unpack(resolution)
+  for index in ipairs(visible)do layout.page=index;layout.scroll=0;layout.selection=1;draw_layout();check_layout()end
+ end
+ layout.page=1;draw_layout();layout.tick({click=false,dt=.016},function()return false end)
+ for index=2,#visible do tab_press(69);assert(layout.page==index,'E must navigate to every grouped category')end
+ tab_press(69);assert(layout.page==1,'E must wrap to Camera');tab_press(81);assert(layout.page==#visible,'Q must wrap to the last category')
+ -- Future subject controls can extend the same compact horizontal navigation.
+ visible[#visible+1]={id='subject',name='Subject',controls={}};layout.bind(a.mods.dbf_freecam.handle,visible);draw_layout();check_layout();layout.close()
  assert(a.mods.dbf_freecam.name=='Photo Mode');assert(ctrl.close());DBFMCM=nil;DBF_PHOTO_STANDALONE_API=nil
 end
-print('Photo pages: Controls absent with MCM, retained standalone; internal name Photo Mode passed')
+print('Photo pages: first Camera actions / separate Lens, exact-once IDs, shared/standalone Controls, translucent bottom-right 1920/4K bounds, readable six/seven tabs and Q/E wrapping passed')
 
 -- Tab and the visible focus action commit through blur; Escape still cancels.
 do

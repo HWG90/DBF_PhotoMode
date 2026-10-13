@@ -8,3 +8,5 @@ VERSION text eol=lf
 # Preserve exact verified upstream/vendor bytes across clones.
 freecam/vendor/* -text -whitespace
 freecam/assets/shaders/* -text -whitespace
+freecam/assets/shaders/release-0.9.5/** -text -whitespace
+freecam/assets/logos/** -text -whitespace

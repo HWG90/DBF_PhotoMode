@@ -15,7 +15,8 @@ function M.new(sr,lens_factory,composition,postfx_factory,log,hud,profile_factor
   else log('Scene effect candidate unavailable: '..tostring(value))end
  end
  -- This flag identifies an explicitly constructed candidate, never visual proof.
- self.custom_dof_candidate=dof~=nil;self.custom_dof_ready=false
+ self.custom_dof_candidate=dof~=nil;self.custom_dof_ready=false;self.warming_up_scene=false
+ local native_warmed,custom_warmed,scene_warmed=false,false,false
  local gui,world,camera_world;local ids={};local signature;local shader_name;local seconds=0;local failed_shaders={};local layout_key,layout_cache;local shader_handle
  local clock_source,last_clock
  local function gui_world(scene)
@@ -42,14 +43,15 @@ function M.new(sr,lens_factory,composition,postfx_factory,log,hud,profile_factor
  end
  local function clear()
   if not gui then return end
-  for _,p in ipairs(ids)do sr.Gui[p.kind=='rect' and 'destroy_rect' or 'destroy_bitmap'](gui,p.id)end
+  for _,p in ipairs(ids)do sr.Gui['destroy_'..p.kind](gui,p.id)end
   ids={};signature=nil
  end
  function self.release()
   if scene_effect then local ran,done,why=pcall(scene_effect.release);if not ran or done~=true then return false,ran and why or tostring(done)end end
   local custom_ok,custom_reason=true,nil
   if dof then local ran,done,why=pcall(dof.release);custom_ok,custom_reason=ran and done==true,ran and why or tostring(done)end
-  self.custom_dof_ready=false
+  self.custom_dof_ready=false;self.native_dof_ready=false;self.warming_up_scene=false;self.fov=nil
+  native_warmed,custom_warmed,scene_warmed=false,false,false
   if self.parameters then
    self.parameters.focus_distance,self.parameters.aperture=nil,nil
    if scene_effect then for _,key in ipairs({'exposure','saturation','contrast','scene_shader','scene_strength','fog_distance','fog_density','scene_depth_range'})do self.parameters[key]=nil end end
@@ -66,11 +68,23 @@ function M.new(sr,lens_factory,composition,postfx_factory,log,hud,profile_factor
   if camera_world and(camera_world~=scene or world~=owner)then local ok,why=self.release();assert(ok,why)end
   camera_world=scene
   if hud then if o.hide_hud~=false then hud.hold()else local ok,why=hud.release();assert(ok,why)end end
-  local fov=lens.apply(cam,unit,forward,right,o);advance(dt)
+  local fov=lens.apply(cam,unit,forward,right,o);self.fov=fov;advance(dt)
   local custom_active,custom_status=false,nil
   self.custom_dof_ready=false
   local shader_mode=o.dof_mode==2
-  if dof and shader_mode then
+  local combined=dof and dof.combined_scene_dof_candidate==true
+  local combined_ready=false
+  if combined then
+   local ran,ready,why=pcall(dof.ready)
+   if ran and ready==true then
+    local applied,done,reason,shader_active=pcall(dof.apply,o,fov)
+    combined_ready=applied and done==true
+    custom_active=combined_ready and shader_active==true
+    custom_status=applied and reason or tostring(done)
+    if not combined_ready then pcall(dof.release)end
+   else custom_status=ran and why or tostring(ready);pcall(dof.release)end
+   self.custom_dof_ready=shader_mode and combined_ready
+  elseif dof and shader_mode then
    local ran,ready,why
    if o.dof then
     ran,ready,why=pcall(dof.apply,o,fov)
@@ -98,13 +112,20 @@ function M.new(sr,lens_factory,composition,postfx_factory,log,hud,profile_factor
    self.parameters={}
   else self.parameters={};for key,value in pairs(postfx.parameters or {})do self.parameters[key]=value end end
   self.parameters.focus_distance,self.parameters.aperture=nil,nil
+  self.native_dof_candidate=postfx.native_numeric_candidate==true
+  self.native_dof_ready=worked and postfx.native_numeric_ready==true and not shader_mode
+  if self.native_dof_ready then self.parameters.focus_distance,self.parameters.aperture=true,true end
   if self.custom_dof_ready then
    self.parameters.dof,self.parameters.focus_distance,self.parameters.aperture=true,true,true
    status='Shader preview: depth-aware focus and aperture'
   end
   supported=custom_active or supported
   local scene_active=false;self.scene_status=''
-  if scene_effect then
+  if combined then
+   for _,key in ipairs({'exposure','saturation','contrast','scene_shader','scene_strength','fog_distance','fog_density','scene_depth_range'})do self.parameters[key]=combined_ready and true or nil end
+   scene_active=combined_ready and dof.scene_active==true
+   self.scene_status=combined_ready and 'Combined scene and DoF preview' or 'Scene compositor unavailable: '..tostring(custom_status)
+  elseif scene_effect then
    for _,key in ipairs({'exposure','saturation','contrast','scene_shader','scene_strength','fog_distance','fog_density','scene_depth_range'})do self.parameters[key]=nil end
    if shader_mode and o.dof then
     local ran,done,why=pcall(scene_effect.release);assert(ran and done==true,ran and why or tostring(done))
@@ -127,7 +148,17 @@ function M.new(sr,lens_factory,composition,postfx_factory,log,hud,profile_factor
   self.lens_status=status
   self.color_status='Warm/cool color tints ready; tonal grading unavailable'
   if self.parameters and self.parameters.exposure then self.color_status='Scene color grading profile available'end
-  if o.dof==true and o.dof_mode==2 then self.color_status='Shader DoF Enabled. Scene Effects disabled'end
+  if o.dof==true and o.dof_mode==2 and not combined then self.color_status='Shader DoF Enabled. Scene Effects disabled'end
+  if self.native_dof_ready then native_warmed=true end
+  if self.custom_dof_ready then custom_warmed=true end
+  if self.parameters.exposure then scene_warmed=true end
+  local lens_waiting=shader_mode and dof~=nil and not custom_warmed and not self.custom_dof_ready or
+   not shader_mode and self.native_dof_candidate and not native_warmed and not self.native_dof_ready
+  local scene_waiting=(combined or scene_effect~=nil)and not scene_warmed and not self.parameters.exposure and
+   not(shader_mode and o.dof and not combined)
+  -- Initial scene resource loading is distinct from a later draw/resource
+  -- failure. Keep the existing detailed status/error fields unchanged.
+  self.warming_up_scene=(lens_waiting or scene_waiting)==true
   local w,h=sr.Gui.resolution();assert(type(w)=='number' and w>0 and type(h)=='number' and h>0,'Photo viewport unavailable')
   if not owner then self.lens_status='Photo UI world unavailable; camera retained';return false end
   if not gui then world=owner;gui=assert(sr.World.create_screen_gui(owner,'scale',1,1))end
@@ -158,8 +189,11 @@ function M.new(sr,lens_factory,composition,postfx_factory,log,hud,profile_factor
   shader_handle=nil
   clear();shader_name=material
   for _,c in ipairs(commands)do
-   local id=sr.Gui.rect(gui,sr.Vector3(c.x,c.y,100),sr.Vector2(c.w,c.h),sr.Color(math.floor(c.a*255),unpack(c.c)))
-   ids[#ids+1]={kind='rect',id=id}
+   local id;local kind=c.type=='triangle'and'triangle'or'rect';local color=sr.Color(math.floor(c.a*255),unpack(c.c))
+   if kind=='triangle'then
+    local p=c.points;id=sr.Gui.triangle(gui,sr.Vector3(p[1],0,p[2]),sr.Vector3(p[3],0,p[4]),sr.Vector3(p[5],0,p[6]),100,color)
+   else id=sr.Gui.rect(gui,sr.Vector3(c.x,c.y,100),sr.Vector2(c.w,c.h),color)end
+   ids[#ids+1]={kind=kind,id=id}
   end
   if material then
    -- Each photo GUI owns a mapped HUD shader material instance.

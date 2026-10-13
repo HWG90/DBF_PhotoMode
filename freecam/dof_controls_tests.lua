@@ -29,6 +29,8 @@ DBFMCM=api
 local photo={};local controller=dofile(root..'controller.lua').new(photo,{},function()return true end,function()end,nil,options,runtime,menu)
 controller.tick(.016);keys[80]=true;controller.tick(.016);keys[80]=false
 assert(photo.active)
+keys[9]=true;controller.tick(.016);keys[9]=false;controller.tick(.016)
+keys[69]=true;controller.tick(.016);keys[69]=false;controller.tick(.016)
 local function frame()
  controller.tick(.016)
  assert(runtime.apply(1,2,10,{0,1,0},{1,0,0},photo.options,.016))
@@ -43,7 +45,7 @@ assert(controls.focus_distance.step==.01 and controls.focus_distance.fine_step==
 for _,control in pairs(controls)do if control.type=='slider'then assert(control.commit_on_blur==true,'Photo numeric controls must opt into commit on leaving the field')end end
 assert(not controls.focus_distance.disabled and not controls.aperture.disabled,'Registered off-state must allow lens edits')
 local labels={};for _,command in ipairs(commands)do if command.control_id then labels[command.control_id]=true end end
-assert(labels.dof and labels.focus_distance and labels.aperture,'Camera page must render all three lens controls without scrolling')
+assert(labels.dof and labels.focus_distance and labels.aperture,'Lens page must render DoF, focus and aperture together without scrolling')
 handle.set('dof',true);handle.set('focus_distance',2);handle.set('aperture',1.2);frame()
 assert(uniforms.scissor_rect[1]==2 and uniforms.scissor_rect[2]==1.2 and uniforms.scissor_rect[3]==.9 and native.dof==0)
 assert(photo.options.focus_distance==2 and photo.options.aperture==1.2,'Settings read must supply actual stored values')

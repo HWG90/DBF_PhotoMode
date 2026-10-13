@@ -55,6 +55,7 @@ local function parameters(runtime,expected)
 end
 local runtime=make()
 assert(apply(runtime));parameters(runtime,true)
+assert(runtime.fov==.9,'Lens metadata must expose the actual applied vertical FOV in radians')
 assert(native.dof==1 and native.bloom==1 and not carrier and draws==0,'Neutral-ready scene controls must preserve native DoF without submitting scene pixels')
 -- A real effect is allowed alongside the native pass without stacking custom DoF.
 o.scene_shader=10;local camera_closed=lens_releases
@@ -104,3 +105,30 @@ assert(native.dof==1 and broken.release()and native.dof==0)
 assert(#logs>0 and lens_applies>=10 and checks>0 and applies>0 and dof_releases>0)
 DBF_PHOTO_RENDER_PROFILE=nil
 print('Scene runtime: neutral readiness, Native coexistence, Shader/DoF-off gates, saved options, resource/readiness/draw/factory failures, world transition, release retry and native restoration passed; no game process accessed')
+
+-- The combined candidate admits scene controls with shader blur and suppresses
+-- native DoF only after the compositor explicitly confirms a shader DoF draw.
+profile.world=10;DBF_PHOTO_RENDER_PROFILE=profile
+local composite_available,composite_draw=true,true
+local combined={combined_scene_dof_candidate=true,
+ ready=function()return composite_available,'combined unavailable'end,
+ release=function()return true end}
+-- Declare the captured object separately so the closure sees its actual table.
+combined.apply=function(options)
+ if not composite_draw then return false,'combined draw failed',false end
+ combined.scene_active=options.scene_shader>1
+ return true,'combined submitted',options.dof and options.dof_mode==2
+end
+local joined=factory.new(sr,lens,composition,postfx,function()end,nil,nil,{new=function()return combined end})
+o.scene_shader=3;o.dof=true;o.dof_mode=2
+assert(apply(joined));parameters(joined,true)
+assert(joined.custom_dof_ready and native.dof==0 and joined.scene_status=='Combined scene and DoF preview')
+assert(joined.color_status~='Shader DoF Enabled. Scene Effects disabled','Combined draw must admit grading with bokeh')
+o.dof_mode=1;assert(apply(joined));parameters(joined,true)
+assert(not joined.custom_dof_ready and native.dof==1,'Scene-only draw must retain native DoF')
+o.dof_mode=2;composite_draw=false;assert(apply(joined));parameters(joined,false)
+assert(not joined.custom_dof_ready and native.dof==1,'Failed combined draw must preserve native fallback')
+composite_draw=true;o.dof=false;assert(apply(joined));parameters(joined,true);assert(native.dof==0)
+composite_available=false;o.dof=true;assert(apply(joined));parameters(joined,false);assert(native.dof==1)
+assert(joined.release());DBF_PHOTO_RENDER_PROFILE=nil
+print('Combined runtime: scene plus Shader DoF admission, successful-draw suppression, Native scene coexistence, DoF-off grading and same-frame failure fallback passed')

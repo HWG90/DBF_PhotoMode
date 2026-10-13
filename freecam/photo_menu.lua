@@ -5,32 +5,84 @@ local T={background={12,14,16},panel={19,21,23},header={25,27,29},border={62,66,
  field={29,31,34},field_hover={39,42,45},enabled={176,205,176},disabled={105,111,113}}
 local function glyphs(value)local result={};for c in tostring(value):gmatch('[%z\1-\127\194-\244][\128-\191]*')do result[#result+1]=c end;return result end
 local function valid(v)return type(v)=='number'and v>0 and v<math.huge end
-function M.new(view,actions)
- local self={page=1,scroll=0,selection=1,size_scale=1};local nav_held={};local nav_time={};local nav_ready=false;local last_focus
- local rows={};local selected_hit;local hits={};local held=false;local drag;local resize;local scroll_drag;local geometry;local pointer_x,pointer_y;local pressed_key
+local PANEL_WIDTH,PANEL_HEIGHT,HUD_MARGIN=760,320,180
+function M.new(view,actions,existing)
+ local legend=M.legend_factory and M.legend_factory.new(view)
+ local self=existing or{page=1,scroll=0,selection=1,size_scale=1};local nav_held={};local nav_time={};local nav_ready=false;local last_focus
+ local rows={};local selected_hit;local hits={};local held=false;local drag;local resize;local scroll_drag;local move_panel;local geometry;local panel_bounds;local pointer_x,pointer_y;local pressed_key
+ local layout_initialized=existing~=nil;local layout_dirty=false
+ self.editing_value=nil;self.bound_key=nil;if legend and self.handle then legend.bind(self.handle)end
  local key_capture;local armed=false;local baseline={};local color_edit;local popup;local popup_close_on_release=false;local popup_scroll=0;local visible_count=1;local popup_count=1;local text_edit;local reset_regions={};local right_held
  local finish_number
  local function blur_number()if text_edit and text_edit.c.commit_on_blur==true then return finish_number()end;return true end
- function self.close()blur_number();view.release();hits={};drag=nil;resize=nil;scroll_drag=nil;key_capture=nil;text_edit=nil;color_edit=nil;popup=nil;popup_close_on_release=false;self.bound_key=nil;self.editing_value=nil;self.notice=nil;nav_ready=false;held=false;right_held=nil;pointer_x,pointer_y=nil,nil;pressed_key=nil end
- function self.suspend()blur_number();nav_ready=false;held=false;right_held=nil;drag=nil;resize=nil;scroll_drag=nil;pressed_key=nil;pointer_x,pointer_y=nil,nil end
- function self.bind(handle,pages)if self.handle~=handle then blur_number();text_edit=nil;self.editing_value=nil end;self.handle=handle;self.pages=pages end
+ local function stored_layout(key)
+  if not self.handle or type(self.handle.get)~='function'then return end
+  local ok,value=pcall(self.handle.get,key);if ok and type(value)=='number'and value==value and math.abs(value)<math.huge then return value end
+ end
+ function self.persist_layout()
+  if not geometry or not self.handle then return false end
+  -- Older live registrations can display this layout safely before restarting;
+  -- they cannot persist keys they have not registered yet.
+  for _,key in ipairs({'menu_x','menu_y','menu_scale'})do if stored_layout(key)==nil then layout_dirty=false;return false end end
+  local values={menu_x=math.max(0,math.min(1,geometry.x/(geometry.w-geometry.width))),menu_y=math.max(0,math.min(1,geometry.strip_bottom/(geometry.h-geometry.height))),menu_scale=math.max(.35,math.min(3,self.size_scale))}
+  local ok,result
+  if type(self.handle.set_many)=='function'then ok,result=pcall(self.handle.set_many,values)
+  elseif type(self.handle.set)=='function'then ok=true;for key,value in pairs(values)do local called,accepted=pcall(self.handle.set,key,value);if not called or accepted==false then ok=false;break end end
+  else return false end
+  if not ok or result==false then self.notice='Menu layout could not be saved';return false end
+  self.panel_x=stored_layout('menu_x');self.panel_y=stored_layout('menu_y');self.size_scale=stored_layout('menu_scale');layout_dirty=false;return true
+ end
+ local function finish_layout()if layout_dirty then layout_dirty=false;self.persist_layout()end end
+ function self.close()blur_number();finish_layout();if legend then legend.clear()end;view.release();panel_bounds=nil;hits={};drag=nil;resize=nil;scroll_drag=nil;move_panel=nil;key_capture=nil;text_edit=nil;color_edit=nil;popup=nil;popup_close_on_release=false;self.bound_key=nil;self.editing_value=nil;self.notice=nil;nav_ready=false;held=false;right_held=nil;pointer_x,pointer_y=nil,nil;pressed_key=nil end
+ local function suspend_input()blur_number();finish_layout();if legend then legend.clear()end;nav_ready=false;held=false;right_held=nil;drag=nil;resize=nil;scroll_drag=nil;move_panel=nil;pressed_key=nil;pointer_x,pointer_y=nil,nil end
+ function self.suspend()suspend_input();panel_bounds=nil;if legend then view.draw({})end end
+ function self.bind(handle,pages)
+  if self.handle~=handle then blur_number();text_edit=nil;self.editing_value=nil end;self.handle=handle;self.pages=pages;if legend then legend.bind(handle)end
+  if not layout_initialized then
+   local x,y,size=stored_layout('menu_x'),stored_layout('menu_y'),stored_layout('menu_scale')
+   self.panel_x=x and x>=0 and x<=1 and x or nil;self.panel_y=y and y>=0 and y<=1 and y or nil
+   if size and size>=.35 and size<=3 then self.size_scale=size end
+   layout_initialized=true
+  end
+ end
  function self.blur()return blur_number()end
  local function value(c)
   if c.type=='text'then return ''end;if c.type=='button'then return c.button_label or 'Activate'end
   local v=self.handle.get(c.id)
   if c.type=='choice'then return c.choices[v]or tostring(v)end
   if c.type=='toggle'then return v and 'ON'or 'OFF'end
-  if c.type=='keybind'then local names={[0]='NONE',[9]='TAB',[13]='ENTER',[16]='SHIFT',[17]='CTRL',[18]='ALT',[27]='ESC',[32]='SPACE',[220]='\\'};return names[v]or(v>=32 and v<=126 and string.char(v)or('VK '..v))end
+  if c.type=='keybind'then local names={[0]='NONE',[9]='TAB',[13]='ENTER',[16]='SHIFT',[17]='CTRL',[18]='ALT',[19]='PAUSE',[27]='ESC',[32]='SPACE',[44]='PRINT SCREEN',[220]='\\'};return names[v]or(v>=32 and v<=126 and string.char(v)or('VK '..v))end
   if c.type=='slider'then local step=c.fine_step or c.step;return string.format(step<.01 and '%.3f'or step<1 and '%.2f'or '%.0f',v)end
   return tostring(v)
  end
- local function set_slider(c,x,b)
+ local function slider_value(c)
+  if c.type=='color_channel'then return tonumber(self.handle.get(c.base):sub(c.channel*2,c.channel*2+1),16)end
+  return self.handle.get(c.id)
+ end
+ local function write_slider(c,v,step)
   if c.disabled then return end
-  local t=math.max(0,math.min(1,(x-b.x)/b.w));local v=c.min+math.floor(((c.max-c.min)*t)/c.step+.5)*c.step;v=math.min(c.max,math.max(c.min,v))
+  v=c.min+math.floor((v-c.min)/step+.5)*step;v=math.min(c.max,math.max(c.min,v))
   if c.type=='color_channel'then
    local hex=self.handle.get(c.base);local rgb={tonumber(hex:sub(2,3),16),tonumber(hex:sub(4,5),16),tonumber(hex:sub(6,7),16)}
    rgb[c.channel]=v;self.handle.set(c.base,string.format('#%02X%02X%02X',unpack(rgb)))
   else self.handle.set(c.id,v)end
+ end
+ local function set_slider(c,x,b)
+  local t=math.max(0,math.min(1,(x-b.x)/b.w));write_slider(c,c.min+(c.max-c.min)*t,c.step)
+ end
+ local function begin_slider(c,x,b,fine)
+  if not fine then set_slider(c,x,b)end
+  drag={c=c,x=b.x,w=b.w,last_x=x,value=slider_value(c),relative=fine}
+ end
+ local function scrub_slider(x,fine)
+  local c=drag.c;local delta=x-drag.last_x;drag.last_x=x
+  if not drag.relative and not fine then set_slider(c,x,drag);drag.value=slider_value(c);return end
+  -- Keep the pointer offset after Shift is released so changing sensitivity
+  -- never snaps the value back to the pointer's absolute track position.
+  drag.relative=true;if delta==0 then return end
+  drag.value=math.max(c.min,math.min(c.max,drag.value+delta/drag.w*(c.max-c.min)*(fine and .1 or 1)))
+  -- Retain sub-step movement between frames; only the stored value is rounded.
+  write_slider(c,drag.value,c.fine_step or c.step)
  end
  local function measure(label,size)
   if view.measure then local ok,width=pcall(view.measure,label,size);if ok and type(width)=='number'and width>=0 and width<math.huge then return width end end
@@ -80,12 +132,18 @@ function M.new(view,actions)
   text_edit=nil;self.editing_value=nil;popup=nil;popup_close_on_release=false;drag=nil;color_edit=nil;self.notice=nil;return true
  end
  function self.draw(w,h,focused,hidden,keys)
-  if focused~=last_focus then self.suspend();last_focus=focused end
-  if hidden or not valid(w)or not valid(h)or not self.pages or #self.pages==0 then view.draw({});hits={};resize=nil;scroll_drag=nil;return end
+  -- Tab changes input ownership inside the same visible panel. Preserve the
+  -- retained GUI/font planes; explicit focus loss still clears via suspend().
+  if focused~=last_focus then suspend_input();last_focus=focused end
+  if hidden or not valid(w)or not valid(h)or not self.pages or #self.pages==0 then finish_layout();if legend then legend.clear()end;view.draw({});panel_bounds=nil;hits={};resize=nil;scroll_drag=nil;move_panel=nil;return end
   if view.refresh_font then view.refresh_font()end
-  local commands={};hits={};reset_regions={};local base=math.min(w/1920,h/1080)*1.15;local maximum=math.min(w/568,h/868);local minimum=math.min(maximum,math.max(.5,base*.65))
-  local s=math.max(minimum,math.min(maximum,base*self.size_scale));local width=520*s;local x=w-width-24*s;local top=h-24*s;local bottom=top-820*s;local left=x+16*s
-  geometry={base=base,scale=s,minimum=minimum,maximum=maximum}
+  local commands={};hits={};reset_regions={};local base=math.max(.75,math.min(w/1920,h/1080));local maximum=math.min(w/(PANEL_WIDTH+48),h/(PANEL_HEIGHT+102+HUD_MARGIN));local minimum=math.min(maximum,math.max(.35,base*.65))
+  local s=math.max(minimum,math.min(maximum,base*self.size_scale));local width=PANEL_WIDTH*s;local footprint=(PANEL_HEIGHT+62)*s
+  local x=self.panel_x and self.panel_x*(w-width)or w-width-24*s;local strip_bottom=self.panel_y and self.panel_y*(h-footprint)or(16+HUD_MARGIN)*s
+  x=math.max(8*s,math.min(w-width-8*s,x));strip_bottom=math.max(8*s,math.min(h-footprint-8*s,strip_bottom))
+  local bottom=strip_bottom+62*s;local top=bottom+PANEL_HEIGHT*s;local left=x+16*s
+  geometry={base=base,scale=s,minimum=minimum,maximum=maximum,x=x,strip_bottom=strip_bottom,w=w,h=h,width=width,height=footprint}
+  panel_bounds={x=x,y=strip_bottom,w=width,h=top-strip_bottom}
   local function over(b,modal)return focused and (modal or not popup)and pointer_x and pointer_y and pointer_x>=b.x and pointer_x<=b.x+b.w and pointer_y>=b.y and pointer_y<=b.y+b.h end
   local function rect(rx,ry,rw,rh,c,a,layer,modal,role)
    local command={type='rect',x=rx,y=ry,w=rw,h=rh,c=c,a=a or 1,layer=layer or 300,popup=modal or nil,ui_role=role};commands[#commands+1]=command;return command
@@ -106,65 +164,83 @@ function M.new(view,actions)
   local function surface(b,selected,disabled,key,field,modal)
    local hover=not disabled and over(b,modal);local pressed=not disabled and held and (pressed_key==key and hover or (drag and drag.c==key))
    local fill=disabled and T.panel or pressed and T.pressed or selected and(hover and T.selected_hover or T.selected)or hover and(field and T.field_hover or T.hover)or(field and T.field or T.panel)
-   local command=rect(b.x,b.y,b.w,b.h,fill,1,modal and 901 or 302,modal,field and 'field'or 'button');command.hovered=hover==true;command.pressed=pressed==true;command.control_id=type(key)=='table'and key.id or nil;command.ui_key=type(key)=='string'and key or nil
-   border(b,disabled and T.line or selected and T.gold or hover and T.border_hover or T.border,modal and 903 or 305,modal)
+   local command=rect(b.x,b.y,b.w,b.h,fill,modal and 1 or field and(pressed and .18 or hover and .12 or .02)or(selected and .18 or .04),modal and 901 or 302,modal,field and 'field'or 'button');command.hovered=hover==true;command.pressed=pressed==true;command.control_id=type(key)=='table'and key.id or nil;command.ui_key=type(key)=='string'and key or nil
+   if modal or not field and hover then border(b,disabled and T.line or selected and T.gold or hover and T.border_hover or T.border,modal and 903 or 305,modal)end
   end
-  local function button(label,b,action,key,selected)
-   surface(b,selected,false,key,false);text(label,b.x+9*s,b.y,b.w-18*s,b.h,15,selected and T.gold or T.white)
+  local function icon(id,b,color)
+   local ix,iy=b.x+8*s,b.y+8*s
+   local function line(dx,dy,rw,rh)rect(ix+dx*s,iy+dy*s,rw*s,rh*s,color,1,309,nil,'tab_icon')end
+   if id=='camera_tools'then line(0,0,15,9);line(3,9,5,3);rect(ix+5*s,iy+2*s,5*s,5*s,T.background,1,310)
+   elseif id=='lens'then line(0,0,3,10);line(11,0,3,10);line(3,0,8,2);line(3,8,8,2);line(6,3,2,4)
+   elseif id=='color'then line(0,0,3,5);line(5,0,3,10);line(10,0,3,7)
+   elseif id=='effects'then line(0,0,14,2);line(3,4,11,2);line(0,8,11,2)
+   elseif id=='composition'then line(0,0,15,2);line(0,9,15,2);line(0,2,2,7);line(13,2,2,7);line(7,2,1,7)
+   elseif id=='lighting'then line(5,3,5,5);line(6,10,3,2);line(6,-1,3,2);line(0,4,3,3);line(12,4,3,3)
+   else line(5,0,4,12);line(1,4,12,4)end
+  end
+  local function button(label,b,action,key,selected,font,icon_id)
+   surface(b,selected,false,key,false);local pad=icon_id and 28 or 9
+   if icon_id then icon(icon_id,b,selected and T.gold or T.muted)end
+   text(label,b.x+pad*s,b.y,b.w-(pad+9)*s,b.h,font or 12,selected and T.gold or T.white)
    if selected then rect(b.x,b.y,b.w,2*s,T.gold,1,306)end
    b.action=action;b.key=key;hits[#hits+1]=b
   end
-  rect(x,bottom,width,top-bottom,T.background,.99,300,false,'photo_panel');border({x=x,y=bottom,w=width,h=top-bottom},T.border,301)
-  rect(x+1,top-74*s,width-2,73*s,T.header,1,302);rect(x+1,top-2*s,width-2,1*s,T.gold,1,303)
-  text('WAR JOURNALIST',left,top-47*s,width-160*s,32*s,24,T.white,310,nil,'title')
-  text('PHOTO MODE',left,top-68*s,width-32*s,18*s,12,T.muted)
-  local badge={x=x+width-134*s,y=top-43*s,w=118*s,h=24*s};rect(badge.x,badge.y,badge.w,badge.h,focused and T.selected or T.field,1,304)
-  text(focused and 'MENU FOCUS'or 'CAMERA FOCUS',badge.x+8*s,badge.y,badge.w-16*s,badge.h,11,focused and T.gold or T.muted)
-  button((focused and 'Return to camera'or 'Edit photo settings')..' ['..keys.focus..']',{x=left,y=top-110*s,w=width-32*s,h=30*s},actions.focus,'focus')
+  rect(x,bottom,width,top-bottom,T.background,.38,300,false,'photo_panel')
+  rect(x,top-1*s,width,1*s,T.gold,.55,303)
+  text('WAR JOURNALIST',left,top-24*s,width-210*s,22*s,14,T.white,310,nil,'title')
+  text(self.warming_up_scene and 'WARMING UP SCENE'or 'PHOTO MODE',left,top-39*s,width-210*s,14*s,10,self.warming_up_scene and T.gold or T.muted)
+  text(focused and 'MENU FOCUS'or 'CAMERA FOCUS',x+width-164*s,top-39*s,148*s,14*s,10,focused and T.gold or T.muted)
+  local move_bounds={x=x+4*s,y=top-42*s,w=width-188*s,h=40*s,move=true,key='move'}
+  rect(move_bounds.x,move_bounds.y,move_bounds.w,move_bounds.h,T.header,over(move_bounds)and .08 or 0,308,nil,'move_handle')
+  if focused then hits[#hits+1]=move_bounds end
+  button((focused and 'Camera'or 'Edit menu')..' ['..keys.focus..']',{x=x+width-174*s,y=top-24*s,w=158*s,h=20*s},actions.focus,'focus',false,11)
   self.page=math.max(1,math.min(#self.pages,self.page));local tab_widths={};local tab_total=0;local tab_budget=width-32*s
-  for i,page in ipairs(self.pages)do tab_widths[i]=math.max(64*s,measure(page.name,15*s)+22*s);tab_total=tab_total+tab_widths[i]end
-  local tab_x=left
-  for i,page in ipairs(self.pages)do local index=i
-   local tabw=tab_total<=tab_budget and tab_widths[i]+(tab_budget-tab_total)/#self.pages or tab_budget*tab_widths[i]/tab_total
-   button(page.name,{x=tab_x,y=top-150*s,w=tabw-4*s,h=30*s},function()self.page=index;self.selection=1;self.scroll=0;self.editing_value=nil;text_edit=nil;color_edit=nil;key_capture=nil;popup=nil;scroll_drag=nil end,'tab:'..i,i==self.page);tab_x=tab_x+tabw
+  for i,page in ipairs(self.pages)do tab_widths[i]=math.max(56*s,measure(page.name,12*s)+42*s);tab_total=tab_total+tab_widths[i]end
+  local tab_columns=tab_total<=tab_budget and #self.pages or math.ceil(#self.pages/2);local tab_rows=math.ceil(#self.pages/tab_columns)
+  for row_index=0,tab_rows-1 do
+   local first=row_index*tab_columns+1;local last=math.min(#self.pages,first+tab_columns-1);local row_total=0;local tab_x=left
+   for i=first,last do row_total=row_total+tab_widths[i]end
+   for i=first,last do local index=i;local page=self.pages[i]
+    local tabw=row_total<=tab_budget and tab_widths[i]+(tab_budget-row_total)/(last-first+1)or tab_budget*tab_widths[i]/row_total
+    button(page.name,{x=tab_x,y=top-(68+29*row_index)*s,w=tabw-4*s,h=25*s},function()self.page=index;self.selection=1;self.scroll=0;self.editing_value=nil;text_edit=nil;color_edit=nil;key_capture=nil;popup=nil;scroll_drag=nil end,'tab:'..i,i==self.page,12,page.id);tab_x=tab_x+tabw
+   end
   end
+  local tab_extra=(tab_rows-1)*29*s
   local page=self.pages[self.page];rows={};selected_hit=nil
   for _,c in ipairs(page.controls)do
    local neutral_status=c.type=='text'and((c.status_only and(c.label or '')=='')or(c.id=='shader_status'and c.label=='Shader overlay: none'))
-   if c.id~='controls'and not neutral_status then rows[#rows+1]=c end
+   if c.id~='controls'and not c.layout_storage and not neutral_status then rows[#rows+1]=c end
   end
   self.selection=math.max(1,math.min(#rows,self.selection));if not selectable(rows[self.selection])then for i,c in ipairs(rows)do if selectable(c)then self.selection=i;break end end end
   if self.editing_value and self.editing_value.disabled then self.editing_value=nil;text_edit=nil end;if popup and popup.c.disabled then popup=nil end
-  text(page.name,left,top-185*s,width-120*s,27*s,19,T.white,310,nil,'heading');text(tostring(#rows)..' settings',x+width-110*s,top-185*s,86*s,27*s,12,T.muted)
-  rect(left,top-191*s,width-32*s,1,T.line,1,301)
-  local content_top=top-207*s;local content_bottom=bottom+(color_edit and 224 or 164)*s;local row=40*s
+  rect(left,top-71*s-tab_extra,width-32*s,1,T.border,.6,301)
+  local content_top=top-77*s-tab_extra;local content_bottom=bottom+(color_edit and 100 or 16)*s;local row=32*s
   visible_count=math.max(1,math.floor((content_top-content_bottom)/row));self.scroll=math.max(0,math.min(math.max(0,#rows-visible_count),self.scroll))
   local hovered_control;local popup_anchor
   for i=self.scroll+1,math.min(#rows,self.scroll+visible_count)do
-   local c=rows[i];local y=content_top-34*s-(i-self.scroll-1)*row;local rb={x=left-4*s,y=y,w=width-34*s,h=34*s};local hover=over(rb);local selected=focused and i==self.selection and not c.disabled
+   local c=rows[i];local y=content_top-29*s-(i-self.scroll-1)*row;local rb={x=left-4*s,y=y,w=width-34*s,h=29*s};local hover=over(rb);local selected=focused and i==self.selection and not c.disabled
    reset_regions[#reset_regions+1]={x=rb.x,y=rb.y,w=rb.w,h=rb.h,c=c}
    if hover then hovered_control=c end
-   rect(rb.x,rb.y,rb.w,rb.h,selected and T.selected or hover and T.hover or i%2==0 and T.panel or T.background,1,301,false,'setting_row')
-   if selected then rect(rb.x,rb.y,2*s,rb.h,T.gold,1,304)end
+   rect(rb.x,rb.y,rb.w,rb.h,selected and T.gold or T.hover,selected and .12 or hover and .09 or 0,301,false,'setting_row')
+   if selected then rect(rb.x,rb.y,rb.w,1*s,T.gold,.8,304);rect(rb.x,rb.y+rb.h-1*s,rb.w,1*s,T.gold,.55,304)end
    if c.type=='text'then
     local label=tostring(c.label or '');local first,second=label,'';local chars=glyphs(label);local width_budget=(width-52*s)
-    if measure(label,13*s)>width_budget then local count=0;for n=1,#chars do if measure(table.concat(chars,'',1,n),13*s)>width_budget then break end;count=n end;first=table.concat(chars,'',1,count);second=table.concat(chars,'',count+1)end
-    text(first,left+8*s,y+(second~=''and 16*s or 0),width_budget,(second~=''and 16 or 34)*s,13,T.muted)
-    if second~=''then text(second,left+8*s,y,width_budget,16*s,13,T.muted)end
+    if measure(label,11*s)>width_budget then local count=0;for n=1,#chars do if measure(table.concat(chars,'',1,n),11*s)>width_budget then break end;count=n end;first=table.concat(chars,'',1,count);second=table.concat(chars,'',count+1)end
+    text(first,left+8*s,y+(second~=''and 12*s or 0),width_budget,(second~=''and 12 or 29)*s,11,T.muted)
+    if second~=''then text(second,left+8*s,y,width_budget,12*s,11,T.muted)end
    else
-    local color=c.disabled and T.disabled or T.white;local label=text(c.label,left+3*s,y,252*s,34*s,16,color);label.control_id=c.id
-    local b={x=left+268*s,y=y+3*s,w=202*s,h=28*s,c=c,key=c,row=i};local editing=self.editing_value==c or key_capture==c or color_edit==c
+    local color=c.disabled and T.disabled or T.white;local label=text(c.label,left+3*s,y,340*s,29*s,16,color);label.control_id=c.id
+    local b={x=left+356*s,y=y+1*s,w=width-390*s,h=27*s,c=c,key=c,row=i};local editing=self.editing_value==c or key_capture==c or color_edit==c
     surface(b,selected or editing,c.disabled,c,true);if popup and popup.c==c then popup_anchor=b end
-    local display=key_capture==c and 'Press key; Esc cancels'or text_edit and text_edit.c==c and(text_edit.text..'|')or value(c);local pad=c.type=='toggle'and 36 or c.type=='color'and 34 or 9;local right_pad=c.type=='choice'and 34 or 9
-    if c.type~='slider'then text(display,b.x+pad*s,b.y,b.w-(pad+right_pad)*s,b.h,15,c.disabled and T.disabled or c.type=='toggle'and self.handle.get(c.id)and T.enabled or T.white)end
-    if c.type=='choice'then text('v',b.x+b.w-24*s,b.y,16*s,b.h,14,c.disabled and T.disabled or T.muted)
+    local display=key_capture==c and 'Press key; Esc cancels'or text_edit and text_edit.c==c and(text_edit.text..'|')or value(c);local pad=(c.type=='toggle'or c.type=='choice')and 30 or c.type=='color'and 34 or 9;local right_pad=(c.type=='choice'or c.type=='toggle')and 30 or 9
+    if c.type~='slider'then text(display,b.x+pad*s,b.y,b.w-(pad+right_pad)*s,b.h,16,c.disabled and T.disabled or c.type=='toggle'and self.handle.get(c.id)and T.enabled or T.white)end
+    if c.type=='choice'or c.type=='toggle'then text('<',b.x+8*s,b.y,16*s,b.h,14,c.disabled and T.disabled or T.muted);text('>',b.x+b.w-24*s,b.y,16*s,b.h,14,c.disabled and T.disabled or T.muted)
     elseif c.type=='slider'then
      local fraction=math.max(0,math.min(1,(self.handle.get(c.id)-c.min)/(c.max-c.min)));local ink=c.disabled and T.disabled or T.gold
-     b.track={x=b.x+8*s,y=b.y+3*s,w=118*s,h=22*s,c=c};b.numeric={x=b.x+134*s,y=b.y,w=68*s,h=b.h}
-     local track=rect(b.track.x,b.y+11*s,b.track.w,6*s,T.line,1,306,false,'slider_track');track.control_id=c.id
-     rect(b.track.x,b.y+12*s,b.track.w*fraction,4*s,ink,1,307);rect(math.max(b.track.x,math.min(b.track.x+b.track.w-4*s,b.track.x+b.track.w*fraction-2*s)),b.y+5*s,4*s,18*s,selected and T.white or ink,1,308)
-     surface(b.numeric,editing,c.disabled,c,true);text(display,b.numeric.x+5*s,b.numeric.y,b.numeric.w-10*s,b.numeric.h,15,c.disabled and T.disabled or T.white)
-    elseif c.type=='toggle'then local on=self.handle.get(c.id);rect(b.x+8*s,b.y+9*s,20*s,10*s,T.line,1,306);rect(b.x+(on and 19 or 9)*s,b.y+7*s,8*s,14*s,c.disabled and T.disabled or on and T.gold or T.muted,1,307)
+     b.track={x=b.x+8*s,y=b.y+2*s,w=b.w-100*s,h=23*s,c=c};b.numeric={x=b.x+b.w-78*s,y=b.y,w=78*s,h=b.h}
+     local track=rect(b.track.x,b.y+12*s,b.track.w,3*s,T.border,.8,306,false,'slider_track');track.control_id=c.id
+     rect(b.track.x,b.y+12*s,b.track.w*fraction,3*s,ink,.8,307);rect(math.max(b.track.x,math.min(b.track.x+b.track.w-4*s,b.track.x+b.track.w*fraction-2*s)),b.y+3*s,4*s,21*s,selected and T.white or ink,1,308)
+     surface(b.numeric,editing,c.disabled,c,true);text(display,b.numeric.x+5*s,b.numeric.y,b.numeric.w-10*s,b.numeric.h,16,c.disabled and T.disabled or T.white)
     elseif c.type=='color'then local hex=self.handle.get(c.id);rect(b.x+8*s,b.y+6*s,20*s,16*s,{tonumber(hex:sub(2,3),16),tonumber(hex:sub(4,5),16),tonumber(hex:sub(6,7),16)},1,307)end
     if not c.disabled then local index=i;hits[#hits+1]={x=rb.x,y=rb.y,w=rb.w,h=rb.h,action=function()self.selection=index;self.editing_value=nil;text_edit=nil end,key=c};hits[#hits+1]=b;if i==self.selection then selected_hit=b end end
    end
@@ -177,30 +253,29 @@ function M.new(view,actions)
   end
   scrollbar('rows',{x=x+width-18*s,y=content_top-visible_count*row,w=16*s,h=visible_count*row},#rows,visible_count,self.scroll)
   if color_edit then
-   text('COLOR CHANNELS',left,bottom+196*s,width-32*s,18*s,12,T.muted);local hex=self.handle.get(color_edit.id);local bw=(width-44*s)/3
-   for n=1,3 do local v=tonumber(hex:sub(n*2,n*2+1),16);local bx=left+(n-1)*(bw+6*s);text(({'R','G','B'})[n]..' '..v,bx,bottom+176*s,bw,20*s,13,T.white)
-    local c={type='color_channel',base=color_edit.id,channel=n,min=0,max=255,step=1};local b={x=bx,y=bottom+155*s,w=bw,h=20*s,c=c,key='channel:'..n}
+   text('COLOR CHANNELS',left,bottom+73*s,width-32*s,16*s,10,T.muted);local hex=self.handle.get(color_edit.id);local bw=(width-44*s)/3
+   for n=1,3 do local v=tonumber(hex:sub(n*2,n*2+1),16);local bx=left+(n-1)*(bw+6*s);text(({'R','G','B'})[n]..' '..v,bx,bottom+51*s,bw,18*s,11,T.white)
+    local c={type='color_channel',base=color_edit.id,channel=n,min=0,max=255,step=1};local b={x=bx,y=bottom+29*s,w=bw,h=18*s,c=c,key='channel:'..n}
     surface(b,false,false,b.key,true);rect(bx,b.y,bw*v/255,2*s,T.gold,1,307);hits[#hits+1]=b
    end
   end
   local hint=hovered_control or rows[self.selection];local label=hint and tostring(hint.label or '')or 'Photo settings'
-  text(label,left,bottom+136*s,width-32*s,18*s,12,T.muted)
-  text(hint and hint.disabled and 'Unavailable in this scene' or text_edit and(text_edit.error or(text_edit.typing and 'Enter / Space saves  |  Esc cancels  |  Ctrl+A replaces' or text_edit.c.fine_step and 'A/D step  |  Shift+A/D fine  |  Esc cancels' or 'Type number or A/D step  |  Enter / Space saves  |  Esc cancels'))or key_capture and 'Press the new shortcut  |  Esc cancels' or self.notice or 'A/D changes value  |  Enter edits  |  Right-click resets',left,bottom+117*s,width-32*s,18*s,11,hint and hint.disabled and T.disabled or T.muted)
-  rect(left,bottom+112*s,width-32*s,1,T.line,1,301)
-  button('Toggle HUD',{x=left,y=bottom+76*s,w=154*s,h=30*s},actions.hud,'hud');button('Hide controls ['..keys.hide..']',{x=left+160*s,y=bottom+76*s,w=width-192*s,h=30*s},actions.hide,'hide')
-  button('Exit photo mode',{x=left,y=bottom+38*s,w=width-32*s,h=30*s},actions.exit,'exit')
-  text('W/S rows  |  A/D values  |  Q/E tabs  |  Enter edits',left+12*s,bottom+14*s,width-58*s,18*s,12,T.muted)
+  text(hint and hint.disabled and 'Unavailable in this scene' or text_edit and(text_edit.error or(text_edit.typing and 'Enter / Space saves  |  Esc cancels  |  Ctrl+A replaces' or text_edit.c.fine_step and 'A/D step  |  Shift+A/D fine  |  Esc cancels' or 'Type number or A/D step  |  Enter / Space saves  |  Esc cancels'))or key_capture and 'Press the new shortcut  |  Esc cancels' or self.notice or(label..(hint and hint.type=='slider'and '  |  Shift+drag fine  |  Enter edits'or '  |  A/D changes  |  Enter edits')),left+24*s,bottom+1*s,width-56*s,12*s,10,hint and hint.disabled and T.disabled or T.muted)
+  rect(x,strip_bottom,width,54*s,T.background,.4,300,false,'photo_controls_strip');rect(x,strip_bottom+54*s,width,1*s,T.border,.5,301)
+  button('Toggle HUD',{x=left,y=strip_bottom+29*s,w=120*s,h=21*s},actions.hud,'hud',false,11)
+  button('Hide controls ['..keys.hide..']',{x=left+128*s,y=strip_bottom+29*s,w=166*s,h=21*s},actions.hide,'hide',false,11)
+  button('Exit photo mode',{x=left+302*s,y=strip_bottom+29*s,w=156*s,h=21*s},actions.exit,'exit',false,11)
+  text('W/S rows  |  A/D values  |  Q/E tabs  |  Enter edits  |  Right-click resets',left,strip_bottom+6*s,width-32*s,16*s,11,T.muted)
   local grip={x=x+4*s,y=bottom+4*s,w=20*s,h=20*s};local grip_hover=over(grip);local grip_pressed=resize~=nil
   local grip_command=rect(grip.x,grip.y,grip.w,grip.h,grip_pressed and T.pressed or grip_hover and T.field_hover or T.panel,1,320,false,'resize_grip');grip_command.resize=true;grip_command.hovered=grip_hover==true;grip_command.pressed=grip_pressed
   for i=0,2 do rect(x+(7+i*5)*s,bottom+(7+i*5)*s,3*s,3*s,focused and(grip_hover or grip_pressed)and T.gold or T.muted,1,321)end
-  text('RESIZE',left+12*s,bottom+1*s,width-58*s,12*s,9,T.muted)
   if focused then hits[#hits+1]={x=x,y=bottom,w=28*s,h=30*s,resize=true,key='resize'}end
   if popup then
    if popup_anchor then popup.x,popup.y,popup.w=popup_anchor.x,popup_anchor.y,popup_anchor.w end
    hits={} -- The dropdown owns pointer input, including outside-click dismissal.
    hits[#hits+1]={x=0,y=0,w=w,h=h,action=function()popup=nil;scroll_drag=nil end,key='dismiss'}
    local option_h=32*s;popup_count=math.max(1,math.min(10,#popup.c.choices,math.floor((top-bottom-64*s)/option_h)))
-   popup_scroll=math.max(0,math.min(#popup.c.choices-popup_count,popup_scroll));local pw=math.min(340*s,w-16*s);local ph=popup_count*option_h+30*s
+   popup_scroll=math.max(0,math.min(#popup.c.choices-popup_count,popup_scroll));local pw=math.min(math.max(340*s,popup.w),w-16*s);local ph=popup_count*option_h+30*s
    local px=math.max(8*s,math.min(w-pw-8*s,popup.x+popup.w-pw));local py=math.max(bottom+10*s,math.min(top-ph-8*s,popup.y-ph))
    rect(px,py,pw,ph,T.panel,1,900,true,'dropdown_panel');border({x=px,y=py,w=pw,h=ph},T.border_hover,905,true)
    rect(px+1,py+ph-29*s,pw-2,28*s,T.header,1,901,true);text(popup.c.label,px+10*s,py+ph-29*s,pw-30*s,28*s,12,T.gold,910,true,'hint')
@@ -213,6 +288,7 @@ function M.new(view,actions)
    end
    scrollbar('popup',{x=px+pw-18*s,y=py+2*s,w=16*s,h=popup_count*option_h-4*s},#popup.c.choices,popup_count,popup_scroll,true)
   end
+  if legend then legend.draw(commands,w,h,focused,false,{x=x,y=bottom,w=width,h=top-bottom,scale=s})end
   view.draw(commands)
  end
  local function activate(b)
@@ -227,9 +303,22 @@ function M.new(view,actions)
  function self.tick(input,down)
   if not input or last_focus~=true then self.suspend();return end
   if input.x then pointer_x=input.x end;if input.y then pointer_y=input.y end
-  if not input.click then drag=nil;scroll_drag=nil;pressed_key=nil;if popup_close_on_release then popup=nil;popup_close_on_release=false end end
+  if not input.click then finish_layout();drag=nil;scroll_drag=nil;move_panel=nil;pressed_key=nil;if popup_close_on_release then popup=nil;popup_close_on_release=false end end
+  if move_panel and input.click then
+   if type(input.x)=='number'and type(input.y)=='number'and input.x==input.x and input.y==input.y and math.abs(input.x)<math.huge and math.abs(input.y)<math.huge then
+    local g=move_panel.geometry;local margin=8*g.scale
+    local px=math.max(margin,math.min(g.w-g.width-margin,move_panel.left+input.x-move_panel.x))
+    local py=math.max(margin,math.min(g.h-g.height-margin,move_panel.bottom+input.y-move_panel.y))
+    self.panel_x=px/(g.w-g.width);self.panel_y=py/(g.h-g.height);layout_dirty=true
+   end
+   held=input.click;return
+  end
+  if legend and not popup and not key_capture and not resize and not drag and not scroll_drag then
+   if input.click and legend.pointer_over(input)and not blur_number()then held=input.click;return end
+   if legend.tick(input,down)then held=input.click;right_held=nil;nav_ready=false;pressed_key=nil;return end
+  end
   if resize then if not input.click then resize=nil elseif input.x and input.y and geometry then
-   local delta=(-520*(input.x-resize.x)-820*(input.y-resize.y))/(520*520+820*820);self.size_scale=math.max(geometry.minimum,math.min(geometry.maximum,resize.scale+delta))/geometry.base;held=input.click;return end end
+   local delta=(-PANEL_WIDTH*(input.x-resize.x)+PANEL_HEIGHT*(input.y-resize.y))/(PANEL_WIDTH*PANEL_WIDTH+PANEL_HEIGHT*PANEL_HEIGHT);self.size_scale=math.max(geometry.minimum,math.min(geometry.maximum,resize.scale+delta))/geometry.base;layout_dirty=true;held=input.click;return end end
   if scroll_drag and input.click and input.y then scroll_drag.move(input.y);held=input.click;return end
   if key_capture then
    if not input.click then armed=true end
@@ -284,7 +373,7 @@ function M.new(view,actions)
    if choose then if not selected_hit or selected_hit.c~=c then reveal(self.selection)else activate(selected_hit)end;if key_capture then for k=1,255 do if down(k)then baseline[k]=true end end end end
   end
   if input.wheel and input.wheel~=0 then if popup then popup_scroll=math.max(0,math.min(#popup.c.choices-popup_count,popup_scroll-(input.wheel>0 and 1 or -1)))else self.scroll=math.max(0,math.min(math.max(0,#rows-visible_count),self.scroll-(input.wheel>0 and 1 or -1)));color_edit=nil end end
-  if input.click and drag and input.x then set_slider(drag.c,input.x,drag)end
+  if input.click and drag and input.x then scrub_slider(input.x,down(16))end
   if input.click and not held and input.x and input.y then
    local target;for i=#hits,1,-1 do local b=hits[i];if input.x>=b.x and input.x<=b.x+b.w and input.y>=b.y and input.y<=b.y+b.h then target=b;break end end
    local same=text_edit and target and target.c==text_edit.c and target.numeric and input.x>=target.numeric.x
@@ -293,12 +382,13 @@ function M.new(view,actions)
    for i=#hits,1,-1 do local b=hits[i]
    if input.x>=b.x and input.x<=b.x+b.w and input.y>=b.y and input.y<=b.y+b.h then
     pressed_key=b.key or b.c
-    if b.resize then resize={x=input.x,y=input.y,scale=geometry.scale};drag=nil
+    if b.move then move_panel={x=input.x,y=input.y,left=geometry.x,bottom=geometry.strip_bottom,geometry=geometry};drag=nil
+    elseif b.resize then resize={x=input.x,y=input.y,scale=geometry.scale};drag=nil
     elseif b.action then b.action(input.x,input.y)
     else local c=b.c;if not c.disabled then if b.row then self.selection=b.row end
      if c.type=='slider'then
-      if b.numeric and input.x>=b.numeric.x then begin_number(c)else text_edit=nil;self.editing_value=nil;local track=b.track or b;set_slider(c,input.x,track);drag=track end
-     elseif c.type=='color_channel'then set_slider(c,input.x,b);drag=b
+      if b.numeric and input.x>=b.numeric.x then begin_number(c)else text_edit=nil;self.editing_value=nil;begin_slider(c,input.x,b.track or b,down(16))end
+     elseif c.type=='color_channel'then begin_slider(c,input.x,b,down(16))
      else text_edit=nil;self.editing_value=nil;activate(b);if key_capture then for k=1,255 do if down(k)then baseline[k]=true end end end end
     end end;break
    end
@@ -308,6 +398,14 @@ function M.new(view,actions)
  function self.dismiss()if popup then popup=nil;popup_close_on_release=false;scroll_drag=nil;return true elseif self.editing_value then self.editing_value=nil;text_edit=nil;self.notice=nil;return true elseif color_edit then color_edit=nil;return true end;return false end
  function self.editing_key()return key_capture~=nil end
  function self.editing_text()return text_edit~=nil end
+ function self.editing_control(id)return text_edit and text_edit.c.id==id or self.editing_value and self.editing_value.id==id or false end
+ function self.contains_pointer(x,y)
+  -- A modal dropdown excludes all scene picking, including its outside-click
+  -- dismissal. The opaque panel and flyout exclude their entire surfaces.
+  if popup or key_capture or drag or resize or scroll_drag or move_panel or legend and legend.capturing_pointer()then return true end
+  local b=panel_bounds
+  return type(x)=='number'and type(y)=='number'and((b and x>=b.x and x<=b.x+b.w and y>=b.y and y<=b.y+b.h)or legend and legend.pointer_over({x=x,y=y}))or false
+ end
  return self
 end
 return M
