@@ -60,7 +60,9 @@ and subject visibility changes are cleaned up when leaving Photo Mode.
 PAUSE AND CAPTURE
 Pause and slow motion require a verified solo session. Freecam can still be
 used in multiplayer. Guarded hoverpack pause neutralizes automatic thrust
-before zero time, checks released inputs, then restores thrust after resuming.
+before zero time, checks neutral hover controls, then restores thrust after resuming.
+Entering and leaving Photo Mode preserves held gameplay inputs; it does not
+send synthetic key or mouse-button releases. Held ADS remains available for posing.
 Active-hover pause is refused with connected or unidentified controllers.
 Losing input capture during guarded hover pause resumes the simulation first.
 The reported hoverpack + melee pause/resume reproduction passed in development;

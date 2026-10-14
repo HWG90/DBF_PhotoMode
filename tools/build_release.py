@@ -28,7 +28,7 @@ ACTIVE_MODULES=('animation_state.lua','chat_context.lua','look.lua','simulation.
     'photo_options.lua','lens.lua','composition.lua','postfx.lua','photo_runtime.lua','hud.lua','render_profile.lua',
     'camera_profile.lua','photo_menu.lua','control_legend.lua','screenshot.lua','screenshot_backend.lua',
     'depth_resource.lua','focus_sampler.lua','photo_lights.lua','photo_light_gizmos.lua','photo_light_presets.lua','subject_backend.lua','subject.lua','subject_poses.lua','director.lua','ai_backend.lua','ai_control.lua',
-    'saved_camera.lua','controller.lua','input_release.lua','input_release_backend.lua','hover_pause.lua',
+    'saved_camera.lua','controller.lua','hover_pause.lua',
     'hover_pause_backend.lua','scene_dof_overlay.lua','shader_template_guard.lua','standalone.lua',
     'bsl_startup.lua','mdl.lua','lll.lua','assets/logo_art.lua','assets/helldiver_crest.lua','assets/subject_pose_frames.lua')
 
@@ -164,6 +164,7 @@ def build(output):
     generated=photo.patch(foundation.decode(),dof_candidate=True,native_candidate=True,combined_scene_candidate=True).encode()
     photo.compile_lua(generated,'WarJournalist-'+VERSION)
     assert b'e07f49224f0a5759'in generated and b'PhotoHoverGuardInstall'not in generated and b'__INPUT_RELEASE__'not in generated
+    assert b'dbf_input_release'not in generated and b'SendInput('not in generated,'Synthetic blanket input release returned to the runtime'
     (output/'ActionCam-Freecam.lua').write_bytes(generated)
     core,shared,audit=resources(output)
     provenance={'version':VERSION,'runtime_sha256':sha(generated),'source_modules_sha256':{name:sha((ROOT/'freecam'/name).read_bytes())for name in ACTIVE_MODULES},

@@ -21,7 +21,8 @@ ai.mode='dummy';fail=true
 local before={effects_released,time_released,input_released,keyups,subject_restore,ai_restore}
 local ok,why=ctrl.stop()
 assert(ok==false and why:find('retired GUI fixture',1,true)and not photo.active and ctrl._panel_close_pending)
-assert(effects_released>before[1]and time_released>before[2]and input_released>before[3]and keyups>before[4],'Menu exception prevented effect/time/input cleanup')
+assert(effects_released>before[1]and time_released>before[2]and input_released>before[3],'Menu exception prevented effect/time/input cleanup')
+assert(keyups==0,'Photo exit injected synthetic button releases')
 assert(subject_restore>before[5]and ai_restore==before[6],'Menu exception prevented subject cleanup or discarded persistent AI behavior')
 assert(ctrl.close()==false and service.mods.dbf_freecam,'Failed menu close abandoned retry')
 assert(ai_restore>before[6],'Shutdown did not queue AI cleanup')

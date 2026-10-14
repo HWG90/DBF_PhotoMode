@@ -1,10 +1,10 @@
 -- ActionCam photomode adapter. Camera placement stays owned by ActionCam.
 local M={}
-function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,catalog,saved_camera,screenshots,focus_sampler,lights,subject,director,input_release,update_epoch,ai,poses)
+function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,catalog,saved_camera,screenshots,focus_sampler,lights,subject,director,unused_input_release,update_epoch,ai,poses)
     local roll_value;local self={};local api,handle,provider;local held=true;local retry=0;local controls={};local resume_after;local suppress_escape;local panel;local menu_focus=false;local controls_hidden=false;local recovery_menu=false;local focus_edge=false;local hide_edge=false;local slow_edge=false;local lock_edge=false;local escape_edge=false;local screenshot_edge=false
     local subject_pair;local subject_held;local subject_ready=false;local autofocus_write=false;local focus_deadline=0;local focus_elapsed=0;local focus_status='Manual focus';local focus_mode_seen;local menu_startup_reset=false
     local lighting_write=false;local lighting_revision=-1
-    self._input_release=input_release;self._input_tick=0
+    self._input_tick=0
     self._ai=ai
     self._poses=poses;self._pose_available=false;self._pose_caps={}
     function self._request_time_change(rate)
@@ -385,12 +385,6 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
             if ok==false then return false,why end
             provider=nil
         end
-        -- Provider.release acknowledges native gate and Window restoration.
-        -- Only now may a cached gameplay KEYUP/mouseUP reach the game again.
-        if self._input_release then
-            local called,ok,why=pcall(self._input_release.finish)
-            if not called or ok==false then log('Photo input cleanup: '..tostring(called and why or ok))end
-        end
         if self._panel_close_pending then return false,self._panel_close_pending end
         return restored,reason
     end
@@ -483,26 +477,23 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         if not can_start()then return false,'Camera is unavailable'end
         local input=api.camera_input
         if not input then return false,'Install the MCM freecam input candidate first' end
-        if not self._input_release then return self._start_camera()end
-        -- The release must be consumed with gameplay running, before we hide
-        -- engine input or apply the Photo pause. Never freeze a pending entry.
-        self.slowmo_active=false
-        if freeze then local ok,why=freeze.release();if ok==false then return false,why end end
-        local before=self._input_epoch();if before==nil then return false,'Gameplay update proof is unavailable'end
-        local called,ok,why=pcall(self._input_release.begin)
-        if not called or ok~=true then self.stop();return false,called and why or ok end
         local preparing=freeze and freeze.prepare and handle.get('freeze_player')and(not input.pause_allowed or input.pause_allowed())
-        if preparing then
-            local prepared,reason=freeze.prepare()
-            if prepared~=true then self.stop();return false,reason end
-        end
-        self._pending_start={epoch=before,tick=self._input_tick,frames=0,elapsed=0,input=input,handle=handle,hover=preparing}
+        if not preparing then return self._start_camera()end
+        -- Preserve held gameplay actions, including ADS. Only active hover
+        -- needs an unpaused engine update to qualify its data-only pause guard.
+        self.slowmo_active=false
+        local restored,problem=freeze.release();if restored==false then return false,problem end
+        local prepared,reason=freeze.prepare()
+        if prepared~=true then self.stop();return false,reason end
+        local needs_update=freeze.input_release_required and freeze.input_release_required()
+        if not needs_update then return self._start_camera()end
+        local before=self._input_epoch();if before==nil then self.stop();return false,'Gameplay update proof is unavailable'end
+        self._pending_start={epoch=before,tick=self._input_tick,frames=0,elapsed=0,input=input,handle=handle,hover=true}
         return true
     end
     local function inform_toggle(reveal_hidden) if api.is_open() then local closed,why=api.close();if closed==false then log(tostring(why));return end end;local ok,why=toggle(reveal_hidden);if ok==false then log('freecam: '..tostring(why)) end end
     function self.tick(dt)
         self._input_tick=self._input_tick+1
-        if self._input_release then pcall(self._input_release.tick,photo.active and provider~=nil)end
         if self._pose_stop_pending then
             self.stop(self._pose_stop_pending.preserve_resume)
             return
@@ -696,20 +687,16 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
             if waiting.input~=api.camera_input or waiting.handle~=handle or not handle.get('enabled')or not can_start()or not api.camera_input.focused()or api.is_open()or game_chat_active()or key_down(27)then self.stop();return end
             local current=self._input_epoch()
             if self._input_tick>waiting.tick and current and current>waiting.epoch then
-                local called,ready,why=pcall(self._input_release.entry_ready)
+                local called,ready,why=pcall(freeze.ready)
+                waiting.reason=called and why or ready
                 if called and ready==true then
-                    local neutral,reason=true,nil
-                    if waiting.hover then neutral,reason=freeze.ready()end
-                    waiting.reason=reason
-                    if neutral then
-                        self._pending_start=nil;local ok,problem=self._start_camera();if ok==false then log('freecam: '..tostring(problem))end
-                    end
-                elseif not called or self._input_release.pending==false then
-                    self.stop();log('freecam: input release could not be verified: '..tostring(called and why or ready));return
+                    self._pending_start=nil;local ok,problem=self._start_camera();if ok==false then log('freecam: '..tostring(problem))end
+                elseif not called then
+                    self.stop();log('freecam: hover pause could not be verified: '..tostring(ready));return
                 end
             end
             if self._pending_start then
-                if waiting.frames>=120 or waiting.elapsed>=.5 then self.stop();log('freecam: '..tostring(waiting.reason or'timed out waiting for an unpaused gameplay update and input release'))end
+                if waiting.frames>=120 or waiting.elapsed>=.5 then self.stop();log('freecam: '..tostring(waiting.reason or'timed out waiting for a neutral hover control and unpaused gameplay update'))end
                 photo.input={};return
             end
         end
@@ -892,7 +879,6 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         if subject then local called,cleared,reason=pcall(subject.release);if not called or cleared==false then return false,called and reason or cleared end end
         if ok==false then return false,why end
         if freeze and freeze.cleanup_pending and freeze.cleanup_pending()then return false,'Hover restoration is waiting for a resumed update'end
-        if self._input_release and self._input_release.pending then return false,self._input_release.status or'Photo input readback is pending'end
         if handle then handle.unregister();handle=nil end
         return true
     end
