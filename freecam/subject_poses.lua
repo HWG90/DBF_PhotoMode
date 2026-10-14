@@ -22,11 +22,11 @@ function M.native(sr,subject,data)
  end
  -- Cloth keeps its simulated shape while world time is stopped. Its separate
  -- mesh-placement nodes must follow the posed shoulder anchor as well as the
- -- skeleton. Capture only the verified cape class; an unsupported garment
+ -- skeleton. Capture only the verified cape rig; an unsupported garment
  -- never prevents a body pose or authorizes guessed node-number writes.
  local cape_api=sr.Mesh and type(sr.Mesh.node)=='function'
  for _,name in ipairs({'resolve','valid','owned'})do cape_api=cape_api and type(subject[name])=='function'end
- for _,name in ipairs({'has_mesh','mesh','num_meshes','world_pose'})do cape_api=cape_api and type(U[name])=='function'end
+ for _,name in ipairs({'mesh','num_meshes','world_pose'})do cape_api=cape_api and type(U[name])=='function'end
  for _,name in ipairs({'multiply','inverse','right','forward','up','translation'})do cape_api=cape_api and type(X[name])=='function'end
  for _,name in ipairs({'x','y','z'})do cape_api=cape_api and type(V[name])=='function'end
  local function same_pose(a,b)
@@ -44,7 +44,9 @@ function M.native(sr,subject,data)
   if valid==false then return false end
   assert(valid==true,why or'Cape ownership read unavailable')
   assert(U.num_scene_graph_items(record.part.handle)==record.node_count,'Cape skeleton changed')
-  assert(U.has_node(record.part.handle,'cape1')and U.node(record.part.handle,'cape1')==record.cape_node,'Cape anchor mapping changed')
+  for name,node in pairs(record.cape_nodes)do
+   assert(U.has_node(record.part.handle,name)and U.node(record.part.handle,name)==node,'Cape bone mapping changed')
+  end
   if owned then assert(subject.owned(record.part),'Cape attachment ownership changed')end
   return true
  end
@@ -75,21 +77,26 @@ function M.native(sr,subject,data)
       assert(subject.valid(part)==true and subject.owned(part),'Cape source unavailable')
       assert(part.world_native==frame.world_native and part.owner_key==frame.owner_key,'Cape subject world or owner differs')
       local unit=part.handle
-      assert(U.num_scene_graph_items(unit)==50 and U.has_node(unit,'cape1'),'Unsupported cape skeleton')
-      local named=false
-      for _,name in ipairs({'g_shock_trooper_cape','g_shock_trooper_cape_simple','g_shock_trooper_cape_simple_partial'})do
-       local exists=U.has_mesh(unit,name);if exists==true or exists==1 then named=true end
+      assert(U.num_scene_graph_items(unit)==50,'Unsupported cape skeleton')
+      -- Armor variants rename their cape meshes and may externally link the
+      -- cloth bones (no local parent). Identify the bounded named cape rig,
+      -- then discover its separate placement nodes from actual Mesh handles.
+      local cape_nodes,bones={},{}
+      for _,name in ipairs({'cape1','cape2','cape3'})do
+       assert(U.has_node(unit,name),'Unsupported cape bone mapping')
+       local node=U.node(unit,name)
+       assert(type(node)=='number'and node%1==0 and node>=2 and node<=50 and not bones[node],'Unsupported cape bone mapping')
+       cape_nodes[name]=node;bones[node]=true
       end
-      assert(named,'Unsupported cape mesh class')
       local count=U.num_meshes(unit);assert(count==part.mesh_count and count>=1 and count<=32,'Cape mesh bounds changed')
-      local r={part=part,node_count=50,cape_node=U.node(unit,'cape1'),anchor=anchor,world=frame.world,meshes={},changed={}}
+      local r={part=part,node_count=50,cape_nodes=cape_nodes,anchor=anchor,world=frame.world,meshes={},changed={}}
       local root=sr.Matrix4x4Box(U.world_pose(unit,1));local nodes={}
       for index=1,count do
        assert(subject.valid(part,index)==true,'Cape mesh retired during capture')
        local handle=U.mesh(unit,index);local node=sr.Mesh.node(handle)
        assert(type(node)=='number'and node%1==0 and node>=1 and node<=50,'Cape mesh node bounds changed')
        local parent=U.scene_graph_parent(unit,node)
-       if node>1 and not nodes[node]and type(parent)=='number'and parent%1==0 and parent>=1 and parent<=50 and parent~=node then
+       if node>1 and not bones[node]and not nodes[node]and type(parent)=='number'and parent%1==0 and parent>=1 and parent<=50 and parent~=node then
         local pose=sr.Matrix4x4Box(U.world_pose(unit,node))
         if same_pose(pose:unbox(),root:unbox())then
          nodes[node]=true
