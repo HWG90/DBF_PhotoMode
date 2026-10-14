@@ -17,7 +17,8 @@
     "description_source": "docs/pages/war-journalist-0.9.9-ayaka.bbcode.txt",
     "download": "https://github.com/HWG90/DBF_PhotoMode/releases/download/v0.9.9/War-Journalist-0.9.9-BSL.zip",
     "alternative_mdl": "https://github.com/HWG90/DBF_PhotoMode/releases/download/v0.9.9/War-Journalist-0.9.9-MDL.zip",
-    "retain_cover_and_gallery": true
+    "retain_cover_and_gallery": true,
+    "short_description": "A Helldivers 2 Photo Mode: shader registry repair; Radeon Alt-Tab/display-change tests stable."
   },
   "github": {
     "release_url": "https://github.com/HWG90/DBF_PhotoMode/releases/tag/v0.9.9",
