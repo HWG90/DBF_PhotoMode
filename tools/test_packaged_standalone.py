@@ -160,6 +160,9 @@ assert(DBFMCM==nil,'Standalone package must not publish MCM')
 update(.016);render();render()
 local api=DBF_PHOTO_STANDALONE_API
 assert(api.photo_standalone and api.camera_input.api==2 and type(api.camera_input.set_focus)=='function')
+if api.camera_input.cursor_graphic then
+ assert(api.camera_input.cursor_graphic=='Helldivers','Bundled hardware cursor did not load; package silently fell back to Windows arrow')
+end
 assert(api.mods.dbf_freecam and #api.mods.dbf_freecam.pages>=5,'Full Photo Mode settings failed registration')
 local controls=0
 for _,page in ipairs(api.mods.dbf_freecam.pages)do for _ in ipairs(page.controls)do controls=controls+1 end end
