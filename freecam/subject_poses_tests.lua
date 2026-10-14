@@ -162,6 +162,24 @@ end
 -- Closing releases every native lease but remembers only the selected ID.
 -- Reopening requires a fresh supported local frame and a real paused edge.
 do
+ local x=fixture();selected(x,'wave');local old=x.unit()
+ assert(x.api.release()and x.api.flush()and x.api.remembered()=='wave');original(old)
+ -- Actual controller lifecycle: no pose refresh is delivered while closed.
+ old.retired=true;x.identity='local:2';local new=x.add(x.identity)
+ local writes=x.writes;assert(x.api.refresh(0)and x.api.pending and not x.api.active and x.writes==writes,'First paused reopen missed a release-only session boundary')
+ assert(x.api.flush()and x.api.current()=='wave'and new.bones[1]==201 and x.captures==2,'Release-only reopen did not apply to the fresh subject')
+ assert(x.api.queue_stop()and x.api.flush()and x.api.remembered()==nil);original(new)
+ assert(x.api.release()and x.api.flush()and x.api.refresh(0)and not x.api.pending and x.api.flush()and x.captures==2,'Reset was lost across a release-only reopen')
+end
+
+do
+ local x=fixture();selected(x,'salute');assert(x.api.release()and x.api.flush())
+ x.frame_error=true;assert(not x.api.refresh(0,10)and not x.api.pending,'Release-only reopen used an unavailable subject')
+ x.frame_error=false;assert(not x.api.refresh(0,10.25))
+ assert(x.api.refresh(0,10.5)and x.api.pending and x.api.flush()and x.api.current()=='salute'and x.captures==2,'Release-only reopen did not defer until the renderer recovered')
+end
+
+do
  local x=fixture();selected(x,'wave');local old=x.unit();local before=x.writes
  assert(x.api.remembered()=='wave'and x.api.release()and x.writes==before,'Close forgot selection or wrote from a callback')
  assert(not x.api.queue('taunt'),'Closed service retained an actionable cached subject')

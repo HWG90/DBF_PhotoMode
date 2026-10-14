@@ -313,6 +313,10 @@ function M.new(sr,subject,is_paused,log,data,adapter)
  end
  function self.release()
   resume_pending=false;last=nil;self.available=false;self.capabilities={}
+  -- The controller stops refreshing poses while Photo Mode is closed. Treat
+  -- release as the end of this session so the first paused reopen discovers
+  -- a fresh subject even if no intervening unpaused refresh was delivered.
+  pause_seen=false;last_paused=nil;last_clock=nil;elapsed=.5;refresh_calls=0
   if not owned then idle('Original pose restored');return true end
   request={stop=true};self.pending=true;return true
  end
