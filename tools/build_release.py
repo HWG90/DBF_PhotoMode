@@ -30,7 +30,7 @@ ACTIVE_MODULES=('actioncam_compat.lua','animation_state.lua','chat_context.lua',
     'camera_profile.lua','photo_menu.lua','control_legend.lua','screenshot.lua','screenshot_backend.lua',
     'depth_resource.lua','focus_sampler.lua','photo_lights.lua','photo_light_gizmos.lua','photo_light_presets.lua','subject_backend.lua','subject.lua','subject_poses.lua','director.lua','ai_backend.lua','ai_control.lua',
     'saved_camera.lua','cinema_camera.lua','controller.lua','hover_pause.lua',
-    'hover_pause_backend.lua','scene_dof_overlay.lua','shader_template_guard.lua','standalone.lua','photo_input_capture.lua','cursor_capture.lua','cursor_capture_backend.lua','photo_cursor_input.lua',
+    'hover_pause_backend.lua','scene_dof_overlay.lua','shader_template_guard.lua','standalone.lua','photo_input_capture.lua',
     'bsl_startup.lua','mdl.lua','lll.lua','assets/logo_art.lua','assets/helldiver_crest.lua','assets/subject_pose_frames.lua')
 
 def sha(body):return hashlib.sha256(body).hexdigest()

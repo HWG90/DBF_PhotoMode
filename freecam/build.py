@@ -362,7 +362,6 @@ def payload_files(output):
         'src/actioncam_compat.lua':actioncam_compat_source().encode(),
         'src/standalone.lua':(ROOT/'standalone.lua').read_bytes(),
         'src/photo_input_capture.lua':(ROOT/'photo_input_capture.lua').read_bytes(),
-        **{'src/'+name:(ROOT/name).read_bytes()for name in ('cursor_capture.lua','cursor_capture_backend.lua','photo_cursor_input.lua')},
         'PROVENANCE.json':(output/'PROVENANCE.json').read_bytes()}
     vendor=ROOT/'vendor';identity=json.loads((vendor/'PROVENANCE.json').read_text())
     for name in ('core','store','capture','camera_input','view','font','bingus_memory','bingus_runtime'):

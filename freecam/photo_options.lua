@@ -44,84 +44,6 @@ function M.focal_length(radians)
  if type(radians)~='number'or radians~=radians or radians<=0 or radians>=math.pi then return nil end
  local tangent=math.tan(radians/2);if tangent<1e-9 then return nil end;return 12/tangent
 end
--- Presentation-only ordering. Controls remain flat and retain their IDs,
--- callbacks, live availability and storage contracts across both settings hosts.
-local photo_layout={
- {'camera_tools','Camera',{
-  {'quick','Quick actions',false,{'screenshot','recenter'}},
-  {'movement','Camera movement',true,{'speed','wheel_step','look_sensitivity','roll_speed'}},
-  {'memory','Saved camera position',true,{'save_camera','clear_saved_camera','saved_camera_radius','saved_camera_status'}},
-  {'global','Global controls',false,{'freeze_player','slowmo_speed','lock_camera'}}}},
- {'lens','Lens',{
-  {'focus','Focus',false,{'dof','dof_mode','focus_mode','focus_distance','aperture','focus_status','focus_hint'}},
-  {'framing','Framing',true,{'focal_preset','fov','focal_length_status','roll','roll_preset'}},
-  {'quality','Shader quality',true,{'dof_strength','dof_quality','bokeh_shape','lens_status','known_issues'}}}},
- {'color','Color',{
-  {'grading','Color grading',false,{'color_status','exposure','contrast','saturation','bloom'}},
-  {'filters','Filters',true,{'filter','filter_strength'}}}},
- {'effects','Effects',{
-  {'scene','Scene and depth',false,{'scene_status','scene_shader','scene_strength','scene_depth_range'}},
-  {'fog','Depth fog',true,{'fog_distance','fog_density'}},
-  {'overlays','Shader overlays',true,{'shader','shader_opacity','shader_scale','shader_animate','shader_status'}},
-  {'finish','Finishing',true,{'vignette','vignette_width','grain','grain_size'}}}},
- {'lighting','Lighting',{
-  {'edit','Selected light',false,{'light_selected','light_add','light_enabled','light_kind','light_intensity','light_color','light_range','light_cone'}},
-  {'manage','Manage lights',true,{'light_remove','light_clear','light_status'}},
-  {'placement','Placement',true,{'light_aim','light_place','light_follow','light_right','light_forward','light_up','light_drag_hint'}},
-  {'presets','Subject lighting presets',true,{'light_preset','light_apply_preset','light_preset_hint'}},
-  {'setups','Saved lighting setups',true,{'light_setup_slot','light_setup_recall','light_setup_save','light_setup_clear','light_setup_status'}}}},
- {'composition','Composition',{
-  {'framing','Framing and guides',false,{'frame','grid','clean_view'}},
-  {'branding','Logos and branding',true,{'logo','logo_size','logo_x','logo_y','logo_opacity','logo_color'}}}},
- {'director','Director',{
-  {'cinema','Action camera',false,{'cinema_begin','cinema_reposition','cinema_end','cinema_status','cinema_hint'}},
-  {'shots','Saved shots',false,{'director_slot','director_recall','director_save','director_clear','director_status','director_hint'}},
-  {'ai','Enemy behavior',true,{'ai_behavior','ai_reset','ai_status','ai_hint','ai_limits'}}}},
- {'subject','Subject',{
-  {'poses','Poses',false,{'subject_pose','subject_pose_play','subject_pose_stop','subject_pose_status','subject_pose_hint'}},
-  {'visibility','Subject visibility',true,{'hide_player','hide_armour','hide_weapons','subject_status','subject_hint'}}}},
- {'camera','Settings',{
-  {'display','Display',false,{'hide_hud','hide_controls','show_legend','legend_open','legend_docked'}},
-  {'menu','Menu layout',true,{'menu_opacity','menu_scale','menu_x','menu_y'}},
-  {'legend','Controls legend layout',true,{'legend_tab_y','legend_columns','legend_size','legend_x','legend_y'}},
-  {'shortcuts','Shortcuts',true,{'toggle_key','focus_key','screenshot_key','hide_controls_key','lock_camera_key','slowmo_key'}},
-  {'bindings','Camera bindings',true,{'forward_key','back_key','left_key','right_key','up_key','down_key','roll_left_key','roll_right_key'}},
-  {'maintenance','Photo Mode settings',false,{'enabled','toggle','reset_photo','controls'}}}}}
-function M.organize_pages(pages)
- local by_id,original_pages,seen_pages={},{},{}
- for _,page in ipairs(pages or{})do
-  assert(not seen_pages[page.id],'Duplicate photo page: '..tostring(page.id));seen_pages[page.id]=true
-  local copy={};for key,value in pairs(page)do if key~='controls'then copy[key]=value end end
-  copy.controls={};original_pages[page.id]=copy
-  for _,control in ipairs(page.controls or{})do
-   assert(not by_id[control.id],'Duplicate photo control: '..tostring(control.id))
-   local row={};for key,value in pairs(control)do row[key]=value end
-   by_id[control.id]={row=row,page=page.id}
-  end
- end
- local organized,used,placed_pages={},{},{}
- for _,entry in ipairs(photo_layout)do
-  local page=original_pages[entry[1]]or{id=entry[1],require_confirmation=false,controls={}}
-  page.name=entry[2]
-  for _,section in ipairs(entry[3])do for _,id in ipairs(section[4])do
-   local found=by_id[id]
-   if found then
-    local row=found.row;row.photo_section=section[1];row.photo_section_label=section[2];row.photo_section_collapsed=section[3]
-    page.controls[#page.controls+1]=row;used[id]=true
-   end
-  end end
-  if original_pages[entry[1]]or#page.controls>0 then organized[#organized+1]=page;placed_pages[page.id]=page end
- end
- -- Unknown future controls keep their original page and relative order.
- for _,source in ipairs(pages or{})do
-  local page=placed_pages[source.id]
-  if not page then page=original_pages[source.id];organized[#organized+1]=page;placed_pages[source.id]=page end
-  for _,control in ipairs(source.controls or{})do if not used[control.id]then
-   page.controls[#page.controls+1]=by_id[control.id].row;used[control.id]=true
-  end end
- end
- return organized
-end
 function M.pages(reset,recenter,catalog,saved_actions)
  local function slider(id,label,min,max,step)return {id=id,type='slider',label=label,default=M.defaults[id],min=min,max=max,step=step,commit_on_blur=true,fine_step=(id=='focus_distance'or id=='fov')and .001 or nil,disabled=({focus_distance=true,aperture=true,exposure=true,saturation=true,contrast=true,scene_strength=true,fog_distance=true,fog_density=true,scene_depth_range=true})[id]}end
  local function choice(id,label,choices)return {id=id,type='choice',label=label,default=M.defaults[id],choices=choices,presentation='dropdown',disabled=id=='scene_shader'or id=='subject_pose'or nil}end
@@ -164,7 +86,7 @@ function M.pages(reset,recenter,catalog,saved_actions)
  -- IDs, defaults and callbacks remain shared with MCM and saved settings.
  for _,control in ipairs(saved_actions and saved_actions.camera_controls or{})do camera_controls[#camera_controls+1]=control end
  camera_controls[#camera_controls+1]={id='reset_photo',type='button',label='Reset photo adjustments',button_label='Reset',on_activate=reset}
- local pages={
+ return {
  {id='camera_tools',name='Camera',require_confirmation=false,controls=camera_controls},
  {id='lens',name='Lens',require_confirmation=false,controls={
  lens_control(slider('fov','Field of view (0 = gameplay)',0,120,1)),
@@ -247,7 +169,6 @@ function M.pages(reset,recenter,catalog,saved_actions)
  subject_control('hide_player','Hide entire player'),subject_control('hide_armour','Hide armour and helmet'),subject_control('hide_weapons','Hide carried weapons'),
  {id='subject_status',type='text',label='Subject controls are waiting for a verified player'},
  {id='subject_hint',type='text',label='Visibility is restored when Photo Mode closes.'}}}}
- return M.organize_pages(pages)
 end
 function M.read(handle)
  local values={};for key in pairs(M.defaults)do values[key]=handle.get(key)end;return values

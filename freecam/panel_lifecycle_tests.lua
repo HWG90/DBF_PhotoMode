@@ -9,15 +9,13 @@ api.photo_resolution=function()return 1920,1080 end;api.create_photo_view=functi
 DBFMCM=api
 local freeze={start=function(v)rate=v or 0;return true end,release=function()rate=1;return true end,hold=function()return true end,rate=function()return rate end}
 local effects={parameters={},shader_status='Shader unavailable: fixture material',release=function()return true end}
-local panel_instance;local panel_factory={new=function(view,actions)panel_instance=panel.new(view,actions);return panel_instance end}
-local photo={};local c=controller.new(photo,{},function()return true end,function()end,freeze,options,effects,panel_factory)
+local photo={};local c=controller.new(photo,{},function()return true end,function()end,freeze,options,effects,panel)
 c.tick(.016);keys[80]=true;c.tick(.016);assert(photo.active and rate==0 and mode==1 and #commands>0);keys[80]=false
 local status;for _,page in ipairs(api.mods.dbf_freecam.pages)do for _,control in ipairs(page.controls)do if control.id=='shader_status'then status=control end end end
 assert(status and status.label==effects.shader_status,'Runtime status must update registered text controls, outside MCM stored-value index')
 effects.shader_status='';c.tick(.016);assert(status.label=='')
 c.tick(.016);assert(mode==1 and photo.input.dt==0 and rate==0,'Photo Mode must start ready to edit')
 keys[69]=true;c.tick(.016);keys[69]=false;c.tick(.016) -- Lens follows Camera actions.
-panel_instance.photo_groups_open.lens={focus=false,framing=true,quality=false};panel_instance.selection=4;panel_instance.scroll=0;c.tick(.016)
 keys[13]=true;c.tick(.016);keys[13]=false;c.tick(.016);keys[80]=true;c.tick(.016);assert(photo.active and rate==0,'Numeric editing owns the photo-toggle shortcut');keys[80]=false
 keys[27]=true;c.tick(.016);keys[27]=false;c.tick(.016);assert(mode==1 and photo.active,'Escape cancels numeric entry before leaving menu')
 keys[72]=true;c.tick(.016);assert(mode==3 and #commands==0 and rate==0);keys[72]=false
@@ -37,19 +35,19 @@ local fx=runtime.new(sr,{new=function()return {apply=function()return .9 end,rel
 assert(fx.apply(1,2,3,{0,1,0},{1,0,0},options.defaults,.016)==false);assert(fx.lens_status:find('camera and pause retained',1,true));assert(fx.release())
 print('Photo panel: menu/camera focus, hide/show, focus-loss pause, MCM handoff, slow motion, exit restore and effect-error containment passed')
 
--- Settings stays visible; shared MCM continues to own keybind editing.
+-- Hide the whole bindings/Controls page only when MCM owns configuration.
 for _,standalone in ipairs({false,true})do
  local a=core.new(nil,function()end);a.camera_input=input;a.is_open=function()return false end;a.photo_standalone=standalone;a.create_photo_view=function()return {}end
  local visible;local factory={new=function()return {bind=function(_,pages)visible=pages end,close=function()end,editing_key=function()return false end}end}
  if standalone then DBFMCM=nil;DBF_PHOTO_STANDALONE_API=a else DBFMCM=a;DBF_PHOTO_STANDALONE_API=nil end
  keys={};local ctrl=controller.new({}, {},function()return true end,function()end,nil,options,nil,factory);ctrl.tick(.016)
- assert(visible and #visible==9);assert(visible[1].id=='camera_tools'and visible[2].id=='lens');assert(visible[#visible].id=='camera'and visible[#visible].name=='Settings')
+ assert(visible and (#visible==(standalone and 9 or 8)));assert(visible[1].id=='camera_tools'and visible[2].id=='lens');assert((visible[#visible].id=='camera')==standalone)
  local owners={};for _,page in ipairs(a.mods.dbf_freecam.pages)do for _,control in ipairs(page.controls)do assert(not owners[control.id],'Control duplicated while moving Camera actions: '..control.id);owners[control.id]=page.id end end
  for _,id in ipairs({'screenshot','lock_camera','save_camera','clear_saved_camera','recenter','speed','wheel_step','look_sensitivity','roll_speed','freeze_player','slowmo_speed'})do assert(owners[id]=='camera_tools','Camera action missing: '..id)end
  for _,id in ipairs({'fov','roll','dof','dof_mode','focus_mode','focus_distance','aperture','dof_quality','bokeh_shape'})do assert(owners[id]=='lens','Photographic control must be separate: '..id)end
  for _,id in ipairs({'light_add','light_selected','light_enabled','light_kind','light_intensity','light_color','light_range','light_cone','light_right','light_forward','light_up','light_follow','light_place','light_remove','light_clear'})do assert(owners[id]=='lighting','Light control must stay on its own page: '..id)end
- assert(visible[1].controls[1].id=='screenshot'and visible[1].controls[2].id=='recenter','Common Camera actions must appear first')
- local expected={'Camera','Lens','Color','Effects','Lighting','Composition','Director','Subject','Settings'}
+ assert(visible[1].controls[1].id=='screenshot'and visible[1].controls[2].id=='lock_camera','Common Camera actions must appear first')
+ local expected={'Camera','Lens','Color','Effects','Lighting','Composition','Director','Subject'};if standalone then expected[#expected+1]='Controls'end
  for index,name in ipairs(expected)do assert(visible[index].name==name,'Unexpected photo navigation order')end
  local layout_commands;local layout_keys={}
  local layout=panel.new({draw=function(value)layout_commands=value end,release=function()end},{focus=function()end,hide=function()end,hud=function()end,exit=function()end})
