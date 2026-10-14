@@ -1,6 +1,6 @@
 ![War Journalist](docs/artwork/war-journalist-0.9.7-cover.png)
 
-# War Journalist 0.9.8
+# War Journalist 0.9.9
 
 A Photo Mode for Helldivers 2: free camera, a compact movable studio menu,
 Native and shader depth of field, autofocus, color grading, scene effects,
@@ -9,10 +9,15 @@ photo lighting, Director camera presets and enemy behavior controls,
 
 [Download on Nexus](https://www.nexusmods.com/helldivers2/mods/17248?tab=files) ·
 [GitHub downloads](https://github.com/HWG90/DBF_PhotoMode/releases) ·
-[0.9.8 hotfix notes](docs/RELEASE-0.9.8.md) ·
+[0.9.9 compatibility notes](docs/RELEASE-0.9.9.md) ·
 [0.9.7 feature notes](docs/RELEASE-0.9.7.md)
 
 ## What's new
+
+- **AMD compatibility hotfix:** removed 198 inherited shader registrations whose assets were absent from the package. The registry now contains the game's 77 native entries and all 44 bundled Photo Mode shaders. Testers reported stable Alt-Tab, fullscreen, bloom and DoF changes before and after opening Photo Mode with the registry-only package.
+- **Existing behavior retained:** runtime, shader programs, materials, lights and artwork retain the tested 0.9.8 behavior. No deferred-startup mode is included.
+
+The 0.9.8 corrections remain included:
 
 - **Steady Native DoF:** temporary or older render packets no longer reset a valid owned lens. The blur was confirmed steady with the camera still and while moving.
 - **Held inputs preserved:** entering and leaving Photo Mode no longer forces all keys and mouse buttons to release. Held ADS now stays correct while posing, confirmed in-game. The data-only hoverpack pause guard remains and still requires neutral hover controls.
@@ -51,6 +56,7 @@ The MDL package contains no nested archives.
 LLL: install `dbf_freecam` in LLL's Mods folder, deploy the asset ZIP bundled
 inside that same download, and restart.
 Use one Photo Mode runtime at a time. Preserve settings, presets and screenshots.
+Disable the standalone ActionCam mod: its camera foundation is already included.
 See [installation and controls](freecam/README.md) for manual installation.
 
 ## Controls

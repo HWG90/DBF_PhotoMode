@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.9 — 2026-10-14
+
+- Removed 198 inherited shader registrations that were absent from a clean War Journalist package. The registry now contains exactly 77 native registrations plus all 44 bundled shader libraries.
+- AMD testers reported Alt-Tab, fullscreen, bloom and DoF changes stable with the registry-only fix, before and after opening Photo Mode. HDR/SDR switching and unrelated crashes are not separately validated.
+- Retained 0.9.8 runtime behavior, all shader programs, materials, lights, logos and features. This hotfix does not include deferred startup.
+- Added strict build/package checks against unbundled, missing, duplicate or reordered native shader registrations. Complete BSL, flat MDL and LLL bundles remain available.
+
+Full details: [0.9.9 release notes](docs/RELEASE-0.9.9.md).
+
 ## 0.9.8 — 2026-10-13
 
 - Fixed Native DoF flickering when temporary render packets disappeared, expired or carried stock lens values. A validated owned lens is retained until the actual camera/profile owner changes; matching packets are preferred when multiple views are queued. Blur was confirmed steady while still and moving.
