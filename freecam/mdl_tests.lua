@@ -7,7 +7,8 @@ local function fixture(mcm,body)
  local G={rawget=rawget,rawset=rawset,package={loaded={}},os={getenv=function(name)assert(name=='LOCALAPPDATA');return 'C:/fixture/appdata'end}}
  setmetatable(G,{__index=_G});G._G=G
  local input={release=function()count.release=count.release+1;return true end}
- local files={['src/standalone.lua']="return {new=function(host,sr) _TEST.standalone=_TEST.standalone+1;_TEST.host=host;return {camera_input=_TEST.input}end,shared=function(host,sr,mcm) _TEST.shared=_TEST.shared+1;_TEST.parent=mcm;_TEST.host=host;return setmetatable({camera_input=_TEST.input,photo_standalone=false},{__index=mcm})end}",
+ local files={['src/actioncam_compat.lua']="return {new=function()return {refresh=function()return true end,release=function()return true end,dispose=function()return true end}end}",
+ ['src/standalone.lua']="return {new=function(host,sr) _TEST.standalone=_TEST.standalone+1;_TEST.host=host;return {camera_input=_TEST.input}end,shared=function(host,sr,mcm) _TEST.shared=_TEST.shared+1;_TEST.parent=mcm;_TEST.host=host;return setmetatable({camera_input=_TEST.input,photo_standalone=false},{__index=mcm})end}",
  ['src/actioncam.lua']=body or "_TEST.start=_TEST.start+1;local previous=update;update=function(dt)local owner=rawget(_G,'DBF_PHOTO_MODE_OWNER');if not owner.stopped then _TEST.step=(_TEST.step or 0)+1 end;previous(dt)end;return {stop=function()_TEST.stop=_TEST.stop+1;return true end}"}
  G._TEST=count;count.input=input
  G.update=function()count.previous=count.previous+1 end

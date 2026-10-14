@@ -1,21 +1,23 @@
 ![War Journalist](docs/artwork/war-journalist-0.9.7-cover.png)
 
-# War Journalist 0.9.9
+# War Journalist 0.9.10 development candidate
 
-A Photo Mode for Helldivers 2: free camera, a compact movable studio menu,
+A Helldivers 2 Photo Mode: free camera, a compact movable studio menu,
 Native and shader depth of field, autofocus, color grading, scene effects,
 photo lighting, Director camera presets and enemy behavior controls,
 213 fixed subject pose frames, subject visibility and PNG capture.
 
 [Download on Nexus](https://www.nexusmods.com/helldivers2/mods/17248?tab=files) ·
 [GitHub downloads](https://github.com/HWG90/DBF_PhotoMode/releases) ·
-[0.9.9 compatibility notes](docs/RELEASE-0.9.9.md) ·
+[0.9.10 ActionCam compatibility notes](docs/RELEASE-0.9.10.md) ·
 [0.9.7 feature notes](docs/RELEASE-0.9.7.md)
 
 ## What's new
 
+- **ActionCam camera handoff:** the supported original ActionCam 2.3.1 / runtime 10.31 keeps its normal gameplay camera, First Person and profiles. War Journalist takes exclusive ownership only during Photo Mode, then hands the camera back after cleanup. Both startup orders are covered by isolated tests; live coexistence still needs validation.
+- **Separate controls:** ActionCam's independent Photo Mode bindings yield to War Journalist. Its profile/restart shortcuts remain available outside Photo Mode, with the Photo toggle taking priority for shared keys. Unknown ActionCam hooks are left untouched and cannot grant an unsafe photo-camera lease.
 - **AMD compatibility hotfix:** removed 198 inherited shader registrations whose assets were absent from the package. The registry now contains the game's 77 native entries and all 44 bundled Photo Mode shaders. Testers reported stable Alt-Tab, fullscreen, bloom and DoF changes before and after opening Photo Mode with the registry-only package.
-- **Existing behavior retained:** runtime, shader programs, materials, lights and artwork retain the tested 0.9.8 behavior. No deferred-startup mode is included.
+- **Complete assets retained:** the shader programs, materials, lights and artwork match the 0.9.9 baseline. No deferred-startup mode is included.
 
 The 0.9.8 corrections remain included:
 
@@ -56,7 +58,8 @@ The MDL package contains no nested archives.
 LLL: install `dbf_freecam` in LLL's Mods folder, deploy the asset ZIP bundled
 inside that same download, and restart.
 Use one Photo Mode runtime at a time. Preserve settings, presets and screenshots.
-Disable the standalone ActionCam mod: its camera foundation is already included.
+The supported standalone ActionCam can remain enabled. Unknown versions/hooks
+are refused; disable that unsupported ActionCam and restart to use Photo Mode.
 See [installation and controls](freecam/README.md) for manual installation.
 
 ## Controls

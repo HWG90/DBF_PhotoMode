@@ -43,15 +43,17 @@ end
 local state={provider='BSL',version='__VERSION__',started=false,failed=false}
 rawset(_G,'DBF_PHOTO_MODE_OWNER',state)
 local previous_update=assert(rawget(_G,'update'),'Game update callback unavailable')
-local previous_shutdown=rawget(_G,'shutdown');local standalone,camera_api
+local previous_shutdown=rawget(_G,'shutdown');local standalone,camera_api,compat
 local function start()
  if state.started or state.failed then return end
  local sr=rawget(_G,'stingray');if not sr then return end
- if package.loaded['mods/actioncam/actioncam']then state.failed=true;log('Original ActionCam is active; disable it and restart to use Photo Mode.');return end
+ compat=host.require('src/actioncam_compat.lua').new(_G,log)
+ local ready,reason=compat.refresh();if not ready then state.failed=true;log(reason);return end
+ rawset(_G,'DBF_PHOTO_ACTIONCAM_COMPAT',compat)
  local mcm=rawget(_G,'DBFMCM')
  if mcm then
   if not mcm.camera_input or not mcm.camera_input.set_focus or not mcm.create_photo_view then
-   state.failed=true;log('Update MCM for shared photo input, or disable MCM and restart for standalone controls.');return
+   state.failed=true;if compat then pcall(compat.dispose)end;log('Update MCM for shared photo input, or disable MCM and restart for standalone controls.');return
   end
   camera_api=host.require('src/standalone.lua').shared(host,sr,mcm)
   rawset(_G,'DBF_PHOTO_CAMERA_API',camera_api)
@@ -67,7 +69,7 @@ end
 local wrapper
 wrapper=function(dt,...)
  if not state.started and not state.failed then
-  local ok,why=pcall(start);if not ok then state.failed=true;log('Photo Mode startup failed: '..tostring(why))end
+  local ok,why=pcall(start);if not ok then state.failed=true;if compat then pcall(compat.dispose)end;log('Photo Mode startup failed: '..tostring(why))end
  end
  return previous_update(dt,...)
 end

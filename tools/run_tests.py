@@ -15,6 +15,7 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = (
+    'actioncam_compat_tests.lua', 'actioncam_controls_tests.lua',
     'tests.lua', 'look_tests.lua', 'simulation_tests.lua', 'hover_pause_tests.lua', 'hover_pause_backend_tests.lua', 'hover_pause_integration_tests.lua', 'input_release_tests.lua', 'studio_tests.lua',
     'menu_tests.lua', 'resize_menu_tests.lua', 'photo_menu_interaction_tests.lua', 'slider_scrub_tests.lua', 'control_legend_tests.lua',
     'numeric_menu_tests.lua', 'numeric_blur_tests.lua', 'panel_lifecycle_tests.lua', 'close_cleanup_tests.lua', 'photo_runtime_lifecycle_tests.lua', 'menu_reopen_tests.lua', 'postfx_tests.lua',
@@ -59,6 +60,9 @@ def main():
         for name in args.fixture or FIXTURES:
             path = ROOT/'freecam'/name
             source = path.read_bytes()
+            if name=='actioncam_compat_tests.lua':
+                from freecam.build import actioncam_compat_source
+                source=('local ACTIONCAM_SOURCE='+lua_string((ROOT/'freecam/vendor/actioncam-2.3.1.lua').read_text(encoding='utf-8'))+'\nlocal ADAPTER_SOURCE='+lua_string(actioncam_compat_source())+'\nlocal LLL_SOURCE='+lua_string((ROOT/'freecam/lll.lua').read_text(encoding='utf-8'))+'\n').encode()+source
             started = time.monotonic()
             result = {'fixture': name, 'sha256': hashlib.sha256(source).hexdigest()}
             try:

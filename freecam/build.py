@@ -11,6 +11,13 @@ def capture_library_name():
     if not re.fullmatch(r'PhotoCapture(?:64|_[0-9a-f]{12,64})\.dll',name):raise ValueError('Invalid owned screenshot library name')
     return name
 
+def actioncam_compat_source():
+    signatures=json.loads((ROOT/'vendor/actioncam-signatures.json').read_text(encoding='utf-8'))
+    assert signatures['source_sha256']==hashlib.sha256((ROOT/'vendor/actioncam-2.3.1.lua').read_bytes()).hexdigest(),'Supported ActionCam source changed; regenerate and verify its compatibility contracts'
+    encoded='{runtime_version='+json.dumps(signatures['runtime_version'])+',closures={'
+    encoded+=','.join('['+json.dumps(name)+']='+json.dumps(value)for name,value in signatures['closures'].items())+'}}'
+    return (ROOT/'actioncam_compat.lua').read_text(encoding='utf-8').replace('__ACTIONCAM_SIGNATURES__',encoded)
+
 def patch(source,dof_candidate=False,scene_candidate=False,native_candidate=False,combined_scene_candidate=False):
     if combined_scene_candidate and not dof_candidate:raise ValueError('Combined compositor requires DoF factory')
     if combined_scene_candidate and scene_candidate:raise ValueError('Combined compositor replaces the separate scene pass')
@@ -44,6 +51,7 @@ end)()
 local DBF_SIMULATION_BACKEND=(function()
 __SIMULATION_BACKEND__
 end)().new(sr)
+H.dbf_actioncam_compat=assert(rawget(_G,'DBF_PHOTO_ACTIONCAM_COMPAT'),'Photo camera compatibility owner unavailable')
 do
  local backend=(function()
 __HOVER_PAUSE_BACKEND__
@@ -214,7 +222,8 @@ end)().new(PHOTO,function()
 end,log)
 local DBF_FREECAM=(function()
 __CONTROLLER__
-end)().new(PHOTO,CFG,function()return target~=nil and anchor~=nil and not SPEC.active end,log,DBF_PLAYER_FREEZE,DBF_PHOTO_OPTIONS,DBF_PHOTO_RUNTIME,DBF_PHOTO_MENU,DBF_PHOTO_COMPOSITION,DBF_SAVED_CAMERA,DBF_SCREENSHOTS,DBF_FOCUS_SAMPLER,DBF_PHOTO_LIGHTS,H.dbf_subject,H.dbf_director,nil,function()return H.dbf_input_epoch end,H.dbf_ai,H.dbf_poses)
+end)().new(PHOTO,CFG,function()return target~=nil and anchor~=nil and not SPEC.active and H.dbf_actioncam_compat.available end,log,DBF_PLAYER_FREEZE,DBF_PHOTO_OPTIONS,DBF_PHOTO_RUNTIME,DBF_PHOTO_MENU,DBF_PHOTO_COMPOSITION,DBF_SAVED_CAMERA,DBF_SCREENSHOTS,DBF_FOCUS_SAMPLER,DBF_PHOTO_LIGHTS,H.dbf_subject,H.dbf_director,nil,function()return H.dbf_input_epoch end,H.dbf_ai,H.dbf_poses,H.dbf_actioncam_compat)
+H.dbf_actioncam_compat.set_priority(DBF_FREECAM.actioncam_priority)
 PHOTO.dbf_stop=DBF_FREECAM.stop
 PHOTO.dbf_clear_saved=DBF_SAVED_CAMERA.clear
 DBF_PHOTO_LIGHTS.update_from_photo=function()
@@ -323,6 +332,9 @@ end
     source=source.replace('CFG.EXTRACT_RESEARCH      = true', 'CFG.EXTRACT_RESEARCH      = false')
     source=source.replace("'ActionCam v' .. CFG.VERSION .. ' started:", "'Freecam camera foundation started:")
     source+='''\nupdate=DBF_PHOTO_PROFILE.camera_factory.around_update(update,function()return PHOTO.active end,log)
+update=H.dbf_actioncam_compat.wrap_update(update,function(why)
+ if PHOTO.active or H.dbf_actioncam_compat.held then DBF_FREECAM.stop()end
+end)
 local dbf_previous_shutdown=rawget(_G,'shutdown')
 shutdown=function(...)
   local cleared,why=DBF_FREECAM.close()
@@ -338,6 +350,7 @@ end
 def payload_files(output):
     """Complete public runtime payload shared by BSL and the MDL adapter."""
     files={'src/actioncam.lua':(output/'ActionCam-Freecam.lua').read_bytes(),
+        'src/actioncam_compat.lua':actioncam_compat_source().encode(),
         'src/standalone.lua':(ROOT/'standalone.lua').read_bytes(),
         'src/photo_input_capture.lua':(ROOT/'photo_input_capture.lua').read_bytes(),
         'PROVENANCE.json':(output/'PROVENANCE.json').read_bytes()}

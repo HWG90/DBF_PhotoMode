@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.10 development candidate — 2026-10-14
+
+- Added scoped camera ownership for the supported standalone ActionCam 2.3.1 / runtime 10.31. Gameplay profiles and First Person remain ActionCam's; its camera update/draw work yields while War Journalist owns Photo Mode.
+- Restore original FOV/First Person leases before takeover and clear transient camera state before resume. Failed photo cleanup retains exclusivity; failed startup cancels after restoring War Journalist's resources.
+- Separate original Photo bindings from War Journalist controls, retain gameplay restart/profile shortcuts and drain held shortcuts during handoff. Both startup orders are tested; unsupported hooks are refused without replacing them.
+- Retain the 0.9.9 closed shader registry and complete assets. 55 isolated fixture groups and all three package-only startup checks passed. Live ActionCam coexistence is still pending.
+
+Full details: [0.9.10 release notes](docs/RELEASE-0.9.10.md).
+
 ## 0.9.9 — 2026-10-14
 
 - Removed 198 inherited shader registrations that were absent from a clean War Journalist package. The registry now contains exactly 77 native registrations plus all 44 bundled shader libraries.

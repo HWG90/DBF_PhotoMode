@@ -2,7 +2,7 @@
 local G=rawget(_G,'_G')or _G
 local get,set=G.rawget,G.rawset
 local state={provider='MDL',version='__VERSION__',started=false,failed=false,stopped=false}
-local host,standalone,camera_api,owned
+local host,standalone,camera_api,owned,compat
 local function cleanup()
  state.stopped=true
  if owned and owned.stop then
@@ -16,11 +16,14 @@ local function cleanup()
   local ok,why=camera_api.camera_input.release();if ok==false then error(tostring(why))end
   set(G,'DBF_PHOTO_CAMERA_API',nil)
  end
+ if compat then local ok,why=compat.dispose();if ok==false then error(tostring(why))end;compat=nil end
 end
 local function start(ctx)
  if state.started or state.failed or state.stopped then return end
  local sr=get(G,'stingray');if not sr then return end
- if G.package.loaded['mods/actioncam/actioncam']then error('Disable original ActionCam and restart before using War Journalist')end
+ compat=host.require('src/actioncam_compat.lua').new(G,ctx.log)
+ local ready,reason=compat.refresh();assert(ready,reason)
+ set(G,'DBF_PHOTO_ACTIONCAM_COMPAT',compat)
  local mcm=get(G,'DBFMCM')
  if mcm then
   assert(mcm.camera_input and mcm.camera_input.set_focus and mcm.create_photo_view,'Update MCM for shared photo input, or disable it and restart for standalone controls')

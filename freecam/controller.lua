@@ -1,6 +1,6 @@
 -- ActionCam photomode adapter. Camera placement stays owned by ActionCam.
 local M={}
-function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,catalog,saved_camera,screenshots,focus_sampler,lights,subject,director,unused_input_release,update_epoch,ai,poses)
+function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,catalog,saved_camera,screenshots,focus_sampler,lights,subject,director,unused_input_release,update_epoch,ai,poses,camera_compat)
     local roll_value;local self={};local api,handle,provider;local held=true;local retry=0;local controls={};local resume_after;local suppress_escape;local panel;local menu_focus=false;local controls_hidden=false;local recovery_menu=false;local focus_edge=false;local hide_edge=false;local slow_edge=false;local lock_edge=false;local escape_edge=false;local screenshot_edge=false
     local subject_pair;local subject_held;local subject_ready=false;local autofocus_write=false;local focus_deadline=0;local focus_elapsed=0;local focus_status='Manual focus';local focus_mode_seen;local menu_startup_reset=false
     local lighting_write=false;local lighting_revision=-1
@@ -24,6 +24,11 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         local finish=self._native_menu_state()and provider.native_menu_handoff or provider.release
         local ok,why=finish();if ok~=false then provider=nil end
         return ok,why
+    end
+    function self.actioncam_priority()
+        if photo.active or self._pending_start or self._pose_stop_pending then return true end
+        if not api or not handle or not api.camera_input then return false end
+        return api.camera_input.down(handle.get('toggle_key'))==true
     end
     self._poses=poses;self._pose_available=false;self._pose_caps={}
     function self._request_time_change(rate)
@@ -405,6 +410,8 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
             if ok==false then return false,why end
         end
         if self._panel_close_pending then return false,self._panel_close_pending end
+        if restored==false then return false,reason end
+        if camera_compat then local ok,why=camera_compat.release();if ok==false then return false,why end end
         return restored,reason
     end
     local function bindings()
@@ -454,6 +461,10 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         return true
     end
     function self._start_camera()
+        if camera_compat then
+            local ok,why=camera_compat.acquire()
+            if ok==false then self.stop();return false,why end
+        end
         local input=api.camera_input
         local token,why=input.acquire(bindings())
         if not token then self.stop();return false,why end

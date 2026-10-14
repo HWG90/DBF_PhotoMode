@@ -1,4 +1,4 @@
-War Journalist 0.9.9 - Helldivers 2 Photo Mode
+War Journalist 0.9.10 - Helldivers 2 Photo Mode
 
 CHOOSE ONE LOADER PACKAGE
 BSL (recommended): requires Bingus Shared Loader v15+ / API 1. Import the full
@@ -18,9 +18,21 @@ LLL downloads are hosted on GitHub; Nexus offers BSL and MDL.
 All runtime, shader, material, light and logo resources are included in each
 loader download. No separate asset download, MCM, DBF-HUD, ActionCam, or Link's
 Link to Memory is required. MCM integration is optional. Disable older Photo
-Mode runtimes and the original ActionCam; keep only one Photo Mode runtime.
+Mode runtimes; keep only one Photo Mode runtime.
 Preserve saved settings, camera presets and Screenshots when upgrading.
 Replace an older separate Photo asset package with the matching bundled assets.
+
+ACTIONCAM COMPATIBILITY
+The supported ActionCam 2.3.1 camera foundation can remain enabled. Its normal
+gameplay camera, First Person, settings and profiles remain owned by ActionCam.
+War Journalist takes exclusive camera ownership while Photo Mode is active,
+then restores the gameplay camera after photo effects, time and input cleanup.
+ActionCam's independent Photo Mode bindings yield to War Journalist; its
+restart/profile shortcuts resume outside Photo Mode. The War Journalist toggle
+has priority if another ActionCam shortcut shares the same physical key.
+Both startup orders are supported. Unrecognized ActionCam versions/hooks are
+left untouched and Photo Mode refuses unsafe camera ownership. Disable that
+unsupported ActionCam and restart normally before using Photo Mode.
 
 MANUAL ASSET INSTALL
 With the game closed, copy the patch triplets from Addon (BSL) or GameData

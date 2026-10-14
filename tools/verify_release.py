@@ -14,7 +14,7 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 PREFIX = 'dbf_freecam/'
-SHADER_RELEASES = {'0.9.5': '0.9.5', '0.9.6': '0.9.6', '0.9.7': '0.9.6', '0.9.8': '0.9.6', '0.9.9': '0.9.6'}
+SHADER_RELEASES = {'0.9.5': '0.9.5', '0.9.6': '0.9.6', '0.9.7': '0.9.6', '0.9.8': '0.9.6', '0.9.9': '0.9.6', '0.9.10': '0.9.6'}
 REQUIRED = {'main.lua', 'src/actioncam.lua', 'src/standalone.lua', 'config/defaults.cfg',
             'INSTALL.txt', 'PROVENANCE.json', 'manifest.json', 'FILES-SHA256.txt',
             'LICENSE-Bingus.txt', 'PhotoCapture64.dll', 'standalone-library.txt'}
@@ -341,7 +341,7 @@ def verify_current(path, version, standalone=False, allow_legacy_registry=False)
     for name in ('INSTALL.txt', 'KNOWN-ISSUES.md', 'RELEASE-NOTES.md', 'ASSET-MANIFEST.json'):
         assert metadata.get(name), 'Release metadata missing: '+name
     asset_manifest = json.loads(metadata['ASSET-MANIFEST.json'])
-    if version in ('0.9.7', '0.9.8', '0.9.9'):
+    if version in ('0.9.7', '0.9.8', '0.9.9', '0.9.10'):
         assert asset_manifest['shader_asset_version'] == SHADER_RELEASES[version], 'Release must retain the frozen 0.9.6 shader assets'
     for key, expected in (('version', version), ('shader_libraries_core', 44), ('materials_shared', 44), ('registry_resources_core', 1), ('registry_ids', audit['registry_ids'])):
         assert asset_manifest[key] == expected, 'Packaged asset manifest disagrees with resource closure: '+key
