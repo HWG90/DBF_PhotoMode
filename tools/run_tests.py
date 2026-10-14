@@ -15,7 +15,7 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = (
-    'actioncam_compat_tests.lua', 'actioncam_controls_tests.lua',
+    'actioncam_compat_tests.lua', 'actioncam_controls_tests.lua', 'cursor_artwork_tests.lua',
     'cinema_camera_tests.lua', 'cinema_controls_tests.lua', 'tests.lua', 'look_tests.lua', 'simulation_tests.lua', 'simulation_controls_tests.lua', 'cursor_capture_tests.lua', 'photo_cursor_input_tests.lua', 'hover_pause_tests.lua', 'hover_pause_backend_tests.lua', 'hover_pause_integration_tests.lua', 'input_release_tests.lua', 'studio_tests.lua',
     'menu_tests.lua', 'resize_menu_tests.lua', 'photo_menu_interaction_tests.lua', 'menu_organization_tests.lua', 'photo_menu_groups_tests.lua', 'slider_scrub_tests.lua', 'control_legend_tests.lua',
     'numeric_menu_tests.lua', 'numeric_blur_tests.lua', 'panel_lifecycle_tests.lua', 'close_cleanup_tests.lua', 'photo_runtime_lifecycle_tests.lua', 'menu_reopen_tests.lua', 'postfx_tests.lua',

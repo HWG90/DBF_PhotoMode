@@ -1,5 +1,20 @@
 -- Private settings/input/rendering service. Does not publish or impersonate DBFMCM.
 local M={}
+-- New helpers delegate artwork to the game by default. Photo owns mouse focus,
+-- so its menu needs the helper's arrow; older helpers already provide it.
+function M.cursor_artwork(native)
+ local ok,get,set=pcall(function()return native.mcm_cursor_mode,native.mcm_set_cursor_mode end)
+ if not ok or not get or not set then return function()return true end end
+ return function(menu)
+  local called,accepted=pcall(function()
+   local desired=menu and 1 or 2;local current=get()
+   assert(current==1 or current==2,'Unknown cursor artwork mode')
+   if current~=desired then assert(set(desired)~=0,'Cursor artwork change refused')end
+   return get()==desired
+  end)
+  return called and accepted==true
+ end
+end
 function M.input(host,sr,available,parent)
  local ffi=require('ffi');local bit=require('bit')
  pcall(ffi.cdef,[[
@@ -19,9 +34,11 @@ function M.input(host,sr,available,parent)
  local user=ffi.load('user32');local kernel=ffi.load('kernel32');local pid=kernel.SS_GetCurrentProcessId()
  local dll=assert(host.read('standalone-library.txt')):match('^(mcm_input_%x+%.dll)%s*$');assert(dll,'Standalone input manifest invalid')
  pcall(ffi.cdef,'int mcm_escape_passthrough(void);')
+ pcall(ffi.cdef,'int mcm_set_cursor_mode(int);int mcm_cursor_mode(void);')
  local native=ffi.load(host.dir..'/'..dll)
  assert(native.mcm_escape_passthrough()==1,'Photo input Escape policy unavailable')
  local capture=host.require('src/photo_input_capture.lua').new(sr.Window,parent)
+ local cursor_artwork=M.cursor_artwork(native)
  local input={};local hwnd;local point=ffi.new('SS_POINT[1]');local rect=ffi.new('long[4]');local owner=ffi.new('unsigned long[1]')
  function input.poll()
   hwnd=user.SS_GetForegroundWindow();user.SS_GetWindowThreadProcessId(hwnd,owner);if owner[0]~=pid then hwnd=nil end
@@ -33,6 +50,7 @@ function M.input(host,sr,available,parent)
  function input.look()return tonumber(native.mcm_mouse_x()),tonumber(native.mcm_mouse_y())end
  function input.lock_aim()sr.Window.set_mouse_focus(false);return sr.Window.mouse_focus()==false end
  function input.menu_cursor(menu)
+  if not cursor_artwork(menu)then return false end
   sr.Window.set_mouse_focus(false);sr.Window.set_show_cursor(menu);sr.Window.set_clip_cursor(true)
   return sr.Window.mouse_focus()==false and sr.Window.show_cursor()==menu and sr.Window.clip_cursor()==true
  end
