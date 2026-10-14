@@ -38,6 +38,47 @@ assert(not pcall(profile.restore,'unknown_parameter',1),'Absent-source restore m
 DBF_PHOTO_RENDER_PROFILE=nil
 print('Native lens: late source attachment, capability gate, physical focus/aperture mapping, Shader switch restore and retired-source disable passed')
 
+-- A renderer-source handoff can occur without changing the Lua world/camera
+-- or user settings. The replacement must receive the existing physical lens
+-- immediately rather than waiting for another slider change.
+do
+ local original_factory=render.camera_factory;local generation=1;local attached=0;local released_old=0
+ local rows={{},{}};local saved_rows={{},{}};local write_counts={0,0}
+ for key,value in pairs(baseline)do
+  rows[1][key],saved_rows[1][key]=value,value
+  rows[2][key],saved_rows[2][key]=value,value
+ end
+ rows[2].focal_distance,saved_rows[2].focal_distance=12,12
+ rows[2].focal_region,saved_rows[2].focal_region=70,70
+ render.camera_factory={new=function()
+  local owner=generation;attached=attached+1;local params={}
+  for key in pairs(rows[owner])do params[key]=true end
+  local function restore()for key,value in pairs(saved_rows[owner])do rows[owner][key]=value end;return true end
+  return {native_numeric_candidate=true,parameters=params,
+   read=function(key)return rows[owner][key]end,
+   write=function(key,value)assert(owner==generation,'Inactive source received a lens write');rows[owner][key]=value;write_counts[owner]=write_counts[owner]+1 end,
+   restore=restore,flush=function()assert(owner==generation)end,
+   tick=function()return owner==generation end,
+   release=function()if owner==1 then released_old=released_old+1 end;return restore()end}
+ end}
+ local handoff_profile=assert(render.new(sr,43,function()return true end,9,10))
+ local handoff_effect=dofile(root..'postfx.lua').new(sr,lens,{new=function()return handoff_profile end})
+ local unchanged=opts.read({get=function(key)return opts.defaults[key]end})
+ unchanged.dof_mode,unchanged.dof,unchanged.focus_distance,unchanged.aperture=1,true,1.4,2
+ local mapped=lens.depth(unchanged.focus_distance,unchanged.aperture,math.rad(90))
+ assert(handoff_effect.apply(43,unchanged,math.rad(90),9,10)and handoff_effect.native_numeric_ready)
+ assert(rows[1].focal_distance==mapped.near and rows[1].focal_region==mapped.region)
+ generation=2
+ assert(handoff_effect.apply(43,unchanged,math.rad(90),9,10)and handoff_effect.native_numeric_ready,'A same-camera source replacement must recover readiness in its handoff frame')
+ assert(attached==2 and released_old==1,'The old source must release once and the replacement attach once')
+ assert(write_counts[2]>0 and rows[2].focal_distance==mapped.near and rows[2].focal_region==mapped.region,'Unchanged focus/aperture must be reapplied to the newly rendered source without another input event')
+ for key,value in pairs(saved_rows[1])do assert(rows[1][key]==value,'Handoff failed to restore old owned field '..key)end
+ assert(handoff_effect.release())
+ for key,value in pairs(saved_rows[2])do assert(rows[2][key]==value,'Cleanup must restore the replacement source baseline, not the retired source baseline')end
+ render.camera_factory=original_factory
+end
+print('Native handoff: unchanged focus/aperture reapply immediately with exact old-source cleanup and replacement-source restoration passed')
+
 -- The production renderer checks before commands exist. Read them after the
 -- original renderer returns, then attach from copied scalars next frame.
 local camera=dofile(root..'camera_profile.lua')
@@ -134,12 +175,32 @@ assert(camera.select_observed_view({stock,owned_view})==stock,'Cold acquisition 
 local lookup_count=0
 local function other_source(values)lookup_count=lookup_count+1;return values==foreign_view end
 for _=1,1000 do assert(camera.retain_lens_source(true,true,nil,stock,signatures.accept,other_source),'A paused empty queue must not retire a still-owned lens')end
-assert(camera.retain_lens_source(true,true,stock,stock,signatures.accept,other_source)and lookup_count==0,'An expired stock queue must not force a handoff or scan')
-assert(camera.retain_lens_source(true,true,owned_view,stock,signatures.accept,other_source)and lookup_count==0,'An own-history packet must retain the source without scanning')
-assert(not camera.retain_lens_source(true,true,foreign_view,stock,signatures.accept,other_source)and lookup_count==1,'A uniquely validated different source must hand off')
+assert(lookup_count==0,'An empty paused queue must not invent a replacement source or scan')
+assert(camera.retain_lens_source(true,true,stock,stock,signatures.accept,other_source)and lookup_count==1,'An expired baseline packet must be checked, but cannot force a handoff without a replacement')
+assert(camera.retain_lens_source(true,true,owned_view,stock,signatures.accept,other_source)and lookup_count==1,'An own-history packet must retain the source without scanning')
+assert(not camera.retain_lens_source(true,true,foreign_view,stock,signatures.accept,other_source)and lookup_count==2,'A uniquely validated different source must hand off')
 assert(camera.retain_lens_source(true,true,foreign_view,stock,signatures.accept,function()return false end),'An unfamiliar or ambiguous queue alone must not retire a still-owned lens')
-assert(not camera.retain_lens_source(false,true,owned_view,stock,signatures.accept,other_source)and lookup_count==1,'Foreign field ownership must retire immediately without relying on a queue')
-assert(not camera.retain_lens_source(true,false,owned_view,stock,signatures.accept,other_source)and lookup_count==1,'Changed camera identity must retire immediately without relying on a queue')
+assert(not camera.retain_lens_source(false,true,owned_view,stock,signatures.accept,other_source)and lookup_count==2,'Foreign field ownership must retire immediately without relying on a queue')
+assert(not camera.retain_lens_source(true,false,owned_view,stock,signatures.accept,other_source)and lookup_count==2,'Changed camera identity must retire immediately without relying on a queue')
+-- The baseline belongs to the source before our writes. Another profile can
+-- later render those values while the old row remains writable and unchanged.
+-- Readiness must follow the uniquely matching source, not that old baseline.
+do
+ local selected={index=65,fields=owned_view}
+ local replacement={index=66,fields=stock}
+ local candidates={selected,replacement};local checks=0
+ local function replacement_source(observed)
+  checks=checks+1
+  local ok,matched=pcall(camera.select_lens_source,observed,candidates)
+  return ok and matched~=nil and matched.index~=selected.index
+ end
+ assert(not signatures.accept(stock),'The baseline handoff regression requires an expired original signature')
+ assert(not camera.retain_lens_source(true,true,stock,stock,signatures.accept,replacement_source)and checks==1,'A baseline packet uniquely rendered by a different row must hand off despite unchanged camera identity and writable old ownership')
+ candidates={selected}
+ assert(camera.retain_lens_source(true,true,stock,stock,signatures.accept,replacement_source),'An unresolved baseline must retain the owned row without a speculative handoff')
+ candidates={selected,replacement,{index=67,fields=stock}}
+ assert(camera.retain_lens_source(true,true,stock,stock,signatures.accept,replacement_source),'An ambiguous baseline must retain the owned row without writing either possible replacement')
+end
 local probe_time=0;local probes=0
 local probe=camera.changed_source_probe(function()return probe_time end,function(values)probes=probes+1;return values==foreign_view end)
 assert(probe(foreign_view)and probes==1,'A new unfamiliar signature must be independently inspected')
@@ -153,7 +214,51 @@ local retry_probe=camera.changed_source_probe(function()return retry_time end,fu
 assert(not retry_probe(foreign_view)and retry_count==1,'A temporarily absent different source must remain unresolved')
 found_other=true;retry_time=.5;assert(not retry_probe(foreign_view)and retry_count==1,'Temporary readiness must retain the bounded retry interval')
 retry_time=1.01;assert(retry_probe(foreign_view)and retry_count==2,'The same queued values must transfer once their validated source becomes available')
+-- A queued auxiliary profile is not sufficient evidence by itself. Require
+-- independent current-owner scans over a bounded interval, and start over if
+-- our view returns, the queue disappears, or the candidate becomes uncertain.
+do
+ local confirm_time=0;local confirm_checks=0;local owner='66:304:4154658847:0';local known=true
+ local confirm,reset=camera.confirmed_source_probe(function()return confirm_time end,function()
+  confirm_checks=confirm_checks+1;return known,known and owner or nil
+ end)
+ assert(not confirm(stock)and confirm_checks==1,'A single matching baseline packet must not transfer ownership')
+ for _=1,1000 do assert(not confirm(stock))end
+ assert(confirm_checks==1,'Repeated ticks without a new independent scan must not advance handoff confirmation')
+ confirm_time=.13;assert(not confirm(stock)and confirm_checks==2,'Two scans must retain the old source')
+ confirm_time=.26;assert(confirm(stock)and confirm_checks==3,'Three stable same-owner scans over at least 0.25 seconds must confirm the replacement')
+ local function observe(fields)
+  if not fields or fields==owned_view then reset()end
+  return camera.retain_lens_source(true,true,fields,stock,function(value)return value==owned_view end,confirm)
+ end
+ reset();confirm_time=1;assert(observe(stock));confirm_time=1.13;assert(observe(stock))
+ local checked=confirm_checks;assert(observe(owned_view)and confirm_checks==checked,'An owned-history view must cancel suspicion without another profile scan')
+ confirm_time=1.26;assert(observe(stock),'Returning foreign packets must restart after an owned view')
+ confirm_time=1.39;assert(observe(stock));confirm_time=1.52;assert(not observe(stock),'A replacement may transfer once it is independently confirmed again')
+ reset();confirm_time=2;assert(observe(stock));confirm_time=2.13;assert(observe(stock))
+ checked=confirm_checks;for _=1,1000 do assert(observe(nil))end
+ assert(confirm_checks==checked,'Empty queues must cancel confirmation and retain ownership without scans')
+ confirm_time=2.26;assert(observe(stock));confirm_time=2.39;assert(observe(stock));confirm_time=2.52;assert(not observe(stock),'Confirmation must restart after an empty queue')
+ reset();confirm_time=3;assert(not confirm(stock));confirm_time=3.13;assert(not confirm(stock))
+ known=false;confirm_time=3.26;assert(not confirm(stock),'An unresolved or ambiguous source must cancel pending confirmation')
+ known=true;checked=confirm_checks;confirm_time=3.39;assert(not confirm(stock)and confirm_checks==checked,'Unresolved signatures must retain the slow retry cadence')
+ confirm_time=4.27;assert(not confirm(stock));confirm_time=4.40;assert(not confirm(stock));confirm_time=4.53;assert(confirm(stock),'A formerly unresolved source must receive three fresh confirmations')
+ reset();confirm_time=5;assert(not confirm(stock));confirm_time=5.13;assert(not confirm(stock))
+ owner='67:305:4154658847:1';confirm_time=5.26;assert(not confirm(stock),'A different replacement identity must restart the confirmation count')
+ confirm_time=5.39;assert(not confirm(stock));confirm_time=5.52;assert(confirm(stock),'Only repeated scans of one replacement owner may confirm a handoff')
+end
 assert(not camera.same_lens_values(stock,{distance=math.huge,region=30,close_distance=1,close_region=1}),'Nonfinite queue values must not match a baseline')
+do
+ local time,checks=0,0
+ local confirm=camera.confirmed_source_probe(function()return time end,function()
+  checks=checks+1;return true,'replacement-row'
+ end)
+ assert(not confirm(stock,10))
+ time=.13;assert(not confirm(stock,10)and checks==1,'One cached render observation must not count as a second confirmation scan')
+ time=.26;assert(not confirm(stock,10)and checks==1,'A cached auxiliary packet must not cause a source handoff')
+ assert(not confirm(stock,11)and checks==2)
+ time=.39;assert(confirm(stock,12)and checks==3,'Distinct observed views may confirm one stable replacement owner')
+end
 cache.request(world,cam);queued={native=world.native,id=cam.id,fields=values};assert(cache.observe())
 local a=assert(cache.request(world,cam,true));local b=assert(cache.request(world,cam))
 assert(a.distance==b.distance,'Read-only source revalidation must preserve the exact cached observation for the next factory during handoff')
