@@ -1,0 +1,13 @@
+{
+  "source": "Helldivers 2 native menu hardware cursor; exported from the running game window cursor resource",
+  "size": [
+    32,
+    32
+  ],
+  "hotspot": [
+    0,
+    0
+  ],
+  "asset_sha256": "27e8e5e748943c23d0f58fe6663158aed31230dfd527125bfa6326cf7e192679",
+  "game_asset_modified": false
+}

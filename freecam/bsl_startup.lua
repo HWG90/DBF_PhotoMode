@@ -31,6 +31,13 @@ local function write_native(name)
 end
 local native=body('standalone-library.txt'):match('^(mcm_input_%x+%.dll)%s*$');assert(native,'Photo input library manifest invalid')
 write_native(native);write_native('__CAPTURE_LIBRARY__')
+if files['assets/helldivers_cursor.cur']then
+ kernel.CreateDirectoryA(root..'/assets',nil)
+ local payload=body('assets/helldivers_cursor.cur');local path=root..'/assets/helldivers_cursor.cur'
+ local existing=io.open(path,'rb');local matches=false
+ if existing then matches=existing:read('*a')==payload;existing:close()end
+ if not matches then local file=assert(io.open(path,'wb'));assert(file:write(payload));assert(file:close())end
+end
 local config=root..'/settings';kernel.CreateDirectoryA(config,nil)
 local host={dir=root,config_dir=config,log=log}
 function host.read(name)return files[name]and body(name)or nil end

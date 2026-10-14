@@ -14,6 +14,33 @@
 static HWND owner;
 static WNDPROC previous;
 static volatile LONG captured;
+/* Menu artwork only. Keep one cursor for this pinned DLL's lifetime so the
+ * window thread never selects a destroyed resource. Input policy is unchanged. */
+static PVOID volatile menu_cursor;
+extern "C" __declspec(dllexport) HCURSOR mcm_menu_cursor(void) {
+    return (HCURSOR)InterlockedCompareExchangePointer(&menu_cursor,NULL,NULL);
+}
+extern "C" __declspec(dllexport) int mcm_load_menu_cursor(const char *path) {
+    if (!path || !*path) return 0;
+    int size=MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,path,-1,NULL,0);
+    if (size <= 0 || size > 32768) return 0;
+    WCHAR *wide=(WCHAR*)HeapAlloc(GetProcessHeap(),0,(SIZE_T)size*sizeof(WCHAR));
+    if (!wide) return 0;
+    HCURSOR loaded=NULL;
+    if (MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,path,-1,wide,size)==size) {
+        bool absolute=(size>=4 && wide[1]==L':' && (wide[2]==L'\\' || wide[2]==L'/')) ||
+            (size>=3 && wide[0]==L'\\' && wide[1]==L'\\');
+        DWORD attributes=absolute ? GetFileAttributesW(wide) : INVALID_FILE_ATTRIBUTES;
+        if (attributes!=INVALID_FILE_ATTRIBUTES && !(attributes&FILE_ATTRIBUTE_DIRECTORY)) {
+            if (mcm_menu_cursor()) { HeapFree(GetProcessHeap(),0,wide);return 1; }
+            loaded=LoadCursorFromFileW(wide);
+        }
+    }
+    HeapFree(GetProcessHeap(),0,wide);
+    if (!loaded) return 0;
+    if (InterlockedCompareExchangePointer(&menu_cursor,loaded,NULL)) DestroyCursor(loaded);
+    return 1;
+}
 static volatile LONG wheel;
 static volatile LONG look_x, look_y;
 static volatile LONG keys[256];
@@ -126,7 +153,10 @@ static LRESULT CALLBACK guarded_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) 
     } else if (msg>=WM_MOUSEFIRST && msg<=WM_MOUSELAST) {
         if (!previous_mouse_release(&previous_mouse_legacy,mouse_flags(msg,wp)) && mouse_gate(mouse_flags(msg,wp),capture))return 0;
     } else if (mcm_policy(msg,99,capture))return 0;
-    if (capture == 1 && msg==WM_SETCURSOR) { SetCursor(LoadCursorW(NULL,IDC_ARROW));return TRUE; }
+    if (capture == 1 && msg==WM_SETCURSOR) {
+        HCURSOR graphic=mcm_menu_cursor();
+        SetCursor(graphic ? graphic : LoadCursorW(NULL,IDC_ARROW));return TRUE;
+    }
     return CallWindowProcW(previous,hwnd,msg,wp,lp);
 }
 

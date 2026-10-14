@@ -21,6 +21,8 @@ function M.input(host,sr,available,parent)
  pcall(ffi.cdef,'int mcm_escape_passthrough(void);')
  local native=ffi.load(host.dir..'/'..dll)
  assert(native.mcm_escape_passthrough()==1,'Photo input Escape policy unavailable')
+ pcall(ffi.cdef,'int mcm_load_menu_cursor(const char*);void *mcm_menu_cursor(void);')
+ local cursor_ok,cursor_loaded=pcall(function()return native.mcm_load_menu_cursor(host.dir..'/assets/helldivers_cursor.cur')~=0 end)
  local capture=host.require('src/photo_input_capture.lua').new(sr.Window,parent)
  local input={};local hwnd;local point=ffi.new('SS_POINT[1]');local rect=ffi.new('long[4]');local owner=ffi.new('unsigned long[1]')
  function input.poll()
@@ -63,6 +65,7 @@ function M.input(host,sr,available,parent)
   return true
  end)
  camera.native_escape_passthrough=true;camera.photo_input_owner='War Journalist'
+ camera.cursor_graphic=cursor_ok and cursor_loaded and 'Helldivers'or 'Windows arrow'
  return camera
 end
 function M.shared(host,sr,mcm)

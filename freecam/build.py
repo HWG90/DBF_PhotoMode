@@ -379,6 +379,7 @@ def payload_files(output):
     files['LICENSE-Link.txt']=(vendor/'LICENSE-Link.txt').read_bytes()
     files['VENDOR-PROVENANCE.json']=(vendor/'PROVENANCE.json').read_bytes()
     for path in (ROOT/'assets').glob('*.png'):files['assets/'+path.name]=path.read_bytes()
+    files['assets/helldivers_cursor.cur']=(ROOT/'assets/helldivers_cursor.cur').read_bytes()
     return files
 
 def lua_bytes(body):
@@ -407,7 +408,7 @@ def package_bsl(output,version=None,dof_candidate=False):
     embedded=[]
     for name,body in sorted(files.items()):
         if name.endswith('.dll'):value='{hex='+lua_bytes(body.hex().encode())+'}'
-        elif name.startswith('src/')or name=='standalone-library.txt':value=lua_bytes(body)
+        elif name.startswith('src/')or name in ('standalone-library.txt','assets/helldivers_cursor.cur'):value=lua_bytes(body)
         else:continue
         embedded.append('['+lua_bytes(name.encode())+']='+value+',')
     template=(ROOT/'bsl_startup.lua').read_text(encoding='utf-8')

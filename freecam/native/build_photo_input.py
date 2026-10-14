@@ -29,7 +29,8 @@ def build(output):
     metadata = {'library': name, 'sha256': hashlib.sha256((output / name).read_bytes()).hexdigest(),
                 'source_sha256': hashlib.sha256(source.read_bytes()).hexdigest(), 'imports': imports,
                 'runtime': 'Windows x64; static CRT', 'capability_export': 'int mcm_escape_passthrough(void): 1',
-                'change': 'Forward physical Escape RAW and legacy down/up only in camera capture mode 3; menu mode 1 and all other keys retain capture/drain behavior.',
+                'change': 'Load the bundled Helldivers hardware cursor for menu WM_SETCURSOR only; existing Escape, capture, held-key/button release and raw-delta policies unchanged.',
+                'cursor_exports': ['int mcm_load_menu_cursor(const char *absolute_utf8_path)', 'HCURSOR mcm_menu_cursor(void)'],
                 'deployment': 'not installed', 'game_attached': False}
     (output / 'photo-input-native.json').write_text(json.dumps(metadata, indent=2)+'\n', encoding='utf-8')
     (output / 'library.txt').write_text(name+'\n', encoding='utf-8')

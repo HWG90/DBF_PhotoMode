@@ -17,7 +17,8 @@
     "PhotoCapture_f37e408d89cd.dll": "f37e408d89cd8c8fd222039ab13e4614e887cdd2c552050c632ccb223bc70b53",
     "PhotoCapture_455c13a828a8.dll": "455c13a828a8229d9da887d797e394ba3901024a4811c7e50f1f4736a8a6f564",
     "PhotoCapture_7da458d8a23d.dll": "7da458d8a23d5a94039d33007957c62acce5b45ea4183bdd02e8731d19ff6a62",
-    "mcm_input_fcf5b050abc2.dll": "0751ab7d0e738c3a0449a376ad083f4c7ce83ff0846b1bcb78397645e45432fa"
+    "mcm_input_fcf5b050abc2.dll": "0751ab7d0e738c3a0449a376ad083f4c7ce83ff0846b1bcb78397645e45432fa",
+    "mcm_input_f501fa41de0c.dll": "081317909068b193f62ac67adc45cce4c86d51a50784d35e092f02d73bd5a1a4"
   },
   "native_encoding": "hex; decoded only by package builder",
   "native_runtime": "Windows built-in APIs; static CRT",
@@ -62,6 +63,21 @@
       ],
       "scope": "Photo-owned standalone input library only; external MCM source and published DLL unchanged",
       "tests": "Exact shared RAW/legacy keyboard_event_gate offline harness; no attached windows or injected input"
+    },
+    "mcm_input_f501fa41de0c.dll": {
+      "baseline_library": "mcm_input_fcf5b050abc2.dll",
+      "source": "freecam/native/photo_input.cpp",
+      "source_sha256": "f501fa41de0cb7c982e5717e74a65edeccd475a0fb3291a0644669d168160ae1",
+      "sha256": "081317909068b193f62ac67adc45cce4c86d51a50784d35e092f02d73bd5a1a4",
+      "change": "Bundled Helldivers hardware cursor for menu WM_SETCURSOR; all input/capture/release policies unchanged. One cached cursor remains alive for the pinned helper lifetime.",
+      "credit": "CowboyBingus; Zero-Clause BSD; LICENSE-Bingus.txt",
+      "imports": [
+        "KERNEL32.dll",
+        "USER32.dll"
+      ],
+      "cursor_asset": "assets/helldivers_cursor.cur",
+      "cursor_asset_sha256": "27e8e5e748943c23d0f58fe6663158aed31230dfd527125bfa6326cf7e192679",
+      "tests": "Exact-source input and cursor offline native harnesses; no attached windows or injected input."
     }
   },
   "capture_library": "PhotoCapture_7da458d8a23d.dll",
