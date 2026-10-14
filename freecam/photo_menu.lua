@@ -267,11 +267,12 @@ function M.new(view,actions,existing)
     text(first,left+8*s,y+(second~=''and 12*s or 0),width_budget,(second~=''and 12 or 29)*s,11,T.muted)
     if second~=''then text(second,left+8*s,y,width_budget,12*s,11,T.muted)end
    else
-    local color=c.disabled and T.disabled or T.white;local label=text(c.label,left+3*s,y,340*s,29*s,16,color);label.control_id=c.id
-    local b={x=left+356*s,y=y+1*s,w=width-390*s,h=27*s,c=c,key=c,row=i};local editing=self.editing_value==c or key_capture==c or color_edit==c
+    local single_action=c.type=='button'and value(c)==tostring(c.label or '')
+    local color=c.disabled and T.disabled or T.white;local label=text(c.label,left+3*s,y,single_action and width-50*s or 340*s,29*s,16,color);label.control_id=c.id
+    local b={x=single_action and rb.x or left+356*s,y=y+1*s,w=single_action and rb.w or width-390*s,h=27*s,c=c,key=c,row=i};local editing=self.editing_value==c or key_capture==c or color_edit==c
     surface(b,selected or editing,c.disabled,c,true);if popup and popup.c==c then popup_anchor=b end
     local display=key_capture==c and 'Press key; Esc cancels'or text_edit and text_edit.c==c and(text_edit.text..'|')or value(c);local pad=(c.type=='toggle'or c.type=='choice')and 30 or c.type=='color'and 34 or 9;local right_pad=(c.type=='choice'or c.type=='toggle')and 30 or 9
-    if c.type~='slider'then text(display,b.x+pad*s,b.y,b.w-(pad+right_pad)*s,b.h,16,c.disabled and T.disabled or c.type=='toggle'and self.handle.get(c.id)and T.enabled or T.white)end
+    if c.type~='slider'and not single_action then text(display,b.x+pad*s,b.y,b.w-(pad+right_pad)*s,b.h,16,c.disabled and T.disabled or c.type=='toggle'and self.handle.get(c.id)and T.enabled or T.white)end
     if c.type=='choice'or c.type=='toggle'then text('<',b.x+8*s,b.y,16*s,b.h,14,c.disabled and T.disabled or T.muted);text('>',b.x+b.w-24*s,b.y,16*s,b.h,14,c.disabled and T.disabled or T.muted)
     elseif c.type=='slider'then
      local fraction=math.max(0,math.min(1,(self.handle.get(c.id)-c.min)/(c.max-c.min)));local ink=c.disabled and T.disabled or T.gold
