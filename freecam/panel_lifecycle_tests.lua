@@ -26,7 +26,7 @@ main_menu=true;c.tick(.016);assert(mode==0 and photo.active and rate==0)
 main_menu=false;c.tick(.016);assert(mode==1)
 assert(api.mods.dbf_freecam.handle.get('slowmo_key')==220)
 keys[84]=true;c.tick(.016);assert(rate==0,'T must no longer be the default slow-motion key');keys[84]=false;c.tick(.016)
-keys[220]=true;c.tick(.016);assert(rate==.2);keys[220]=false;c.tick(.016);keys[220]=true;c.tick(.016);assert(rate==0);keys[220]=false
+keys[220]=true;c.tick(.016);assert(rate==0 and c.slowmo_active,'Selecting slow motion must retain Freeze Action');keys[220]=false;c.tick(.016);keys[220]=true;c.tick(.016);assert(rate==0 and not c.slowmo_active);keys[220]=false
 keys[80]=true;c.tick(.016);assert(not photo.active and mode==0 and rate==1);assert(c.close());DBFMCM=nil
 local runtime=dofile(root..'photo_runtime.lua')
 local sr={Application={worlds=function()return{1}end},Gui={resolution=function()return 1920,1080 end},World={create_screen_gui=function()return {}end,destroy_gui=function()end}}

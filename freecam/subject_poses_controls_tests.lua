@@ -80,7 +80,8 @@ fail_restore=false;assert(update()and bone=='original');tick()
 assert(rate==1 and photo.active and not controller.pose_cleanup_pending()and input_releases==before_release,'Pause off did not resume after restoration')
 assert(controller.stop());assert(handle.set('freeze_player',true));press(80);assert(photo.active and rate==0);tick()
 assert(handle.activate('subject_pose_play'));assert(update()and bone=='taunt');tick()
-press(220);assert(rate==0 and poses.pending and controller.pose_cleanup_pending(),'Slow motion resumed before restoration')
+press(220);assert(rate==0 and not poses.pending and controller.slowmo_active,'Selecting slow motion bypassed Freeze or restored the held pose')
+assert(controller._toggle_freeze_action()and rate==0 and poses.pending and controller.pose_cleanup_pending(),'Unfreeze resumed slow motion before restoration')
 assert(update()and bone=='original');tick();assert(rate==.2 and photo.active and not controller.pose_cleanup_pending(),'Slow motion did not resume after restoration')
 assert(controller.close());DBFMCM=nil
 -- Catalog expansion retains stored indices and builds ordinary Core choices.

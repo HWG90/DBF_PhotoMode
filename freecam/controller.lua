@@ -85,6 +85,113 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         if rate~=nil then return freeze.start(rate)end
         return freeze.release()
     end
+    -- Slow motion is the resume policy; Freeze temporarily overlays exact zero.
+    -- Keep its selected rate and active state independent of Photo ownership.
+    function self._resume_time_rate()
+        return self.slowmo_active and handle and(self._slowmo_rate or handle.get('slowmo_speed'))or nil
+    end
+    function self._freeze_action_state()
+        local rate,frozen
+        if freeze and type(freeze.rate)=='function'then
+            local ok,value=pcall(freeze.rate)
+            if ok and type(value)=='number'and value==value then rate=value;frozen=value==0 end
+        end
+        if frozen==nil and freeze and type(freeze.paused)=='function'then
+            local ok,value=pcall(freeze.paused);if ok then frozen=value==true end
+        end
+        local enabled=photo.active and handle and freeze and not self.editor_owner and not self._pending_start and not self._freeze_action_pending and not self._pose_stop_pending and not self._pose_time_pending and not self.cinema_performing()and not self._cinema_begin_pending
+        if enabled and freeze.cleanup_pending then local ok,pending=pcall(freeze.cleanup_pending);enabled=ok and not pending end
+        local input=api and api.camera_input
+        if enabled and input and input.pause_allowed then local ok,allowed=pcall(input.pause_allowed);enabled=ok and allowed==true end
+        return frozen==true,enabled==true,rate
+    end
+    function self._apply_freeze_setting(value)
+        self._freeze_action_pending=nil
+        if not photo.active or self.cinema_performing()then return true end
+        if not value then return self._request_time_change(self._resume_time_rate())end
+        local input=api and api.camera_input
+        if input and input.pause_allowed and not input.pause_allowed()then return false,'Full photo pause requires a verified solo session'end
+        if freeze and freeze.paused and freeze.paused()then return true end
+        if freeze and freeze.prepare then
+            -- Positive time must continue until hover control is qualified.
+            -- Never replace the chosen slow rate with the normal gameplay rate.
+            local ok,why=self._request_time_change(self._resume_time_rate());if ok==false then return false,why end
+            local prepared,reason=freeze.prepare();if prepared~=true then return false,reason end
+            if freeze.input_release_required and freeze.input_release_required()then
+                local epoch=self._input_epoch();if epoch==nil then self._request_time_change(self._resume_time_rate());return false,'Gameplay update proof is unavailable'end
+                self._freeze_action_pending={epoch=epoch,tick=self._input_tick,frames=0,elapsed=0,input=input,handle=handle}
+                return true,'Waiting for a neutral hover control and positive gameplay update'
+            end
+        end
+        return self._request_time_change(0)
+    end
+    function self._freeze_setting_changed(value)
+        local ok,why=self._apply_freeze_setting(value)
+        self._freeze_action_error=ok==false and tostring(why)or nil
+        if ok==false then
+            self.slowmo_active=false;self._request_time_change(nil)
+            log('Freeze action: '..tostring(why))
+        end
+        return ok,why
+    end
+    function self._toggle_freeze_action()
+        local frozen,enabled=self._freeze_action_state()
+        if not enabled then return false,'Freeze action is unavailable while simulation ownership is changing'end
+        if handle.get('freeze_player')==(not frozen)then return self._freeze_setting_changed(not frozen)end
+        self._freeze_action_error=nil
+        local ok,why=handle.set('freeze_player',not frozen)
+        if ok==false then return false,why end
+        if self._freeze_action_error then return false,self._freeze_action_error end
+        return true
+    end
+    function self._advance_freeze_action(dt)
+        local waiting=self._freeze_action_pending;if not waiting then return end
+        waiting.frames=waiting.frames+1;waiting.elapsed=waiting.elapsed+math.max(.001,math.min(.1,tonumber(dt)or 0))
+        local reason
+        if not photo.active or waiting.input~=api.camera_input or waiting.handle~=handle or not handle.get('freeze_player')or not api.camera_input.focused()or self._external_menu_open()or game_chat_active()then reason='Freeze action preparation was cancelled'
+        else
+            local epoch=self._input_epoch()
+            if self._input_tick>waiting.tick and epoch and epoch>waiting.epoch then
+                local called,ready,why=pcall(freeze.ready);waiting.reason=called and why or ready
+                if called and ready==true then
+                    self._freeze_action_pending=nil
+                    local ok,problem=self._request_time_change(0)
+                    if ok==false then reason=problem end
+                elseif not called then reason=ready end
+            end
+            if self._freeze_action_pending and(waiting.frames>=120 or waiting.elapsed>=.5)then reason=waiting.reason or'Timed out waiting for a neutral hover control and positive gameplay update'end
+        end
+        if reason then
+            self._freeze_action_pending=nil;self._freeze_action_error=tostring(reason)
+            self._request_time_change(self._resume_time_rate());log('Freeze action: '..tostring(reason))
+        end
+    end
+    function self._slowmo_setting_changed(value)
+        if not self.slowmo_active then return true end
+        self._slowmo_rate=value
+        local frozen=self._freeze_action_state()
+        if frozen or self._freeze_action_pending then return true end
+        local ok,why=self._request_time_change(value)
+        if ok==false then self.slowmo_active=false;log('Slow motion: '..tostring(why))end
+        return ok,why
+    end
+    function self._slowmo_action_state()
+        local enabled=handle and freeze and not self.editor_owner and not self._pending_start and not self._freeze_action_pending and not self._pose_stop_pending and not self._pose_time_pending and not self.cinema_performing()and not self._cinema_begin_pending
+        if enabled and freeze.cleanup_pending then local ok,pending=pcall(freeze.cleanup_pending);enabled=ok and not pending end
+        local input=api and api.camera_input
+        if enabled and input and input.pause_allowed then local ok,allowed=pcall(input.pause_allowed);enabled=ok and allowed==true end
+        return self.slowmo_active==true,enabled==true
+    end
+    function self._toggle_slow_motion()
+        local _,enabled=self._slowmo_action_state();if not enabled then return false,'Slow motion is unavailable while simulation ownership is changing'end
+        self.slowmo_active=not self.slowmo_active
+        if self.slowmo_active then self._slowmo_rate=handle.get('slowmo_speed')end
+        local frozen=self._freeze_action_state()
+        if frozen then return true end -- Preserve a held pose and the zero timestep.
+        local ok,why=self._request_time_change(self._resume_time_rate())
+        if ok==false then self.slowmo_active=false;log('Slow motion: '..tostring(why))end
+        return ok,why
+    end
     function self._pose_action(stop)
         if not self._poses then return false,'Subject poses unavailable'end
         local method,id
@@ -401,6 +508,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
     end
     function self.stop(preserve_resume)
         self._pending_start=nil
+        self._freeze_action_pending=nil
         self._native_menu_yield=nil
         self._cinema_begin_pending=nil;if self._cinema then self._cinema.cancel()end
         local time_waiting=self._pose_time_pending;self._pose_time_pending=nil
@@ -439,7 +547,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         end
         local restored,reason=true,nil
         if effects then restored,reason=effects.release() end
-        if freeze then local ok,why;if self.slowmo_active and handle then ok,why=freeze.start(handle.get('slowmo_speed'))else ok,why=freeze.release()end;if not ok then self.slowmo_active=false;freeze.release();restored,reason=false,why end end
+        if freeze then local ok,why;local rate=self._resume_time_rate();if rate then ok,why=freeze.start(rate)else ok,why=freeze.release()end;if not ok then self.slowmo_active=false;freeze.release();restored,reason=false,why end end
         if freeze and freeze.needs_input_capture and freeze.needs_input_capture()then
             return false,reason or'Gameplay time restoration is pending; retaining input capture'
         end
@@ -511,7 +619,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         if subject then subject_change()end;director_elapsed=.5;ai_elapsed=.5
         if saved_camera then saved_camera.restore(handle.get('saved_camera_radius'),handle)end
         focus_edge=input.down(handle.get('focus_key'));hide_edge=input.down(handle.get('hide_controls_key'));lock_edge=input.down(handle.get('lock_camera_key'));screenshot_edge=input.down(handle.get('screenshot_key'))
-        if freeze and handle.get('freeze_player') and (not input.pause_allowed or input.pause_allowed()) then local ok,why=freeze.start();if why then log(why)end;if ok==false then self.stop();return false,why end end
+        if freeze and handle.get('freeze_player') and (not input.pause_allowed or input.pause_allowed()) then local ok,why=self._request_time_change(0);if why then log(why)end;if ok==false then self.stop();return false,why end end
         log('freecam: on');return true
     end
     function self._input_epoch()
@@ -553,8 +661,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         if not preparing then return self._start_camera()end
         -- Preserve held gameplay actions, including ADS. Only active hover
         -- needs an unpaused engine update to qualify its data-only pause guard.
-        self.slowmo_active=false
-        local restored,problem=freeze.release();if restored==false then return false,problem end
+        local restored,problem=self._request_time_change(self._resume_time_rate());if restored==false then return false,problem end
         local prepared,reason=freeze.prepare()
         if prepared~=true then self.stop();return false,reason end
         local needs_update=freeze.input_release_required and freeze.input_release_required()
@@ -574,6 +681,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
             local ok,why=self._request_time_change(self._pose_time_pending.rate)
             if ok==false then self.slowmo_active=false;log('Simulation time: '..tostring(why))end
         end
+        if self._freeze_action_pending then self._advance_freeze_action(dt)end
         local current=rawget(_G,'DBF_PHOTO_CAMERA_API')or rawget(_G,'DBFMCM')or rawget(_G,'DBF_PHOTO_STANDALONE_API')
         if current~=api then
             self.slowmo_active=false
@@ -599,13 +707,13 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
                 {id='roll_left_key',type='keybind',label='Roll left',default=81},
                 {id='roll_right_key',type='keybind',label='Roll right',default=69},
                 {id='roll_speed',type='slider',label='Roll speed (degrees/s)',default=45,min=1,max=180,step=1},
-                {id='freeze_player',type='toggle',label='Pause entire action (solo)',default=true,on_change=function(v)if not v and not self.cinema_performing()then self._request_time_change(nil)end end},
+                {id='freeze_player',type='toggle',label='Freeze Action (solo)',default=true,on_change=self._freeze_setting_changed},
                 {id='look_sensitivity',type='slider',label='Camera look sensitivity',default=0.15,min=0.01,max=1,step=0.01},
                 {id='focus_key',type='keybind',label='Switch camera / menu focus',default=9},
                 {id='hide_controls_key',type='keybind',label='Show / hide photo controls',default=72},
                 {id='lock_camera_key',type='keybind',label='Lock / unlock camera',default=76},
                 {id='slowmo_key',type='keybind',label='Prototype slow-motion toggle (solo)',default=220},
-                {id='slowmo_speed',type='slider',label='Prototype simulation speed',default=0.2,min=0.05,max=1,step=0.05},
+                {id='slowmo_speed',type='slider',label='Simulation speed',default=0.2,min=0.05,max=1,step=0.05,fine_step=0.01,on_change=self._slowmo_setting_changed},
                 {id='screenshot_key',type='keybind',label='Screenshot key',default=19},
                 {id='controls',type='text',label='Defaults: P toggles | WASD moves | Shift/Ctrl rise/descend | Q/E roll | Wheel: speed | L: lock camera | Backslash: slow motion | Escape: exit'},
             }}}}
@@ -689,6 +797,10 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
                     focus=switch_focus,
                     hide=function()if recovery_menu then self.stop();return end;set_hidden(true);menu_focus=false;if provider and provider.set_focus then provider.set_focus(false)end end,
                     hud=function()handle.set('hide_hud',not handle.get('hide_hud'))end,
+                    freeze=self._toggle_freeze_action,
+                    freeze_state=self._freeze_action_state,
+                    slowmo=self._toggle_slow_motion,
+                    slowmo_state=self._slowmo_action_state,
                     exit=function()self.stop()end})
                 panel.light_gizmos=self._light_gizmos;panel.prepare_light_gizmos=self._sync_light_gizmos
                 local pages=api.mods and api.mods.dbf_freecam.pages or definition.pages
@@ -729,11 +841,8 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         if screenshot_key and not screenshot_edge and photo.active and not recovery_menu and (provider or self.cinema_performing()and self._cinema.gameplay_input_ready())and api.camera_input.focused()and not self._external_menu_open()and not editing and not game_chat_active()and screenshots and not screenshots.active()then self.request_screenshot()end
         screenshot_edge=screenshot_key
         local slow_key=key_down(handle.get('slowmo_key'))
-        if slow_key and not slow_edge and not editing and not self._external_menu_open()and freeze and not self._pending_start and not self.cinema_performing()and not self._cinema_begin_pending then
-            self.slowmo_active=not self.slowmo_active
-            local rate=self.slowmo_active and handle.get('slowmo_speed')or (photo.active and handle.get('freeze_player')and 0 or nil)
-            local ok,why=self._request_time_change(rate)
-            if not ok then self.slowmo_active=false;log('Slow motion: '..tostring(why))end
+        if slow_key and not slow_edge and not editing and not self._external_menu_open()and freeze and not self._pending_start and not self._freeze_action_pending and not self.cinema_performing()and not self._cinema_begin_pending then
+            local ok,why=self._toggle_slow_motion();if ok==false then log('Slow motion: '..tostring(why))end
         end
         slow_edge=slow_key
         if self.slowmo_active and freeze then
