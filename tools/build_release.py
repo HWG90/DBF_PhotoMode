@@ -75,7 +75,7 @@ def resources(output=None):
     assert manifest['version']==ASSET_VERSION,'Frozen shader snapshot identity changed'
     core,shared,_=build_preview.resources(output)
     assert row_identity(core)==manifest['base_core_rows_sha256']and row_identity(shared)==manifest['base_shared_rows_sha256'],'Base assets differ from promoted closure'
-    group=next(row for row in core if row[1]==photo_assets.GROUP);ids=list(photo_assets.registry_ids(group[2]));assert len(ids)==317
+    group=next(row for row in core if row[1]==photo_assets.GROUP);ids=list(photo_assets.registry_ids(group[2]));assert len(ids)==119
     pairs=manifest['pairs'];assert len(pairs)==2
     overlay=(ROOT/'freecam/scene_dof_overlay.lua').read_text()
     approved=json.loads((ROOT/'docs/RESOLVED-COMPOSITOR-VERIFICATION.json').read_text())
@@ -98,11 +98,14 @@ def resources(output=None):
     registry=bytearray(group[2][:24]);struct.pack_into('<I',registry,16,len(ids));registry+=struct.pack('<%dQ'%len(ids),*ids)
     core=[(row[0],row[1],bytes(registry),row[3])if row[1]==photo_assets.GROUP else row for row in core]
     shared=photo_light_assets.merge_resources(shared)
-    assert len(core)==45 and len(shared)==45 and len(ids)==319
+    assert len(core)==45 and len(shared)==45 and len(ids)==121
+    stock=photo_assets.registry_ids((ROOT/'freecam/assets/shaders/original-default-shaders.bin').read_bytes())
+    assert tuple(ids[:len(stock)])==stock, 'Stock shader registry changed'
+    assert set(ids)==set(stock)|{row[0] for row in core if row[1]==photo_assets.SHADER}, 'Shader registry has unbundled or missing libraries'
     for rows in (core,shared):
         cpu,gpu=photo_assets.archive_rows(rows);assert sorted(photo_assets.read_archive(cpu,gpu))==sorted(rows)
     cpu,gpu=photo_assets.archive_rows(shared)
-    audit={'version':VERSION,'shader_asset_version':ASSET_VERSION,'shader_libraries_core':44,'materials_shared':44,'registry_resources_core':1,'registry_ids':319,'decorative_pairs':40,
+    audit={'version':VERSION,'shader_asset_version':ASSET_VERSION,'shader_libraries_core':44,'materials_shared':44,'registry_resources_core':1,'registry_ids':121,'stock_registry_ids':77,'registry_closed_over_bundled_libraries':True,'decorative_pairs':40,
            'base_core_rows_sha256':manifest['base_core_rows_sha256'],'base_shared_rows_sha256':manifest['base_shared_rows_sha256'],
            'resolved_gpu_sha256':CINEMATIC_GPU,'resolved_hdr_colors_user_accepted':False,'accepted_color_math_preserved':True,'baseline_resolved_verification':approved,
            'legacy_combined_retained':True,'native_numeric_dof_enabled':True,'lighting_status':photo_light_assets.TESTING_STATUS,
