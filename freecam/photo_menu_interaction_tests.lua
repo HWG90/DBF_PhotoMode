@@ -1,5 +1,7 @@
 local root=rawget(_G,'DBF_PHOTO_TEST_ROOT')or'freecam/'
-local values={speed=3,filter=1,locked=8,bind=80};local commands;local keys={};local invoked=0;local hud_calls=0;local measure_calls=0;local refresh_calls=0
+local values={speed=3,filter=1,locked=8,bind=80,slowmo_speed=.2};local commands;local keys={};local invoked=0;local hud_calls=0;local measure_calls=0;local refresh_calls=0
+local freeze_frozen,freeze_enabled,freeze_calls=false,true,0
+local slowmo_active,slowmo_enabled,slowmo_calls=false,true,0
 local function measure(label,size)local n=0;for _ in label:gmatch('[%z\1-\127\194-\244][\128-\191]*')do n=n+1 end;measure_calls=measure_calls+1;return n*size*.8 end
 local choices={};for i=1,24 do choices[i]='Filter '..i end
 local controls={{id='speed',type='slider',label='Movement speed with a deliberately long label',min=.1,max=50,step=.1,fine_step=.01},
@@ -10,7 +12,9 @@ values.enabled=false;controls[26]={id='enabled',type='toggle',label='Enabled'}
 local handle={get=function(id)return values[id]end,set=function(id,v)values[id]=v end,activate=function()invoked=invoked+1 end}
 local menu=dofile(root..'photo_menu.lua').new({draw=function(c)commands=c end,release=function()commands={}end,measure=measure,
  text_metrics=function(size)return {min_y=-size*.2,max_y=size*.8,optical_y=0}end,refresh_font=function()refresh_calls=refresh_calls+1 end},
- {focus=function()end,hud=function()hud_calls=hud_calls+1 end,hide=function()end,exit=function()end})
+ {focus=function()end,hud=function()hud_calls=hud_calls+1 end,hide=function()end,exit=function()end,
+ freeze=function()freeze_calls=freeze_calls+1;freeze_frozen=not freeze_frozen end,freeze_state=function()return freeze_frozen,freeze_enabled,.2 end,
+ slowmo=function()slowmo_calls=slowmo_calls+1;slowmo_active=not slowmo_active end,slowmo_state=function()return slowmo_active,slowmo_enabled end})
 values.light_color='#406080'
 menu.bind(handle,{{name='Camera',controls=controls},{name='Effects',controls={controls[2]}},{name='Lighting',controls={{id='light_color',type='color',label='Light color'}}}})
 local function draw(w,h)menu.draw(w or 1920,h or 1080,true,false,{focus='TAB',hide='H'})end
@@ -80,4 +84,44 @@ for _,size in ipairs({{1920,1080},{800,600},{640,480}})do
  for _,c in ipairs(commands)do assert(c.ui_key~='color:apply'and c.ui_key~='channel:1'and c.ui_role~='color_preview'and c.ui_role~='color_hex','Apply did not close the color editor')end
 end
 draw(800,600);for _,c in ipairs(commands)do if c.type=='text'then assert(measure(c.text,c.size)<=c.text_width+.001);local b=c.text_bounds;assert(b.x>=0 and b.y>=0 and b.x+b.w<=800.001 and b.y+b.h<=600.001)end end
-menu.close();print('Photo panel interaction: native label fitting, hover/press, modal pointer ownership, selected WASD values without mouse movement, closed/open choice cycling, toggle direction, bounds, disabled skips, keyboard reveal and tab transitions passed')
+-- Time controls remain in the fixed footer on every tab and at either end of
+-- long lists, with the actual paused state and authority reflected in the button.
+menu.pages[3].controls[#menu.pages[3].controls+1]={id='freeze_player',type='toggle',label='Pause entire action'}
+menu.pages[3].controls[#menu.pages[3].controls+1]={id='slowmo_speed',type='slider',label='Slow motion speed',min=.05,max=1,step=.05,fine_step=.01}
+menu.bind(handle,menu.pages)
+for _,size in ipairs({{1920,1080},{3840,2160},{800,600},{640,480}})do
+ for page=1,#menu.pages do
+  menu.page=page;menu.scroll=0;freeze_frozen=false;freeze_enabled=true;draw(size[1],size[2]);tick()
+  local b=find(function(c)return c.ui_key=='freeze_action'end)
+  assert(b.x>=0 and b.y>=0 and b.x+b.w<=size[1]and b.y+b.h<=size[2],'Freeze Action is outside the viewport')
+  local opacity=find(function(c)return c.ui_role=='menu_opacity_track'end)
+  local exit=find(function(c)return c.ui_key=='exit'end)
+  assert(b.y>=exit.y+exit.h and b.y>=opacity.y+opacity.h,'Time row overlaps ordinary footer controls')
+  local slow=find(function(c)return c.ui_key=='slowmo_action'end)
+  local rate=find(function(c)return c.ui_key=='slowmo_speed'end)
+  assert(b.x+b.w<slow.x and slow.x+slow.w<rate.x,'Adjacent time tools overlap')
+  local bx,by=b.x,b.y;menu.scroll=999;draw(size[1],size[2]);b=find(function(c)return c.ui_key=='freeze_action'end)
+  assert(b.x==bx and b.y==by,'Scrolling moves the Freeze Action button')
+  for _,c in ipairs(commands)do assert(c.control_id~='freeze_player','Freeze toggle remained in the scrolling controls');assert(not(c.ui_role=='slider_track'and c.control_id=='slowmo_speed'),'Slow motion slider remained in the scrolling controls')end
+  local n=freeze_calls;pointer(b,true);tick({click=false});draw(size[1],size[2]);assert(freeze_calls==n+1 and freeze_frozen,'Footer did not freeze exactly once')
+  assert(find(function(c)return c.full_text=='Resume Action'end),'Paused action lacks Resume label')
+  b=find(function(c)return c.ui_key=='freeze_action'end);pointer(b,true);tick({click=false});draw(size[1],size[2]);assert(freeze_calls==n+2 and not freeze_frozen,'Footer did not resume exactly once')
+  freeze_enabled=false;draw(size[1],size[2]);b=find(function(c)return c.ui_key=='freeze_action'end);pointer(b,true);tick({click=false});assert(freeze_calls==n+2,'Unavailable time control accepted a click')
+  freeze_enabled=true;menu.draw(size[1],size[2],false,false,{focus='TAB',hide='H'});b=find(function(c)return c.ui_key=='freeze_action'end)
+  tick({x=b.x+b.w/2,y=b.y+b.h/2,click=true});tick({click=false});assert(freeze_calls==n+2,'Camera focus accepted a footer click')
+ end
+end
+-- Slow Motion can remain selected while frozen; adjusting the adjacent slider
+-- changes its retained rate, and Shift scrubbing stays relative and precise.
+menu.page=2;freeze_frozen=true;slowmo_active=false;slowmo_enabled=true;values.slowmo_speed=.2;draw();tick()
+local slow=find(function(c)return c.ui_key=='slowmo_action'end);local n=slowmo_calls
+pointer(slow,true);tick({click=false});draw();assert(slowmo_calls==n+1 and slowmo_active and freeze_frozen,'Slow Motion selection incorrectly unfreezes time')
+assert(find(function(c)return c.full_text=='Slow Motion: ON'end))
+local rate=find(function(c)return c.ui_role=='slowmo_speed_track'end)
+keys[16]=true;tick({x=rate.x+rate.w*.8,y=rate.y+1,click=true});assert(values.slowmo_speed==.2,'Shift slider press jumped to the pointer value')
+tick({x=rate.x+rate.w,y=rate.y+1,click=true});assert(values.slowmo_speed>.2 and values.slowmo_speed<.25,'Fine footer scrubbing did not slow pointer movement')
+tick({click=false});keys[16]=false;draw();local retained=values.slowmo_speed
+assert(find(function(c)return c.full_text==string.format('%.0f%%',retained*100)end),'Footer percentage does not reflect retained rate')
+slowmo_enabled=false;draw();rate=find(function(c)return c.ui_role=='slowmo_speed_track'end)
+tick({x=rate.x+rate.w,y=rate.y+1,click=true});tick({click=false});assert(values.slowmo_speed==retained,'Unavailable footer slider accepted edits')
+menu.close();print('Photo panel interaction: fixed Freeze/Resume footer on every tab and viewport, actual state/authority, hidden scrolling toggle, native label fitting, modal pointer ownership, keyboard values and tab transitions passed')

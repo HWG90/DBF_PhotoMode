@@ -12,6 +12,7 @@ function M.new(view,actions,existing)
  local rows={};local selected_hit;local hits={};local held=false;local drag;local resize;local scroll_drag;local move_panel;local geometry;local panel_bounds;local pointer_x,pointer_y;local pressed_key
  local layout_initialized=existing~=nil;local layout_dirty=false;local opacity_dirty=false
  local opacity_control={id='menu_opacity',type='slider',min=10,max=100,step=1,fine_step=1,default=38}
+ local slowmo_control={id='slowmo_speed',type='slider',label='Slow motion speed',min=.05,max=1,step=.05,fine_step=.01}
  self.editing_value=nil;self.bound_key=nil;if legend and self.handle then legend.bind(self.handle)end
  local key_capture;local armed=false;local baseline={};local color_edit;local popup;local popup_close_on_release=false;local popup_scroll=0;local visible_count=1;local popup_count=1;local text_edit;local reset_regions={};local right_held
  local finish_number
@@ -52,6 +53,9 @@ function M.new(view,actions,existing)
  function self.suspend()suspend_input();panel_bounds=nil;if legend then view.draw({})end end
  function self.bind(handle,pages)
   if self.handle~=handle then blur_number();finish_opacity();text_edit=nil;self.editing_value=nil end;self.handle=handle;self.pages=pages;if legend then legend.bind(handle)end
+  for _,page in ipairs(pages)do for _,c in ipairs(page.controls or{})do if c.id=='slowmo_speed'then
+   for _,key in ipairs({'min','max','step','fine_step'})do if type(c[key])=='number'then slowmo_control[key]=c[key]end end
+  end end end
   if not layout_initialized then
    local x,y,size=stored_layout('menu_x'),stored_layout('menu_y'),stored_layout('menu_scale')
    self.panel_x=x and x>=0 and x<=1 and x or nil;self.panel_y=y and y>=0 and y<=1 and y or nil
@@ -168,11 +172,12 @@ function M.new(view,actions,existing)
   if self.prepare_light_gizmos then self.prepare_light_gizmos(w,h,focused,hidden)end
   if hidden or not valid(w)or not valid(h)or not self.pages or #self.pages==0 then finish_layout();if self.light_gizmos then self.light_gizmos.cancel()end;if legend then legend.clear()end;view.draw({});panel_bounds=nil;hits={};resize=nil;scroll_drag=nil;move_panel=nil;return end
   if view.refresh_font then view.refresh_font()end
-  local commands={};hits={};reset_regions={};local base=math.max(.75,math.min(w/1920,h/1080));local maximum=math.min(w/(PANEL_WIDTH+48),h/(PANEL_HEIGHT+102+HUD_MARGIN));local minimum=math.min(maximum,math.max(.35,base*.65))
-  local s=math.max(minimum,math.min(maximum,base*self.size_scale));local width=PANEL_WIDTH*s;local footprint=(PANEL_HEIGHT+62)*s
+  local footer_extra=actions.slowmo and 36 or 0
+  local commands={};hits={};reset_regions={};local base=math.max(.75,math.min(w/1920,h/1080));local maximum=math.min(w/(PANEL_WIDTH+48),h/(PANEL_HEIGHT+102+HUD_MARGIN+footer_extra));local minimum=math.min(maximum,math.max(.35,base*.65))
+  local s=math.max(minimum,math.min(maximum,base*self.size_scale));local width=PANEL_WIDTH*s;local footprint=(PANEL_HEIGHT+62+footer_extra)*s
   local x=self.panel_x and self.panel_x*(w-width)or w-width-24*s;local strip_bottom=self.panel_y and self.panel_y*(h-footprint)or(16+HUD_MARGIN)*s
   x=math.max(8*s,math.min(w-width-8*s,x));strip_bottom=math.max(8*s,math.min(h-footprint-8*s,strip_bottom))
-  local bottom=strip_bottom+62*s;local top=bottom+PANEL_HEIGHT*s;local left=x+16*s
+  local bottom=strip_bottom+(62+footer_extra)*s;local top=bottom+PANEL_HEIGHT*s;local left=x+16*s
   geometry={base=base,scale=s,minimum=minimum,maximum=maximum,x=x,strip_bottom=strip_bottom,w=w,h=h,width=width,height=footprint}
   panel_bounds={x=x,y=strip_bottom,w=width,h=top-strip_bottom}
   local function over(b,modal)return focused and (modal or not popup)and pointer_x and pointer_y and pointer_x>=b.x and pointer_x<=b.x+b.w and pointer_y>=b.y and pointer_y<=b.y+b.h end
@@ -209,12 +214,12 @@ function M.new(view,actions,existing)
    elseif id=='lighting'then line(5,3,5,5);line(6,10,3,2);line(6,-1,3,2);line(0,4,3,3);line(12,4,3,3)
    else line(5,0,4,12);line(1,4,12,4)end
   end
-  local function button(label,b,action,key,selected,font,icon_id)
-   surface(b,selected,false,key,false);local pad=icon_id and 28 or 9
+  local function button(label,b,action,key,selected,font,icon_id,disabled)
+   surface(b,selected,disabled,key,false);local pad=icon_id and 28 or 9
    if icon_id then icon(icon_id,b,selected and T.gold or T.muted)end
-   text(label,b.x+pad*s,b.y,b.w-(pad+9)*s,b.h,font or 12,selected and T.gold or T.white)
+   text(label,b.x+pad*s,b.y,b.w-(pad+9)*s,b.h,font or 12,disabled and T.disabled or selected and T.gold or T.white)
    if selected then rect(b.x,b.y,b.w,2*s,T.gold,1,306)end
-   b.action=action;b.key=key;hits[#hits+1]=b
+   b.action=action;b.key=key;if not disabled then hits[#hits+1]=b end
   end
   local opacity=menu_opacity()
   rect(x,bottom,width,top-bottom,T.background,opacity/100,300,false,'photo_panel')
@@ -242,7 +247,7 @@ function M.new(view,actions,existing)
   local page=self.pages[self.page];rows={};selected_hit=nil
   for _,c in ipairs(page.controls)do
    local neutral_status=c.type=='text'and((c.status_only and(c.label or '')=='')or(c.id=='shader_status'and c.label=='Shader overlay: none'))
-   if c.id~='controls'and not c.layout_storage and not neutral_status then rows[#rows+1]=c end
+   if c.id~='controls'and not(actions.freeze and c.id=='freeze_player')and not(actions.slowmo and c.id=='slowmo_speed')and not c.layout_storage and not neutral_status then rows[#rows+1]=c end
   end
   self.selection=math.max(1,math.min(#rows,self.selection));if not selectable(rows[self.selection])then for i,c in ipairs(rows)do if selectable(c)then self.selection=i;break end end end
   if self.editing_value and self.editing_value.disabled then self.editing_value=nil;text_edit=nil end;if popup and popup.c.disabled then popup=nil end
@@ -302,10 +307,29 @@ function M.new(view,actions,existing)
   end
   local hint=hovered_control or rows[self.selection];local label=hint and tostring(hint.label or '')or 'Photo settings'
   text(hint and hint.disabled and 'Unavailable in this scene' or text_edit and(text_edit.error or(text_edit.typing and 'Enter / Space saves  |  Esc cancels  |  Ctrl+A replaces' or text_edit.c.fine_step and 'A/D step  |  Shift+A/D fine  |  Esc cancels' or 'Type number or A/D step  |  Enter / Space saves  |  Esc cancels'))or key_capture and 'Press the new shortcut  |  Esc cancels' or self.notice or(label..(hint and hint.type=='slider'and '  |  Shift+drag fine  |  Enter edits'or '  |  A/D changes  |  Enter edits')),left+24*s,bottom+1*s,width-56*s,12*s,10,hint and hint.disabled and T.disabled or T.muted)
-  rect(x,strip_bottom,width,54*s,T.background,math.min(1,opacity/100+.02),300,false,'photo_controls_strip');rect(x,strip_bottom+54*s,width,1*s,T.border,.5,301)
+  rect(x,strip_bottom,width,(54+footer_extra)*s,T.background,math.min(1,opacity/100+.02),300,false,'photo_controls_strip');rect(x,strip_bottom+(54+footer_extra)*s,width,1*s,T.border,.5,301)
   button('Toggle HUD',{x=left,y=strip_bottom+29*s,w=120*s,h=21*s},actions.hud,'hud',false,11)
   button('Hide controls ['..keys.hide..']',{x=left+128*s,y=strip_bottom+29*s,w=166*s,h=21*s},actions.hide,'hide',false,11)
   button('Exit photo mode',{x=left+302*s,y=strip_bottom+29*s,w=156*s,h=21*s},actions.exit,'exit',false,11)
+  if actions.freeze then
+   local ok,frozen,enabled=pcall(actions.freeze_state or function()return false,false end)
+   button(ok and frozen==true and 'Resume Action'or 'Freeze Action',{x=left+(footer_extra>0 and 0 or 470)*s,y=strip_bottom+(footer_extra>0 and 62 or 29)*s,w=142*s,h=21*s},actions.freeze,'freeze_action',ok and frozen==true,11,nil,not(ok and enabled==true))
+  end
+  if actions.slowmo then
+   local ok,active,enabled=pcall(actions.slowmo_state or function()return false,false end)
+   slowmo_control.disabled=not(ok and enabled==true)
+   button(ok and active==true and 'Slow Motion: ON'or 'Slow Motion: OFF',{x=left+154*s,y=strip_bottom+62*s,w=160*s,h=21*s},actions.slowmo,'slowmo_action',ok and active==true,11,nil,slowmo_control.disabled)
+   local b={x=left+376*s,y=strip_bottom+60*s,w=240*s,h=25*s,c=slowmo_control,key='slowmo_speed'}
+   local rate=tonumber(self.handle.get('slowmo_speed'))or .2;local fraction=math.max(0,math.min(1,(rate-slowmo_control.min)/(slowmo_control.max-slowmo_control.min)))
+   local ink=slowmo_control.disabled and T.disabled or T.gold
+   text('Speed',left+326*s,b.y,48*s,b.h,10,slowmo_control.disabled and T.disabled or T.muted)
+   surface(b,false,slowmo_control.disabled,'slowmo_speed',true)
+   local track=rect(b.x+6*s,b.y+11*s,b.w-12*s,3*s,T.border_hover,.85,306,false,'slowmo_speed_track');track.control_id='slowmo_speed'
+   rect(track.x,track.y,track.w*fraction,track.h,ink,1,307)
+   rect(track.x+math.max(0,track.w-4*s)*fraction,track.y-4*s,4*s,11*s,ink,1,308)
+   local label=text(string.format('%.0f%%',rate*100),left+625*s,b.y,78*s,b.h,12,ink,310,nil,'slowmo_speed_value');label.control_id='slowmo_speed'
+   b.track={x=track.x,y=b.y,w=track.w,h=b.h};if focused and not slowmo_control.disabled then hits[#hits+1]=b end
+  end
   local opacity_bounds={x=x+width-116*s,y=strip_bottom+27*s,w=100*s,h=25*s,c=opacity_control,key='menu_opacity'}
   local opacity_track={x=opacity_bounds.x+6*s,y=opacity_bounds.y+3*s,w=88*s,h=3*s};opacity_bounds.track=opacity_track
   local opacity_ink=focused and(over(opacity_bounds)or drag and drag.c==opacity_control)and T.gold or T.muted
