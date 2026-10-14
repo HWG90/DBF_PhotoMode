@@ -15,7 +15,8 @@ ownership when the supported standalone ActionCam foundation is also enabled.
   Mode actions yield to War Journalist, while its gameplay profile/restart
   shortcuts remain available outside Photo Mode. Held shortcuts drain before
   resuming to prevent an unintended action at photo exit.
-- Sharing is limited to the exact audited ActionCam 2.3.1 / runtime 10.31 Lua
+- Sharing is limited to the exact audited ActionCam 2.3.1 / runtime 10.31 and
+  ActionCam 2.4 / runtime 10.32 Lua
   contracts. Unknown versions are left untouched and cannot grant a photo
   camera lease. No engine-global setter changes or native hooks are used.
 

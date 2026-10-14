@@ -23,7 +23,7 @@ Preserve saved settings, camera presets and Screenshots when upgrading.
 Replace an older separate Photo asset package with the matching bundled assets.
 
 ACTIONCAM COMPATIBILITY
-The supported ActionCam 2.3.1 camera foundation can remain enabled. Its normal
+Supported ActionCam 2.3.1 and 2.4 can remain enabled. Their normal
 gameplay camera, First Person, settings and profiles remain owned by ActionCam.
 War Journalist takes exclusive camera ownership while Photo Mode is active,
 then restores the gameplay camera after photo effects, time and input cleanup.

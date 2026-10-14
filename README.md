@@ -18,7 +18,7 @@ photo lighting, Director camera presets and enemy behavior controls,
 
 - **Cinema camera development mode:** Director → Begin action shot holds the placed camera while returning movement/combat input to the Helldiver. The usual Photo Mode key returns to camera placement. The camera remains exclusive to War Journalist until the mode ends. This candidate needs live aiming/combat and ActionCam coexistence verification; it is not a published release.
 
-- **ActionCam camera handoff:** the supported original ActionCam 2.3.1 / runtime 10.31 keeps its normal gameplay camera, First Person and profiles. War Journalist takes exclusive ownership only during Photo Mode, then hands the camera back after cleanup. Both startup orders are covered by isolated tests; live coexistence still needs validation.
+- **ActionCam camera handoff:** supported original ActionCam 2.3.1 / runtime 10.31 and 2.4 / runtime 10.32 keep their normal gameplay camera, First Person and profiles. War Journalist takes exclusive ownership only during Photo Mode, then hands the camera back after cleanup. Both startup orders and ActionCam 2.4 binding levels are covered by isolated tests; live coexistence still needs validation.
 - **Separate controls:** ActionCam's independent Photo Mode bindings yield to War Journalist. Its profile/restart shortcuts remain available outside Photo Mode, with the Photo toggle taking priority for shared keys. Unknown ActionCam hooks are left untouched and cannot grant an unsafe photo-camera lease.
 - **AMD compatibility hotfix:** removed 198 inherited shader registrations whose assets were absent from the package. The registry now contains the game's 77 native entries and all 44 bundled Photo Mode shaders. Testers reported stable Alt-Tab, fullscreen, bloom and DoF changes before and after opening Photo Mode with the registry-only package.
 - **Complete assets retained:** the shader programs, materials, lights and artwork match the 0.9.9 baseline. No deferred-startup mode is included.
@@ -62,7 +62,7 @@ The MDL package contains no nested archives.
 LLL: install `dbf_freecam` in LLL's Mods folder, deploy the asset ZIP bundled
 inside that same download, and restart.
 Use one Photo Mode runtime at a time. Preserve settings, presets and screenshots.
-Supported ActionCam 2.3.1 can remain enabled. War Journalist holds exclusive camera ownership through placement and Cinema performance, then hands it back after cleanup. Unsupported camera versions are refused safely.
+Supported ActionCam 2.3.1 and 2.4 can remain enabled. War Journalist holds exclusive camera ownership through placement and Cinema performance, then hands it back after cleanup. Unsupported camera versions are refused safely.
 See [installation and controls](freecam/README.md) for manual installation.
 
 ## Controls
