@@ -144,6 +144,7 @@ end
 do
  local x=fixture();assert(x.api.queue('wave'));assert(x.api.queue_stop());assert(x.api.flush()and x.writes==0 and not x.api.pending,'Canceled menu request applied')
  assert(x.api.queue('wave'));assert(x.api.release());assert(x.api.after_update()and x.writes==0,'Closed queued pose still applied')
+ assert(x.api.refresh(.5))
  assert(x.api.queue('wave'));x.identity='local:2';x.add(x.identity)
  assert(not x.api.flush()and x.writes==0 and not x.api.pending,'Queued pose followed a replacement subject')
 end
@@ -156,6 +157,85 @@ end
 do
  local x=fixture();selected(x,'salute');local old=x.unit();x.identity='local:2';x.add(x.identity)
  assert(x.api.after_update()and not x.api.active,'Ownership loss kept applying a held pose');original(old);original(x.unit())
+end
+
+-- Closing releases every native lease but remembers only the selected ID.
+-- Reopening requires a fresh supported local frame and a real paused edge.
+do
+ local x=fixture();selected(x,'wave');local old=x.unit();local before=x.writes
+ assert(x.api.remembered()=='wave'and x.api.release()and x.writes==before,'Close forgot selection or wrote from a callback')
+ assert(not x.api.queue('taunt'),'Closed service retained an actionable cached subject')
+ assert(x.api.flush()and not x.api.active and not x.api.pending);original(old)
+ assert(x.api.current()==nil and x.api.remembered()=='wave'and x.api.status:find('Wave remembered',1,true),'Released pose was not reported as remembered')
+ x.paused=false;local reads=x.frame_reads
+ for i=1,5 do assert(not x.api.refresh(.5,i)and x.api.flush()and x.api.after_update())end
+ assert(x.frame_reads==reads and x.writes==before+3,'Closed service retained or queried native subject state')
+ old.retired=true;x.identity='local:2';local new=x.add(x.identity);x.paused=true
+ before=x.writes;assert(x.api.refresh(0,6)and x.api.pending and not x.api.active and x.writes==before,'Reopen did not queue against a fresh subject')
+ assert(x.api.after_update()and x.writes==before,'Reopen applied a request from the wrong hook')
+ assert(x.api.flush()and x.api.current()=='wave'and new.bones[1]==201 and x.captures==2)
+ for i=7,12 do assert(x.api.refresh(.5,i)and x.api.flush()and x.api.after_update())end
+ assert(x.captures==2 and x.api.current()=='wave','Refresh repeatedly recaptured a remembered pose')
+ assert(x.api.queue_stop()and x.api.remembered()==nil);assert(x.api.flush());original(new)
+ x.paused=false;assert(not x.api.refresh(.5,13));x.paused=true;assert(x.api.refresh(0,14))
+ assert(not x.api.pending and x.api.flush()and not x.api.active and x.captures==2,'Explicit Reset reapplied a forgotten pose')
+end
+
+do
+ local x=fixture();selected(x,'salute');assert(x.api.release()and x.api.flush())
+ x.paused=false;assert(not x.api.refresh(.5,10));x.paused=true;x.frame_error=true
+ assert(not x.api.refresh(0,11)and not x.api.pending,'Unavailable reopen queued a stale frame')
+ local reads=x.frame_reads;x.frame_error=false
+ assert(not x.api.refresh(0,11.25)and x.frame_reads==reads,'Reopen bypassed bounded reader retries')
+ assert(x.api.refresh(0,11.5)and x.api.pending and x.api.remembered()=='salute')
+ assert(x.api.flush()and x.api.current()=='salute'and x.captures==2,'Remembered pose did not recover after the reader became available')
+end
+
+do
+ local x=fixture();selected(x,'wave');assert(x.api.release());x.paused=false;assert(not x.api.refresh(.5,10))
+ x.paused=true;assert(x.api.refresh(0,11)and x.api.active and x.captures==1)
+ assert(x.api.flush()and not x.api.active);original(x.unit())
+ assert(x.api.refresh(0,11.1)and x.api.pending and x.api.flush()and x.api.current()=='wave'and x.captures==2,'A clean pending release lost the reopen request')
+end
+
+do
+ local x=fixture();selected(x,'salute');assert(x.api.release()and x.api.flush())
+ x.paused=false;assert(not x.api.refresh(.5,10));x.paused=true;x.frame_error=true;assert(not x.api.refresh(0,11))
+ assert(x.api.queue_stop()and x.api.remembered()==nil)
+ x.frame_error=false;assert(x.api.refresh(.5,12)and x.api.flush()and not x.api.active and not x.api.pending and x.captures==1,'Reset failed to cancel a deferred remembered pose')
+end
+
+do
+ local x=fixture();selected(x,'taunt');assert(x.api.release());x.restore_error=true
+ assert(not x.api.flush()and x.api.active and x.api.pending,'Close lost incomplete restoration')
+ x.paused=false;assert(not x.api.refresh(.5,10));x.paused=true;assert(x.api.refresh(0,11))
+ assert(x.api.current()=='taunt'and x.captures==1,'Reopen recaptured before the previous cleanup completed')
+ assert(not x.api.flush()and x.api.active and x.api.pending,'Reopen dropped a still-failing cleanup')
+ x.restore_error=false;assert(x.api.flush()and not x.api.active);original(x.unit())
+ assert(x.api.refresh(.5,12)and not x.api.pending and x.api.flush()and x.captures==1,'Failed cleanup silently rearmed repeated pose applications')
+ -- A later close/reopen may deliberately try the remembered pose again.
+ assert(x.api.release());x.paused=false;assert(not x.api.refresh(.5,13));x.paused=true
+ assert(x.api.refresh(0,14)and x.api.pending and x.api.flush()and x.captures==2)
+end
+
+for _,failure in ipairs({'prepare_error','capture_error','apply_error'})do
+ local x=fixture();selected(x,'wave');assert(x.api.release()and x.api.flush())
+ x.paused=false;assert(not x.api.refresh(.5,10));x.paused=true
+ assert(x.api.refresh(0,11)and x.api.pending);x[failure]=true;assert(not x.api.flush())
+ x[failure]=false;assert(x.api.flush());original(x.unit())
+ local captures=x.captures;local writes=x.writes
+ for i=12,17 do assert(x.api.refresh(.5,i)and x.api.flush()and x.api.after_update())end
+ assert(not x.api.active and not x.api.pending and x.captures==captures and x.writes==writes and x.api.remembered()=='wave','Failed resume repeatedly reapplied '..failure)
+ assert(x.api.queue_stop()and x.api.remembered()==nil)
+end
+
+do
+ local x=fixture();selected(x,'salute');assert(x.api.release()and x.api.flush())
+ x.paused=false;assert(not x.api.refresh(.5,10));x.paused=true;assert(x.api.refresh(0,11)and x.api.pending)
+ x.identity='local:2';local new=x.add(x.identity);local before=x.writes
+ assert(not x.api.flush()and x.writes==before and not x.api.pending,'Remembered request followed an identity change while paused')
+ assert(x.api.refresh(.5,12)and x.api.flush()and not x.api.active and x.captures==1,'Identity failure repeatedly resumed against a replacement player')
+ original(new);assert(x.api.remembered()=='salute','Identity failure forgot the session selection')
 end
 
 -- Real public-API adapter: exact node range, immutable capture, zero-time
@@ -198,6 +278,7 @@ do
   for i=1,107 do if i<8 or i>92 then assert(values[i].tag==i,'Catalog entry changed placement, collision or attachment anchor '..i)end end
  end
  local function apply_entry(entry)
+  assert(service.refresh(.5))
   local source=assert(data.poses[entry.id],'Catalog entry has no frame')
   assert(source.label==entry.label and finite(source.time)and finite(source.duration)and source.time>=0 and source.time<=source.duration,'Catalog metadata and sampled clip disagree')
   assert(#source.nodes==107,'Incomplete sampled skeleton')
@@ -239,4 +320,4 @@ do
  U.set_local_pose,U.set_animation_bone_mode=set_pose,set_mode
  alive=false;local before=#writes;assert(not pcall(a.apply,lease,'salute')and not pcall(a.restore,lease)and#writes==before,'Stale native component received writes')
 end
-print('Fixed subject poses: zero-time selection/hold, original-snapshot switching, reset/exit/unpause, stale ownership, read/partial-write recovery, request cancellation and real native adapter guards passed')
+print('Fixed subject poses: session ID memory, fresh close/reopen, deferred reader recovery, no failed-apply loop, explicit Reset, cleanup/identity guards, zero-time selection/hold and real native adapter guards passed')

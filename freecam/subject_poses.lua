@@ -228,6 +228,9 @@ function M.new(sr,subject,is_paused,log,data,adapter)
   labels[item.id]=item.label
  end
  local owned,request,last;local elapsed=.5;local last_paused,last_clock;local refresh_calls=0
+ -- Keep only a catalog ID across Photo Mode sessions. Captures and native
+ -- subject handles belong to the current held pose and are restored on exit.
+ local remembered,resume_pending,pause_seen
  local function backend()
   if not adapter then adapter=M.native(sr,subject,data)end
   return adapter
@@ -236,9 +239,12 @@ function M.new(sr,subject,is_paused,log,data,adapter)
   assert(type(is_paused)=='function','Subject pose pause reader unavailable')
   local value=is_paused();assert(type(value)=='boolean','Subject pose pause state unavailable');return value
  end
+ local function remembered_status()
+  return remembered and(labels[remembered]..' remembered - pause Photo Mode to reapply')or nil
+ end
  local function idle(message)
   owned=nil;request=nil;self.active=false;self.pending=false
-  if message then self.status=message end
+  self.status=remembered_status()or message or self.status
  end
  local function restore()
   if not owned then idle('Original pose restored');return true end
@@ -250,6 +256,12 @@ function M.new(sr,subject,is_paused,log,data,adapter)
   assert(valid==true,why or'Subject restoration ownership unavailable')
   backend().restore(owned);idle('Original pose restored');return true
  end
+ local function resume()
+  if resume_pending and remembered and last and self.available and not owned and not request then
+   request={id=remembered,identity=last.identity};self.pending=true;resume_pending=false
+   self.status=labels[remembered]..' remembered - reapplying to the current subject'
+  end
+ end
  function self.refresh(dt,now)
   -- Simulation delta is zero exactly when fixed poses are usable. Read pause
   -- transitions immediately and use the input clock for periodic owner retries.
@@ -257,6 +269,12 @@ function M.new(sr,subject,is_paused,log,data,adapter)
   if not pause_ok then
    self.available=false;self.capabilities={};last=nil;last_paused=nil;elapsed=.5
    self.status=tostring(pause_value);return self.available,self.status,self.capabilities
+  end
+  if pause_value~=pause_seen then
+   -- An unreadable renderer may delay the first fresh frame. Leave this
+   -- single request armed until discovery succeeds, without changing time.
+   resume_pending=pause_value and pause_seen==false and remembered~=nil or false
+   pause_seen=pause_value
   end
   local has_clock=type(now)=='number'and now==now and math.abs(now)<math.huge
   local rollback=has_clock and last_clock and now<last_clock
@@ -267,14 +285,17 @@ function M.new(sr,subject,is_paused,log,data,adapter)
   -- Older input providers may lack a clock. Bounded render-call retries still
   -- recover an unavailable subject while paused, without changing world time.
   if last_paused==pause_value and not rollback and elapsed<.5 and(has_clock or refresh_calls<30)then
+   resume()
    return self.available,self.status,self.capabilities
   end
   elapsed=0;refresh_calls=0;last_paused=pause_value
   local ok,why=pcall(function()
-   last=backend().frame();self.available=pause_value;self.capabilities={}
+   -- The closed/unpaused service must not retain a cached Unit or World.
+   last=pause_value and backend().frame()or nil;self.available=pause_value;self.capabilities={}
    for id in pairs(labels)do self.capabilities[id]=self.available end
-   if not self.available then self.status='Pause entire action to hold a fixed pose'
-   elseif not owned and not request then self.status='Fixed poses ready; the scene stays paused'end
+   if not self.available then self.status=remembered_status()or'Pause entire action to hold a fixed pose'
+   elseif not owned and not request then self.status=remembered_status()or'Fixed poses ready; the scene stays paused'end
+   resume()
   end)
   if not ok then self.available=false;self.capabilities={};last=nil;self.status=tostring(why)end
   return self.available,self.status,self.capabilities
@@ -282,20 +303,30 @@ function M.new(sr,subject,is_paused,log,data,adapter)
  function self.queue(id)
   if not labels[id]then return false,'Unknown subject pose'end
   if not last or not self.available or not self.capabilities[id]then return false,self.status end
+  remembered=id;resume_pending=false
   request={id=id,identity=last.identity};self.pending=true;return true
  end
  function self.queue_stop()
+  remembered=nil;resume_pending=false
   if not owned then idle('Original pose restored');return true end
   request={stop=true};self.pending=true;return true
  end
- function self.release()return self.queue_stop()end
+ function self.release()
+  resume_pending=false;last=nil;self.available=false;self.capabilities={}
+  if not owned then idle('Original pose restored');return true end
+  request={stop=true};self.pending=true;return true
+ end
  local function run(after)
   if owned then
    local valid,why=backend().valid(owned.frame,false)
    if valid==false then return restore()end
    assert(valid==true,why or'Subject pose ownership unavailable')
   end
-  if request and request.stop or owned and not paused()then return restore()end
+  if request and request.stop then return restore()end
+  if owned and not paused()then
+   last=nil;self.available=false;self.capabilities={}
+   return restore()
+  end
   if request and not after then
    assert(paused(),'Pause entire action to hold a fixed pose')
    local frame=backend().frame();assert(frame.identity==request.identity,'Subject changed before pose request')
@@ -317,6 +348,9 @@ function M.new(sr,subject,is_paused,log,data,adapter)
   if not owned and not request then return true end
   local ok,result=pcall(run,after)
   if not ok then
+   -- A failed apply is not an invitation to repeatedly capture/apply the
+   -- same pose. Restoration still retries; reopening or selection rearms it.
+   resume_pending=false
    self.available=false;self.capabilities={};last=nil
    request=owned and{stop=true}or nil;self.pending=owned~=nil;self.active=owned~=nil
    local message='Fixed pose unavailable: '..tostring(result)
@@ -328,6 +362,7 @@ function M.new(sr,subject,is_paused,log,data,adapter)
  function self.flush()return step(false)end
  function self.after_update()return step(true)end
  function self.current()return owned and owned.id or nil end
+ function self.remembered()return remembered end
  return self
 end
 return M

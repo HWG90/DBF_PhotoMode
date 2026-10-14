@@ -192,6 +192,18 @@ for _,options in ipairs({{unsupported=true},{duplicate_bone=true},{bad_bone=true
  local t=fixture(options);assert(t.select(full_body)and t.api.active,'Unsupported cape disabled body poses')
  assert(t.cape_writes==0,'Unsupported cape received placement writes');assert(t.reset());restored(t)
 end
+for _,options in ipairs({{}, {variant=true,no_mesh_names=true}})do
+ local t=fixture(options);local reference=relative_points(t)
+ assert(t.select(full_body));attached(t,reference)
+ assert(t.reset()and t.api.remembered()==full_body);restored(t)
+ t.paused=false;t.phase='menu';assert(not t.api.refresh(.5,10))
+ t.paused=true;local writes=#t.writes;assert(t.api.refresh(0,11)and t.api.pending and#t.writes==writes,'Cape reopen wrote outside the owning update')
+ t.phase='update';assert(t.api.flush()and t.api.current()==full_body);attached(t,reference)
+ assert(t.api.queue_stop()and t.api.flush()and t.api.remembered()==nil);restored(t)
+ t.paused=false;assert(not t.api.refresh(.5,12));t.paused=true;assert(t.api.refresh(0,13)and t.api.flush()and not t.api.active,'Reset reapplied a remembered cape pose')
+ restored(t)
+end
+
 do
  local t=fixture({variant=true});assert(t.select(full_body));t.changed_bone='cape2';local before=t.cape_writes
  t.phase='update';assert(not t.api.after_update()and t.api.pending,'Changed cape bone mapping retained follow writes')
@@ -258,4 +270,4 @@ do
  local t=fixture();assert(t.select(full_body));t.paused=false;t.phase='update'
  assert(t.api.flush()and not t.api.active,'Resuming time retained cape placement');restored(t)
 end
-print('Cape poses: renamed mesh/external bone variant, rotated world/shoulder attachment, switch/hold/reset, unsupported fallback, partial/read failures, hierarchy/attachment guards, mesh/body retirement and unpause restoration passed')
+print('Cape poses: renamed mesh/external bone variant, rotated shoulder attachment, session close/reopen/reset, switch/hold, unsupported fallback, partial/read failures, hierarchy/attachment guards, mesh/body retirement and unpause restoration passed')
