@@ -1,4 +1,4 @@
-War Journalist 0.9.5 - Helldivers 2 Photo Mode
+War Journalist 0.9.9 - Helldivers 2 Photo Mode
 
 CHOOSE ONE LOADER PACKAGE
 BSL (recommended): requires Bingus Shared Loader v15+ / API 1. Import the full

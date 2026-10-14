@@ -1,0 +1,70 @@
+{
+  "version": "0.9.9",
+  "release_title": "War Journalist 0.9.9 - Shader registry compatibility hotfix",
+  "short_description": "0.9.9 repairs the bundled shader registry. Affected Radeon testers report stable Alt-Tab, fullscreen, bloom and DoF changes. All 0.9.8 features remain. Lighting: Not tested fully.",
+  "release_notes_source": "docs/RELEASE-0.9.9.md",
+  "nexus": {
+    "page_url": "https://www.nexusmods.com/helldivers2/mods/17248",
+    "description_source": "docs/pages/war-journalist-0.9.9-nexus.bbcode.txt",
+    "loaders": [
+      "BSL",
+      "MDL"
+    ],
+    "retain_cover_and_gallery": true
+  },
+  "ayaka": {
+    "page_url": "https://ayakamods.com/mods/war-journalist-helldivers-2-photo-mode.4948/",
+    "description_source": "docs/pages/war-journalist-0.9.9-ayaka.bbcode.txt",
+    "download": "https://github.com/HWG90/DBF_PhotoMode/releases/download/v0.9.9/War-Journalist-0.9.9-BSL.zip",
+    "alternative_mdl": "https://github.com/HWG90/DBF_PhotoMode/releases/download/v0.9.9/War-Journalist-0.9.9-MDL.zip",
+    "retain_cover_and_gallery": true
+  },
+  "github": {
+    "release_url": "https://github.com/HWG90/DBF_PhotoMode/releases/tag/v0.9.9",
+    "tag": "v0.9.9",
+    "loaders": [
+      "BSL",
+      "MDL",
+      "LLL"
+    ]
+  },
+  "existing_cover_source": "docs/artwork/war-journalist-0.9.7-cover.png",
+  "preserved_gallery_sources": [
+    "docs/gallery/0.9.7/dab-poses.jpg",
+    "docs/gallery/0.9.7/cape-bug-fixed.jpg"
+  ],
+  "preservation_checks": {
+    "nexus": {
+      "image_count": 7,
+      "retained_sections": 11,
+      "bytes": 12917
+    },
+    "ayaka": {
+      "image_count": 5,
+      "retained_sections": 11,
+      "bytes": 12505
+    }
+  },
+  "testing": {
+    "reported_hardware": [
+      "Radeon 9070",
+      "Radeon 6950 XT"
+    ],
+    "registry_only_candidate_confirmed": true,
+    "reported_stable_triggers": [
+      "Alt-Tab",
+      "Fullscreen changes",
+      "Bloom changes",
+      "DoF changes"
+    ],
+    "before_and_after_photo_mode": true,
+    "amd_crash_dump_available": false,
+    "hdr_sdr_switching_retested": false,
+    "lighting_status": "Not tested fully"
+  },
+  "publication_status": "prepared",
+  "discord": {
+    "post_title": "War Journalist 0.9.9 - Shader registry compatibility hotfix",
+    "post_source": "docs/pages/war-journalist-0.9.9-discord.md"
+  }
+}
