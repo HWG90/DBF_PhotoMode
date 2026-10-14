@@ -29,7 +29,7 @@ DBFMCM=api
 local photo={};local controller=dofile(root..'controller.lua').new(photo,{},function()return true end,function()end,nil,options,runtime,menu)
 controller.tick(.016);keys[80]=true;controller.tick(.016);keys[80]=false
 assert(photo.active)
-keys[9]=true;controller.tick(.016);keys[9]=false;controller.tick(.016)
+controller.tick(.016) -- Photo Mode already starts with menu focus.
 keys[69]=true;controller.tick(.016);keys[69]=false;controller.tick(.016)
 local function frame()
  controller.tick(.016)

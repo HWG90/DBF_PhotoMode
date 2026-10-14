@@ -62,6 +62,8 @@ function M.input(host,sr,available,parent)
   if available then local ok,ready=pcall(available);return ok and ready==true end
   return true
  end)
+ local clip=host.require('src/cursor_capture.lua').new(host.require('src/cursor_capture_backend.lua').new())
+ host.require('src/photo_cursor_input.lua').attach(camera,input,clip)
  camera.native_escape_passthrough=true;camera.photo_input_owner='War Journalist'
  return camera
 end

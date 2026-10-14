@@ -81,7 +81,7 @@ for _,standalone in ipairs({true,false})do
  session.api.mods.dbf_freecam.handle.set_many({legend_open=false,legend_docked=false,legend_tab_y=31,legend_x=67,legend_y=53,legend_size=49})
  session.press(80)
  assert(session.photo.active and session.visible()and session.owned())
- session.press(9);session.drag(-120,80);session.resize(.9)
+ session.drag(-120,80);session.resize(.9)
  assert(math.abs(saved.menu_scale-.765)<1e-9 and saved.menu_x~=.73 and saved.menu_y~=.54,'Dragging and resizing must reach the real stored schema')
  session.opacity(76)
  for key in pairs(expected_layout)do expected_layout[key]=saved[key]end
@@ -93,7 +93,7 @@ for _,standalone in ipairs({true,false})do
  assert(saved.legend_open==false and saved.legend_docked==false and saved.legend_tab_y==31 and saved.legend_x==67 and saved.legend_y==53 and saved.legend_size==49,'API rebind must not repeat the startup reset')
  session.press(80);assert(session.photo.active and session.visible()and session.owned(),'P must reopen after mouse Exit')
  assert(saved.legend_x==67 and saved.legend_size==49,'Open/close must retain drawer movement within the current runtime')
- session.press(9);session.click('hide')
+ session.click('hide')
  assert(session.photo.active and not session.visible()and saved.hide_controls==true,'Fixture must reproduce the persisted mouse-hidden state')
  session.press(80)
  assert(session.photo.active and session.visible()and session.owned(),'P must reveal the mouse-hidden active session')

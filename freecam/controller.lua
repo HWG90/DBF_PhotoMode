@@ -614,7 +614,12 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         local input=api.camera_input
         local token,why=input.acquire(bindings())
         if not token then self.stop();return false,why end
-        provider=input;photo.active,photo.pos=true,nil;controls_hidden=false
+        provider=input
+        if panel and input.set_focus then
+            local focused,problem=input.set_focus(true);if focused==false then self.stop();return false,problem end
+            menu_focus=true
+        end
+        photo.active,photo.pos=true,nil;controls_hidden=false
         if self._cinema then self._cinema.place()end
         if subject then subject_change()end;director_elapsed=.5;ai_elapsed=.5
         if saved_camera then saved_camera.restore(handle.get('saved_camera_radius'),handle)end

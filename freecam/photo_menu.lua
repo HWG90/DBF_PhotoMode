@@ -177,8 +177,8 @@ function M.new(view,actions,existing)
   local s=math.max(minimum,math.min(maximum,base*self.size_scale));local width=PANEL_WIDTH*s;local footprint=(PANEL_HEIGHT+62+footer_extra)*s
   local x=self.panel_x and self.panel_x*(w-width)or w-width-24*s;local strip_bottom=self.panel_y and self.panel_y*(h-footprint)or(16+HUD_MARGIN)*s
   x=math.max(8*s,math.min(w-width-8*s,x));strip_bottom=math.max(8*s,math.min(h-footprint-8*s,strip_bottom))
-  local bottom=strip_bottom+(62+footer_extra)*s;local top=bottom+PANEL_HEIGHT*s;local left=x+16*s
-  geometry={base=base,scale=s,minimum=minimum,maximum=maximum,x=x,strip_bottom=strip_bottom,w=w,h=h,width=width,height=footprint}
+  local bottom=strip_bottom+62*s;local top=bottom+(PANEL_HEIGHT+footer_extra)*s;local left=x+16*s
+  geometry={base=base,scale=s,minimum=minimum,maximum=maximum,x=x,strip_bottom=strip_bottom,w=w,h=h,width=width,height=footprint,body_height=PANEL_HEIGHT+footer_extra}
   panel_bounds={x=x,y=strip_bottom,w=width,h=top-strip_bottom}
   local function over(b,modal)return focused and (modal or not popup)and pointer_x and pointer_y and pointer_x>=b.x and pointer_x<=b.x+b.w and pointer_y>=b.y and pointer_y<=b.y+b.h end
   local function rect(rx,ry,rw,rh,c,a,layer,modal,role)
@@ -247,12 +247,12 @@ function M.new(view,actions,existing)
   local page=self.pages[self.page];rows={};selected_hit=nil
   for _,c in ipairs(page.controls)do
    local neutral_status=c.type=='text'and((c.status_only and(c.label or '')=='')or(c.id=='shader_status'and c.label=='Shader overlay: none'))
-   if c.id~='controls'and not(actions.freeze and c.id=='freeze_player')and not(actions.slowmo and c.id=='slowmo_speed')and not c.layout_storage and not neutral_status then rows[#rows+1]=c end
+   if c.id~='controls'and not(actions.freeze and c.id=='freeze_player')and not(actions.slowmo and(c.id=='slowmo_speed'or c.id=='lock_camera'))and not c.layout_storage and not neutral_status then rows[#rows+1]=c end
   end
   self.selection=math.max(1,math.min(#rows,self.selection));if not selectable(rows[self.selection])then for i,c in ipairs(rows)do if selectable(c)then self.selection=i;break end end end
   if self.editing_value and self.editing_value.disabled then self.editing_value=nil;text_edit=nil end;if popup and popup.c.disabled then popup=nil end
   rect(left,top-71*s-tab_extra,width-32*s,1,T.border,.6,301)
-  local content_top=top-77*s-tab_extra;local content_bottom=bottom+(color_edit and 100 or 16)*s;local row=32*s
+  local content_top=top-(77+footer_extra)*s-tab_extra;local content_bottom=bottom+(color_edit and 100 or 16)*s;local row=32*s
   visible_count=math.max(1,math.floor((content_top-content_bottom)/row));self.scroll=math.max(0,math.min(math.max(0,#rows-visible_count),self.scroll))
   local hovered_control;local popup_anchor
   for i=self.scroll+1,math.min(#rows,self.scroll+visible_count)do
@@ -307,28 +307,30 @@ function M.new(view,actions,existing)
   end
   local hint=hovered_control or rows[self.selection];local label=hint and tostring(hint.label or '')or 'Photo settings'
   text(hint and hint.disabled and 'Unavailable in this scene' or text_edit and(text_edit.error or(text_edit.typing and 'Enter / Space saves  |  Esc cancels  |  Ctrl+A replaces' or text_edit.c.fine_step and 'A/D step  |  Shift+A/D fine  |  Esc cancels' or 'Type number or A/D step  |  Enter / Space saves  |  Esc cancels'))or key_capture and 'Press the new shortcut  |  Esc cancels' or self.notice or(label..(hint and hint.type=='slider'and '  |  Shift+drag fine  |  Enter edits'or '  |  A/D changes  |  Enter edits')),left+24*s,bottom+1*s,width-56*s,12*s,10,hint and hint.disabled and T.disabled or T.muted)
-  rect(x,strip_bottom,width,(54+footer_extra)*s,T.background,math.min(1,opacity/100+.02),300,false,'photo_controls_strip');rect(x,strip_bottom+(54+footer_extra)*s,width,1*s,T.border,.5,301)
+  rect(x,strip_bottom,width,54*s,T.background,math.min(1,opacity/100+.02),300,false,'photo_controls_strip');rect(x,strip_bottom+54*s,width,1*s,T.border,.5,301)
   button('Toggle HUD',{x=left,y=strip_bottom+29*s,w=120*s,h=21*s},actions.hud,'hud',false,11)
   button('Hide controls ['..keys.hide..']',{x=left+128*s,y=strip_bottom+29*s,w=166*s,h=21*s},actions.hide,'hide',false,11)
   button('Exit photo mode',{x=left+302*s,y=strip_bottom+29*s,w=156*s,h=21*s},actions.exit,'exit',false,11)
   if actions.freeze then
    local ok,frozen,enabled=pcall(actions.freeze_state or function()return false,false end)
-   button(ok and frozen==true and 'Resume Action'or 'Freeze Action',{x=left+(footer_extra>0 and 0 or 470)*s,y=strip_bottom+(footer_extra>0 and 62 or 29)*s,w=142*s,h=21*s},actions.freeze,'freeze_action',ok and frozen==true,11,nil,not(ok and enabled==true))
+   button(ok and frozen==true and 'Resume Action'or 'Freeze Action',{x=left+(footer_extra>0 and 0 or 470)*s,y=footer_extra>0 and top-103*s-tab_extra or strip_bottom+29*s,w=(footer_extra>0 and 126 or 142)*s,h=21*s},actions.freeze,'freeze_action',ok and frozen==true,11,nil,not(ok and enabled==true))
   end
   if actions.slowmo then
    local ok,active,enabled=pcall(actions.slowmo_state or function()return false,false end)
    slowmo_control.disabled=not(ok and enabled==true)
-   button(ok and active==true and 'Slow Motion: ON'or 'Slow Motion: OFF',{x=left+154*s,y=strip_bottom+62*s,w=160*s,h=21*s},actions.slowmo,'slowmo_action',ok and active==true,11,nil,slowmo_control.disabled)
-   local b={x=left+376*s,y=strip_bottom+60*s,w=240*s,h=25*s,c=slowmo_control,key='slowmo_speed'}
+   button(ok and active==true and 'Slow Motion: ON'or 'Slow Motion: OFF',{x=left+134*s,y=top-103*s-tab_extra,w=134*s,h=21*s},actions.slowmo,'slowmo_action',ok and active==true,11,nil,slowmo_control.disabled)
+   local b={x=left+312*s,y=top-105*s-tab_extra,w=140*s,h=25*s,c=slowmo_control,key='slowmo_speed'}
    local rate=tonumber(self.handle.get('slowmo_speed'))or .2;local fraction=math.max(0,math.min(1,(rate-slowmo_control.min)/(slowmo_control.max-slowmo_control.min)))
    local ink=slowmo_control.disabled and T.disabled or T.gold
-   text('Speed',left+326*s,b.y,48*s,b.h,10,slowmo_control.disabled and T.disabled or T.muted)
+   text('Speed',left+276*s,b.y,36*s,b.h,10,slowmo_control.disabled and T.disabled or T.muted)
    surface(b,false,slowmo_control.disabled,'slowmo_speed',true)
    local track=rect(b.x+6*s,b.y+11*s,b.w-12*s,3*s,T.border_hover,.85,306,false,'slowmo_speed_track');track.control_id='slowmo_speed'
    rect(track.x,track.y,track.w*fraction,track.h,ink,1,307)
    rect(track.x+math.max(0,track.w-4*s)*fraction,track.y-4*s,4*s,11*s,ink,1,308)
-   local label=text(string.format('%.0f%%',rate*100),left+625*s,b.y,78*s,b.h,12,ink,310,nil,'slowmo_speed_value');label.control_id='slowmo_speed'
+   local label=text(string.format('%.0f%%',rate*100),left+458*s,b.y,42*s,b.h,12,ink,310,nil,'slowmo_speed_value');label.control_id='slowmo_speed'
    b.track={x=track.x,y=b.y,w=track.w,h=b.h};if focused and not slowmo_control.disabled then hits[#hits+1]=b end
+   local locked=self.handle.get('lock_camera')==true
+   button(locked and 'Lock Camera: ON'or 'Lock Camera: OFF',{x=left+508*s,y=top-103*s-tab_extra,w=216*s,h=21*s},function()return self.handle.set('lock_camera',not self.handle.get('lock_camera'))end,'lock_camera_action',locked,11)
   end
   local opacity_bounds={x=x+width-116*s,y=strip_bottom+27*s,w=100*s,h=25*s,c=opacity_control,key='menu_opacity'}
   local opacity_track={x=opacity_bounds.x+6*s,y=opacity_bounds.y+3*s,w=88*s,h=3*s};opacity_bounds.track=opacity_track
@@ -394,7 +396,7 @@ function M.new(view,actions,existing)
    if legend.tick(input,down)then held=input.click;right_held=nil;nav_ready=false;pressed_key=nil;return end
   end
   if resize then if not input.click then resize=nil elseif input.x and input.y and geometry then
-   local delta=(-PANEL_WIDTH*(input.x-resize.x)+PANEL_HEIGHT*(input.y-resize.y))/(PANEL_WIDTH*PANEL_WIDTH+PANEL_HEIGHT*PANEL_HEIGHT);self.size_scale=math.max(geometry.minimum,math.min(geometry.maximum,resize.scale+delta))/geometry.base;layout_dirty=true;held=input.click;return end end
+   local height=geometry.body_height or PANEL_HEIGHT;local delta=(-PANEL_WIDTH*(input.x-resize.x)+height*(input.y-resize.y))/(PANEL_WIDTH*PANEL_WIDTH+height*height);self.size_scale=math.max(geometry.minimum,math.min(geometry.maximum,resize.scale+delta))/geometry.base;layout_dirty=true;held=input.click;return end end
   if scroll_drag and input.click and input.y then scroll_drag.move(input.y);held=input.click;return end
   if key_capture then
    if not input.click then armed=true end

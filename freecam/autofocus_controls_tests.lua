@@ -18,7 +18,7 @@ local function press(k)keys[k]=true;tick();keys[k]=false;tick()end
 local function double_click()press(1);press(1)end
 local function near(a,b)return math.abs(a-b)<1e-7 end
 local function find(role)for _,c in ipairs(commands)do if c.ui_role==role then return c end end;error('Missing '..role)end
-tick();press(80);tick();local handle=api.mods.dbf_freecam.handle;assert(photo.active and mode==3 and handle.get('focus_mode')==1)
+tick();press(80);tick();local handle=api.mods.dbf_freecam.handle;assert(photo.active and mode==1 and handle.get('focus_mode')==1);press(9);assert(mode==3)
 local controls={};for _,page in ipairs(api.mods.dbf_freecam.pages)do for _,c in ipairs(page.controls)do controls[c.id]=c end end
 assert(not controls.pick_focus and controls.focus_mode.choices[2]=='Double-click to focus','Subject selection must not require a repeated Activate action')
 keys[1]=true;handle.set('focus_mode',2);tick();tick();assert(mode==3 and #calls==0,'Selecting double-click mode must preserve camera input focus')

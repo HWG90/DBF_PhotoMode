@@ -84,7 +84,7 @@ for _,size in ipairs({{1920,1080},{800,600},{640,480}})do
  for _,c in ipairs(commands)do assert(c.ui_key~='color:apply'and c.ui_key~='channel:1'and c.ui_role~='color_preview'and c.ui_role~='color_hex','Apply did not close the color editor')end
 end
 draw(800,600);for _,c in ipairs(commands)do if c.type=='text'then assert(measure(c.text,c.size)<=c.text_width+.001);local b=c.text_bounds;assert(b.x>=0 and b.y>=0 and b.x+b.w<=800.001 and b.y+b.h<=600.001)end end
--- Time controls remain in the fixed footer on every tab and at either end of
+-- Time controls remain in the fixed toolbar on every tab and at either end of
 -- long lists, with the actual paused state and authority reflected in the button.
 menu.pages[3].controls[#menu.pages[3].controls+1]={id='freeze_player',type='toggle',label='Pause entire action'}
 menu.pages[3].controls[#menu.pages[3].controls+1]={id='slowmo_speed',type='slider',label='Slow motion speed',min=.05,max=1,step=.05,fine_step=.01}
@@ -96,19 +96,22 @@ for _,size in ipairs({{1920,1080},{3840,2160},{800,600},{640,480}})do
   assert(b.x>=0 and b.y>=0 and b.x+b.w<=size[1]and b.y+b.h<=size[2],'Freeze Action is outside the viewport')
   local opacity=find(function(c)return c.ui_role=='menu_opacity_track'end)
   local exit=find(function(c)return c.ui_key=='exit'end)
-  assert(b.y>=exit.y+exit.h and b.y>=opacity.y+opacity.h,'Time row overlaps ordinary footer controls')
+  assert(b.y>=exit.y+exit.h and b.y>=opacity.y+opacity.h,'Time row overlaps ordinary toolbar controls')
   local slow=find(function(c)return c.ui_key=='slowmo_action'end)
   local rate=find(function(c)return c.ui_key=='slowmo_speed'end)
   assert(b.x+b.w<slow.x and slow.x+slow.w<rate.x,'Adjacent time tools overlap')
+  local lock=find(function(c)return c.ui_key=='lock_camera_action'end)
+  assert(rate.x+rate.w<lock.x,'Speed slider overlaps Lock Camera')
+  local was=values.lock_camera;pointer(lock,true);tick({click=false});draw(size[1],size[2]);assert(values.lock_camera==not was,'Fixed Lock Camera did not toggle')
   local bx,by=b.x,b.y;menu.scroll=999;draw(size[1],size[2]);b=find(function(c)return c.ui_key=='freeze_action'end)
   assert(b.x==bx and b.y==by,'Scrolling moves the Freeze Action button')
   for _,c in ipairs(commands)do assert(c.control_id~='freeze_player','Freeze toggle remained in the scrolling controls');assert(not(c.ui_role=='slider_track'and c.control_id=='slowmo_speed'),'Slow motion slider remained in the scrolling controls')end
-  local n=freeze_calls;pointer(b,true);tick({click=false});draw(size[1],size[2]);assert(freeze_calls==n+1 and freeze_frozen,'Footer did not freeze exactly once')
+  local n=freeze_calls;pointer(b,true);tick({click=false});draw(size[1],size[2]);assert(freeze_calls==n+1 and freeze_frozen,'Toolbar did not freeze exactly once')
   assert(find(function(c)return c.full_text=='Resume Action'end),'Paused action lacks Resume label')
-  b=find(function(c)return c.ui_key=='freeze_action'end);pointer(b,true);tick({click=false});draw(size[1],size[2]);assert(freeze_calls==n+2 and not freeze_frozen,'Footer did not resume exactly once')
+  b=find(function(c)return c.ui_key=='freeze_action'end);pointer(b,true);tick({click=false});draw(size[1],size[2]);assert(freeze_calls==n+2 and not freeze_frozen,'Toolbar did not resume exactly once')
   freeze_enabled=false;draw(size[1],size[2]);b=find(function(c)return c.ui_key=='freeze_action'end);pointer(b,true);tick({click=false});assert(freeze_calls==n+2,'Unavailable time control accepted a click')
   freeze_enabled=true;menu.draw(size[1],size[2],false,false,{focus='TAB',hide='H'});b=find(function(c)return c.ui_key=='freeze_action'end)
-  tick({x=b.x+b.w/2,y=b.y+b.h/2,click=true});tick({click=false});assert(freeze_calls==n+2,'Camera focus accepted a footer click')
+  tick({x=b.x+b.w/2,y=b.y+b.h/2,click=true});tick({click=false});assert(freeze_calls==n+2,'Camera focus accepted a toolbar click')
  end
 end
 -- Slow Motion can remain selected while frozen; adjusting the adjacent slider
@@ -119,9 +122,9 @@ pointer(slow,true);tick({click=false});draw();assert(slowmo_calls==n+1 and slowm
 assert(find(function(c)return c.full_text=='Slow Motion: ON'end))
 local rate=find(function(c)return c.ui_role=='slowmo_speed_track'end)
 keys[16]=true;tick({x=rate.x+rate.w*.8,y=rate.y+1,click=true});assert(values.slowmo_speed==.2,'Shift slider press jumped to the pointer value')
-tick({x=rate.x+rate.w,y=rate.y+1,click=true});assert(values.slowmo_speed>.2 and values.slowmo_speed<.25,'Fine footer scrubbing did not slow pointer movement')
+tick({x=rate.x+rate.w,y=rate.y+1,click=true});assert(values.slowmo_speed>.2 and values.slowmo_speed<.25,'Fine toolbar scrubbing did not slow pointer movement')
 tick({click=false});keys[16]=false;draw();local retained=values.slowmo_speed
-assert(find(function(c)return c.full_text==string.format('%.0f%%',retained*100)end),'Footer percentage does not reflect retained rate')
+assert(find(function(c)return c.full_text==string.format('%.0f%%',retained*100)end),'Toolbar percentage does not reflect retained rate')
 slowmo_enabled=false;draw();rate=find(function(c)return c.ui_role=='slowmo_speed_track'end)
-tick({x=rate.x+rate.w,y=rate.y+1,click=true});tick({click=false});assert(values.slowmo_speed==retained,'Unavailable footer slider accepted edits')
-menu.close();print('Photo panel interaction: fixed Freeze/Resume footer on every tab and viewport, actual state/authority, hidden scrolling toggle, native label fitting, modal pointer ownership, keyboard values and tab transitions passed')
+tick({x=rate.x+rate.w,y=rate.y+1,click=true});tick({click=false});assert(values.slowmo_speed==retained,'Unavailable toolbar slider accepted edits')
+menu.close();print('Photo panel interaction: fixed Freeze/Resume toolbar on every tab and viewport, actual state/authority, hidden scrolling toggle, native label fitting, modal pointer ownership, keyboard values and tab transitions passed')

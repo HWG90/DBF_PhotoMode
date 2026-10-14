@@ -19,7 +19,7 @@ local screenshots={active=function()return capture end,cancel=function()capture=
 local controller=dofile(root..'controller.lua').new(photo,{},function()return true end,function()end,nil,Options,effects,Menu,nil,nil,screenshots,sampler,lights)
 local function tick()controller.tick(.016)end
 local function press(key)keys[key]=true;tick();keys[key]=false;tick()end
-tick();press(80);photo.light_context={world='world',position={0,0,0},right={1,0,0},forward={0,1,0},up={0,0,1}};tick();press(9)
+tick();press(80);photo.light_context={world='world',position={0,0,0},right={1,0,0},forward={0,1,0},up={0,0,1}};tick()
 local handle=api.mods.dbf_freecam.handle;local controls=api.mods.dbf_freecam.controls
 assert(not controls.light_aim.disabled and not controls.light_apply_preset.disabled and not controls.light_setup_save.disabled)
 assert(handle.activate('light_apply_preset'));local q=queued[#queued];assert(q.action=='preset'and q.value.name=='key_fill_rim'and q.value.target[2]==5)

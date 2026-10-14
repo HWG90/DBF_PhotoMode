@@ -34,7 +34,7 @@ end}
 local photo={};local controller=dofile(root..'controller.lua').new(photo,{},function()return true end,function()end,nil,options,effects,menu,catalog)
 local function tick()controller.tick(.016)end
 local function press(key)keys[key]=true;tick();keys[key]=false;tick()end
-tick();press(80);assert(photo.active and owned)
+tick();press(80);assert(photo.active and owned and mode==1);press(9);assert(mode==3)
 local mod=api.mods.dbf_freecam;local handle=mod.handle
 assert(handle.get('lock_camera_key')==76,'L must be the default camera lock shortcut')
 assert(mod.controls.focus_distance.disabled and mod.controls.aperture.disabled,'Synthetic capability reports must not enable deferred lens controls')

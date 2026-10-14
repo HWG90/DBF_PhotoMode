@@ -71,7 +71,7 @@ do
  tick();local handle=service.mods.dbf_freecam.handle
  pressed[80]=true;tick();tick();assert(not state.active and acquired==0 and queries==1,'Typing P in active game chat must neither acquire input nor open Photo Mode')
  chat=false;tick();assert(not state.active and acquired==0,'Closing chat with P held must not open Photo Mode later')
- pressed[80]=false;tick();press(80);assert(state.active and acquired==1 and mode==3,'A fresh P edge after leaving chat must work normally')
+ pressed[80]=false;tick();press(80);assert(state.active and acquired==1 and mode==1,'A fresh P edge after leaving chat must open with menu focus');press(9);assert(mode==3)
  chat=true;press(9);assert(state.active and mode==3,'Chat must retain Tab rather than give the menu cursor focus')
  chat=false;press(9);assert(mode==1);chat=true;press(9);assert(mode==3,'Returning to camera from existing menu focus must remain available')
  press(72);assert(handle.get('hide_controls')==true and state.active,'Chat must not prevent hiding existing photo controls')

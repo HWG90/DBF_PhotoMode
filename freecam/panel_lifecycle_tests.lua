@@ -10,11 +10,11 @@ DBFMCM=api
 local freeze={start=function(v)rate=v or 0;return true end,release=function()rate=1;return true end,hold=function()return true end,rate=function()return rate end}
 local effects={parameters={},shader_status='Shader unavailable: fixture material',release=function()return true end}
 local photo={};local c=controller.new(photo,{},function()return true end,function()end,freeze,options,effects,panel)
-c.tick(.016);keys[80]=true;c.tick(.016);assert(photo.active and rate==0 and mode==3 and #commands>0);keys[80]=false
+c.tick(.016);keys[80]=true;c.tick(.016);assert(photo.active and rate==0 and mode==1 and #commands>0);keys[80]=false
 local status;for _,page in ipairs(api.mods.dbf_freecam.pages)do for _,control in ipairs(page.controls)do if control.id=='shader_status'then status=control end end end
 assert(status and status.label==effects.shader_status,'Runtime status must update registered text controls, outside MCM stored-value index')
 effects.shader_status='';c.tick(.016);assert(status.label=='')
-keys[9]=true;c.tick(.016);assert(mode==1 and photo.input.dt==0 and rate==0);keys[9]=false
+c.tick(.016);assert(mode==1 and photo.input.dt==0 and rate==0,'Photo Mode must start ready to edit')
 keys[69]=true;c.tick(.016);keys[69]=false;c.tick(.016) -- Lens follows Camera actions.
 keys[13]=true;c.tick(.016);keys[13]=false;c.tick(.016);keys[80]=true;c.tick(.016);assert(photo.active and rate==0,'Numeric editing owns the photo-toggle shortcut');keys[80]=false
 keys[27]=true;c.tick(.016);keys[27]=false;c.tick(.016);assert(mode==1 and photo.active,'Escape cancels numeric entry before leaving menu')
@@ -108,7 +108,7 @@ do
  local state={};local adapter=controller.new(state,{},function()return true end,function()end,nil,options,nil,fake_menu)
  local function tick()adapter.tick(.016)end
  local function press(key)pressed[key]=true;tick();pressed[key]=false;tick()end
- tick();press(80);assert(state.active and input_mode==3)
+ tick();press(80);assert(state.active and input_mode==1);allow_blur=true;press(9);assert(input_mode==3 and blur_calls==1);allow_blur=false;blur_calls=0
  press(9);assert(input_mode==1 and blur_calls==0)
  text_editing=true;press(9);assert(input_mode==1 and blur_calls==1 and text_editing,'Invalid pending text must block Tab focus transfer')
  allow_blur=true;press(9);assert(input_mode==3 and blur_calls==2 and not text_editing,'Tab must commit pending text through blur')
@@ -147,7 +147,7 @@ do
   {release=function()forced_release=forced_release+1;return true end})
  local function tick(dt)adapter.tick(dt or .016)end
  local function press(key)pressed[key]=true;tick();pressed[key]=nil;tick()end
- tick();press(80);assert(state.active and rate==0 and input_mode==3 and not adapter.camera_suspended())
+ tick();press(80);assert(state.active and rate==0 and input_mode==1);press(9);assert(input_mode==3 and not adapter.camera_suspended())
  local handle=service.mods.dbf_freecam.handle
  pressed[87]=true;tick();assert(state.input.forward and state.input.mouse_x==12,'Camera movement must work before native-menu handoff')
  -- Escape must first yield the captured key so the native stack can open.
@@ -200,7 +200,7 @@ do
  assert(table.concat(events,',')=='resume,release','Hover world time must resume before its input capture lease is released')
  assert(pressed[2]and forced_release==0,'Hover cleanup must not inject an ADS release')
  press(80);press(220);assert(not state.active and rate==1 and input_mode==0,'Native menu must refuse Photo Mode and slow-motion activation while the camera is closed')
- native_open=false;press(80);assert(state.active and rate==0 and input_mode==3)
+ native_open=false;press(80);assert(state.active and rate==0 and input_mode==1);press(9);assert(input_mode==3)
  events={};pressed[27]=true;tick()
  assert(not state.active and rate==1 and input_mode==0 and table.concat(events,',')=='resume,release','Hover Escape must stop Photo Mode and resume world time before releasing capture instead of retaining an unsafe pause')
  pressed[27]=nil
