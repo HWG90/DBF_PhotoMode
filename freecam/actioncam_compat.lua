@@ -14,7 +14,7 @@ function M.new(G,log)
  local dbg=G.debug or debug
  local self={held=false,available=true,reason=nil,count=0}
  local records={};local roots;local priority;local announced
- local chain_names={previous=true,previous_update=true,prior=true,original=true,wrapped=true,callback=true,fn=true,base=true}
+ local chain_names={previous=true,previous_update=true,original_update=true,prior=true,original=true,wrapped=true,callback=true,fn=true,base=true}
  local function up(fn,wanted)
   if type(fn)~='function'or not dbg or type(dbg.getupvalue)~='function'then return end
   for index=1,120 do

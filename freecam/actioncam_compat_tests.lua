@@ -14,6 +14,7 @@ local function strip_wrapper(fn)
  return stripped
 end
 local function prior_wrapper(prior)return function(...)return prior(...)end end
+local function original_wrapper(original_update)return function(...)return original_update(...)end end
 local function vector(x,y,z)return{x,y,z}end
 local V=setmetatable({x=function(v)return v[1]end,y=function(v)return v[2]end,z=function(v)return v[3]end},{__call=function(_,...)return vector(...)end})
 local function fixture()
@@ -183,7 +184,7 @@ assert(up(o8.wrapper,'step')==o8.step and up(o8.bind,'PHOTO_BINDS')==saved8,'Cha
 -- Actual LLL uses `prior`; shipped wrappers may strip all upvalue names. Follow
 -- these function links without replacing any loader or unrelated callback.
 local env9,bridge9,e9,_,load9=fixture();local o9=load9();o9.hook()
-local original9=env9.update;local named9=prior_wrapper(original9)
+local original9=env9.update;local forwarding9=original_wrapper(original9);local named9=prior_wrapper(forwarding9)
 local callback9
 local previous9=named9;local decoy9=math.abs
 callback9=function(...)
@@ -193,8 +194,9 @@ end
 local stripped9=strip_wrapper(callback9);env9.update=stripped9
 local wrapper_bytes9=string.dump(stripped9,true)
 local saved_links9={};for i=1,120 do local name,value=debug.getupvalue(stripped9,i);if not name then break end;saved_links9[i]=value end
-assert(bridge9.refresh()and bridge9.count==1,'Stripped wrappers and the LLL prior link must expose the audited owner')
-assert(env9.update==stripped9 and string.dump(stripped9,true)==wrapper_bytes9 and up(named9,'prior')==original9)
+assert(bridge9.refresh()and bridge9.count==1,'Stripped wrappers, LLL prior and original_update links must expose the audited owner')
+assert(env9.update==stripped9 and string.dump(stripped9,true)==wrapper_bytes9 and up(named9,'prior')==forwarding9)
+assert(up(forwarding9,'original_update')==original9,'Other mods must retain their original update callback')
 for i,value in pairs(saved_links9)do local _,current=debug.getupvalue(stripped9,i);assert(current==value,'Intermediary/C callback links must remain untouched')end
 assert(bridge9.acquire());local frame9=up(o9.step,'frame');local a9,b9,c9=env9.update(.016,'tail')
 assert(e9.step==1 and a9=='game-update'and b9==.016 and c9=='tail'and up(o9.step,'frame')==frame9)
