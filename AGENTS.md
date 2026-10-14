@@ -1,1 +1,3 @@
 Maintain War Journalist / DBF_PhotoMode source here. Keep release artifacts in dist/releases. Never commit saved settings, logs, game binaries, diagnostics or unrelated projects. Run the isolated Lua fixtures and validate packaged bytes before publication. Public release keeps scene effects and numeric DoF disabled until visually verified.
+
+After a scoped LLL installation adds Lua modules, update `manifest.json`'s `lll.modules` declarations and checksums at every installed boundary. Run `py -3 tools/verify_installed_modules.py <installed-dbffreecam-directory>` against the actual installed files before reporting installation complete. Package verification alone does not verify a scoped deployment.

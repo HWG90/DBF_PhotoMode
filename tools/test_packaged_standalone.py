@@ -218,9 +218,14 @@ def verify(archive):
         if loader == 'BSL':
             source += ('\nassert(loadstring(' + lua_string(startup) + ',"@immutable-BSL-package"))()\nupdate(.016)\n').encode()
         elif loader == 'LLL':
+            declared = json.loads(files['manifest.json'])['lll']['modules']
+            actual = sorted(name for name in files if name.startswith('src/') and name.endswith('.lua'))
+            assert declared == actual, 'LLL module declarations differ from packaged source'
+            allowed = '{' + ','.join('[ ' + lua_string(name) + ' ]=true' for name in declared) + '}'
             source += ('\nmod={dir='+lua_string(package.as_posix())+',config_dir=TEST_APPDATA.."/DBF/PhotoMode/settings",log=log}\n'
                        'mod.read=function(name)local f=assert(io.open(mod.dir.."/"..name,"rb"));local body=f:read("*a");f:close();return body end\n'
-                       'mod.require=function(name)return assert(loadstring(mod.read(name),"@"..mod.dir.."/"..name))()end\n'
+                       'local declared='+allowed+';local cache={}\n'
+                       'mod.require=function(name)assert(declared[name],"Module not declared in this project: "..name);if cache[name]~=nil then return cache[name]end;local value=assert(loadstring(mod.read(name),"@"..mod.dir.."/"..name))();if value==nil then value=true end;cache[name]=value;return value end\n'
                        'local adapter=assert(loadstring('+lua_string(startup)+',"@immutable-LLL-package"))()\n'
                        'assert(adapter.live_lua_api==1);adapter.on_enable();adapter.on_update(.016)\n').encode()
         else:
