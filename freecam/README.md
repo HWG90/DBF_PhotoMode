@@ -58,6 +58,10 @@ The dedicated mission light asset fix is included: Not tested fully. Lights
 and subject visibility changes are cleaned up when leaving Photo Mode.
 
 PAUSE AND CAPTURE
+Native Escape/settings menus suspend Photo camera movement, look and shortcuts.
+Photo Mode yields its input lease and cursor to the verified native menu, then
+recaptures after it closes. Held gameplay actions remain intact. An unavailable
+native menu reader suspends camera input until its UI state can be verified.
 Pause and slow motion require a verified solo session. Freecam can still be
 used in multiplayer. Guarded hoverpack pause neutralizes automatic thrust
 before zero time, checks neutral hover controls, then restores thrust after resuming.

@@ -6,6 +6,25 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
     local lighting_write=false;local lighting_revision=-1
     self._input_tick=0
     self._ai=ai
+    function self._native_menu_state()
+        local reader=api and api.camera_input and api.camera_input.native_menu_active
+        if type(reader)~='function'then return false end
+        local ok,active=pcall(reader)
+        -- Once a native reader is attached, only exact false grants camera
+        -- input. An unavailable/replaced UI stack cannot grant stale movement.
+        return not ok or active~=false
+    end
+    function self.native_menu_blocked()return self._native_menu_state()end
+    function self._external_menu_open()return api.is_open()or self._native_menu_blocked==true or self._native_menu_yield~=nil end
+    function self.camera_suspended()
+        return not photo.active or not api or not provider or self._native_menu_yield~=nil or self._native_menu_state()or api.is_open()or not api.camera_input.focused()
+    end
+    function self._release_input()
+        if not provider then return true end
+        local finish=self._native_menu_state()and provider.native_menu_handoff or provider.release
+        local ok,why=finish();if ok~=false then provider=nil end
+        return ok,why
+    end
     self._poses=poses;self._pose_available=false;self._pose_caps={}
     function self._request_time_change(rate)
         if not freeze then return true end
@@ -341,6 +360,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
     end
     function self.stop(preserve_resume)
         self._pending_start=nil
+        self._native_menu_yield=nil
         local time_waiting=self._pose_time_pending;self._pose_time_pending=nil
         -- Bone leases are restored only by the owning update. Keep the paused
         -- camera/input ownership until that update acknowledges restoration.
@@ -381,9 +401,8 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
             return false,reason or'Gameplay time restoration is pending; retaining input capture'
         end
         if provider then
-            local ok,why=provider.release()
+            local ok,why=self._release_input()
             if ok==false then return false,why end
-            provider=nil
         end
         if self._panel_close_pending then return false,self._panel_close_pending end
         return restored,reason
@@ -410,6 +429,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
     end
     function self.request_screenshot()
         if not photo.active or not screenshots then return false,'Open Photo Mode first'end
+        if self._native_menu_state()or self._native_menu_yield then return false,'Close the native Escape/settings menu first'end
         clear_subject_click()
         local called,ok,why=pcall(screenshots.request)
         if not called or ok==false then local reason=called and why or ok;log('Screenshot: '..tostring(reason));return false,reason end
@@ -449,6 +469,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         local ok,value=pcall(update_epoch);return ok and type(value)=='number'and value==value and value or nil
     end
     local function toggle(reveal_hidden)
+        if self._native_menu_state()then return false,'Close the native Escape/settings menu first'end
         if self._pending_start then return self.stop()end
         if recovery_menu then
             local start=handle and handle.get('enabled')
@@ -491,7 +512,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         self._pending_start={epoch=before,tick=self._input_tick,frames=0,elapsed=0,input=input,handle=handle,hover=true}
         return true
     end
-    local function inform_toggle(reveal_hidden) if api.is_open() then local closed,why=api.close();if closed==false then log(tostring(why));return end end;local ok,why=toggle(reveal_hidden);if ok==false then log('freecam: '..tostring(why)) end end
+    local function inform_toggle(reveal_hidden) if self._external_menu_open() then local closed,why=api.close();if closed==false then log(tostring(why));return end end;local ok,why=toggle(reveal_hidden);if ok==false then log('freecam: '..tostring(why)) end end
     function self.tick(dt)
         self._input_tick=self._input_tick+1
         if self._pose_stop_pending then
@@ -502,7 +523,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
             local ok,why=self._request_time_change(self._pose_time_pending.rate)
             if ok==false then self.slowmo_active=false;log('Simulation time: '..tostring(why))end
         end
-        local current=rawget(_G,'DBFMCM')or rawget(_G,'DBF_PHOTO_STANDALONE_API')
+        local current=rawget(_G,'DBF_PHOTO_CAMERA_API')or rawget(_G,'DBFMCM')or rawget(_G,'DBF_PHOTO_STANDALONE_API')
         if current~=api then
             self.slowmo_active=false
             local ok,why=self.stop();if ok==false then error(why) end
@@ -633,22 +654,28 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
             end
         end
         if not handle or not api.camera_input then self.stop();return end
+        self._native_menu_blocked=self._native_menu_state()
+        if self._native_menu_yield then
+            local waiting=self._native_menu_yield;waiting.elapsed=waiting.elapsed+math.max(.001,math.min(.1,tonumber(dt)or 0))
+            if self._native_menu_blocked then waiting.seen=true
+            elseif not key_down(27)and(waiting.seen or waiting.elapsed>=.75)then self._native_menu_yield=nil end
+        end
         if saved_camera then
             local radius=handle.get('saved_camera_radius');saved_camera.hold(radius)
             if controls.saved_camera_status then controls.saved_camera_status.label=saved_camera.status(radius)end
         end
         local editing=panel and(panel.editing_key()or(panel.editing_text and panel.editing_text()))
         local key=key_down(handle.get('toggle_key'))
-        if key and not held and not api.is_open() and not editing then
+        if key and not held and not self._external_menu_open() and not editing then
             local opening=not self._pending_start and(not photo.active and not recovery_menu or photo.active and controls_hidden)
             if not(opening and game_chat_active())then inform_toggle(true)end
         end
         held=key
         local screenshot_key=key_down(handle.get('screenshot_key'))
-        if screenshot_key and not screenshot_edge and photo.active and not recovery_menu and provider and api.camera_input.focused()and not api.is_open()and not editing and not game_chat_active()and screenshots and not screenshots.active()then self.request_screenshot()end
+        if screenshot_key and not screenshot_edge and photo.active and not recovery_menu and provider and api.camera_input.focused()and not self._external_menu_open()and not editing and not game_chat_active()and screenshots and not screenshots.active()then self.request_screenshot()end
         screenshot_edge=screenshot_key
         local slow_key=key_down(handle.get('slowmo_key'))
-        if slow_key and not slow_edge and not editing and not api.is_open()and freeze and not self._pending_start then
+        if slow_key and not slow_edge and not editing and not self._external_menu_open()and freeze and not self._pending_start then
             self.slowmo_active=not self.slowmo_active
             local rate=self.slowmo_active and handle.get('slowmo_speed')or (photo.active and handle.get('freeze_player')and 0 or nil)
             local ok,why=self._request_time_change(rate)
@@ -660,12 +687,17 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         end
         if resume_after then
             resume_after=resume_after-math.max(.001,tonumber(dt)or 0)
-            if resume_after<=0 and not api.is_open()then resume_after=nil;local ok,why=toggle();if not ok then log(tostring(why))end end
+            if resume_after<=0 and not self._external_menu_open()then resume_after=nil;local ok,why=toggle();if not ok then log(tostring(why))end end
         end
         if recovery_menu then
+            if self._native_menu_blocked then
+                clear_subject_click();if panel.suspend then panel.suspend()end
+                local ok,why=self._release_input();if ok==false and why then log(tostring(why))end
+                escape_edge=key_down(27);photo.input={sequence=photo.sample_sequence or 0,mouse_x=0,mouse_y=0,wheel=0,dt=0};return
+            end
             if not api.camera_input.focused()then
                 if panel.suspend then panel.suspend()end
-                if provider then local ok,why=provider.release();if ok then provider=nil elseif why then log(tostring(why))end end
+                if provider then local ok,why=self._release_input();if ok==false and why then log(tostring(why))end end
                 return
             end
             if not provider then
@@ -684,7 +716,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         if self._pending_start then
             local waiting=self._pending_start
             waiting.frames=waiting.frames+1;waiting.elapsed=waiting.elapsed+math.max(.001,math.min(.1,tonumber(dt)or 0))
-            if waiting.input~=api.camera_input or waiting.handle~=handle or not handle.get('enabled')or not can_start()or not api.camera_input.focused()or api.is_open()or game_chat_active()or key_down(27)then self.stop();return end
+            if waiting.input~=api.camera_input or waiting.handle~=handle or not handle.get('enabled')or not can_start()or not api.camera_input.focused()or self._external_menu_open()or game_chat_active()or key_down(27)then self.stop();return end
             local current=self._input_epoch()
             if self._input_tick>waiting.tick and current and current>waiting.epoch then
                 local called,ready,why=pcall(freeze.ready)
@@ -702,17 +734,29 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         end
         if not photo.active then self.stop(true);return end
         if not handle.get('enabled') or not can_start() then self.stop();return end
+        if self._native_menu_blocked or self._native_menu_yield then
+            clear_subject_click();if screenshots then screenshots.cancel()end
+            if panel and panel.suspend then panel.suspend()end
+            focus_edge=key_down(handle.get('focus_key'));hide_edge=key_down(handle.get('hide_controls_key'));lock_edge=key_down(handle.get('lock_camera_key'));escape_edge=key_down(27)
+            suppress_escape=true
+            photo.input={sequence=photo.sample_sequence or 0,mouse_x=0,mouse_y=0,wheel=0,dt=0}
+            if freeze and freeze.needs_input_capture and freeze.needs_input_capture()then
+                self.slowmo_active=false;self.stop();log('Photo pause ended before native menu input handoff');return
+            end
+            local ok,why=self._release_input();if ok==false and why then log(tostring(why))end
+            return
+        end
         refresh_lens()
         refresh_lights()
         self._refresh_poses(dt)
         refresh_subject_director(dt)
         self._refresh_ai(dt)
         local lock_key=key_down(handle.get('lock_camera_key'))
-        if lock_key and not lock_edge and not editing and not api.is_open()then handle.set('lock_camera',not handle.get('lock_camera'))end
+        if lock_key and not lock_edge and not editing and not self._external_menu_open()then handle.set('lock_camera',not handle.get('lock_camera'))end
         lock_edge=lock_key
         local focus_key=key_down(handle.get('focus_key'))
         local hide_key=key_down(handle.get('hide_controls_key'))
-        if panel and focus_key and not focus_edge and not api.is_open()and not panel.editing_key()and(not editing or (panel.editing_text and panel.editing_text()and panel.blur))then
+        if panel and focus_key and not focus_edge and not self._external_menu_open()and not panel.editing_key()and(not editing or (panel.editing_text and panel.editing_text()and panel.blur))then
             if menu_focus or not game_chat_active()then switch_focus()end
         end
         if panel and hide_key and not hide_edge and not editing then
@@ -759,16 +803,16 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         end
         -- A hover pause depends on continuous gameplay input suppression. Resume
         -- before handing off or releasing that input lease, including focus loss.
-        if freeze and freeze.needs_input_capture and freeze.needs_input_capture()and(api.is_open()or not api.camera_input.focused()or not provider)then
+        if freeze and freeze.needs_input_capture and freeze.needs_input_capture()and(self._external_menu_open()or not api.camera_input.focused()or not provider)then
             self.slowmo_active=false;self.stop();log('Photo pause ended before gameplay input capture was released');return
         end
         -- Other pauses may retain their existing MCM/focus handoff behavior.
-        if api.is_open()then
+        if self._external_menu_open()then
             clear_subject_click()
             if screenshots then screenshots.cancel()end
             if panel then panel.close()end
             suppress_escape=true
-            if provider then local ok,why=provider.release();if not ok then log(tostring(why));return end;provider=nil end
+            if provider then local ok,why=self._release_input();if not ok then log(tostring(why));return end end
             photo.input={sequence=photo.sample_sequence or 0,mouse_x=0,mouse_y=0,wheel=0,dt=0}
             return
         end
@@ -776,7 +820,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
             clear_subject_click()
             if screenshots then screenshots.cancel()end
             if panel and panel.suspend then panel.suspend()end
-            if provider then local ok,why=provider.release();if ok then provider=nil elseif why then log(tostring(why))end end
+            if provider then local ok,why=self._release_input();if ok==false and why then log(tostring(why))end end
             photo.input={sequence=photo.sample_sequence or 0,mouse_x=0,mouse_y=0,wheel=0,dt=0}
             return -- Focus loss releases input, never the solo simulation pause.
         end
@@ -836,11 +880,24 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         if capturing then screenshots.tick();photo.input={sequence=photo.sample_sequence or 0,mouse_x=0,mouse_y=0,wheel=0,dt=0};return end
         local sample=provider.sample(bindings())
         if not sample then
-            local ok,why=provider.release();if ok then provider=nil elseif why then log(tostring(why))end
+            local ok,why=self._release_input();if ok==false and why then log(tostring(why))end
             photo.input={sequence=photo.sample_sequence or 0,mouse_x=0,mouse_y=0,wheel=0,dt=0};return
         end
         if not sample.escape then suppress_escape=nil end
-        if sample.escape and not suppress_escape then self.stop();return end
+        if sample.escape and not suppress_escape then
+            if type(provider.native_menu_active)=='function'then
+                -- Yield the actual key to native UI without abandoning this
+                -- Photo camera. Stack observation, not Escape, proves it open.
+                self._native_menu_yield={elapsed=0,seen=false};suppress_escape=true
+                photo.input={sequence=photo.sample_sequence or 0,mouse_x=0,mouse_y=0,wheel=0,dt=0}
+                if freeze and freeze.needs_input_capture and freeze.needs_input_capture()then
+                    self.slowmo_active=false;self.stop();log('Photo pause ended before native Escape input handoff');return
+                end
+                local ok,why=self._release_input();if ok==false and why then log(tostring(why))end
+                return
+            end
+            self.stop();return
+        end
         if photo.options and photo.options.lock_camera then
             for _,key in ipairs({'forward','back','left','right','up','down'})do sample[key]=false end
             sample.mouse_x,sample.mouse_y=0,0

@@ -2,7 +2,7 @@
 local G=rawget(_G,'_G')or _G
 local get,set=G.rawget,G.rawset
 local state={provider='MDL',version='__VERSION__',started=false,failed=false,stopped=false}
-local host,standalone,owned
+local host,standalone,camera_api,owned
 local function cleanup()
  state.stopped=true
  if owned and owned.stop then
@@ -12,6 +12,10 @@ local function cleanup()
   if standalone.camera_input then local ok,why=standalone.camera_input.release();if ok==false then error(tostring(why))end end
   set(G,'DBF_PHOTO_STANDALONE_API',nil)
  end
+ if camera_api and get(G,'DBF_PHOTO_CAMERA_API')==camera_api then
+  local ok,why=camera_api.camera_input.release();if ok==false then error(tostring(why))end
+  set(G,'DBF_PHOTO_CAMERA_API',nil)
+ end
 end
 local function start(ctx)
  if state.started or state.failed or state.stopped then return end
@@ -20,6 +24,8 @@ local function start(ctx)
  local mcm=get(G,'DBFMCM')
  if mcm then
   assert(mcm.camera_input and mcm.camera_input.set_focus and mcm.create_photo_view,'Update MCM for shared photo input, or disable it and restart for standalone controls')
+  camera_api=host.require('src/standalone.lua').shared(host,sr,mcm)
+  set(G,'DBF_PHOTO_CAMERA_API',camera_api)
  else
   standalone=host.require('src/standalone.lua').new(host,sr)
   set(G,'DBF_PHOTO_STANDALONE_API',standalone)

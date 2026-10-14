@@ -1,7 +1,14 @@
 -- Read-only chat widget predicate adapted from Link's Link to Memory.
 -- Copyright (c) 2026 Link. MIT; see vendor/LICENSE-Link.txt.
--- No dependency on the addon, input events, chat messages, or game calls.
+-- No dependency on the addon, input events or chat messages. Context reads
+-- never call game functions; the owned cursor handoff uses Window UI APIs.
 local M={}
+-- Escape/settings UI stack, read side of MCM's native Escape integration
+-- (CowboyBingus, Zero-Clause BSD). The manager persists after the menu closes;
+-- only an ID 1 in the current bounded stack proves Escape/options are open.
+M.menu_layout={manager=0x347ce28,stack=0x429c,capacity=5,escape=1,
+ signatures={{0x18fa514,'\x48\x8b\x1d\x0d\x29\xb8\x01\x4c\x8d\x05\x5a\xf8\x9c\x00\x45\x33'},
+ {0x18fa53f,'\x48\x8b\x83\x88\x43\x00\x00\x48\x85\xc0\x74\x10\xc6\x40\x10\x01'}}}
 M.layout={stamp=0x6ab3b43f,image_size=0x4744000,manager=0x346d538,feed=0x14498,open=0x139b8,writer=0x185f500,
  writer_prefix='\x48\x89\x5c\x24\x10\x48\x89\x6c\x24\x18\x48\x89\x74\x24\x20\x57\x48\x83\xec\x60\xf3\x0f\x10\x81\xf8\x25\x00\x00\x48\x8b\xd9\x48',
  writer_store='\x40\x88\xbb\xb8\x39\x01\x00'}
@@ -31,8 +38,8 @@ local function native_backend()
  end
  return {module=module,read=read}
 end
-function M.new(backend)
- local self={};local checked;local init_error
+function M.new(backend,window)
+ local self={};local checked;local menu_checked;local init_error
  if not backend then local ok,value=pcall(native_backend);if ok then backend=value else init_error=tostring(value)end end
  local function active()
   assert(backend,init_error or 'Chat context unavailable')
@@ -58,11 +65,55 @@ function M.new(backend)
   local ok,value,why=pcall(active);if not ok then self.reason=tostring(value);return nil,self.reason end
   self.reason=why;return value,why
  end
+ local function menu_active()
+  assert(backend,init_error or'Native menu context unavailable')
+  local module=backend.module();if not module then return nil,'Native menu module unavailable'end
+  assert(module.stamp==M.layout.stamp and module.image_size==M.layout.image_size,'Native menu layout unsupported')
+  local base=module.base;assert(base>=65536 and base<2^47,'Native menu module address invalid')
+  if menu_checked~=base then
+   for _,entry in ipairs(M.menu_layout.signatures)do
+    assert(backend.read(base+entry[1],#entry[2])==entry[2],'Native Escape UI layout changed')
+   end
+   menu_checked=base
+  end
+  local address=base+M.menu_layout.manager
+  local raw=backend.read(address,8);if not raw then return nil,'Native UI manager unavailable'end
+  local manager=pointer(raw);if manager==0 then return nil,'Native UI not created yet'end
+  assert(manager>=65536 and manager<2^47 and manager%8==0,'Native UI manager identity invalid')
+  local stack=backend.read(manager+M.menu_layout.stack,24);if not stack then return nil,'Native UI stack unavailable'end
+  local depth=u32(stack,20);assert(depth<=M.menu_layout.capacity,'Native UI stack bounds changed')
+  local active=false
+  for index=0,depth-1 do if u32(stack,index*4)==M.menu_layout.escape then active=true end end
+  -- Reacquire each observation; a retained manager is not lifetime proof.
+  if backend.read(address,8)~=raw or backend.read(manager+M.menu_layout.stack,24)~=stack then return nil,'Native UI changed during observation'end
+  return active
+ end
+ function self.native_menu_active()
+  local ok,value,why=pcall(menu_active);if not ok then self.menu_reason=tostring(value);return nil,self.menu_reason end
+  self.menu_reason=why;return value,why
+ end
+ function self.native_menu_handoff(input)
+  -- Drop only our capture lease. Preserve the verified native menu's cursor
+  -- after the provider restores its old gameplay snapshot. No key injection.
+  if self.native_menu_active()~=true then return input.release()end
+  local ok,why=input.release();if ok==false then return false,why end
+  if not window then return true end
+  local called,problem=pcall(function()
+   assert(window.set_mouse_focus(false)~=false,'Native menu mouse focus refused')
+   assert(window.set_show_cursor(true)~=false,'Native menu cursor refused')
+   assert(window.mouse_focus()==false and window.show_cursor()==true,'Native menu cursor readback failed')
+  end)
+  return called,not called and tostring(problem)or nil
+ end
  self.active=self.chat_active
  function self.attach(api)
   local input=api and api.camera_input
   if type(input)~='table'then return false end
   if input.chat_active==nil then input.chat_active=self.chat_active end
+  if input.native_menu_active==nil then input.native_menu_active=self.native_menu_active end
+  if input.native_menu_active==self.native_menu_active and input.native_menu_handoff==nil then
+   input.native_menu_handoff=function()return self.native_menu_handoff(input)end
+  end
   return input.chat_active==self.chat_active
  end
  return self

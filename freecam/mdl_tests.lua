@@ -3,11 +3,11 @@
 local root=rawget(_G,'DBF_PHOTO_TEST_ROOT')or'freecam/'
 local file=assert(io.open(root..'mdl.lua','rb'));local template=file:read('*a');file:close()
 local function fixture(mcm,body)
- local count={start=0,stop=0,release=0,standalone=0,previous=0};local directories,logs,cleanup={},{},{}
+ local count={start=0,stop=0,release=0,standalone=0,shared=0,previous=0};local directories,logs,cleanup={},{},{}
  local G={rawget=rawget,rawset=rawset,package={loaded={}},os={getenv=function(name)assert(name=='LOCALAPPDATA');return 'C:/fixture/appdata'end}}
  setmetatable(G,{__index=_G});G._G=G
  local input={release=function()count.release=count.release+1;return true end}
- local files={['src/standalone.lua']="return {new=function(host,sr) _TEST.standalone=_TEST.standalone+1;_TEST.host=host;return {camera_input=_TEST.input}end}",
+ local files={['src/standalone.lua']="return {new=function(host,sr) _TEST.standalone=_TEST.standalone+1;_TEST.host=host;return {camera_input=_TEST.input}end,shared=function(host,sr,mcm) _TEST.shared=_TEST.shared+1;_TEST.parent=mcm;_TEST.host=host;return setmetatable({camera_input=_TEST.input,photo_standalone=false},{__index=mcm})end}",
  ['src/actioncam.lua']=body or "_TEST.start=_TEST.start+1;local previous=update;update=function(dt)local owner=rawget(_G,'DBF_PHOTO_MODE_OWNER');if not owner.stopped then _TEST.step=(_TEST.step or 0)+1 end;previous(dt)end;return {stop=function()_TEST.stop=_TEST.stop+1;return true end}"}
  G._TEST=count;count.input=input
  G.update=function()count.previous=count.previous+1 end
@@ -46,10 +46,12 @@ assert(count.step==1 and count.previous==2,'Disabled camera hooks must remain in
 assert(G.DBF_PHOTO_MODE_OWNER.stopped and G.DBF_PHOTO_MODE_STARTED,'Hook reservation must remain until normal restart')
 assert(not pcall(mod.on_enable,ctx),'A restart is required after retained hooks stop')
 
-local shared={camera_input={set_focus=function()end},create_photo_view=function()end}
+local external_release=0;local external_input={set_focus=function()end,release=function()external_release=external_release+1;return true end}
+local shared={camera_input=external_input,create_photo_view=function()end,settings={held='external'}}
 local second,c2,g2,n2=fixture(shared);g2.stingray={};second.on_enable(c2);second.on_update(c2)
-assert(n2.start==1 and n2.standalone==0 and g2.DBF_PHOTO_STANDALONE_API==nil,'Existing compatible MCM must be reused without creating private input')
-second.on_disable(c2);assert(n2.stop==1 and n2.release==0,'Shared MCM input must not be torn down by the adapter')
+assert(n2.start==1 and n2.standalone==0 and n2.shared==1 and g2.DBF_PHOTO_STANDALONE_API==nil,'Existing MCM must receive a Photo-owned input facade instead of a private settings service')
+assert(g2.DBF_PHOTO_CAMERA_API and g2.DBF_PHOTO_CAMERA_API.camera_input==n2.input and g2.DBF_PHOTO_CAMERA_API.settings==shared.settings and n2.parent==shared,'The facade must proxy MCM settings while owning only its camera input')
+second.on_disable(c2);assert(n2.stop==1 and n2.release==1 and external_release==0 and g2.DBF_PHOTO_CAMERA_API==nil and g2.DBFMCM==shared and shared.camera_input==external_input and shared.settings.held=='external','Teardown must release only facade input and preserve external MCM input/settings/global')
 
 local failed,c3,g3,n3,_,_,logs=fixture(nil,"error('partial camera startup')")
 g3.stingray={};failed.on_enable(c3);failed.on_update(c3);failed.on_update(c3)
@@ -60,3 +62,54 @@ local invalid,c4,g4=fixture();c4.api=1;assert(not pcall(invalid.on_enable,c4) an
 local duplicate,c5,g5,n5=fixture();g5.DBF_PHOTO_MODE_OWNER={provider='BSL'}
 assert(not pcall(duplicate.on_enable,c5) and n5.start==0 and g5.DBF_PHOTO_MODE_OWNER.provider=='BSL','MDL must not replace another provider')
 print('MDL adapter: real-global sandbox contract, isolated file host, standalone/shared MCM, startup guards and idempotent owned teardown passed')
+
+-- Cursor flags belong to a later external owner; restore only our own lease.
+do
+ local Capture=dofile(root..'photo_input_capture.lua');local active=false;local throws=false
+ local focus,cursor,clip=true,false,false;local writes={};local refusal;local bad_readback=false
+ local function setter(name,value)writes[#writes+1]={name,value};if refusal==name then return false end
+  if not bad_readback then if name=='focus'then focus=value elseif name=='cursor'then cursor=value else clip=value end end;return true
+ end
+ local window={mouse_focus=function()return focus end,show_cursor=function()return cursor end,clip_cursor=function()return clip end,
+  set_mouse_focus=function(v)return setter('focus',v)end,set_show_cursor=function(v)return setter('cursor',v)end,set_clip_cursor=function(v)return setter('clip',v)end}
+ local capture=Capture.new(window,function()if throws then error('Parent ownership unavailable')end;return active end)
+ active=true;assert(capture.acquire('photo')==nil and #writes==0,'Foreign ownership must refuse a new lease without changing Window flags')
+ active=nil;assert(capture.acquire('photo')==nil);throws=true;assert(capture.acquire('photo')==nil);throws=false
+ active=false;local token=assert(capture.acquire('photo'));assert(capture.owns(token)and capture.status().owner=='photo')
+ focus,cursor,clip=false,true,true;active=true;assert(capture.release(token)and not capture.owns(token)and #writes==0 and focus==false and cursor==true and clip==true,'Foreign takeover must drop only the Photo lease and leave its current Window flags intact')
+ active=false;focus,cursor,clip=true,false,false;token=assert(capture.acquire('photo'));focus,cursor,clip=false,true,true
+ active=nil;assert(capture.release(token)==false and capture.owns(token)and #writes==0,'Unknown release ownership must retain a retryable lease without cursor writes')
+ throws=true;assert(capture.release(token)==false and capture.owns(token)and #writes==0,'Parent-reader exceptions must retain release ownership for retry without cursor writes');throws=false
+ active=false;refusal='cursor';assert(capture.release(token)==false and capture.owns(token)and focus==true and cursor==true,'Refused cursor restoration must retain the lease after partial restoration')
+ refusal=nil;writes={};assert(capture.release(token)and not capture.owns(token)and focus==true and cursor==false and clip==false)
+ assert(#writes==2 and writes[1][1]=='cursor'and writes[2][1]=='clip','A retry must restore only flags still different from the saved state')
+ token=assert(capture.acquire('photo'));focus=false;bad_readback=true;assert(capture.release(token)==false and capture.owns(token),'Accepted writes with failed readback must retain a retryable lease')
+ bad_readback=false;writes={};assert(capture.release(token)and #writes==1 and writes[1][1]=='focus'and focus==true)
+ token=assert(capture.acquire('photo'));writes={};assert(capture.release(token)and #writes==0,'Unchanged flags must release without redundant Window writes')
+ assert(capture.release(token)==false,'An already released token must not restore another owner')
+end
+print('Photo cursor ownership: foreign takeover, unknown/error release, partial restore and readback retries passed')
+
+-- The actual shared facade must deny unknown or superseded parent ownership.
+do
+ local Standalone=dofile(root..'standalone.lua');local actual_input=Standalone.input
+ local available,parent;local old_mcm=rawget(_G,'DBFMCM');local open=false;local status={active=false,pending_restore=false};local throws=false
+ local marker={};local mcm={settings=marker,camera_input=external_input,is_open=function()if throws then error('MCM menu unavailable')end;return open end,
+  input_status=function()if throws then error('MCM status unavailable')end;return status end}
+ Standalone.input=function(host,sr,a,p)assert(host==marker and sr==marker);available,parent=a,p;return marker end
+ DBFMCM=mcm;local facade=Standalone.shared(marker,marker,mcm)
+ assert(facade~=mcm and facade.camera_input==marker and facade.settings==marker and facade.photo_input_parent==mcm and facade.photo_standalone==false and mcm.camera_input==external_input)
+ assert(available()==true and parent()==false,'Known idle MCM ownership must permit the Photo lease')
+ local function denied()local ok,value=pcall(available);assert(not ok or value~=true,'Unknown/foreign MCM ownership must deny Photo acquisition')end
+ open=true;denied();open=false
+ status.owner='other';denied();status.owner=nil
+ status.active=true;denied();status.active=false
+ status.pending_restore=true;denied();status.pending_restore=false
+ status=nil;denied();status={active=false};denied();status={active=0,pending_restore=false};denied()
+ status={active=false,pending_restore=false};open=nil;denied();open=0;denied();open=false
+ throws=true;denied();throws=false
+ DBFMCM={};denied();DBFMCM=mcm;assert(available()==true)
+ Standalone.input=actual_input;DBFMCM=old_mcm
+end
+
+print('Photo-owned input: MCM facade teardown isolation, strict parent availability, foreign cursor takeover, unknown release retention and exact readback/retry restoration passed')

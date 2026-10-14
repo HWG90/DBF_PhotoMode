@@ -42,7 +42,7 @@ function M.new(sr)
             get(s.owner)
             local function set_multiplier()sr.Application.set_time_step_policy('external_multiplier',value)end
             if value~=s.value then
-                local api=rawget(_G,'DBFMCM')or rawget(_G,'DBF_PHOTO_STANDALONE_API');local camera=api and api.camera_input
+                local api=rawget(_G,'DBF_PHOTO_CAMERA_API')or rawget(_G,'DBFMCM')or rawget(_G,'DBF_PHOTO_STANDALONE_API');local camera=api and api.camera_input
                 assert(camera and camera.pause,'Native solo pause gate unavailable')
                 local ok,why=camera.pause(set_multiplier);assert(ok,why)
             else set_multiplier()end

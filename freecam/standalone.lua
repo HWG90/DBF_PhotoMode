@@ -1,6 +1,6 @@
 -- Private settings/input/rendering service. Does not publish or impersonate DBFMCM.
 local M={}
-function M.new(host,sr)
+function M.input(host,sr,available,parent)
  local ffi=require('ffi');local bit=require('bit')
  pcall(ffi.cdef,[[
   typedef struct {long x;long y;} SS_POINT;
@@ -18,11 +18,10 @@ function M.new(host,sr)
  ]]end
  local user=ffi.load('user32');local kernel=ffi.load('kernel32');local pid=kernel.SS_GetCurrentProcessId()
  local dll=assert(host.read('standalone-library.txt')):match('^(mcm_input_%x+%.dll)%s*$');assert(dll,'Standalone input manifest invalid')
+ pcall(ffi.cdef,'int mcm_escape_passthrough(void);')
  local native=ffi.load(host.dir..'/'..dll)
- local core=host.require('src/vendor/core.lua');local store=host.require('src/vendor/store.lua').new(assert(host.config_dir,'Photo settings directory unavailable'))
- local api=core.new(store,host.log);api.photo_standalone=true
- api.is_open=function()return false end;api.close=function()return true end
- local capture=host.require('src/vendor/capture.lua').new(native,sr.Window,host.log)
+ assert(native.mcm_escape_passthrough()==1,'Photo input Escape policy unavailable')
+ local capture=host.require('src/photo_input_capture.lua').new(sr.Window,parent)
  local input={};local hwnd;local point=ffi.new('SS_POINT[1]');local rect=ffi.new('long[4]');local owner=ffi.new('unsigned long[1]')
  function input.poll()
   hwnd=user.SS_GetForegroundWindow();user.SS_GetWindowThreadProcessId(hwnd,owner);if owner[0]~=pid then hwnd=nil end
@@ -57,10 +56,35 @@ function M.new(host,sr)
   return ok and result~=0,reason or 'Simulation control requires a verified solo session'
  end
  jit.off(input.photo_apply,true)
- api.camera_input=host.require('src/vendor/camera_input.lua').new(native,capture,input,function()
+ local camera=host.require('src/vendor/camera_input.lua').new(native,capture,input,function()
   local loader=rawget(_G,'LiveLuaLoader');local status=loader and loader.input_status and loader.input_status()
-  return not (status and status.owner)
+  if status and(status.owner or status.active or status.pending_restore)then return false end
+  if available then local ok,ready=pcall(available);return ok and ready==true end
+  return true
  end)
+ camera.native_escape_passthrough=true;camera.photo_input_owner='War Journalist'
+ return camera
+end
+function M.shared(host,sr,mcm)
+ assert(type(mcm)=='table'and type(mcm.is_open)=='function'and type(mcm.input_status)=='function','MCM input ownership reader unavailable')
+ local facade=setmetatable({photo_standalone=false,photo_input_parent=mcm},{__index=mcm})
+ local function parent()
+  if rawget(_G,'DBFMCM')~=mcm then return nil,'MCM input provider changed'end
+  local status=mcm.input_status()
+  if type(status)~='table'or type(status.active)~='boolean'or type(status.pending_restore)~='boolean'then return nil,'MCM input ownership unavailable'end
+  local open=mcm.is_open()
+  if type(open)~='boolean'then return nil,'MCM menu ownership unavailable'end
+  return open or status.owner~=nil or status.active or status.pending_restore
+ end
+ facade.camera_input=M.input(host,sr,function()return parent()==false end,parent)
+ return facade
+end
+function M.new(host,sr)
+ local ffi=require('ffi')
+ local core=host.require('src/vendor/core.lua');local store=host.require('src/vendor/store.lua').new(assert(host.config_dir,'Photo settings directory unavailable'))
+ local api=core.new(store,host.log);api.photo_standalone=true
+ api.is_open=function()return false end;api.close=function()return true end
+ api.camera_input=M.input(host,sr)
  api.photo_resolution=function()return sr.Gui.resolution()end
  local view_factory=host.require('src/vendor/view.lua')
  function api.create_photo_view()

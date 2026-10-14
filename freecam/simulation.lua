@@ -84,7 +84,7 @@ function M.new(sr,context,backend,hover_guard)
     function self.hold()
         if not saved then return true end
         local unit,world,confirmed=context()
-        local api=rawget(_G,'DBFMCM')or rawget(_G,'DBF_PHOTO_STANDALONE_API');local camera=api and api.camera_input
+        local api=rawget(_G,'DBF_PHOTO_CAMERA_API')or rawget(_G,'DBFMCM')or rawget(_G,'DBF_PHOTO_STANDALONE_API');local camera=api and api.camera_input
         if not solo() or (camera and camera.pause_allowed and not camera.pause_allowed()) or unit~=saved.unit or world~=saved.world or not confirmed then
             local ok,why=self.release();return false,why or 'Solo simulation ownership changed'
         end

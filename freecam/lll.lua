@@ -1,5 +1,5 @@
 -- ActionCam owns global camera hooks; activate once per process, never hot-reload.
-local started,reported=false,false;local standalone
+local started,reported=false,false;local standalone,camera_api
 local function start()
         if started then return end
         if package.loaded['mods/actioncam/actioncam'] then
@@ -12,6 +12,8 @@ local function start()
                 if not reported then mod.log('Update MCM for shared photo input; standalone mode is available when MCM is disabled');reported=true end
                 return
             end
+            camera_api=mod.require('src/standalone.lua').shared(mod,assert(rawget(_G,'stingray')),mcm)
+            rawset(_G,'DBF_PHOTO_CAMERA_API',camera_api)
         else
             standalone=mod.require('src/standalone.lua').new(mod,assert(rawget(_G,'stingray')))
             rawset(_G,'DBF_PHOTO_STANDALONE_API',standalone)

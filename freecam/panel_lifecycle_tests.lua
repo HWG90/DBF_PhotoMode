@@ -120,3 +120,90 @@ do
  assert(adapter.close()and input_mode==0);DBFMCM=nil
 end
 print('Photo focus transfer: Tab/button blur commits, invalid text refusal, binding suppression and Escape cancellation passed')
+
+-- Native Escape/options relinquishes camera ownership without releasing ADS.
+do
+ local pressed={[2]=true};local native_open=false;local reader_error=false;local focused=true;local settings_open=false
+ local input_mode=0;local rate=1;local acquired,released,handoffs,samples,menu_samples,menu_ticks,suspended,shots,forced_release=0,0,0,0,0,0,0,0,0
+ local refuse_handoff=false;local hover=false;local events={}
+ local service=core.new(nil,function()end)
+ service.is_open=function()return settings_open end;service.close=function()settings_open=false;return true end
+ service.create_photo_view=function()return {}end;service.photo_resolution=function()return 1920,1080 end
+ service.camera_input={down=function(key)return pressed[key]or false end,focused=function()return focused end,
+  native_menu_active=function()if reader_error then error('Native UI changed')end;return native_open end,
+  acquire=function()acquired=acquired+1;input_mode=3;return {}end,
+  release=function()released=released+1;events[#events+1]='release';input_mode=0;return true end,
+  native_menu_handoff=function()handoffs=handoffs+1;events[#events+1]='handoff';if refuse_handoff then return false,'Capture restore pending'end;input_mode=0;return true end,
+  set_focus=function(menu)input_mode=menu and 1 or 3;return true end,
+  sample=function()assert(input_mode==3);samples=samples+1;return {forward=pressed[87],escape=pressed[27],mouse_x=12,mouse_y=4,wheel=0,dt=.016}end,
+  menu_sample=function()assert(input_mode==1);menu_samples=menu_samples+1;return {click=false,wheel=0,dt=.016}end}
+ local factory={new=function()return {bind=function()end,draw=function()end,tick=function()menu_ticks=menu_ticks+1 end,close=function()end,
+  suspend=function()suspended=suspended+1 end,editing_key=function()return false end,editing_text=function()return false end,dismiss=function()return false end}end}
+ local pause={start=function(value)rate=value or 0;return true end,release=function()events[#events+1]='resume';rate=1;return true end,
+  hold=function()return true end,rate=function()return rate end,needs_input_capture=function()return hover and rate==0 end}
+ local capture={active=function()return false end,request=function()shots=shots+1;return true end,cancel=function()end,tick=function()end}
+ DBFMCM=service
+ local state={};local adapter=controller.new(state,{},function()return true end,function()end,pause,options,nil,factory,nil,nil,capture,nil,nil,nil,nil,
+  {release=function()forced_release=forced_release+1;return true end})
+ local function tick(dt)adapter.tick(dt or .016)end
+ local function press(key)pressed[key]=true;tick();pressed[key]=nil;tick()end
+ tick();press(80);assert(state.active and rate==0 and input_mode==3 and not adapter.camera_suspended())
+ local handle=service.mods.dbf_freecam.handle
+ pressed[87]=true;tick();assert(state.input.forward and state.input.mouse_x==12,'Camera movement must work before native-menu handoff')
+ -- Escape must first yield the captured key so the native stack can open.
+ local position,view={3,4,5},{0,1,0};state.pos=position;state.view=view
+ pressed[27]=true;local before_release=released;local before_samples=samples;tick()
+ assert(state.active and state.pos==position and state.view==view and rate==0 and input_mode==0 and released==before_release+1,'Escape must relinquish capture before native UI opens while retaining the composed Photo camera')
+ assert(adapter.camera_suspended()and not adapter.native_menu_blocked()and state.input.dt==0 and state.input.mouse_x==0 and not state.input.forward,'The native-open handoff window must suspend camera sampling immediately')
+ pressed[27]=nil;tick();assert(input_mode==0 and samples==before_samples+1,'The handoff window must not recapture before native UI is observed')
+ native_open=true;tick();assert(state.active and state.pos==position and state.view==view and rate==0 and input_mode==0 and samples==before_samples+1,'An observed native menu must hold the same composed camera without sampling inputs')
+ native_open=false;tick();assert(state.active and input_mode==3 and state.pos==position and state.view==view and state.input.forward and pressed[2]and forced_release==0,'Closing observed native UI with Escape released must resume the composed camera and preserved held inputs')
+ -- If native UI never opens, the bounded yield resumes camera input safely.
+ pressed[27]=true;tick();pressed[27]=nil;tick()
+ for _=1,7 do tick(.1)end
+ assert(state.active and input_mode==0 and adapter.camera_suspended(),'An unobserved native menu must retain capture yield for its bounded wait')
+ tick(.1);assert(state.active and input_mode==3 and not adapter.camera_suspended()and state.input.forward and state.pos==position and state.view==view,'An unobserved native menu must resume after the bounded timeout without abandoning camera composition')
+ local before_acquire=acquired
+ native_open=true;local before_samples,before_menu=samples,menu_ticks
+ assert(adapter.native_menu_blocked()and adapter.camera_suspended(),'Native menu must suspend render/input immediately, before the next controller tick')
+ for _,key in ipairs({80,9,72,76,220,19,27})do pressed[key]=true end
+ tick()
+ assert(state.active and rate==0 and input_mode==0 and handoffs==1,'Ordinary native menu handoff must retain Photo Mode and zero-time pause')
+ assert(state.input.dt==0 and state.input.mouse_x==0 and state.input.mouse_y==0 and state.input.wheel==0 and not state.input.forward,'Native menu must discard the old camera sample')
+ assert(samples==before_samples and menu_ticks==before_menu and shots==0 and not handle.get('lock_camera'),'All photo shortcuts and menu input must be suppressed while native menu owns input')
+ assert(adapter.request_screenshot()==false and shots==0,'The screenshot button/API must also refuse capture during a native menu')
+ assert(pressed[2]and pressed[87]and forced_release==0,'Native-menu handoff must preserve physical ADS and held gameplay actions')
+ native_open=false;tick()
+ assert(state.active and rate==0 and input_mode==3 and acquired==before_acquire+1 and not adapter.camera_suspended(),'Closing Escape/options must reacquire camera ownership')
+ assert(shots==0 and not handle.get('lock_camera')and state.input.forward,'Keys held through the native menu must not synthesize photo shortcut edges')
+ for _,key in ipairs({80,9,72,76,220,19,27,87})do pressed[key]=nil end;tick()
+ native_open=nil;before_samples=samples;tick()
+ assert(state.active and rate==0 and adapter.native_menu_blocked()and adapter.camera_suspended()and samples==before_samples,'An unavailable native reader must block stale camera sampling')
+ reader_error=true;tick();assert(adapter.native_menu_blocked()and samples==before_samples,'Native reader exceptions must block input and render ownership')
+ reader_error=false;native_open=false;tick();assert(input_mode==3)
+ press(9);assert(input_mode==1);before_menu=menu_ticks;local before_menu_samples=menu_samples
+ native_open=true;refuse_handoff=true;tick()
+ assert(input_mode==1 and state.active and rate==0 and menu_ticks==before_menu and menu_samples==before_menu_samples,'A refused handoff must retain its lease without processing the photo menu')
+ local attempts=handoffs;tick();assert(handoffs==attempts+1,'Refused input handoff must retry on later ticks')
+ refuse_handoff=false;tick();assert(input_mode==0)
+ native_open=false;tick();assert(input_mode==1 and menu_ticks>before_menu,'Native menu closure must restore prior photo menu focus')
+ focused=false;tick();assert(adapter.camera_suspended()and input_mode==0 and state.active and rate==0)
+ focused=true;tick();settings_open=true;tick();assert(adapter.camera_suspended()and input_mode==0 and state.active and rate==0)
+ settings_open=false;tick();assert(input_mode==1)
+ -- Providers exposing only a native reader still use their normal lease release.
+ service.camera_input.native_menu_handoff=nil;native_open=true;local before_release=released;tick()
+ assert(released==before_release+1 and input_mode==0 and state.active,'Foreign/legacy native readers must retain a regular release fallback')
+ native_open=false;tick();press(9);assert(input_mode==3)
+ -- Hover protection cannot survive releasing input capture: resume first.
+ hover=true;native_open=true;events={};tick()
+ assert(not state.active and rate==1 and input_mode==0,'A hover pause must stop and restore simulation before native-menu handoff')
+ assert(table.concat(events,',')=='resume,release','Hover world time must resume before its input capture lease is released')
+ assert(pressed[2]and forced_release==0,'Hover cleanup must not inject an ADS release')
+ press(80);press(220);assert(not state.active and rate==1 and input_mode==0,'Native menu must refuse Photo Mode and slow-motion activation while the camera is closed')
+ native_open=false;press(80);assert(state.active and rate==0 and input_mode==3)
+ events={};pressed[27]=true;tick()
+ assert(not state.active and rate==1 and input_mode==0 and table.concat(events,',')=='resume,release','Hover Escape must stop Photo Mode and resume world time before releasing capture instead of retaining an unsafe pause')
+ pressed[27]=nil
+ native_open=false;assert(adapter.close());DBFMCM=nil
+end
+print('Native menu lifecycle: Escape camera retention/yield timeout, shortcut/menu/render suspension, zeroed camera samples, capture-only handoff/retry, ADS preservation, focus recovery and hover resume ordering passed')

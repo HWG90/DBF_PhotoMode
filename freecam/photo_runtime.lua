@@ -33,7 +33,7 @@ function M.new(sr,lens_factory,composition,postfx_factory,log,hud,profile_factor
  end
  local function advance(dt)
   local elapsed=math.max(0,math.min(.1,dt or 0))
-  local api=rawget(_G,'DBFMCM')or rawget(_G,'DBF_PHOTO_STANDALONE_API')
+  local api=rawget(_G,'DBF_PHOTO_CAMERA_API')or rawget(_G,'DBFMCM')or rawget(_G,'DBF_PHOTO_STANDALONE_API')
   local source=api and api.camera_input and api.camera_input.now
   if type(source)=='function' then
    local ok,now=pcall(source)

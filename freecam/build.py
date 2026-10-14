@@ -64,7 +64,7 @@ __PHOTO_OPTIONS__
 end)()
 H.dbf_game_chat=(function()
 __CHAT_CONTEXT__
-end)().new()
+end)().new(nil,sr.Window)
 local DBF_PHOTO_LENS=(function()
 __PHOTO_LENS__
 end)()
@@ -190,10 +190,12 @@ H.dbf_input_after_update=function(...)
 end
 H.dbf_input_before_update=function()
  if DBF_PLAYER_FREEZE.needs_input_capture()then
-  local api=rawget(_G,'DBFMCM')or rawget(_G,'DBF_PHOTO_STANDALONE_API')
+  local api=rawget(_G,'DBF_PHOTO_CAMERA_API')or rawget(_G,'DBFMCM')or rawget(_G,'DBF_PHOTO_STANDALONE_API')
   local input=api and api.camera_input
   local focused=input and input.focused and input.focused()
-  if not focused or api.is_open()then
+  local menu_ok,menu=true,false
+  if input and type(input.native_menu_active)=='function'then menu_ok,menu=pcall(input.native_menu_active)end
+  if not focused or api.is_open()or not menu_ok or menu~=false then
    if H.dbf_poses and(H.dbf_poses.active or H.dbf_poses.pending)then
     H.dbf_poses.release();H.dbf_poses.flush()
     if H.dbf_poses.active or H.dbf_poses.pending then return end
@@ -226,7 +228,7 @@ DBF_PHOTO_LIGHTS.cache_camera=function()
  PHOTO.light_context={world=target.world,scene_epoch=WORLD.epoch,position={xyz(M.translation(pose))},forward={xyz(M.forward(pose))},right={xyz(M.right(pose))},up={xyz(M.up(pose))}}
 end
 local function bindings_step()
-  H.dbf_game_chat.attach(rawget(_G,'DBFMCM')or rawget(_G,'DBF_PHOTO_STANDALONE_API'))
+  H.dbf_game_chat.attach(rawget(_G,'DBF_PHOTO_CAMERA_API')or rawget(_G,'DBFMCM')or rawget(_G,'DBF_PHOTO_STANDALONE_API'))
   local ok,why=pcall(DBF_FREECAM.tick,last_dt)
   if not ok then DBF_FREECAM.stop();log('freecam error: '..tostring(why)) end
 end
@@ -279,7 +281,7 @@ end)()
     replace('-- One frame of Photo Mode: fly the detached camera and place it.',hook+'\n-- One frame of Photo Mode: fly the detached camera and place it.')
     replace("  if PHOTO_REF and PHOTO_REF.active then", "  if PHOTO_REF and PHOTO_REF.dbf_clear_saved and (reason=='death'or reason=='world gone'or reason=='restart'or reason=='shutdown')then PHOTO_REF.dbf_clear_saved(reason)end\n  if PHOTO_REF and PHOTO_REF.dbf_stop then PHOTO_REF.dbf_stop() end\n  if PHOTO_REF and PHOTO_REF.active then")
     replace('PHOTO.pos = last_written and {last_written[1], last_written[2], last_written[3]} or {cx, cy, cz}', 'PHOTO.pos = {cx, cy, cz}')
-    replace('function PHOTO.apply(cam, unit, pose, cx, cy, cz)', 'function PHOTO.apply(cam, unit, pose, cx, cy, cz)\n  local held,why=DBF_PLAYER_FREEZE.hold();if held==false then DBF_FREECAM.stop();if why then log(why)end;return end')
+    replace('function PHOTO.apply(cam, unit, pose, cx, cy, cz)', 'function PHOTO.apply(cam, unit, pose, cx, cy, cz)\n  if DBF_FREECAM.camera_suspended()then PHOTO.input={sequence=PHOTO.sample_sequence or 0,mouse_x=0,mouse_y=0,wheel=0,dt=0}end\n  local held,why=DBF_PLAYER_FREEZE.hold();if held==false then DBF_FREECAM.stop();if why then log(why)end;return end')
     replace("      log('photo mode: off (Helldiver down)')", "      DBF_SAVED_CAMERA.clear('death')\n      DBF_FREECAM.stop()\n      log('photo mode: off (Helldiver down)')")
     replace('  local fx, fy, fz = xyz(M.forward(pose))\n  local rx, ry, rz = xyz(M.right(pose))\n  local I = PHOTO.input', """  local initial={xyz(M.forward(pose))}
   local I = PHOTO.input
@@ -337,6 +339,7 @@ def payload_files(output):
     """Complete public runtime payload shared by BSL and the MDL adapter."""
     files={'src/actioncam.lua':(output/'ActionCam-Freecam.lua').read_bytes(),
         'src/standalone.lua':(ROOT/'standalone.lua').read_bytes(),
+        'src/photo_input_capture.lua':(ROOT/'photo_input_capture.lua').read_bytes(),
         'PROVENANCE.json':(output/'PROVENANCE.json').read_bytes()}
     vendor=ROOT/'vendor';identity=json.loads((vendor/'PROVENANCE.json').read_text())
     for name in ('core','store','capture','camera_input','view','font','bingus_memory','bingus_runtime'):

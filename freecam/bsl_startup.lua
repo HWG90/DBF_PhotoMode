@@ -43,7 +43,7 @@ end
 local state={provider='BSL',version='__VERSION__',started=false,failed=false}
 rawset(_G,'DBF_PHOTO_MODE_OWNER',state)
 local previous_update=assert(rawget(_G,'update'),'Game update callback unavailable')
-local previous_shutdown=rawget(_G,'shutdown');local standalone
+local previous_shutdown=rawget(_G,'shutdown');local standalone,camera_api
 local function start()
  if state.started or state.failed then return end
  local sr=rawget(_G,'stingray');if not sr then return end
@@ -53,6 +53,8 @@ local function start()
   if not mcm.camera_input or not mcm.camera_input.set_focus or not mcm.create_photo_view then
    state.failed=true;log('Update MCM for shared photo input, or disable MCM and restart for standalone controls.');return
   end
+  camera_api=host.require('src/standalone.lua').shared(host,sr,mcm)
+  rawset(_G,'DBF_PHOTO_CAMERA_API',camera_api)
  else
   standalone=host.require('src/standalone.lua').new(host,sr)
   rawset(_G,'DBF_PHOTO_STANDALONE_API',standalone)
@@ -71,6 +73,10 @@ wrapper=function(dt,...)
 end
 rawset(_G,'update',wrapper)
 rawset(_G,'shutdown',function(...)
+ if camera_api and rawget(_G,'DBF_PHOTO_CAMERA_API')==camera_api then
+  pcall(camera_api.camera_input.release)
+  rawset(_G,'DBF_PHOTO_CAMERA_API',nil)
+ end
  if standalone and rawget(_G,'DBF_PHOTO_STANDALONE_API')==standalone then
   if standalone.camera_input then pcall(standalone.camera_input.release)end
   rawset(_G,'DBF_PHOTO_STANDALONE_API',nil)
