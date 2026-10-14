@@ -4,6 +4,16 @@ local function up(fn,wanted)
  for i=1,120 do local name,value=debug.getupvalue(fn,i);if not name then return end;if name==wanted then return value,i end end
 end
 local function put(fn,name,value)local _,i=up(fn,name);assert(i,name);assert(debug.setupvalue(fn,i,value)==name)end
+local function strip_wrapper(fn)
+ local stripped=assert(loadstring(string.dump(fn,true),'@stripped-loader-wrapper'))
+ setfenv(stripped,getfenv(fn))
+ for i=1,120 do
+  local name,value=debug.getupvalue(fn,i);if not name then break end
+  assert(debug.setupvalue(stripped,i,value)=='','Fixture must remove wrapper upvalue names')
+ end
+ return stripped
+end
+local function prior_wrapper(prior)return function(...)return prior(...)end end
 local function vector(x,y,z)return{x,y,z}end
 local V=setmetatable({x=function(v)return v[1]end,y=function(v)return v[2]end,z=function(v)return v[3]end},{__call=function(_,...)return vector(...)end})
 local function fixture()
@@ -79,9 +89,10 @@ assert(bridge2.release());env2.update(.016);assert(up(late.step,'frame')==1,'Lat
 
 -- Unknown versions are refused before any closure or binding mutation.
 local env3,bridge3,e3,c3,load3=fixture();local unknown=load3(ACTIONCAM_SOURCE:gsub("CFG.VERSION = '[^']+'","CFG.VERSION = '99.99'",1))
+env3.update=strip_wrapper(prior_wrapper(env3.update))
 local update3,binds3=env3.update,up(unknown.bind,'PHOTO_BINDS')
 local supported,why=bridge3.refresh();assert(not supported and why:find('Unsupported ActionCam'))
-assert(env3.update==update3 and up(update3,'step')==unknown.step and up(unknown.bind,'PHOTO_BINDS')==binds3)
+assert(env3.update==update3 and up(unknown.wrapper,'step')==unknown.step and up(unknown.bind,'PHOTO_BINDS')==binds3)
 assert(not bridge3.acquire()and not bridge3.held,'Unknown camera cannot grant a Photo lease')
 
 -- Ownership failures must retain the gate instead of resuming competing writes.
@@ -165,6 +176,42 @@ local env8,bridge8,_,_,load8=fixture()
 local changed=ACTIONCAM_SOURCE:gsub('local function step%(dt%)','local function step(dt) if dt == -1234567 then error("changed camera") end',1)
 assert(changed~=ACTIONCAM_SOURCE)
 local o8=load8(changed);local saved8=up(o8.bind,'PHOTO_BINDS')
+env8.update=strip_wrapper(prior_wrapper(env8.update))
 local accepted8,reason8=bridge8.refresh();assert(not accepted8 and reason8:find('Unsupported ActionCam camera hooks'))
 assert(up(o8.wrapper,'step')==o8.step and up(o8.bind,'PHOTO_BINDS')==saved8,'Changed source must remain untouched')
-print('ActionCam compatibility: actual source, both load orders, idle profiles/FOV, exclusive Photo writes, FP restoration, callback results, unsupported source, cleanup retry and binding edges passed')
+
+-- Actual LLL uses `prior`; shipped wrappers may strip all upvalue names. Follow
+-- these function links without replacing any loader or unrelated callback.
+local env9,bridge9,e9,_,load9=fixture();local o9=load9();o9.hook()
+local original9=env9.update;local named9=prior_wrapper(original9)
+local callback9
+local previous9=named9;local decoy9=math.abs
+callback9=function(...)
+ if select('#',...)==-1234567 then return callback9(...),decoy9(1)end
+ return previous9(...)
+end
+local stripped9=strip_wrapper(callback9);env9.update=stripped9
+local wrapper_bytes9=string.dump(stripped9,true)
+local saved_links9={};for i=1,120 do local name,value=debug.getupvalue(stripped9,i);if not name then break end;saved_links9[i]=value end
+assert(bridge9.refresh()and bridge9.count==1,'Stripped wrappers and the LLL prior link must expose the audited owner')
+assert(env9.update==stripped9 and string.dump(stripped9,true)==wrapper_bytes9 and up(named9,'prior')==original9)
+for i,value in pairs(saved_links9)do local _,current=debug.getupvalue(stripped9,i);assert(current==value,'Intermediary/C callback links must remain untouched')end
+assert(bridge9.acquire());local frame9=up(o9.step,'frame');local a9,b9,c9=env9.update(.016,'tail')
+assert(e9.step==1 and a9=='game-update'and b9==.016 and c9=='tail'and up(o9.step,'frame')==frame9)
+assert(bridge9.release()and bridge9.dispose(),'Discovered owner must retain normal handoff and restoration')
+
+-- Function references stored in tables are outside callback-chain discovery.
+local env10,bridge10,_,_,load10=fixture();local o10=load10();local binds10=up(o10.bind,'PHOTO_BINDS')
+local hidden10={previous=env10.update};env10.update=function(...)return hidden10.previous(...)end
+local ok10,why10=bridge10.refresh();assert(not ok10 and why10:find('camera owner cannot be verified'))
+assert(up(o10.wrapper,'step')==o10.step and up(o10.bind,'PHOTO_BINDS')==binds10,'Unverified table-owned callbacks must remain untouched')
+
+-- The graph bound is checked before installation, even if a known owner exists
+-- elsewhere. Excessive wrapper chains never cause a partial camera mutation.
+local env11,bridge11,_,_,load11=fixture();local o11=load11();local binds11=up(o11.bind,'PHOTO_BINDS')
+env11.render=o11.wrapper
+for i=1,100 do env11.update=prior_wrapper(env11.update)end
+local ok11,why11=bridge11.refresh();assert(not ok11 and why11=='Camera callback chain cannot be verified')
+assert(up(o11.wrapper,'step')==o11.step and up(o11.hook,'apply')==o11.apply and up(o11.bind,'PHOTO_BINDS')==binds11)
+assert(not bridge11.acquire()and not bridge11.held,'An over-limit graph must not grant a Photo lease')
+print('ActionCam compatibility: actual source, both load orders, idle profiles/FOV, exclusive Photo writes, FP restoration, callback results, unsupported source, cleanup retry, binding edges and bounded stripped loader chains passed')

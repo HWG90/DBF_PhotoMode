@@ -14,7 +14,7 @@ function M.new(G,log)
  local dbg=G.debug or debug
  local self={held=false,available=true,reason=nil,count=0}
  local records={};local roots;local priority;local announced
- local chain_names={previous=true,previous_update=true,original=true,wrapped=true,callback=true,fn=true,base=true}
+ local chain_names={previous=true,previous_update=true,prior=true,original=true,wrapped=true,callback=true,fn=true,base=true}
  local function up(fn,wanted)
   if type(fn)~='function'or not dbg or type(dbg.getupvalue)~='function'then return end
   for index=1,120 do
@@ -149,12 +149,15 @@ function M.new(G,log)
    end
    return self.available,self.reason
   end
-  local queue={update,render};local seen={};local found={};local index=1
+  local queue,seen,found={},{},{};local index=1
+  local function enqueue(fn)
+   if type(fn)=='function'and not seen[fn]then seen[fn]=true;queue[#queue+1]=fn end
+  end
+  enqueue(update);enqueue(render)
   while index<=#queue do
    if index>96 then return status(false,'Camera callback chain cannot be verified')end
    local fn=queue[index];index=index+1
-   if type(fn)=='function'and not seen[fn]then
-    seen[fn]=true
+   if type(fn)=='function'then
     local record=records[fn]
     local candidate,why
     if record then
@@ -166,7 +169,10 @@ function M.new(G,log)
     elseif original_source(fn)and up(fn,'step')then return status(false,'Unsupported ActionCam wrapper; Photo Mode cannot share it')end
     for i=1,120 do
      local name,value=dbg.getupvalue(fn,i);if not name then break end
-     if chain_names[name]and type(value)=='function'and not seen[value]then queue[#queue+1]=value end
+     -- Stripped loader wrappers retain closure links but not their names.
+     -- Discovery only reads function upvalues; install still requires all seven
+     -- exact ActionCam signatures and never writes intermediary/C closures.
+     if chain_names[name]or name==''then enqueue(value)end
     end
    end
   end
