@@ -162,6 +162,19 @@ end
 -- Closing releases every native lease but remembers only the selected ID.
 -- Reopening requires a fresh supported local frame and a real paused edge.
 do
+ local x=fixture();selected(x,'salute');local old=x.unit();old.retired=true
+ local writes=x.writes;assert(x.api.flush()and not x.api.active and not x.api.pending and x.writes==writes)
+ local reads=x.frame_reads;x.frame_error=true
+ -- Controller stop skips release after the owned subject already retired.
+ -- Its closed refresh is skipped too, but the owning update hooks still run.
+ x.paused=false;assert(x.api.flush()and x.api.after_update()and not x.api.available)
+ assert(x.frame_reads==reads and x.writes==writes and x.api.remembered()=='salute','Idle close queried or wrote a retired native subject')
+ x.frame_error=false;x.identity='local:2';local new=x.add(x.identity);x.paused=true
+ assert(x.api.refresh(0)and x.api.pending and x.api.flush()and x.api.current()=='salute'and new.bones[1]==101 and x.captures==2,'Retirement before stop lost remembered pose reapply')
+ assert(x.api.queue_stop()and x.api.flush());original(new)
+end
+
+do
  local x=fixture();selected(x,'wave');local old=x.unit()
  assert(x.api.release()and x.api.flush()and x.api.remembered()=='wave');original(old)
  -- Actual controller lifecycle: no pose refresh is delivered while closed.

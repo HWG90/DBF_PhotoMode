@@ -239,6 +239,13 @@ function M.new(sr,subject,is_paused,log,data,adapter)
   assert(type(is_paused)=='function','Subject pose pause reader unavailable')
   local value=is_paused();assert(type(value)=='boolean','Subject pose pause state unavailable');return value
  end
+ local function closed()
+  resume_pending=false;last=nil;self.available=false
+  if next(self.capabilities)then self.capabilities={}end
+  -- The controller stops refreshing poses while Photo Mode is closed. The
+  -- next paused refresh must rediscover this session's current subject.
+  pause_seen=false;last_paused=nil;last_clock=nil;elapsed=.5;refresh_calls=0
+ end
  local function remembered_status()
   return remembered and(labels[remembered]..' remembered - pause Photo Mode to reapply')or nil
  end
@@ -312,11 +319,7 @@ function M.new(sr,subject,is_paused,log,data,adapter)
   request={stop=true};self.pending=true;return true
  end
  function self.release()
-  resume_pending=false;last=nil;self.available=false;self.capabilities={}
-  -- The controller stops refreshing poses while Photo Mode is closed. Treat
-  -- release as the end of this session so the first paused reopen discovers
-  -- a fresh subject even if no intervening unpaused refresh was delivered.
-  pause_seen=false;last_paused=nil;last_clock=nil;elapsed=.5;refresh_calls=0
+  closed()
   if not owned then idle('Original pose restored');return true end
   request={stop=true};self.pending=true;return true
  end
@@ -349,7 +352,15 @@ function M.new(sr,subject,is_paused,log,data,adapter)
   return true
  end
  local function step(after)
-  if not owned and not request then return true end
+  if not owned and not request then
+   -- A retired owner may finish cleanup before controller.stop(), which
+   -- then has no active lease to release. Observe only the boolean here:
+   -- closed update hooks must never discover Units or write native poses.
+   local ok,value=pcall(paused)
+   if ok and value==false then closed();self.status=remembered_status()or self.status
+   elseif not ok then self.available=false;self.capabilities={};last=nil;last_paused=nil;elapsed=.5 end
+   return true
+  end
   local ok,result=pcall(run,after)
   if not ok then
    -- A failed apply is not an invitation to repeatedly capture/apply the
