@@ -2,7 +2,7 @@ local root=rawget(_G,'DBF_PHOTO_TEST_ROOT')or'freecam/'
 local core=dofile('src/core.lua').new(nil,function()end);local options=dofile(root..'photo_options.lua')
 local h=core.register({id='test_photo',name='Photo',pages=options.pages(function()end,function()end)})
 local commands;local menu=dofile(root..'photo_menu.lua').new({draw=function(c)commands=c end,release=function()commands={}end},{focus=function()end,hud=function()end,hide=function()end,exit=function()end})
-menu.bind(h,core.mods.test_photo.pages);menu.page=2;menu.draw(1920,1080,true,false,{focus='TAB',hide='H',slowmo='\\'});assert(#commands>15)
+menu.bind(h,core.mods.test_photo.pages);menu.photo_groups_open.lens={focus=false,framing=true,quality=false};menu.photo_groups_open.color={grading=false,filters=true};menu.photo_groups_open.effects={scene=false,fog=false,overlays=true,finish=false};menu.page=2;menu.draw(1920,1080,true,false,{focus='TAB',hide='H',slowmo='\\'});assert(#commands>15)
 for _,command in ipairs(commands)do assert(command.x>=0 and command.y>=0 and command.x<=1920 and command.y<=1080)end
 local bar;for _,c in ipairs(commands)do if c.ui_role=='slider_track'and c.control_id=='fov'then bar=c;break end end
 assert(bar and bar.type=='rect');menu.tick({x=bar.x+bar.w,y=bar.y+bar.h/2,click=true,wheel=0},function()return false end);assert(h.get('fov')==120)
@@ -36,9 +36,9 @@ local keys={};local function draw()menu.draw(1920,1080,true,false,{focus='TAB',h
 local function tick()menu.tick({click=false,wheel=0,dt=.016},function(k)return keys[k]or false end);draw()end
 local function press(k)keys[k]=true;tick();keys[k]=false;tick()end
 menu.page=1;menu.selection=1;draw();tick();press(69);assert(menu.page==2);press(81);assert(menu.page==1)
-menu.page=2;menu.selection=1;menu.scroll=0;draw();tick()
-press(83);assert(menu.selection==2);press(87);assert(menu.selection==1)
-h.set('fov',90);local unedited=h.get('fov');press(68);assert(menu.selection==1 and h.get('fov')==unedited+1);press(65);assert(menu.selection==1 and h.get('fov')==unedited)
+menu.page=2;menu.selection=4;menu.scroll=0;draw();tick()
+press(83);assert(menu.selection==6);press(87);assert(menu.selection==4)
+h.set('fov',90);local unedited=h.get('fov');press(68);assert(menu.selection==4 and h.get('fov')==unedited+1);press(65);assert(menu.selection==4 and h.get('fov')==unedited)
 press(13);assert(menu.editing_value);local before=h.get('fov');press(65);assert(h.get('fov')==before-1)
 press(13);assert(not menu.editing_value)
 print('Menu keyboard: Q/E tabs, W/S rows, A/D selected values, Enter slider editing, popup layers and opacity passed')

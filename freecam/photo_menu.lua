@@ -9,6 +9,7 @@ local PANEL_WIDTH,PANEL_HEIGHT,HUD_MARGIN=760,320,180
 function M.new(view,actions,existing)
  local legend=M.legend_factory and M.legend_factory.new(view)
  local self=existing or{page=1,scroll=0,selection=1,size_scale=1};local nav_held={};local nav_time={};local nav_ready=false;local last_focus
+ self.photo_groups_open=self.photo_groups_open or{};local group_headers={};local layout_values={}
  local rows={};local selected_hit;local hits={};local held=false;local drag;local resize;local scroll_drag;local move_panel;local geometry;local panel_bounds;local pointer_x,pointer_y;local pressed_key
  local layout_initialized=existing~=nil;local layout_dirty=false;local opacity_dirty=false
  local opacity_control={id='menu_opacity',type='slider',min=10,max=100,step=1,fine_step=1,default=38}
@@ -62,6 +63,7 @@ function M.new(view,actions,existing)
    if size and size>=.35 and size<=3 then self.size_scale=size end
    layout_initialized=true
   end
+  for _,key in ipairs({'menu_x','menu_y','menu_scale'})do layout_values[key]=stored_layout(key)end
  end
  function self.blur()return blur_number()end
  local function value(c)
@@ -115,12 +117,48 @@ function M.new(view,actions,existing)
   return visible..'...'
  end
  local function selectable(c)return c and c.type~='text'and not c.disabled end
+ local function group_open(c)return self.photo_groups_open[c.page_key][c.section_id]==true end
+ local function set_group(c,open)
+  if not c or c.type~='photo_group'or not blur_number()then return false end
+  self.photo_groups_open[c.page_key][c.section_id]=open==true
+  -- Closing a section must not retain hidden number, color or shortcut capture.
+  -- Valid commit-on-blur fields save first; other numeric editors cancel.
+  text_edit=nil;self.editing_value=nil;color_edit=nil;key_capture=nil;popup=nil;popup_close_on_release=false;drag=nil;scroll_drag=nil
+  for i,row in ipairs(rows)do if row==c then self.selection=i;break end end
+  return true
+ end
+ local function page_rows(page)
+  local result,sections,items={},{},{};local page_key=tostring(page.id or page.name or self.page)
+  local states=self.photo_groups_open[page_key];if not states then states={};self.photo_groups_open[page_key]=states end
+  local headers=group_headers[page_key];if not headers then headers={};group_headers[page_key]=headers end
+  local settings=page.id=='settings'or page.id=='camera'and page.name=='Settings'
+  for _,c in ipairs(page.controls or{})do
+   local neutral_status=c.type=='text'and((c.status_only and(c.label or '')=='')or(c.id=='shader_status'and c.label=='Shader overlay: none'))
+   if c.id~='controls'and not(actions.freeze and c.id=='freeze_player')and not(actions.slowmo and(c.id=='slowmo_speed'or c.id=='lock_camera'))and(not c.layout_storage or settings)and not neutral_status then
+    local section=type(c.photo_section)=='string'and c.photo_section~=''and c.photo_section or nil
+    if section then
+     if not sections[section]then
+      local header=headers[section];if not header then header={type='photo_group',page_key=page_key,section_id=section,id='group:'..#page_key..':'..page_key..':'..section};headers[section]=header end
+      header.label=c.photo_section_label or section
+      if states[section]==nil then states[section]=c.photo_section_collapsed~=true end
+      sections[section]={header=header,controls={}};items[#items+1]=sections[section]
+     end
+     local members=sections[section].controls;members[#members+1]=c
+    else items[#items+1]=c end
+   end
+  end
+  for _,item in ipairs(items)do if item.header then
+   result[#result+1]=item.header;if group_open(item.header)then for _,c in ipairs(item.controls)do result[#result+1]=c end end
+  else result[#result+1]=item end end
+  return result
+ end
  local function reveal(index)
   if index<=self.scroll then self.scroll=index-1 elseif index>self.scroll+visible_count then self.scroll=index-visible_count end
  end
  local function shift_value(c,direction,fine)
   if not selectable(c)then return end
-  if c.type=='slider'then local step=fine and c.fine_step or c.step;self.handle.set(c.id,math.max(c.min,math.min(c.max,self.handle.get(c.id)+direction*step)))
+  if c.type=='photo_group'then set_group(c,direction>0)
+  elseif c.type=='slider'then local step=fine and c.fine_step or c.step;self.handle.set(c.id,math.max(c.min,math.min(c.max,self.handle.get(c.id)+direction*step)))
   elseif c.type=='toggle'then self.handle.set(c.id,direction>0)
   elseif c.type=='choice'and #c.choices>0 then self.handle.set(c.id,(self.handle.get(c.id)-1+direction)%#c.choices+1)end
  end
@@ -172,6 +210,13 @@ function M.new(view,actions,existing)
   if self.prepare_light_gizmos then self.prepare_light_gizmos(w,h,focused,hidden)end
   if hidden or not valid(w)or not valid(h)or not self.pages or #self.pages==0 then finish_layout();if self.light_gizmos then self.light_gizmos.cancel()end;if legend then legend.clear()end;view.draw({});panel_bounds=nil;hits={};resize=nil;scroll_drag=nil;move_panel=nil;return end
   if view.refresh_font then view.refresh_font()end
+  if not layout_dirty then for _,key in ipairs({'menu_x','menu_y','menu_scale'})do local v=stored_layout(key)
+   if v~=layout_values[key]then layout_values[key]=v;if v then
+    if key=='menu_scale'and v>=.35 and v<=3 then self.size_scale=v
+    elseif key=='menu_x'then self.panel_x=v>=0 and v<=1 and v or nil
+    elseif key=='menu_y'then self.panel_y=v>=0 and v<=1 and v or nil end
+   end end
+  end end
   local footer_extra=actions.slowmo and 36 or 0
   local commands={};hits={};reset_regions={};local base=math.max(.75,math.min(w/1920,h/1080));local maximum=math.min(w/(PANEL_WIDTH+48),h/(PANEL_HEIGHT+102+HUD_MARGIN+footer_extra));local minimum=math.min(maximum,math.max(.35,base*.65))
   local s=math.max(minimum,math.min(maximum,base*self.size_scale));local width=PANEL_WIDTH*s;local footprint=(PANEL_HEIGHT+62+footer_extra)*s
@@ -244,13 +289,10 @@ function M.new(view,actions,existing)
    end
   end
   local tab_extra=(tab_rows-1)*29*s
-  local page=self.pages[self.page];rows={};selected_hit=nil
-  for _,c in ipairs(page.controls)do
-   local neutral_status=c.type=='text'and((c.status_only and(c.label or '')=='')or(c.id=='shader_status'and c.label=='Shader overlay: none'))
-   if c.id~='controls'and not(actions.freeze and c.id=='freeze_player')and not(actions.slowmo and(c.id=='slowmo_speed'or c.id=='lock_camera'))and not c.layout_storage and not neutral_status then rows[#rows+1]=c end
-  end
+  local page=self.pages[self.page];rows=page_rows(page);selected_hit=nil
   self.selection=math.max(1,math.min(#rows,self.selection));if not selectable(rows[self.selection])then for i,c in ipairs(rows)do if selectable(c)then self.selection=i;break end end end
   if self.editing_value and self.editing_value.disabled then self.editing_value=nil;text_edit=nil end;if popup and popup.c.disabled then popup=nil end
+  if color_edit and color_edit.disabled then color_edit=nil;drag=nil end;if key_capture and key_capture.disabled then key_capture=nil;armed=false end
   rect(left,top-71*s-tab_extra,width-32*s,1,T.border,.6,301)
   local content_top=top-(77+footer_extra)*s-tab_extra;local content_bottom=bottom+(color_edit and 100 or 16)*s;local row=32*s
   visible_count=math.max(1,math.floor((content_top-content_bottom)/row));self.scroll=math.max(0,math.min(math.max(0,#rows-visible_count),self.scroll))
@@ -261,7 +303,14 @@ function M.new(view,actions,existing)
    if hover then hovered_control=c end
    rect(rb.x,rb.y,rb.w,rb.h,selected and T.gold or T.hover,selected and .12 or hover and .09 or 0,301,false,'setting_row')
    if selected then rect(rb.x,rb.y,rb.w,1*s,T.gold,.8,304);rect(rb.x,rb.y+rb.h-1*s,rb.w,1*s,T.gold,.55,304)end
-   if c.type=='text'then
+   if c.type=='photo_group'then
+    local header={x=rb.x,y=rb.y+3*s,w=rb.w,h=23*s,c=c,key=c.id,row=i}
+    surface(header,selected,false,c.id,false)
+    local command=text(group_open(c)and 'v'or '>',left+5*s,y+3*s,18*s,23*s,11,selected and T.gold or T.muted);command.ui_role='group_chevron';command.group_id=c.section_id;command.page_id=c.page_key
+    command=text(c.label,left+30*s,y+3*s,width-88*s,23*s,11,selected and T.gold or T.muted);command.ui_role='group_label';command.group_id=c.section_id;command.page_id=c.page_key;command.expanded=group_open(c)
+    header.action=function()return set_group(c,not group_open(c))end
+    if focused then hits[#hits+1]=header;if i==self.selection then selected_hit=header end end
+   elseif c.type=='text'then
     local label=tostring(c.label or '');local first,second=label,'';local chars=glyphs(label);local width_budget=(width-52*s)
     if measure(label,11*s)>width_budget then local count=0;for n=1,#chars do if measure(table.concat(chars,'',1,n),11*s)>width_budget then break end;count=n end;first=table.concat(chars,'',1,count);second=table.concat(chars,'',count+1)end
     text(first,left+8*s,y+(second~=''and 12*s or 0),width_budget,(second~=''and 12 or 29)*s,11,T.muted)
@@ -306,7 +355,7 @@ function M.new(view,actions,existing)
    end
   end
   local hint=hovered_control or rows[self.selection];local label=hint and tostring(hint.label or '')or 'Photo settings'
-  text(hint and hint.disabled and 'Unavailable in this scene' or text_edit and(text_edit.error or(text_edit.typing and 'Enter / Space saves  |  Esc cancels  |  Ctrl+A replaces' or text_edit.c.fine_step and 'A/D step  |  Shift+A/D fine  |  Esc cancels' or 'Type number or A/D step  |  Enter / Space saves  |  Esc cancels'))or key_capture and 'Press the new shortcut  |  Esc cancels' or self.notice or(label..(hint and hint.type=='slider'and '  |  Shift+drag fine  |  Enter edits'or '  |  A/D changes  |  Enter edits')),left+24*s,bottom+1*s,width-56*s,12*s,10,hint and hint.disabled and T.disabled or T.muted)
+  text(hint and hint.disabled and 'Unavailable in this scene' or text_edit and(text_edit.error or(text_edit.typing and 'Enter / Space saves  |  Esc cancels  |  Ctrl+A replaces' or text_edit.c.fine_step and 'A/D step  |  Shift+A/D fine  |  Esc cancels' or 'Type number or A/D step  |  Enter / Space saves  |  Esc cancels'))or key_capture and 'Press the new shortcut  |  Esc cancels' or self.notice or(label..(hint and hint.type=='photo_group'and '  |  Enter expands/collapses  |  A/D closes/opens'or hint and hint.type=='slider'and '  |  Shift+drag fine  |  Enter edits'or '  |  A/D changes  |  Enter edits')),left+24*s,bottom+1*s,width-56*s,12*s,10,hint and hint.disabled and T.disabled or T.muted)
   rect(x,strip_bottom,width,54*s,T.background,math.min(1,opacity/100+.02),300,false,'photo_controls_strip');rect(x,strip_bottom+54*s,width,1*s,T.border,.5,301)
   button('Toggle HUD',{x=left,y=strip_bottom+29*s,w=120*s,h=21*s},actions.hud,'hud',false,11)
   button('Hide controls ['..keys.hide..']',{x=left+128*s,y=strip_bottom+29*s,w=166*s,h=21*s},actions.hide,'hide',false,11)

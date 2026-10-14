@@ -44,6 +44,15 @@ for _,standalone in ipairs({true,false})do
    local target;for _,command in ipairs(commands)do
     if(command.ui_key==which and command.ui_role=='button')or(which:sub(1,8)=='control:'and command.control_id==which:sub(9)and command.ui_role=='field')then target=command;break end
    end
+   if not target then
+    for offset=1,100 do
+     current_panel.scroll=offset;tick()
+     for _,command in ipairs(commands)do
+      if(command.ui_key==which and command.ui_role=='button')or(which:sub(1,8)=='control:'and command.control_id==which:sub(9)and command.ui_role=='field')then target=command;break end
+     end
+     if target then break end
+    end
+   end
    assert(target,'Button is not visible: '..which)
    mouse={x=target.x+target.w*.5,y=target.y+target.h*.5,click=true};tick();mouse.click=false;tick()
   end
@@ -85,7 +94,7 @@ for _,standalone in ipairs({true,false})do
  assert(math.abs(saved.menu_scale-.765)<1e-9 and saved.menu_x~=.73 and saved.menu_y~=.54,'Dragging and resizing must reach the real stored schema')
  session.opacity(76)
  for key in pairs(expected_layout)do expected_layout[key]=saved[key]end
- assert(session.api.mods.dbf_freecam.controls.menu_x.page.id=='composition'and options.defaults.menu_x==nil,'Geometry must use registered Composition storage and stay outside photo resets')
+ assert(session.api.mods.dbf_freecam.controls.menu_x.page.id=='camera'and options.defaults.menu_x==nil,'Geometry must use registered Settings storage and stay outside photo resets')
  assert(session.api.mods.dbf_freecam.controls.menu_opacity.layout_storage and options.defaults.menu_opacity==nil,'Opacity must be persistent menu storage outside photo resets')
  session.click('exit')
  assert(not session.photo.active and not session.owned()and not session.visible(),'Mouse Exit must release photo input and view')

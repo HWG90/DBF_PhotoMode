@@ -645,7 +645,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         end
         if not handle then return false,'Camera is unavailable'end
         if not handle.get('enabled')then
-            -- Standalone has no separate settings host. P recovers its Controls
+            -- Standalone has no separate settings host. P recovers its Settings
             -- panel without enabling, moving or pausing the camera.
             if reveal_hidden and api.photo_standalone and panel then
                 local input=api.camera_input;local token,why=input.acquire(bindings())
@@ -697,7 +697,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         retry=retry-math.max(0,tonumber(dt) or 0)
         if api and not handle and retry<=0 then
             retry=2
-            local definition={id='dbf_freecam',name='Photo Mode',pages={{id='camera',name='Controls',require_confirmation=false,controls={
+            local definition={id='dbf_freecam',name='Photo Mode',pages={{id='camera',name='Settings',require_confirmation=false,controls={
                 {id='enabled',type='toggle',label='Enable freecam',default=true,on_change=function(v)if not v then self.stop()end end},
                 {id='toggle_key',type='keybind',label='Photo mode toggle',default=80},
                 {id='speed',type='slider',label='Movement speed (m/s)',default=3,min=0.1,max=50,step=0.1},
@@ -760,8 +760,12 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
                     save=saved_camera and function()local ok,why=saved_camera.save(handle.get('saved_camera_radius'));if not ok then log(tostring(why))end end,
                     clear=saved_camera and function()saved_camera.clear('cleared manually')end,
                     screenshot=screenshots and function()self.request_screenshot()end})
-                definition.pages={};for _,page in ipairs(pages)do definition.pages[#definition.pages+1]=page end
-                definition.pages[#definition.pages+1]=bindings_page
+                local settings
+                for _,page in ipairs(pages)do if page.id==bindings_page.id then settings=page;break end end
+                if settings then
+                    for _,control in ipairs(bindings_page.controls)do settings.controls[#settings.controls+1]=control end
+                else pages[#pages+1]=bindings_page end
+                definition.pages=options.organize_pages and options.organize_pages(pages)or pages
             end
             for _,page in ipairs(definition.pages)do for _,control in ipairs(page.controls)do
                 if control.type=='slider'then control.commit_on_blur=true end
@@ -810,12 +814,12 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
                 panel.light_gizmos=self._light_gizmos;panel.prepare_light_gizmos=self._sync_light_gizmos
                 local pages=api.mods and api.mods.dbf_freecam.pages or definition.pages
                 local visible={}
-                for _,page in ipairs(pages)do if page.id~='camera'or api.photo_standalone then local q={id=page.id,name=page.name,controls={}}
+                for _,page in ipairs(pages)do local q={id=page.id,name=page.name,controls={}}
                     for _,control in ipairs(page.controls)do
                         if control.type~='keybind'or api.photo_standalone then q.controls[#q.controls+1]=control end
                     end
                     visible[#visible+1]=q
-                end end
+                end
                 -- Visibility belongs to this photo session. Fresh entry and P
                 -- reveal recover it, while startup resets the saved UI layout once.
                 local panel_handle={};for key,value in pairs(handle)do panel_handle[key]=value end
