@@ -14,8 +14,9 @@ def capture_library_name():
 def actioncam_compat_source():
     signatures=json.loads((ROOT/'vendor/actioncam-signatures.json').read_text(encoding='utf-8'))
     assert signatures['source_sha256']==hashlib.sha256((ROOT/'vendor/actioncam-2.3.1.lua').read_bytes()).hexdigest(),'Supported ActionCam source changed; regenerate and verify its compatibility contracts'
-    encoded='{runtime_version='+json.dumps(signatures['runtime_version'])+',closures={'
-    encoded+=','.join('['+json.dumps(name)+']='+json.dumps(value)for name,value in signatures['closures'].items())+'}}'
+    supported=signatures.get('supported',{signatures['runtime_version']:signatures})
+    encoded='{supported={'
+    encoded+=','.join('['+json.dumps(version)+']={closures={'+','.join('['+json.dumps(name)+']='+json.dumps(value)for name,value in record['closures'].items())+'}}'for version,record in supported.items())+'}}'
     return (ROOT/'actioncam_compat.lua').read_text(encoding='utf-8').replace('__ACTIONCAM_SIGNATURES__',encoded)
 
 

@@ -2,8 +2,11 @@
 -- namespaces, OS hooks and other mods' input readers are never replaced.
 local signatures=__ACTIONCAM_SIGNATURES__
 local expected={}
-for name,hex in pairs(signatures.closures)do
- expected[name]=hex:gsub('%x%x',function(pair)return string.char(tonumber(pair,16))end)
+for version,record in pairs(signatures.supported or {[signatures.runtime_version]=signatures})do
+ expected[version]={}
+ for name,hex in pairs(record.closures)do
+  expected[version][name]=hex:gsub('%x%x',function(pair)return string.char(tonumber(pair,16))end)
+ end
 end
 local M={}
 function M.new(G,log)
@@ -24,10 +27,10 @@ function M.new(G,log)
   local _,index=up(fn,name);assert(index,'ActionCam closure changed: '..name)
   assert(dbg.setupvalue(fn,index,value)==name,'ActionCam closure assignment failed: '..name)
  end
- local function same(fn,name)
+ local function same(fn,name,version)
   if type(fn)~='function'then return false end
   local ok,bytes=pcall(string.dump,fn,true)
-  return ok and bytes==expected[name]
+  return ok and expected[version] and bytes==expected[version][name]
  end
  local function status(ok,why)
   self.available,self.reason=ok,why
@@ -54,8 +57,8 @@ function M.new(G,log)
   local hook=up(step,'hook_render');local apply=up(hook,'apply');local bindings=up(step,'bindings_step')
   local restore=up(apply,'restore_fov');local drop=up(apply,'drop_all')
   local functions={update=fn,step=step,hook_render=hook,apply=apply,bindings_step=bindings,restore_fov=restore,drop_all=drop}
-  if cfg.VERSION~=signatures.runtime_version then return false,'Unsupported ActionCam version; Photo Mode cannot safely share this camera'end
-  for name,value in pairs(functions)do if not same(value,name)then return false,'Unsupported ActionCam camera hooks; Photo Mode left its camera untouched'end end
+  if not expected[cfg.VERSION] then return false,'Unsupported ActionCam version; Photo Mode cannot safely share this camera'end
+  for name,value in pairs(functions)do if not same(value,name,cfg.VERSION)then return false,'Unsupported ActionCam camera hooks; Photo Mode left its camera untouched'end end
   local photo=up(bindings,'PHOTO');local binds=up(bindings,'PHOTO_BINDS')
   if type(photo)~='table'or type(photo.input)~='table'or type(photo.was)~='table'or type(binds)~='table' then
    return false,'ActionCam binding ownership cannot be verified'

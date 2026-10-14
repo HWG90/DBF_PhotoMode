@@ -23,6 +23,7 @@ local function fixture()
  local function load_original(source)
   local chunk=assert(loadstring(source or ACTIONCAM_SOURCE,'@mods/actioncam/actioncam'));setfenv(chunk,env);chunk();env.package.loaded['mods/actioncam/actioncam']=true
   local wrapper=env.update;local step=assert(up(wrapper,'step'));local hook=assert(up(step,'hook_render'));local apply=assert(up(hook,'apply'));local bind=assert(up(step,'bindings_step'))
+  local user=up(bind,'USER');if user then user.bindings=4;local opt=up(bind,'OPT');if opt then opt.registered=true end end
   return {wrapper=wrapper,step=step,hook=hook,apply=apply,bind=bind,photo=up(bind,'PHOTO'),cfg=up(step,'CFG'),H=up(step,'H')}
  end
  return env,bridge,events,camera,load_original
@@ -77,7 +78,7 @@ assert(e2.fov==0 and e2.render==1 and e2.step==1,'A late original camera must yi
 assert(bridge2.release());env2.update(.016);assert(up(late.step,'frame')==1,'Late ActionCam resumes normally')
 
 -- Unknown versions are refused before any closure or binding mutation.
-local env3,bridge3,e3,c3,load3=fixture();local unknown=load3(ACTIONCAM_SOURCE:gsub("CFG.VERSION = '10.31'","CFG.VERSION = '99.99'",1))
+local env3,bridge3,e3,c3,load3=fixture();local unknown=load3(ACTIONCAM_SOURCE:gsub("CFG.VERSION = '[^']+'","CFG.VERSION = '99.99'",1))
 local update3,binds3=env3.update,up(unknown.bind,'PHOTO_BINDS')
 local supported,why=bridge3.refresh();assert(not supported and why:find('Unsupported ActionCam'))
 assert(env3.update==update3 and up(update3,'step')==unknown.step and up(unknown.bind,'PHOTO_BINDS')==binds3)
@@ -120,22 +121,50 @@ put(o4.wrapper,'step',o4.step);assert(not bridge4.refresh());assert(up(o4.wrappe
 
 -- A later unrelated chained callback does not invalidate the known adapter.
 local env5,bridge5,e5,c5,load5=fixture();local o5=load5();assert(bridge5.refresh())
+local saved_binds5=up(bridge5.release,'records')[o5.wrapper].binds
 local previous=env5.update;env5.update=function(...)return previous(...)end
 assert(bridge5.refresh()and bridge5.count==1);assert(bridge5.acquire());assert(bridge5.release())
 assert(bridge5.acquire());assert(not bridge5.dispose(),'Active camera must not detach before cleanup')
 assert(bridge5.release());assert(bridge5.dispose()and bridge5.disabled)
 assert(up(o5.wrapper,'step')==o5.step and up(o5.hook,'apply')==o5.apply and up(o5.step,'bindings_step')==o5.bind)
-assert(up(o5.bind,'PHOTO_BINDS')[1].id=='actioncam.photo_toggle','Failed startup must restore original Photo bindings')
+assert(up(o5.bind,'PHOTO_BINDS')==saved_binds5,'Failed startup must restore original Photo bindings')
 assert(bridge5.refresh()and up(o5.wrapper,'step')==o5.step,'Disposed adapter must not reattach through a retained callback')
 
 -- A real loader startup failure restores ActionCam and does not retry a partial
 -- camera runtime every frame. This exercises the LLL bootstrap, not a stub owner.
 local env6,_,e6,_,load6=fixture();local o6=load6();local constructions=0
+local saved_binds6=up(o6.bind,'PHOTO_BINDS')
 env6.mod={log=function()end,dir='fixture',require=function(name)
  if name=='src/actioncam_compat.lua'then return factory end
  assert(name=='src/standalone.lua');return{new=function()constructions=constructions+1;error('private service unavailable')end}
 end}
 local lll_chunk=assert(loadstring(LLL_SOURCE,'@PhotoMode-LLL-fixture'));setfenv(lll_chunk,env6);local addon=lll_chunk()
 addon.on_update();addon.on_update();assert(constructions==1 and up(o6.wrapper,'step')==o6.step and up(o6.step,'bindings_step')==o6.bind)
-assert(up(o6.bind,'PHOTO_BINDS')[1].id=='actioncam.photo_toggle','Bootstrap failure must not disable original Photo controls')
+assert(up(o6.bind,'PHOTO_BINDS')==saved_binds6,'Bootstrap failure must not disable original Photo controls')
+
+-- ActionCam 2.4's binding levels remain its own choice. Photo bindings are
+-- excluded even in Full, while Essential keeps restart and profile cycling.
+local env7,bridge7,e7,_,load7=fixture();local o7=load7();local user7=up(o7.bind,'USER')
+if user7 then
+ user7.bindings=1;assert(bridge7.refresh());local gate7=up(o7.step,'bindings_step');gate7()
+ assert(next(e7.registered)==nil,'None must not register an ActionCam binding')
+ user7.bindings=2;o7.H.bindings_changed();gate7()
+ assert(e7.registered['actioncam.restart']and e7.registered['actioncam.profile_next']and e7.registered['actioncam.profile_prev'])
+ assert(not e7.registered['actioncam.profile_1']and not e7.registered['actioncam.photo_toggle'],'Essential must retain its original level')
+ local opt7=up(up(o7.bind,'switch_profile'),'OPT');local count7=#up(o7.bind,'profile_choices');local initial7=opt7.profile
+ e7.down['actioncam.profile_next']=true;gate7();assert(opt7.profile==(initial7%count7)+1)
+ e7.down['actioncam.profile_next']=false;gate7();e7.down['actioncam.profile_prev']=true;gate7();assert(opt7.profile==initial7)
+ assert(bridge7.acquire());e7.down['actioncam.profile_next']=true;gate7();assert(opt7.profile==initial7,'Profile cycling must yield during Photo')
+ assert(bridge7.release());e7.down['actioncam.profile_prev']=false;e7.down['actioncam.profile_next']=false;gate7();gate7()
+ user7.bindings=4;o7.H.bindings_changed();gate7()
+ assert(e7.registered['actioncam.profile_1']and not e7.registered['actioncam.photo_toggle'],'Full preserves profiles without a competing Photo camera')
+ user7.bindings=1;o7.H.bindings_changed();e7.down['actioncam.profile_next']=true;gate7();assert(opt7.profile==initial7,'None must stop previously registered shortcuts')
+end
+-- A version number alone never permits a different camera implementation.
+local env8,bridge8,_,_,load8=fixture()
+local changed=ACTIONCAM_SOURCE:gsub('local function step%(dt%)','local function step(dt) if dt == -1234567 then error("changed camera") end',1)
+assert(changed~=ACTIONCAM_SOURCE)
+local o8=load8(changed);local saved8=up(o8.bind,'PHOTO_BINDS')
+local accepted8,reason8=bridge8.refresh();assert(not accepted8 and reason8:find('Unsupported ActionCam camera hooks'))
+assert(up(o8.wrapper,'step')==o8.step and up(o8.bind,'PHOTO_BINDS')==saved8,'Changed source must remain untouched')
 print('ActionCam compatibility: actual source, both load orders, idle profiles/FOV, exclusive Photo writes, FP restoration, callback results, unsupported source, cleanup retry and binding edges passed')
