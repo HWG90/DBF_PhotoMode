@@ -1,5 +1,6 @@
-# Known issues in 0.9.10 development candidate
+# Known issues in 0.9.11 development candidate
 
+- **Cinema camera is an offline-tested development candidate.** Static pose/input handoff is covered by fixtures; live aiming/projectile direction, hoverpack, native menu/display handoffs and ActionCam coexistence need live acceptance. Cinema mode never starts automatically after restart, and player/scene changes end the mode.
 - **Photo lighting: Not tested fully across scenes.** Dedicated bundled light assets have worked in the running game; availability still requires those assets to be loaded after restart. Coverage of every mission and transition is incomplete.
 - Native focus/aperture and camera-instance recovery were user-tested during development. The 0.9.8 correction was confirmed steady while still and moving after a temporary render-queue timeout had caused flicker. This does not prove every scene, game update, ragdoll or transition. Controls wait for a validated current camera rather than writing through a stale one.
 - Shader DoF and scene grading share a full-resolution compositor. HDR tint/exposure was accepted with neutral grading, no scene effect and active Shader DoF. SDR compositor parity and every effect combination remain unverified. Blurred HDR energy above GUI white remains limited by the GUI carrier. Native remains the blur-quality baseline.

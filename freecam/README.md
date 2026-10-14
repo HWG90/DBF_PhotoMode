@@ -1,4 +1,4 @@
-War Journalist 0.9.10 - Helldivers 2 Photo Mode
+War Journalist 0.9.11 - Helldivers 2 Photo Mode
 
 CHOOSE ONE LOADER PACKAGE
 BSL (recommended): requires Bingus Shared Loader v15+ / API 1. Import the full
@@ -33,6 +33,13 @@ has priority if another ActionCam shortcut shares the same physical key.
 Both startup orders are supported. Unrecognized ActionCam versions/hooks are
 left untouched and Photo Mode refuses unsafe camera ownership. Disable that
 unsupported ActionCam and restart normally before using Photo Mode.
+
+CINEMA CAMERA (DEVELOPMENT)
+Director > Begin action shot keeps the placed camera static and returns gameplay
+controls after owned poses and simulation pause restore. Use the Photo Mode key
+to reposition, or exit Photo Mode to restore the normal gameplay camera. The
+screenshot shortcut still works. Cinema mode does not resume after restarting.
+Live aiming/combat, hoverpack and display handoffs need acceptance.
 
 MANUAL ASSET INSTALL
 With the game closed, copy the patch triplets from Addon (BSL) or GameData

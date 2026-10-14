@@ -147,6 +147,11 @@ function M.pages(reset,recenter,catalog,saved_actions)
  slider('legend_x','Legend horizontal position (%)',0,100,.1),slider('legend_y','Legend vertical position (%)',0,100,.1),slider('legend_size','Legend size (% of screen short edge)',25,70,.1),
  layout_setting('menu_x','Saved menu horizontal position',-1,1),layout_setting('menu_y','Saved menu vertical position',-1,1),layout_setting('menu_scale','Saved menu size',.35,3),layout_setting('menu_opacity','Menu background opacity',10,100,1)}},
  {id='director',name='Director',require_confirmation=false,controls={
+ director_action('cinema_begin','Begin action shot','cinema_begin'),
+ director_action('cinema_reposition','Reposition cinema camera','cinema_reposition'),
+ director_action('cinema_end','Return to gameplay camera','cinema_end'),
+ {id='cinema_status',type='text',label='Place a camera, then begin an action shot'},
+ {id='cinema_hint',type='text',label='The camera stays placed while you move and fight. Your Photo Mode key returns to placement; Screenshot still works.'},
  ai_control(),
  director_action('ai_reset','Reset AI to Normal','ai_reset'),
  {id='ai_status',type='text',label='Enemy behavior unavailable: waiting for a verified solo mission'},

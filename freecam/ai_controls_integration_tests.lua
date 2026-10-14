@@ -24,7 +24,7 @@ local function flush()now=now+.1;inside_update=true;local ok,why=ai.flush(photo.
 controller.tick(.016)
 local mod=api.mods.dbf_freecam;local handle=mod.handle;local controls={};local director
 for _,page in ipairs(mod.pages)do if page.id=='director'then director=page end;for _,c in ipairs(page.controls)do controls[c.id]=c end end
-assert(director and director.controls[1].id=='ai_behavior'and controls.ai_behavior.label=='Enemy behavior')
+assert(director and director.controls[1].id=='cinema_begin'and controls.ai_behavior.label=='Enemy behavior','Cinema actions and enemy behavior must share Director')
 assert(#controls.ai_behavior.choices==3 and controls.ai_behavior.choices[2]=='Passive'and controls.ai_behavior.choices[3]=='Dummy','Unsupported mode exposed')
 assert(handle.get('ai_behavior')==1 and stored.ai_behavior==1 and not ai.pending and writes==0,'Saved behavior resumed suppression on restart')
 assert(controls.ai_behavior.disabled,'Inactive photo mode exposed AI control')

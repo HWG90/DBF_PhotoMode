@@ -1,6 +1,6 @@
 ![War Journalist](docs/artwork/war-journalist-0.9.7-cover.png)
 
-# War Journalist 0.9.10 development candidate
+# War Journalist 0.9.11 development candidate
 
 A Helldivers 2 Photo Mode: free camera, a compact movable studio menu,
 Native and shader depth of field, autofocus, color grading, scene effects,
@@ -9,10 +9,14 @@ photo lighting, Director camera presets and enemy behavior controls,
 
 [Download on Nexus](https://www.nexusmods.com/helldivers2/mods/17248?tab=files) ·
 [GitHub downloads](https://github.com/HWG90/DBF_PhotoMode/releases) ·
+[0.9.11 Cinema candidate notes](docs/RELEASE-0.9.11.md) ·
+[0.9.9 compatibility notes](docs/RELEASE-0.9.9.md) ·
 [0.9.10 ActionCam compatibility notes](docs/RELEASE-0.9.10.md) ·
 [0.9.7 feature notes](docs/RELEASE-0.9.7.md)
 
 ## What's new
+
+- **Cinema camera development mode:** Director → Begin action shot holds the placed camera while returning movement/combat input to the Helldiver. The usual Photo Mode key returns to camera placement. The camera remains exclusive to War Journalist until the mode ends. This candidate needs live aiming/combat and ActionCam coexistence verification; it is not a published release.
 
 - **ActionCam camera handoff:** the supported original ActionCam 2.3.1 / runtime 10.31 keeps its normal gameplay camera, First Person and profiles. War Journalist takes exclusive ownership only during Photo Mode, then hands the camera back after cleanup. Both startup orders are covered by isolated tests; live coexistence still needs validation.
 - **Separate controls:** ActionCam's independent Photo Mode bindings yield to War Journalist. Its profile/restart shortcuts remain available outside Photo Mode, with the Photo toggle taking priority for shared keys. Unknown ActionCam hooks are left untouched and cannot grant an unsafe photo-camera lease.
@@ -58,8 +62,7 @@ The MDL package contains no nested archives.
 LLL: install `dbf_freecam` in LLL's Mods folder, deploy the asset ZIP bundled
 inside that same download, and restart.
 Use one Photo Mode runtime at a time. Preserve settings, presets and screenshots.
-The supported standalone ActionCam can remain enabled. Unknown versions/hooks
-are refused; disable that unsupported ActionCam and restart to use Photo Mode.
+Supported ActionCam 2.3.1 can remain enabled. War Journalist holds exclusive camera ownership through placement and Cinema performance, then hands it back after cleanup. Unsupported camera versions are refused safely.
 See [installation and controls](freecam/README.md) for manual installation.
 
 ## Controls

@@ -148,6 +148,19 @@ function M.new(view,actions,existing)
   if not called or ok==false then self.notice=tostring(called and why or ok);return false end
   text_edit=nil;self.editing_value=nil;popup=nil;popup_close_on_release=false;drag=nil;color_edit=nil;self.notice=nil;return true
  end
+ function self.draw_cinema(w,h,key,hidden)
+  panel_bounds=nil;hits={};last_focus=false
+  if legend then legend.clear()end
+  if self.light_gizmos then self.light_gizmos.cancel()end
+  if hidden or not valid(w)or not valid(h)then view.draw({});return end
+  if view.refresh_font then view.refresh_font()end
+  local scale=math.max(.75,math.min(w/1920,h/1080));local x,y=20*scale,h-48*scale
+  view.draw({
+   {type='rect',x=x-8*scale,y=y-10*scale,w=340*scale,h=38*scale,c=T.background,a=.68,layer=300,ui_role='cinema_indicator'},
+   {type='rect',x=x-8*scale,y=y+27*scale,w=340*scale,h=2*scale,c=T.gold,a=1,layer=301},
+   {type='text',text='CINEMA CAMERA',x=x,y=y+10*scale,size=12*scale,c=T.gold,a=1,layer=310,text_bold=true,text_role='title'},
+   {type='text',text=key..': reposition  |  Screenshot key: capture',x=x,y=y-5*scale,size=10*scale,c=T.white,a=1,layer=310,text_role='body'}})
+ end
  function self.draw(w,h,focused,hidden,keys)
   -- Tab changes input ownership inside the same visible panel. Preserve the
   -- retained GUI/font planes; explicit focus loss still clears via suspend().

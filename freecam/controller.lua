@@ -1,10 +1,46 @@
 -- ActionCam photomode adapter. Camera placement stays owned by ActionCam.
 local M={}
-function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,catalog,saved_camera,screenshots,focus_sampler,lights,subject,director,unused_input_release,update_epoch,ai,poses,camera_compat)
+function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,catalog,saved_camera,screenshots,focus_sampler,lights,subject,director,unused_input_release,update_epoch,ai,poses,camera_compat,cinema)
     local roll_value;local self={};local api,handle,provider;local held=true;local retry=0;local controls={};local resume_after;local suppress_escape;local panel;local menu_focus=false;local controls_hidden=false;local recovery_menu=false;local focus_edge=false;local hide_edge=false;local slow_edge=false;local lock_edge=false;local escape_edge=false;local screenshot_edge=false
     local subject_pair;local subject_held;local subject_ready=false;local autofocus_write=false;local focus_deadline=0;local focus_elapsed=0;local focus_status='Manual focus';local focus_mode_seen;local menu_startup_reset=false
     local lighting_write=false;local lighting_revision=-1
+    local clear_subject_click,game_chat_active,bindings
     self._input_tick=0
+    self._cinema=cinema
+    function self.camera_owned()return photo.active or self._cinema_begin_pending~=nil or self._pose_stop_pending~=nil or camera_compat and camera_compat.held==true or false end
+    function self.cinema_performing()return self._cinema and self._cinema.state=='perform' or false end
+    function self._cinema_error(why)
+        local message=tostring(why)
+        if self._cinema then self._cinema.status=message end
+        if controls.cinema_status then controls.cinema_status.label=message end
+        if self._cinema_last_error~=message then self._cinema_last_error=message;log('Cinema camera: '..message)end
+    end
+    function self.begin_action_shot()
+        if not self._cinema or not photo.active or self._cinema_begin_pending then return false,'Place the camera first'end
+        if screenshots and screenshots.active()then return false,'Wait for the screenshot to finish'end
+        if roll_value and handle then handle.set('roll',roll_value);roll_value=nil end
+        local ok,why=self._cinema.prepare(effects and effects.fov)
+        if not ok then self._cinema_error(why);return false,why end
+        self._cinema_last_error=nil;self._cinema_begin_pending={};photo.input={};clear_subject_click()
+        return true
+    end
+    function self.reposition_camera()
+        if not self.cinema_performing()then return false,'No action shot is active'end
+        if not api.camera_input.focused()or self._native_menu_state()or self._external_menu_open()or game_chat_active()or not self._cinema.gameplay_input_ready()then
+            return false,'Close chat and native menus before repositioning the camera'
+        end
+        local token,why=api.camera_input.acquire(bindings())
+        if not token then self._cinema_error(why);return false,why end
+        provider=api.camera_input
+        local ok,reason=self._cinema.reposition()
+        if not ok then self.stop();return false,reason end
+        controls_hidden=false;menu_focus=false
+        if controls.lock_camera then handle.set('lock_camera',false)end
+        focus_edge=provider.down(handle.get('focus_key'));hide_edge=provider.down(handle.get('hide_controls_key'))
+        screenshot_edge=provider.down(handle.get('screenshot_key'));escape_edge=provider.down(27)
+        -- Reposition is live by default. The user may explicitly pause again.
+        photo.input={};return true
+    end
     self._ai=ai
     function self._native_menu_state()
         local reader=api and api.camera_input and api.camera_input.native_menu_active
@@ -326,7 +362,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         end
     end
     local function focus_message(message)focus_status=message;if controls.focus_status then controls.focus_status.label=message end end
-    local function clear_subject_click()
+    clear_subject_click=function()
         subject_pair=nil;subject_held=nil;subject_ready=false
     end
     local function sample_focus(u,v,prefix)
@@ -366,6 +402,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
     function self.stop(preserve_resume)
         self._pending_start=nil
         self._native_menu_yield=nil
+        self._cinema_begin_pending=nil;if self._cinema then self._cinema.cancel()end
         local time_waiting=self._pose_time_pending;self._pose_time_pending=nil
         -- Bone leases are restored only by the owning update. Keep the paused
         -- camera/input ownership until that update acknowledges restoration.
@@ -392,6 +429,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         if subject and(subject.count()>0 or subject.pending)then subject.queue(nil)end
         if not preserve_resume then resume_after=nil end
         if roll_value and handle then handle.set('roll',roll_value);roll_value=nil end
+        if self._cinema then self._cinema.stop()end
         photo.active,photo.pos,photo.locked,photo.lock_pose=false,nil,false,nil
         photo.input={};photo.view=nil;photo.light_context=nil;suppress_escape=nil;menu_focus=false;controls_hidden=false;recovery_menu=false
         self._panel_close_pending=nil
@@ -414,7 +452,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         if camera_compat then local ok,why=camera_compat.release();if ok==false then return false,why end end
         return restored,reason
     end
-    local function bindings()
+    bindings=function()
         local keys={}
         for _,name in ipairs({'forward','back','left','right','up','down'}) do keys[name]=handle.get(name..'_key') end
         keys.screenshot=handle.get('screenshot_key')
@@ -427,7 +465,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         end
         return down
     end
-    local function game_chat_active()
+    game_chat_active=function()
         -- The input service supplies an authoritative game text-entry reader.
         -- Physical keys and window foreground state do not identify chat.
         local reader=api and api.camera_input and api.camera_input.chat_active
@@ -469,6 +507,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         local token,why=input.acquire(bindings())
         if not token then self.stop();return false,why end
         provider=input;photo.active,photo.pos=true,nil;controls_hidden=false
+        if self._cinema then self._cinema.place()end
         if subject then subject_change()end;director_elapsed=.5;ai_elapsed=.5
         if saved_camera then saved_camera.restore(handle.get('saved_camera_radius'),handle)end
         focus_edge=input.down(handle.get('focus_key'));hide_edge=input.down(handle.get('hide_controls_key'));lock_edge=input.down(handle.get('lock_camera_key'));screenshot_edge=input.down(handle.get('screenshot_key'))
@@ -487,6 +526,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
             local ok,why=self.stop();if ok==false or not start then return ok,why end
         end
         if photo.active then
+            if self.cinema_performing()and reveal_hidden then return self.reposition_camera()end
             if reveal_hidden and controls_hidden then controls_hidden=false;return true end
             return self.stop()
         end
@@ -559,7 +599,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
                 {id='roll_left_key',type='keybind',label='Roll left',default=81},
                 {id='roll_right_key',type='keybind',label='Roll right',default=69},
                 {id='roll_speed',type='slider',label='Roll speed (degrees/s)',default=45,min=1,max=180,step=1},
-                {id='freeze_player',type='toggle',label='Pause entire action (solo)',default=true,on_change=function(v)if not v then self._request_time_change(nil)end end},
+                {id='freeze_player',type='toggle',label='Pause entire action (solo)',default=true,on_change=function(v)if not v and not self.cinema_performing()then self._request_time_change(nil)end end},
                 {id='look_sensitivity',type='slider',label='Camera look sensitivity',default=0.15,min=0.01,max=1,step=0.01},
                 {id='focus_key',type='keybind',label='Switch camera / menu focus',default=9},
                 {id='hide_controls_key',type='keybind',label='Show / hide photo controls',default=72},
@@ -598,6 +638,9 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
                     subject_pose_change=self._poses and function()return self._pose_action(false)end,
                     ai_change=self._ai_change,
                     ai_reset=self._reset_ai,
+                    cinema_begin=self._cinema and function()self.begin_action_shot()end,
+                    cinema_reposition=self._cinema and function()self.reposition_camera()end,
+                    cinema_end=self._cinema and function()self.stop()end,
                     director_save=director and function()director_action('save')end,
                     director_recall=director and function()director_action('recall')end,
                     director_clear=director and function()director_action('clear')end,
@@ -683,10 +726,10 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         end
         held=key
         local screenshot_key=key_down(handle.get('screenshot_key'))
-        if screenshot_key and not screenshot_edge and photo.active and not recovery_menu and provider and api.camera_input.focused()and not self._external_menu_open()and not editing and not game_chat_active()and screenshots and not screenshots.active()then self.request_screenshot()end
+        if screenshot_key and not screenshot_edge and photo.active and not recovery_menu and (provider or self.cinema_performing()and self._cinema.gameplay_input_ready())and api.camera_input.focused()and not self._external_menu_open()and not editing and not game_chat_active()and screenshots and not screenshots.active()then self.request_screenshot()end
         screenshot_edge=screenshot_key
         local slow_key=key_down(handle.get('slowmo_key'))
-        if slow_key and not slow_edge and not editing and not self._external_menu_open()and freeze and not self._pending_start then
+        if slow_key and not slow_edge and not editing and not self._external_menu_open()and freeze and not self._pending_start and not self.cinema_performing()and not self._cinema_begin_pending then
             self.slowmo_active=not self.slowmo_active
             local rate=self.slowmo_active and handle.get('slowmo_speed')or (photo.active and handle.get('freeze_player')and 0 or nil)
             local ok,why=self._request_time_change(rate)
@@ -762,6 +805,45 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         self._refresh_poses(dt)
         refresh_subject_director(dt)
         self._refresh_ai(dt)
+        if controls.cinema_begin then
+            controls.cinema_begin.disabled=not(photo.active and self._cinema and self._cinema.state=='place'and photo.pos and photo.view and not self._cinema_begin_pending)
+            controls.cinema_reposition.disabled=not self.cinema_performing()
+            controls.cinema_end.disabled=not photo.active
+            controls.cinema_status.label=self._cinema and self._cinema.status or 'Cinema camera unavailable'
+        end
+        if self._cinema_begin_pending then
+            -- Fixed body/cape leases restore on the owning update before time resumes.
+            local ok,why=self._request_time_change(nil)
+            if not ok then self._cinema_begin_pending=nil;self._cinema.cancel();self._cinema_error(why);return end
+            photo.input={}
+            if self._pose_time_pending or self._poses and(self._poses.active or self._poses.pending)then return end
+            self.slowmo_active=false
+            if freeze and freeze.cleanup_pending and freeze.cleanup_pending()then return end
+            if panel then local called,closed,reason=pcall(panel.close);if not called or closed==false then self._cinema_error(called and reason or closed);return end end
+            if provider then local released,reason=provider.release();if not released then self._cinema_error(reason);return end;provider=nil end
+            local accepted,reason=self._cinema.commit();self._cinema_begin_pending=nil
+            if not accepted then self.stop();self._cinema_error(reason);return end
+            -- Gameplay is running again. Show the actual state when placement
+            -- returns, so the user can pause with one click instead of cycling it.
+            if controls.freeze_player then handle.set('freeze_player',false)end
+            self._cinema_last_error=nil;controls_hidden=true;menu_focus=false;photo.input={}
+        end
+        if self.cinema_performing()then
+            local capturing=screenshots and screenshots.active()
+            if capturing and(not api.camera_input.focused()or not self._cinema.gameplay_input_ready()or api.is_open()or game_chat_active())then screenshots.cancel();capturing=false end
+            if options then
+                photo.options=options.read(handle);photo.options.hide_controls=true
+                if capturing then photo.options.hide_hud=true;photo.options.grid=1 end
+            end
+            local ok,why=self._cinema.hold();if not ok then self.stop();self._cinema_error(why);return end
+            if panel and panel.draw_cinema then
+                local w,h=api.photo_resolution()
+                local key=handle.get('toggle_key');local label=key==20 and 'Caps Lock'or key>=32 and key<=126 and string.char(key)or('VK '..key)
+                panel.draw_cinema(w,h,label,capturing or not api.camera_input.focused()or not self._cinema.gameplay_input_ready())
+            end
+            if capturing then local _,status=screenshots.tick();if status and panel then panel.notice=status end end
+            return -- Avatar receives input; keep the independent render/camera lease.
+        end
         local lock_key=key_down(handle.get('lock_camera_key'))
         if lock_key and not lock_edge and not editing and not self._external_menu_open()then handle.set('lock_camera',not handle.get('lock_camera'))end
         lock_edge=lock_key

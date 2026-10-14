@@ -16,7 +16,7 @@ import time
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = (
     'actioncam_compat_tests.lua', 'actioncam_controls_tests.lua',
-    'tests.lua', 'look_tests.lua', 'simulation_tests.lua', 'hover_pause_tests.lua', 'hover_pause_backend_tests.lua', 'hover_pause_integration_tests.lua', 'input_release_tests.lua', 'studio_tests.lua',
+    'cinema_camera_tests.lua', 'cinema_controls_tests.lua', 'tests.lua', 'look_tests.lua', 'simulation_tests.lua', 'hover_pause_tests.lua', 'hover_pause_backend_tests.lua', 'hover_pause_integration_tests.lua', 'input_release_tests.lua', 'studio_tests.lua',
     'menu_tests.lua', 'resize_menu_tests.lua', 'photo_menu_interaction_tests.lua', 'slider_scrub_tests.lua', 'control_legend_tests.lua',
     'numeric_menu_tests.lua', 'numeric_blur_tests.lua', 'panel_lifecycle_tests.lua', 'close_cleanup_tests.lua', 'photo_runtime_lifecycle_tests.lua', 'menu_reopen_tests.lua', 'postfx_tests.lua',
     'native_lens_tests.lua', 'animation_state_tests.lua', 'chat_context_tests.lua', 'subject_tests.lua','subject_poses_tests.lua','subject_pose_cape_tests.lua','subject_poses_controls_tests.lua', 'subject_backend_tests.lua', 'director_tests.lua', 'director_controls_tests.lua', 'ai_control_tests.lua', 'ai_controls_integration_tests.lua', 'focus_sampler_tests.lua', 'autofocus_controls_tests.lua', 'photo_lights_tests.lua','photo_light_presets_tests.lua','photo_light_gizmos_tests.lua','light_tools_controls_tests.lua', 'crest_runtime_tests.lua', 'saved_camera_tests.lua', 'shader_runtime_tests.lua', 'screenshot_tests.lua',
@@ -49,6 +49,7 @@ def main():
     import run_lua
     if not run_lua.DLL.is_file():
         parser.error('LuaJIT library missing; use --lua-dll or HD2_LUA51_DLL')
+    (ROOT/'dist/validation').mkdir(parents=True, exist_ok=True)
     original_cwd = Path.cwd()
     bootstrap = ('DBF_PHOTO_TEST_ROOT='+lua_string((ROOT/'freecam').as_posix()+'/')+'\n'
                  'DBF_PHOTO_REPO_ROOT='+lua_string(ROOT.as_posix()+'/')+'\n').encode()

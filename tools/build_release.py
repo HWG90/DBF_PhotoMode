@@ -29,7 +29,7 @@ ACTIVE_MODULES=('actioncam_compat.lua','animation_state.lua','chat_context.lua',
     'photo_options.lua','lens.lua','composition.lua','postfx.lua','photo_runtime.lua','hud.lua','render_profile.lua',
     'camera_profile.lua','photo_menu.lua','control_legend.lua','screenshot.lua','screenshot_backend.lua',
     'depth_resource.lua','focus_sampler.lua','photo_lights.lua','photo_light_gizmos.lua','photo_light_presets.lua','subject_backend.lua','subject.lua','subject_poses.lua','director.lua','ai_backend.lua','ai_control.lua',
-    'saved_camera.lua','controller.lua','hover_pause.lua',
+    'saved_camera.lua','cinema_camera.lua','controller.lua','hover_pause.lua',
     'hover_pause_backend.lua','scene_dof_overlay.lua','shader_template_guard.lua','standalone.lua','photo_input_capture.lua',
     'bsl_startup.lua','mdl.lua','lll.lua','assets/logo_art.lua','assets/helldiver_crest.lua','assets/subject_pose_frames.lua')
 
@@ -144,12 +144,13 @@ def flat_mdl_files(files, asset_manifest):
 def public_docs(files,prefix=''):
     documents={'README.md':ROOT/'README.md','KNOWN-ISSUES.md':ROOT/'docs/KNOWN-ISSUES.md',
         'RELEASE-NOTES.md':ROOT/'docs'/('RELEASE-'+VERSION+'.md')}
-    for name in ('SUBJECT-POSE-CATALOGUE.md','PHOTO-LIGHT-ASSET.md','PHOTO-AI.md','RELEASE-0.9.5.md','RELEASE-0.9.7.md','RELEASE-0.9.8.md','HOVER-PAUSE-VERIFICATION.json'):
+    for name in ('CINEMA-CAMERA.md','SUBJECT-POSE-CATALOGUE.md','PHOTO-LIGHT-ASSET.md','PHOTO-AI.md','RELEASE-0.9.5.md','RELEASE-0.9.7.md','RELEASE-0.9.8.md','RELEASE-0.9.9.md','RELEASE-0.9.10.md','HOVER-PAUSE-VERIFICATION.json'):
         documents[name]=ROOT/'docs'/name
     for target,path in documents.items():files[prefix+target]=path.read_bytes()
     readme=files[prefix+'README.md']
     for source,target in [('docs/RELEASE-'+VERSION+'.md','RELEASE-NOTES.md'),('freecam/README.md','INSTALL.txt'),
-        ('docs/SUBJECT-POSE-CATALOGUE.md','SUBJECT-POSE-CATALOGUE.md'),('docs/KNOWN-ISSUES.md','KNOWN-ISSUES.md'),
+        ('docs/CINEMA-CAMERA.md','CINEMA-CAMERA.md'),('docs/SUBJECT-POSE-CATALOGUE.md','SUBJECT-POSE-CATALOGUE.md'),('docs/KNOWN-ISSUES.md','KNOWN-ISSUES.md'),
+        ('docs/RELEASE-0.9.9.md','RELEASE-0.9.9.md'),('docs/RELEASE-0.9.10.md','RELEASE-0.9.10.md'),
         ('docs/RELEASE-0.9.5.md','RELEASE-0.9.5.md'),('docs/RELEASE-0.9.7.md','RELEASE-0.9.7.md'),('docs/RELEASE-0.9.8.md','RELEASE-0.9.8.md'),('docs/artwork/war-journalist-cover.png','artwork/war-journalist-cover.png'),
         ('docs/artwork/war-journalist-'+ARTWORK_VERSION+'-cover.png','artwork/war-journalist-cover.png')]:
         readme=readme.replace(('('+source+')').encode(),('('+target+')').encode())

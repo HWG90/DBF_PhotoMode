@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.11 development candidate — 2026-10-14
+
+- Added Director action shots: place the camera, return input to the Helldiver and retain the static camera position, rotation, roll and FOV. The Photo Mode shortcut returns to placement.
+- Restore fixed poses, paused world time and hover overrides before returning gameplay input. Camera ownership remains exclusive through performance; scene and player changes retire the shot.
+- Retain the screenshot shortcut without recapturing gameplay input, and hide the Cinema indicator in mod screenshots. Native menus, chat and focus loss block camera shortcuts.
+- Includes the completed 0.9.10 ActionCam startup and disposal guards. Offline lifecycle/render fixtures and complete package validation cover the candidate; live aiming, combat and coexistence remain unverified.
+
+Full details: [Cinema camera notes](docs/RELEASE-0.9.11.md).
+
 ## 0.9.10 development candidate — 2026-10-14
 
 - Added scoped camera ownership for the supported standalone ActionCam 2.3.1 / runtime 10.31. Gameplay profiles and First Person remain ActionCam's; its camera update/draw work yields while War Journalist owns Photo Mode.
