@@ -1,4 +1,4 @@
-"""Verify immutable War Journalist releases (0.9.5 through 0.9.7 and legacy gates)."""
+"""Verify immutable War Journalist releases (0.9.5 through 0.9.8 and legacy gates)."""
 import argparse
 from collections import Counter
 from datetime import datetime, timezone
@@ -14,7 +14,7 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 PREFIX = 'dbf_freecam/'
-SHADER_RELEASES = {'0.9.5': '0.9.5', '0.9.6': '0.9.6', '0.9.7': '0.9.6'}
+SHADER_RELEASES = {'0.9.5': '0.9.5', '0.9.6': '0.9.6', '0.9.7': '0.9.6', '0.9.8': '0.9.6'}
 REQUIRED = {'main.lua', 'src/actioncam.lua', 'src/standalone.lua', 'config/defaults.cfg',
             'INSTALL.txt', 'PROVENANCE.json', 'manifest.json', 'FILES-SHA256.txt',
             'LICENSE-Bingus.txt', 'PhotoCapture64.dll', 'standalone-library.txt'}
@@ -333,7 +333,7 @@ def verify_current(path, version, standalone=False):
     for name in ('INSTALL.txt', 'KNOWN-ISSUES.md', 'RELEASE-NOTES.md', 'ASSET-MANIFEST.json'):
         assert metadata.get(name), 'Release metadata missing: '+name
     asset_manifest = json.loads(metadata['ASSET-MANIFEST.json'])
-    if version == '0.9.7':
+    if version in ('0.9.7', '0.9.8'):
         assert asset_manifest['shader_asset_version'] == SHADER_RELEASES[version], 'Release must retain the frozen 0.9.6 shader assets'
     for key, expected in (('version', version), ('shader_libraries_core', 44), ('materials_shared', 44), ('registry_resources_core', 1), ('registry_ids', 319)):
         assert asset_manifest[key] == expected, 'Packaged asset manifest disagrees with resource closure: '+key

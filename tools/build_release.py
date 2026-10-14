@@ -18,7 +18,8 @@ import photo_assets
 import photo_light_assets
 
 VERSION=(ROOT/'VERSION').read_text().strip()
-ASSET_VERSION='0.9.6' # Reused unchanged by 0.9.7; both prior shader snapshots remain immutable.
+ASSET_VERSION='0.9.6' # Reused unchanged by 0.9.7/0.9.8; prior shader snapshots remain immutable.
+ARTWORK_VERSION='0.9.7' # The 0.9.8 hotfix retains the accepted cover and feature gallery.
 SNAPSHOTS=ROOT/('freecam/assets/shaders/release-'+ASSET_VERSION)
 APPROVED_GPU='f5960f63e1247ac40af4bb37ccbd59ac26c9168aad9eb40936c082c9ddf40194'
 CINEMATIC_GPU='0ee49d87cc1250ab5582934fba8f925d33bf63cb2555651f1974a52dfa55c9b7'
@@ -140,21 +141,21 @@ def flat_mdl_files(files, asset_manifest):
 def public_docs(files,prefix=''):
     documents={'README.md':ROOT/'README.md','KNOWN-ISSUES.md':ROOT/'docs/KNOWN-ISSUES.md',
         'RELEASE-NOTES.md':ROOT/'docs'/('RELEASE-'+VERSION+'.md')}
-    for name in ('SUBJECT-POSE-CATALOGUE.md','PHOTO-LIGHT-ASSET.md','PHOTO-AI.md','RELEASE-0.9.5.md','HOVER-PAUSE-VERIFICATION.json'):
+    for name in ('SUBJECT-POSE-CATALOGUE.md','PHOTO-LIGHT-ASSET.md','PHOTO-AI.md','RELEASE-0.9.5.md','RELEASE-0.9.7.md','HOVER-PAUSE-VERIFICATION.json'):
         documents[name]=ROOT/'docs'/name
     for target,path in documents.items():files[prefix+target]=path.read_bytes()
     readme=files[prefix+'README.md']
     for source,target in [('docs/RELEASE-'+VERSION+'.md','RELEASE-NOTES.md'),('freecam/README.md','INSTALL.txt'),
         ('docs/SUBJECT-POSE-CATALOGUE.md','SUBJECT-POSE-CATALOGUE.md'),('docs/KNOWN-ISSUES.md','KNOWN-ISSUES.md'),
-        ('docs/RELEASE-0.9.5.md','RELEASE-0.9.5.md'),('docs/artwork/war-journalist-cover.png','artwork/war-journalist-cover.png'),
-        ('docs/artwork/war-journalist-'+VERSION+'-cover.png','artwork/war-journalist-cover.png')]:
+        ('docs/RELEASE-0.9.5.md','RELEASE-0.9.5.md'),('docs/RELEASE-0.9.7.md','RELEASE-0.9.7.md'),('docs/artwork/war-journalist-cover.png','artwork/war-journalist-cover.png'),
+        ('docs/artwork/war-journalist-'+ARTWORK_VERSION+'-cover.png','artwork/war-journalist-cover.png')]:
         readme=readme.replace(('('+source+')').encode(),('('+target+')').encode())
     files[prefix+'README.md']=readme
-    cover=ROOT/'docs/artwork'/('war-journalist-'+VERSION+'-cover.png')
+    cover=ROOT/'docs/artwork'/('war-journalist-'+ARTWORK_VERSION+'-cover.png')
     if not cover.is_file():cover=ROOT/'docs/artwork/war-journalist-cover.png'
     files[prefix+'artwork/war-journalist-cover.png']=cover.read_bytes()
-    for path in sorted((ROOT/'docs/gallery'/VERSION).glob('*.jpg')):
-        files[prefix+'gallery/'+VERSION+'/'+path.name]=path.read_bytes()
+    for path in sorted((ROOT/'docs/gallery'/ARTWORK_VERSION).glob('*.jpg')):
+        files[prefix+'gallery/'+ARTWORK_VERSION+'/'+path.name]=path.read_bytes()
     return files
 
 def build(output):

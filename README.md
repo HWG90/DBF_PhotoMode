@@ -1,6 +1,6 @@
 ![War Journalist](docs/artwork/war-journalist-0.9.7-cover.png)
 
-# War Journalist 0.9.7
+# War Journalist 0.9.8
 
 A Photo Mode for Helldivers 2: free camera, a compact movable studio menu,
 Native and shader depth of field, autofocus, color grading, scene effects,
@@ -9,9 +9,15 @@ photo lighting, Director camera presets and enemy behavior controls,
 
 [Download on Nexus](https://www.nexusmods.com/helldivers2/mods/17248?tab=files) ·
 [GitHub downloads](https://github.com/HWG90/DBF_PhotoMode/releases) ·
-[Full 0.9.7 changelog](docs/RELEASE-0.9.7.md)
+[0.9.8 hotfix notes](docs/RELEASE-0.9.8.md) ·
+[0.9.7 feature notes](docs/RELEASE-0.9.7.md)
 
 ## What's new
+
+- **Steady Native DoF:** temporary or older render packets no longer reset a valid owned lens. The blur was confirmed steady with the camera still and while moving.
+- **Held inputs preserved:** entering and leaving Photo Mode no longer forces all keys and mouse buttons to release. Held ADS now stays correct while posing, confirmed in-game. The data-only hoverpack pause guard remains and still requires neutral hover controls.
+
+The complete 0.9.7 feature set, UI and artwork are retained:
 
 - **213 fixed pose frames:** select a pose while the scene stays paused. Gestures, cooperative variants, kneeling poses and both push-ups are included. Reset restores the original pose before play resumes. These are sampled emote/action frames, not 213 store items; see the [pose catalogue](docs/SUBJECT-POSE-CATALOGUE.md).
 - **Cape correction:** supported capes follow the posed shoulders and restore across pose changes. The integrated fix was confirmed in-game; it preserves the frozen cloth shape without advancing physics. Wider cape coverage remains open.

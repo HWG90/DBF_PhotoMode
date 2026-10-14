@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.9.8 — 2026-10-13
+
+- Fixed Native DoF flickering when temporary render packets disappeared, expired or carried stock lens values. A validated owned lens is retained until the actual camera/profile owner changes; matching packets are preferred when multiple views are queued. Blur was confirmed steady while still and moving.
+- Removed blanket synthetic key and mouse-button releases on Photo Mode entry and exit. Held gameplay inputs, including ADS, remain intact for posing. Held ADS behavior was confirmed in-game.
+- Retained the data-only hoverpack pause guard and its neutral-control requirement. This hotfix does not claim a new hoverpack regression test.
+- Retained the complete 0.9.7 UI, fixed poses/cape correction, solo AI controls, photo lights, shader compositor, curated logos and bundled assets.
+- Complete BSL, MDL and LLL bundles; MDL remains flat without nested archives. All 54 fixture groups and all three package-only startup checks passed. Lighting is **Not tested fully**; HDR/SDR and other display-setting crashes remain unresolved.
+
+Full details: [0.9.8 release notes](docs/RELEASE-0.9.8.md).
+
 ## 0.9.7 — 2026-10-13
 
 Public release covering all changes since 0.9.5, including the 0.9.6 development work below.
