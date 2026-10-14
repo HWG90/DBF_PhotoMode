@@ -30,9 +30,12 @@ def resources(output):
     originals = photo_assets.load_resources()
     core = [row for row in originals if row[1] == photo_assets.SHADER]
     shared = [row for row in originals if row[1] == photo_assets.MATERIAL]
-    group = bodies['dof_registry_base.bin']
+    # The retained 315-entry group came from a whole HUD build. Its extra
+    # registrations are not bundled here. Start with the exact stock registry
+    # and the 40 owned decorative libraries, then append our two scene pairs.
+    group = photo_assets.registry_resource()[2]
     ids = list(photo_assets.registry_ids(group))
-    assert len(ids) == 315
+    assert len(ids) == 117
     for item in identity['effects']:
         shader_id = photo_assets.hash64(item['shader'])
         assert shader_id not in ids
@@ -46,12 +49,14 @@ def resources(output):
     struct.pack_into('<I', registry, 16, len(ids))
     registry += struct.pack('<%dQ' % len(ids), *ids)
     core.append((photo_assets.hash64(photo_assets.GROUP_NAME), photo_assets.GROUP, bytes(registry), b''))
-    assert len(core) == 43 and len(shared) == 42 and len(ids) == 317
+    assert len(core) == 43 and len(shared) == 42 and len(ids) == 119
+    stock = set(photo_assets.registry_ids((folder / 'original-default-shaders.bin').read_bytes()))
+    assert set(ids) == stock | {row[0] for row in core if row[1] == photo_assets.SHADER}, 'Shader registry has unbundled or missing libraries'
     for rows in (core, shared):
         cpu, gpu = photo_assets.archive_rows(rows)
         assert sorted(photo_assets.read_archive(cpu, gpu)) == sorted(rows)
     return core, shared, {'shader_libraries_core': 42, 'materials_shared': 42,
-        'registry_ids': 317, 'decorative_pairs': 40, 'shader_dof_focus_aperture_user_confirmed': True,
+        'registry_ids': 119, 'decorative_pairs': 40, 'shader_dof_focus_aperture_user_confirmed': True,
         'native_numeric_dof_functional': False, 'scene_visual_verified': False,
         'asset_files_sha256': identity['files']}
 

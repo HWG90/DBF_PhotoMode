@@ -1,6 +1,6 @@
 {
   "version": "0.9.6",
-  "base_core_rows_sha256": "9014b93afd6b6368de12b69d5d82ce05920c3df9205fcb1f8e1ab11207af9906",
+  "base_core_rows_sha256": "b32719e888f7db26b7f9b89ad6c3181d5acab93225518b0c4e9576f9241be325",
   "base_shared_rows_sha256": "a9a999989e60f3dffa6880a0de2e07b8006722dbf4c10fe0f4e209cbc8e38f9b",
   "base_reference_zip_sha256": "be8b821b545a8146d8c340aa552a3c6dc02b70c39376d3e8bc9e054391ebc866",
   "pairs": [

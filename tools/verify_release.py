@@ -191,7 +191,7 @@ def _release_files(source):
     return files
 
 
-def _release_asset_closure(files, prefix, bsl, version):
+def _release_asset_closure(files, prefix, bsl, version, allow_legacy_registry=False):
     import photo_assets
     import lua_archive
     import photo_light_assets
@@ -239,9 +239,16 @@ def _release_asset_closure(files, prefix, bsl, version):
     group = next(row for row in core if row[1] == photo_assets.GROUP)
     assert group[0] == photo_assets.hash64(photo_assets.GROUP_NAME) and not group[3], 'Wrong shader registry resource'
     ids = photo_assets.registry_ids(group[2])
-    base = (ROOT/'freecam/assets/shaders/dof_registry_base.bin').read_bytes()
-    assert len(ids) == 319 and tuple(ids[:315]) == photo_assets.registry_ids(base), 'Existing renderer registrations changed'
-    assert set(ids[315:]) == {photo_assets.hash64('mods/dbf_photo/shaders/'+name) for name in extra_names}, 'Photo registration additions differ'
+    stock = photo_assets.registry_ids((ROOT/'freecam/assets/shaders/original-default-shaders.bin').read_bytes())
+    expected_ids = set(stock) | expected_shaders
+    dangling = set(ids) - expected_ids
+    if allow_legacy_registry and dangling:
+        base = (ROOT/'freecam/assets/shaders/dof_registry_base.bin').read_bytes()
+        assert len(ids) == 319 and tuple(ids[:315]) == photo_assets.registry_ids(base), 'Unknown historical registry'
+        assert set(ids[315:]) == {photo_assets.hash64('mods/dbf_photo/shaders/'+name) for name in extra_names}, 'Historical additions differ'
+    else:
+        assert len(ids) == len(expected_ids) == 121 and set(ids) == expected_ids, 'Shader registry contains missing or unbundled registrations'
+        assert tuple(ids[:len(stock)]) == stock, 'Native shader registration order changed'
     assert expected_shaders <= set(ids), 'Unregistered packaged shader'
     lua_rows = [row for row in shared if row[1] == lua_archive.LUA_TYPE]
     startup = None
@@ -251,17 +258,18 @@ def _release_asset_closure(files, prefix, bsl, version):
         body = row[2]
         assert len(body) >= 8 and struct.unpack_from('<II', body) == (len(body)-8, 2), 'BSL startup envelope invalid'
         startup = body[8:].decode()
-    return {'shader_libraries': 44, 'materials': 44, 'registry_ids': 319, 'dedicated_lights': 1,
+    return {'shader_libraries': 44, 'materials': 44, 'registry_ids': len(ids), 'dedicated_lights': 1,
+            'unbundled_shader_registrations': len(dangling),
             'startup_resources': len(lua_rows), 'external_light_dependencies': [],
             'registry_sha256': hashlib.sha256(group[2]).hexdigest()}, startup
 
 
-def verify_current(path, version, standalone=False):
+def verify_current(path, version, standalone=False, allow_legacy_registry=False):
     import photo_assets
     from test_packaged_standalone import pe_imports
     files = _release_files(path)
     bsl = 'Addon/9ba626afa44a3aa3.patch_0' in files
-    audit, startup = _release_asset_closure(files, 'Addon/' if bsl else 'GameData/', bsl, version)
+    audit, startup = _release_asset_closure(files, 'Addon/' if bsl else 'GameData/', bsl, version, allow_legacy_registry)
     if bsl:
         loader = 'BSL'
         manifest = json.loads(files['manifest.json'])
@@ -295,7 +303,7 @@ def verify_current(path, version, standalone=False):
         else:
             asset_zip = files['Arsenal/War-Journalist-'+version+'-Assets.zip']
             nested = _release_files(io.BytesIO(asset_zip))
-            nested_audit, _ = _release_asset_closure(nested, 'Assets/', False, version)
+            nested_audit, _ = _release_asset_closure(nested, 'Assets/', False, version, allow_legacy_registry)
             assert nested_audit == audit, 'Arsenal companion asset closure differs'
             for name, body in files.items():
                 if name.startswith('GameData/'):
@@ -335,7 +343,7 @@ def verify_current(path, version, standalone=False):
     asset_manifest = json.loads(metadata['ASSET-MANIFEST.json'])
     if version in ('0.9.7', '0.9.8'):
         assert asset_manifest['shader_asset_version'] == SHADER_RELEASES[version], 'Release must retain the frozen 0.9.6 shader assets'
-    for key, expected in (('version', version), ('shader_libraries_core', 44), ('materials_shared', 44), ('registry_resources_core', 1), ('registry_ids', 319)):
+    for key, expected in (('version', version), ('shader_libraries_core', 44), ('materials_shared', 44), ('registry_resources_core', 1), ('registry_ids', audit['registry_ids'])):
         assert asset_manifest[key] == expected, 'Packaged asset manifest disagrees with resource closure: '+key
     assert asset_manifest['lighting_status'] == 'Not tested fully' and asset_manifest['photo_light']['external_dependencies'] == []
     docs = b'\n'.join(metadata.get(name, b'') for name in ('INSTALL.txt', 'KNOWN-ISSUES.md', 'RELEASE-NOTES.md')).decode()
@@ -362,14 +370,14 @@ def verify_current(path, version, standalone=False):
     return result
 
 
-def verify(path, standalone=False):
+def verify(path, standalone=False, allow_legacy_registry=False):
     # Dispatch from the immutable package identity, not this checkout's VERSION.
     with zipfile.ZipFile(path) as archive:
         name = PREFIX+'manifest.json' if PREFIX+'manifest.json' in archive.namelist() else 'manifest.json'
         manifest = json.loads(archive.read(name))
     version = manifest.get('version') or manifest.get('Name', '').removeprefix('War Journalist ')
     if version in SHADER_RELEASES:
-        return verify_current(path, version, standalone)
+        return verify_current(path, version, standalone, allow_legacy_registry)
     assert not standalone, '--standalone in this verifier requires a supported release package'
     return verify_legacy_stable(path)
 
@@ -379,9 +387,10 @@ def main():
     parser.add_argument('archive', type=Path)
     parser.add_argument('--receipt', type=Path)
     parser.add_argument('--standalone', action='store_true', help='Also execute the package-only mocked startup check; never attaches to the game')
+    parser.add_argument('--allow-legacy-registry', action='store_true', help='Audit immutable historical packages with known external shader registrations; never use for a new release')
     args = parser.parse_args()
     try:
-        result = verify(args.archive, args.standalone)
+        result = verify(args.archive, args.standalone, args.allow_legacy_registry)
     except (AssertionError, ValueError, KeyError, zipfile.BadZipFile) as error:
         print('FAIL: '+str(error), file=sys.stderr)
         return 1
