@@ -339,7 +339,22 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         return self.slowmo_active==true,enabled==true
     end
     function self._toggle_slow_motion()
+        if self._scene_start_pending then
+            if self._scene_start_pending.action=='slowmo'then return self.stop(true)end
+            return false,'Waiting for the Photo camera'
+        end
         local _,enabled=self._slowmo_action_state();if not enabled then return false,'Slow motion is unavailable while simulation ownership is changing'end
+        if not self.slowmo_active and not photo.active then
+            local ready,reason,warming=can_start()
+            if not ready then
+                if warming==true then
+                    self._idle_stopped=false
+                    self._scene_start_pending={action='slowmo',input=api.camera_input,handle=handle,frames=0,elapsed=0,reason=reason}
+                    return true,reason
+                end
+                return false,reason or'Camera scene is unavailable'
+            end
+        end
         self.slowmo_active=not self.slowmo_active
         if self.slowmo_active then self._slowmo_rate=handle.get('slowmo_speed')end
         local frozen=self._freeze_action_state()
@@ -1094,9 +1109,12 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
             if not(opening and game_chat_active())then inform_toggle(true)end
         end
         held=key
+        local slow_key=key_down(handle.get('slowmo_key'))
         if self._scene_start_pending then
             local waiting=self._scene_start_pending
-            if waiting.input~=api.camera_input or waiting.handle~=handle or not handle.get('enabled')or
+            local cancel_slowmo=waiting.action=='slowmo'and slow_key and not slow_edge
+            slow_edge=slow_key
+            if cancel_slowmo or waiting.input~=api.camera_input or waiting.handle~=handle or waiting.action~='slowmo'and not handle.get('enabled')or
                 not api.camera_input.focused()or self._external_menu_open()or game_chat_active()or key_down(27)then
                 self.stop();return
             end
@@ -1104,7 +1122,9 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
             local ready,reason,warming=can_start();waiting.reason=reason or waiting.reason
             if ready then
                 self._scene_start_pending=nil
-                local ok,why=toggle(true);if ok==false then log('freecam: '..tostring(why))end
+                local ok,why
+                if waiting.action=='slowmo'then ok,why=self._toggle_slow_motion()else ok,why=toggle(true)end
+                if ok==false then log('freecam: '..tostring(why))end
             elseif warming~=true or waiting.frames>=120 or waiting.elapsed>=.5 then
                 self.stop();log('freecam: '..tostring(waiting.reason or'Timed out waiting for the rendered camera'))
             end
@@ -1113,11 +1133,11 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         local screenshot_key=key_down(handle.get('screenshot_key'))
         if screenshot_key and not screenshot_edge and photo.active and not recovery_menu and (provider or self.cinema_performing()and self._cinema.gameplay_input_ready())and api.camera_input.focused()and not self._external_menu_open()and not editing and not game_chat_active()and screenshots and not screenshots.active()then self.request_screenshot()end
         screenshot_edge=screenshot_key
-        local slow_key=key_down(handle.get('slowmo_key'))
         if slow_key and not slow_edge and not editing and not self._external_menu_open()and freeze and not self._pending_start and not self._freeze_action_pending and not self.cinema_performing()and not self._cinema_begin_pending then
             local ok,why=self._toggle_slow_motion();if ok==false then log('Slow motion: '..tostring(why))end
         end
         slow_edge=slow_key
+        if self._scene_start_pending then photo.input={};return end
         if self.slowmo_active and freeze then
             local ok,why=freeze.hold();if not ok then self.slowmo_active=false;log(tostring(why))end
         end

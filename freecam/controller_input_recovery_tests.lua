@@ -60,8 +60,11 @@ local function fixture(hover)
  if hover then
   local sr={Network={game_session=function()return 1 end},GameSession={other_peers=function()return{}end,synchronizing_peers=function()return{}end},
    World={time=function()return f.world_time end,delta_time=function()return f.rate==0 and 0 or .016*f.rate end}}
-  local backend={snapshot=function()return{value=f.rate}end,value=function()return f.rate end,now=function()return f.clock end,
-   set=function(_,rate)f.rate=rate;event(rate==0 and'time_freeze'or'time_resume')end}
+   local backend={snapshot=function()return{value=f.rate}end,value=function()return f.rate end,now=function()return f.clock end,
+    set=function(_,rate)
+     if f.require_scene_proof then assert(f.scene_ready==true,'Simulation write preceded fresh scene proof')end
+     f.time_writes=(f.time_writes or 0)+1;f.rate=rate;event(rate==0 and'time_freeze'or'time_resume')
+    end}
   local guard={prepare=function()f.prepared=f.epoch;f.guard_owned=true;return true end,
    ready=function()return f.epoch>(f.prepared or f.epoch),'Waiting for a gameplay update'end,
    acquire=function()assert(f.epoch>f.prepared);f.guard_owned=true;return true end,
@@ -323,3 +326,37 @@ f.scene_ready=true;f.tick();assert(f.controller._pending_start and f.leases==0 a
 f.update();assert(f.photo.active and f.mode==1 and f.rate==0,'Scene-ready retry bypassed the ordinary hover update qualification')
 f.press(80);f.close()
 print('Cold scene opening: delayed proof retains one key edge, cancellation/timeout own no native input, and hover preparation still requires its gameplay update')
+
+-- Closed-Photo slow motion also needs on-demand discovery after idle drops its
+-- camera context. Its pending action must never open Photo or capture input.
+f=fixture(true);f.scene_ready=false;f.scene_retry=true;f.require_scene_proof=true
+f.press(220)
+assert(f.controller._scene_start_pending and f.controller._scene_start_pending.action=='slowmo')
+assert(not f.photo.active and not f.controller.slowmo_active and f.leases==0 and not f.time_writes and f.rate==1)
+for _=1,3 do f.tick()end
+assert(f.leases==0 and not f.time_writes,'Cold slow motion acquired input or changed time before proof')
+f.scene_ready=true;f.tick()
+assert(not f.photo.active and f.controller.slowmo_active and f.rate==.2 and f.leases==0 and not f.controller._scene_start_pending)
+for _=1,5 do f.tick()end
+assert(f.controller.slowmo_active and f.rate==.2 and f.leases==0,'Idle stop dropped the standalone slow-motion policy')
+f.press(220);assert(not f.controller.slowmo_active and f.rate==1 and not f.photo.active and f.leases==0);f.close()
+
+f=fixture(true);f.scene_ready=false;f.scene_retry=true;f.press(220);f.press(220)
+assert(not f.controller._scene_start_pending and not f.controller.slowmo_active and f.leases==0 and f.rate==1,'Second slow-motion edge did not cancel cold warming')
+f.close()
+f=fixture(true);f.scene_ready=false;f.scene_retry=true;f.press(220)
+for _=1,120 do f.tick()end
+assert(not f.controller._scene_start_pending and not f.controller.slowmo_active and f.leases==0 and f.rate==1,'Cold slow motion did not time out without ownership')
+f.close()
+-- The independent slow-motion shortcut remains available when Photo itself is
+-- disabled; active/off transitions do not need fresh discovery before release.
+f=fixture(true);assert(f.handle.set('enabled',false));f.scene_ready=false;f.scene_retry=true;f.press(220)
+assert(f.controller._scene_start_pending and f.controller._scene_start_pending.action=='slowmo')
+f.scene_ready=true;f.tick();assert(f.controller.slowmo_active and not f.photo.active and f.leases==0)
+f.scene_ready=false;f.scene_retry=false;f.press(220)
+assert(not f.controller.slowmo_active and f.rate==1 and f.leases==0);f.close()
+f=fixture(true);f.start();f.scene_ready=false;f.scene_retry=false
+assert(f.controller._toggle_slow_motion()and f.controller.slowmo_active and f.rate==0,'Active paused Photo must retain its zero-time pose when slow motion is selected')
+f.scene_ready=true;f.press(80);assert(not f.photo.active and f.controller.slowmo_active and f.rate==.2)
+f.press(220);assert(f.rate==1 and not f.controller.slowmo_active);f.close()
+print('Cold standalone slow motion: delayed scene proof changes time without Photo/native lease; second-key cancellation, timeout, disabled Photo and active/off behavior preserved')
