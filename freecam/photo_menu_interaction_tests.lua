@@ -24,6 +24,8 @@ local function field(id)return find(function(c)return c.ui_role=='field'and c.co
 local function pointer(b,click)tick({x=b.x+b.w/2,y=b.y+b.h/2,click=click,dt=.016});draw()end
 local function press(k)keys[k]=true;tick();draw();keys[k]=false;tick();draw()end
 draw();tick();local label=find(function(c)return c.type=='text'and c.control_id=='speed'end)
+local shown_rows=0;for _,c in ipairs(commands)do if c.ui_role=='setting_row'then shown_rows=shown_rows+1 end end
+assert(shown_rows>=10,'Default panel should show at least ten option rows alongside the fixed global controls')
 assert(label.text~=label.full_text and measure(label.text,label.size)<=label.text_width,'Labels must fit whole native-measured glyphs')
 assert(measure_calls>0 and refresh_calls>0)
 pointer(field('filter'),false);assert(field('filter').hovered and values.filter==1,'Hover must not edit settings')
@@ -99,6 +101,17 @@ for _,size in ipairs({{1920,1080},{3840,2160},{800,600},{640,480}})do
   assert(b.y>=exit.y+exit.h and b.y>=opacity.y+opacity.h,'Time row overlaps ordinary toolbar controls')
   local slow=find(function(c)return c.ui_key=='slowmo_action'end)
   local rate=find(function(c)return c.ui_key=='slowmo_speed'end)
+  local strip=find(function(c)return c.ui_role=='photo_global_controls_strip'end)
+  local panel=find(function(c)return c.ui_role=='photo_panel'end)
+  assert(strip.a>panel.a and strip.a>=.7,'Global controls need a distinctly more opaque backdrop')
+  for _,key in ipairs({'freeze_action','slowmo_action','slowmo_speed','lock_camera_action'})do
+   local control=find(function(c)return c.ui_key==key end)
+   assert(control.x>=strip.x and control.x+control.w<=strip.x+strip.w+.001 and control.y>=strip.y and control.y+control.h<=strip.y+strip.h+.001,'Global control escaped its backdrop')
+  end
+  for _,c in ipairs(commands)do
+   if c.ui_role=='setting_row'then assert(c.y+c.h<=strip.y,'Options overlap the global controls')
+   elseif c.ui_key and c.ui_key:match('^tab:')then assert(c.y>=strip.y+strip.h,'Tabs overlap the global controls')end
+  end
   assert(b.x+b.w<slow.x and slow.x+slow.w<rate.x,'Adjacent time tools overlap')
   local lock=find(function(c)return c.ui_key=='lock_camera_action'end)
   assert(rate.x+rate.w<lock.x,'Speed slider overlaps Lock Camera')

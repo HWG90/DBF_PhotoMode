@@ -5,7 +5,7 @@ local T={background={12,14,16},panel={19,21,23},header={25,27,29},border={62,66,
  field={29,31,34},field_hover={39,42,45},enabled={176,205,176},disabled={105,111,113}}
 local function glyphs(value)local result={};for c in tostring(value):gmatch('[%z\1-\127\194-\244][\128-\191]*')do result[#result+1]=c end;return result end
 local function valid(v)return type(v)=='number'and v>0 and v<math.huge end
-local PANEL_WIDTH,PANEL_HEIGHT,HUD_MARGIN=760,320,180
+local PANEL_WIDTH,PANEL_HEIGHT,HUD_MARGIN=760,440,180
 function M.new(view,actions,existing)
  local legend=M.legend_factory and M.legend_factory.new(view)
  local self=existing or{page=1,scroll=0,selection=1,size_scale=1};local nav_held={};local nav_time={};local nav_ready=false;local last_focus
@@ -252,6 +252,11 @@ function M.new(view,actions,existing)
   self.selection=math.max(1,math.min(#rows,self.selection));if not selectable(rows[self.selection])then for i,c in ipairs(rows)do if selectable(c)then self.selection=i;break end end end
   if self.editing_value and self.editing_value.disabled then self.editing_value=nil;text_edit=nil end;if popup and popup.c.disabled then popup=nil end
   rect(left,top-71*s-tab_extra,width-32*s,1,T.border,.6,301)
+  if footer_extra>0 then
+   local toolbar_y=top-111*s-tab_extra
+   rect(x+8*s,toolbar_y,width-16*s,36*s,T.background,math.min(1,math.max(.72,opacity/100+.22)),301,false,'photo_global_controls_strip')
+   rect(left,toolbar_y,width-32*s,1*s,T.border,.85,303,false,'photo_global_controls_separator')
+  end
   local content_top=top-(77+footer_extra)*s-tab_extra;local content_bottom=bottom+(color_edit and 100 or 16)*s;local row=32*s
   visible_count=math.max(1,math.floor((content_top-content_bottom)/row));self.scroll=math.max(0,math.min(math.max(0,#rows-visible_count),self.scroll))
   local hovered_control;local popup_anchor
