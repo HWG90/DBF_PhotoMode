@@ -1,0 +1,33 @@
+[size=6][color=#F4CA35][b]WAR JOURNALIST 1.0[/b][/color][/size]
+[b]A Helldivers 2 Photo Mode[/b]
+
+[b]A HUGE THANK YOU to everyone submitting photos, testing builds and reporting bugs.[/b] Seeing what you're making with these tools has been amazing. Your shots and feedback helped get us here. Please keep the photos coming!
+
+[b]New tools[/b]
+[list]
+[*]Static Cinema action shots: place the camera, then control your Helldiver while the view stays put. Press your Photo Mode key to reposition.
+[*]Up to 32 scene-local camera path points, adjustable segment durations, Smooth travel or Cuts. The final view remains held.
+[*]Reachable Freeze Action, Slow Motion/speed, Lock Camera and solo AI controls, with a mission-faction icon.
+[*]Action shots retain slow motion, temporarily unfreeze, and restore your previous Freeze setting on return. The Cinema hint fades after three seconds.
+[*]Controls-drawer visibility, open/docked state and layout survive restarts.
+[/list]
+[b]Bugs fixed[/b]
+[list]
+[*]The reported frozen ragdoll spin at exact zero time now holds its captured pose and resumes normally; Subject pose switching still works.
+[*]Gameplay camera and cursor recovery after native-menu handoffs; Escape/settings and chat take priority.
+[*]Buffered double-click focus, camera cursor confinement, and held ADS input preservation.
+[*]The additional floating-cape outfit variant and Maxigun ammunition-feed visibility/restoration.
+[*]Temporary unavailable scene reads no longer discard camera path points. Saved lens restores report partial failures accurately.
+[*]Supported standalone ActionCam 2.3.1/2.4 coexistence. The Radeon shader-registry repair is retained.
+[/list]
+[b]Everything is bundled[/b]: 213 sampled pose frames/variants, Native DoF, shader bokeh preview, autofocus, lights/presets, scene effects, artwork and five saved Director cameras. No Link addon, MCM, HUD or ActionCam prerequisite.
+
+Choose one loader. Preserve settings/presets/screenshots, replace the older Photo Mode package, deploy its matching assets and restart.
+[url=https://github.com/HWG90/DBF_PhotoMode/releases/tag/v1.0][b]GitHub — complete BSL, MDL and LLL bundles[/b][/url]
+[url=https://www.nexusmods.com/helldivers2/mods/17248?tab=files]Nexus — BSL and MDL[/url]
+
+All 63 fixture groups, three standalone loader startup checks and package/asset closure checks passed. Public GitHub downloads match the release checksums. Action-shot return and the reported ragdoll freeze/resume were verified live.
+
+[b]Lighting: Not tested fully. Shader DoF remains a preview.[/b] Broader scenes/equipment/camera-mod transitions need coverage. HDR/SDR switching is not claimed fixed. Solo AI suppresses behavior; it does not stop all AI processing, physics or damage.
+
+Camera foundation: HuedPurple's ActionCam. Native reader work credited to CowboyBingus and Link. Thank you again to everyone sharing shots, tests and reports!

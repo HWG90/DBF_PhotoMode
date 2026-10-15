@@ -28,7 +28,7 @@ Your shots, testing and bug reports have helped shape War Journalist and get us 
 [list]
 [*]Compact photo menu with separate Camera, Lens, Color, Effects, Lighting, Composition, Director and Subject controls.[/*]
 [*]Move and resize the menu; its position and size survive restarts. A small bottom-right Opacity slider adjusts the background from 10–100% while keeping the text readable, and remembers your setting.[/*]
-[*]Contextual controls drawer docks to the left edge, with a movable tab, changes between menu/camera instructions, and hides with the photo controls.[/*]
+[*]Contextual controls drawer docks to the left edge, with a movable tab, changes between menu/camera instructions, and hides with the photo controls. Its visibility, open/docked state and layout are saved too; turning it off stays off after restart.[/*]
 [*]W/S navigates rows, A/D changes values or dropdown options, and Q/E changes tabs. No mouse hover required. Freeze Action, Slow Motion plus speed, Lock Camera and solo AI are always reachable in the global toolbar.[/*]
 [*]Hold Shift while dragging sliders for one-tenth sensitivity. Typed values commit when clicking away.[/*]
 [*]Director stores five camera positions and angles relative to the player, retained through restarts. Action shots and up to 32 temporary camera path points are available alongside them.[/*]
@@ -50,7 +50,7 @@ Choose Key / Fill / Rim, Portrait, or Dramatic side lighting presets aimed at th
 [b]Dedicated mission light asset included.[/b] This release includes a dedicated light unit so spawning no longer relies on a ship-only prefab. The earlier ship light worked in-game; the new mission asset has offline validation and still needs broader live testing.
 
 [size=4][color=#F4CA35][b]DIRECT THE ACTION[/b][/color][/size]
-Director now offers [b]Normal, Passive and Dummy[/b] enemy behavior in verified solo missions. Passive suppresses detection while allowing movement; Dummy also restricts ordinary movement. The selection continues after leaving Photo Mode and is applied to newly discovered enemies. Use [b]Reset AI to Normal[/b] to restore combat. Joining players reset the behavior and gray these controls out; restarting the game begins at Normal. Physics, damage and an attack already in progress can still continue. The same behavior control is available in the global toolbar, with an icon for the current mission's enemy faction. AI processing itself remains active.
+The global AI toolbar offers [b]Normal, Passive and Dummy[/b] enemy behavior in verified solo missions. Passive suppresses detection while allowing movement; Dummy also restricts ordinary movement. The selection continues after leaving Photo Mode and is applied to newly discovered enemies. Use [b]Reset AI to Normal[/b] to restore combat. Joining players reset the behavior and gray these controls out; restarting the game begins at Normal. Physics, damage and an attack already in progress can still continue. The control includes an icon for the current mission's enemy faction. AI processing itself remains active.
 
 [b]Action shots and camera paths[/b]
 Place the camera, then choose [b]Director → Begin action shot[/b]. Your Helldiver regains gameplay controls while the photo camera stays where you put it. Use your screenshot shortcut, then press your Photo Mode key to reposition; Exit Photo Mode returns to the gameplay camera. If Freeze was enabled before the shot, returning to placement freezes again. Your selected slow-motion rate is preserved throughout.
