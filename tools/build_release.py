@@ -18,7 +18,7 @@ import photo_assets
 import photo_light_assets
 
 VERSION=(ROOT/'VERSION').read_text().strip()
-ASSET_VERSION='0.9.6' # Reuse the accepted frozen compositor through 1.0; never rebuild it implicitly.
+ASSET_VERSION='0.9.6' # Reuse the accepted frozen compositor through 1.0.1; never rebuild it implicitly.
 ARTWORK_VERSION='0.9.7' # Retain the accepted cover and feature gallery.
 SNAPSHOTS=ROOT/('freecam/assets/shaders/release-'+ASSET_VERSION)
 APPROVED_GPU='f5960f63e1247ac40af4bb37ccbd59ac26c9168aad9eb40936c082c9ddf40194'
@@ -170,7 +170,7 @@ def build(output):
     photo.compile_lua(generated,'WarJournalist-'+VERSION)
     assert b'e07f49224f0a5759'in generated and b'PhotoHoverGuardInstall'not in generated and b'__INPUT_RELEASE__'not in generated
     assert b'dbf_input_release'not in generated and b'SendInput('not in generated,'Synthetic blanket input release returned to the runtime'
-    if VERSION=='1.0':
+    if VERSION in ('1.0','1.0.1'):
         assert b'DBF_PHOTO_EDITOR_INPUT'not in generated and b'self.editor_bridge'not in generated,'Unreleased external-editor bridge must stay outside the 1.0 package'
         assert b'H.dbf_ragdoll_pause'in generated and b'Ragdoll pose held'in generated,'Verified ragdoll pose guard missing'
     (output/'ActionCam-Freecam.lua').write_bytes(generated)

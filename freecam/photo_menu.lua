@@ -220,21 +220,29 @@ function M.new(view,actions,existing)
    if modal or not field and hover then border(b,disabled and T.line or selected and T.gold or hover and T.border_hover or T.border,modal and 903 or 305,modal)end
    return command
   end
-  local function icon(id,b,color)
-   local ix,iy=b.x+8*s,b.y+8*s
-   local function line(dx,dy,rw,rh)rect(ix+dx*s,iy+dy*s,rw*s,rh*s,color,1,309,nil,'tab_icon')end
+  local function icon(id,b,color,inset)
+   local ix,iy=b.x+(inset or 8)*s,b.y+8*s
+   local function line(dx,dy,rw,rh)local c=rect(ix+dx*s,iy+dy*s,rw*s,rh*s,color,1,309,nil,'tab_icon');c.icon_id=id end
+   local function cut(dx,dy,rw,rh)local c=rect(ix+dx*s,iy+dy*s,rw*s,rh*s,T.background,1,310,nil,'tab_icon_cutout');c.icon_id=id end
    if id=='camera_tools'then line(0,0,15,9);line(3,9,5,3);rect(ix+5*s,iy+2*s,5*s,5*s,T.background,1,310)
    elseif id=='lens'then line(0,0,3,10);line(11,0,3,10);line(3,0,8,2);line(3,8,8,2);line(6,3,2,4)
    elseif id=='color'then line(0,0,3,5);line(5,0,3,10);line(10,0,3,7)
    elseif id=='effects'then line(0,0,14,2);line(3,4,11,2);line(0,8,11,2)
    elseif id=='composition'then line(0,0,15,2);line(0,9,15,2);line(0,2,2,7);line(13,2,2,7);line(7,2,1,7)
    elseif id=='lighting'then line(5,3,5,5);line(6,10,3,2);line(6,-1,3,2);line(0,4,3,3);line(12,4,3,3)
+   elseif id=='director'then
+    line(0,0,14,8);cut(2,2,10,4);line(0,10,14,3)
+    cut(2,10,2,2);cut(3,12,2,1);cut(7,10,2,2);cut(8,12,2,1);cut(12,10,2,2)
+   elseif id=='subject'then
+    line(4,5,7,7);line(3,6,9,4);line(5,12,5,1);line(5,3,5,3)
+    line(3,1,9,3);line(1,0,13,2);cut(5,8,5,2);cut(7,4,1,1)
    else line(5,0,4,12);line(1,4,12,4)end
   end
-  local function button(label,b,action,key,selected,font,icon_id,disabled)
-   surface(b,selected,disabled,key,false);local pad=icon_id and 28 or 9
-   if icon_id then icon(icon_id,b,selected and T.gold or T.muted)end
-   text(label,b.x+pad*s,b.y,b.w-(pad+9)*s,b.h,font or 12,disabled and T.disabled or selected and T.gold or T.white)
+  local function button(label,b,action,key,selected,font,icon_id,disabled,compact)
+   surface(b,selected,disabled,key,false);local pad=icon_id and(compact and 23 or 28)or 9
+   if icon_id then icon(icon_id,b,selected and T.gold or T.muted,compact and 4 or nil)end
+   local caption=text(label,b.x+pad*s,b.y,b.w-(pad+(compact and 3 or 9))*s,b.h,font or 12,disabled and T.disabled or selected and T.gold or T.white)
+   if type(key)=='string'and key:match('^tab:%d+$')then caption.ui_role='photo_tab_label';caption.tab_id=key end
    if selected then rect(b.x,b.y,b.w,2*s,T.gold,1,306)end
    b.action=action;b.key=key;if not disabled then hits[#hits+1]=b end
   end
@@ -250,14 +258,22 @@ function M.new(view,actions,existing)
   button((focused and 'Camera'or 'Edit menu')..' ['..keys.focus..']',{x=x+width-174*s,y=top-24*s,w=158*s,h=20*s},actions.focus,'focus',false,11)
 
   self.page=math.max(1,math.min(#self.pages,self.page));local tab_widths={};local tab_total=0;local tab_budget=width-32*s
-  for i,page in ipairs(self.pages)do tab_widths[i]=math.max(56*s,measure(page.name,12*s)+42*s);tab_total=tab_total+tab_widths[i]end
-  local tab_columns=tab_total<=tab_budget and #self.pages or math.ceil(#self.pages/2);local tab_rows=math.ceil(#self.pages/tab_columns)
+  local stacked=stored_layout('tab_layout')==2;local tab_font=stacked and 12 or 11.5;local tab_gap=stacked and 4 or 3
+  local function measure_tabs()
+   tab_total=0
+   for i,page in ipairs(self.pages)do tab_widths[i]=math.max((stacked and 56 or 44)*s,measure(page.name,tab_font*s)+(stacked and 42 or 29)*s);tab_total=tab_total+tab_widths[i]end
+  end
+  measure_tabs()
+  -- Slim keeps every tab in one row. Fit real glyph widths before allocating
+  -- hit regions, so the BSL font can differ from the fallback metrics safely.
+  while not stacked and tab_total>tab_budget and tab_font>9 do tab_font=tab_font-.25;measure_tabs()end
+  local tab_columns=stacked and math.ceil(#self.pages/2)or #self.pages;local tab_rows=math.ceil(#self.pages/tab_columns)
   for row_index=0,tab_rows-1 do
    local first=row_index*tab_columns+1;local last=math.min(#self.pages,first+tab_columns-1);local row_total=0;local tab_x=left
    for i=first,last do row_total=row_total+tab_widths[i]end
    for i=first,last do local index=i;local page=self.pages[i]
     local tabw=row_total<=tab_budget and tab_widths[i]+(tab_budget-row_total)/(last-first+1)or tab_budget*tab_widths[i]/row_total
-    button(page.name,{x=tab_x,y=top-(68+29*row_index)*s,w=tabw-4*s,h=25*s},function()self.page=index;self.selection=1;self.scroll=0;self.editing_value=nil;text_edit=nil;color_edit=nil;key_capture=nil;popup=nil;scroll_drag=nil;reveal_index=nil end,'tab:'..i,i==self.page,12,page.id);tab_x=tab_x+tabw
+    button(page.name,{x=tab_x,y=top-(68+29*row_index)*s,w=tabw-tab_gap*s,h=25*s},function()self.page=index;self.selection=1;self.scroll=0;self.editing_value=nil;text_edit=nil;color_edit=nil;key_capture=nil;popup=nil;scroll_drag=nil;reveal_index=nil end,'tab:'..i,i==self.page,tab_font,page.id,nil,not stacked);tab_x=tab_x+tabw
    end
   end
   local tab_extra=(tab_rows-1)*29*s

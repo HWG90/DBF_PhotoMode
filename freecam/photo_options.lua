@@ -34,7 +34,7 @@ function M.set_subject_poses(catalog)
  return true
 end
 M.light_presets={'key_fill_rim','portrait','dramatic_side'}
-M.menu_layout_defaults={menu_x=-1,menu_y=-1,menu_scale=1,menu_opacity=38}
+M.menu_layout_defaults={menu_x=-1,menu_y=-1,menu_scale=1,menu_opacity=38,tab_layout=1}
 -- Preset choices are commands/labels. FOV and roll remain the only settings
 -- consumed by the lens; these helpers use the existing 24 mm sensor height.
 M.focal_presets={false,24,35,50,85,135}
@@ -156,6 +156,7 @@ function M.pages(reset,recenter,catalog,saved_actions)
  toggle('clean_view','Hide guides and logo'),toggle('hide_hud','Hide gameplay HUD'),toggle('hide_controls','Hide photo controls'),
  toggle('show_legend','Show controls legend'),toggle('legend_open','Expand controls flyout'),toggle('legend_docked','Dock controls to left screen edge'),slider('legend_tab_y','Controls dock tab height (%)',0,100,.1),choice('legend_columns','Controls legend columns',{'Two','Three'}),
  slider('legend_x','Legend horizontal position (%)',0,100,.1),slider('legend_y','Legend vertical position (%)',0,100,.1),slider('legend_size','Legend size (% of screen short edge)',25,70,.1),
+ {id='tab_layout',type='choice',label='Tab layout',default=M.menu_layout_defaults.tab_layout,choices={'Slim','Stacked'},presentation='dropdown'},
  layout_setting('menu_x','Saved menu horizontal position',-1,1),layout_setting('menu_y','Saved menu vertical position',-1,1),layout_setting('menu_scale','Saved menu size',.35,3),layout_setting('menu_opacity','Menu background opacity',10,100,1)}},
  {id='director',name='Director',require_confirmation=false,controls={
  director_action('cinema_begin','Begin action shot','cinema_begin'),
@@ -204,7 +205,7 @@ function M.pages(reset,recenter,catalog,saved_actions)
  composition={{'Framing','frame','grid','clean_view','hide_hud','hide_controls'},
   {'Logo','logo','logo_size','logo_color','logo_opacity','logo_x','logo_y'},
   {'Controls legend','show_legend','legend_open','legend_docked','legend_tab_y','legend_columns','legend_size','legend_x','legend_y'},
-  {'Menu layout','menu_x','menu_y','menu_scale','menu_opacity'}},
+  {'Menu layout','tab_layout','menu_x','menu_y','menu_scale','menu_opacity'}},
  director={{'Action shots','cinema_begin','cinema_reposition','cinema_end','cinema_status','cinema_hint'},
   {'Camera path','path_point','path_add','path_remove','path_duration','path_transition','path_play','path_clear','path_status','path_hint'},
   {'Saved shots','director_slot','director_recall','director_save','director_clear','director_status','director_hint'}},
