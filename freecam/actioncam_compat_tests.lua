@@ -202,6 +202,33 @@ assert(bridge9.acquire());local frame9=up(o9.step,'frame');local a9,b9,c9=env9.u
 assert(e9.step==1 and a9=='game-update'and b9==.016 and c9=='tail'and up(o9.step,'frame')==frame9)
 assert(bridge9.release()and bridge9.dispose(),'Discovered owner must retain normal handoff and restoration')
 
+-- Real BSL mod stacks use game_update/prev, and arbitrary wrapper names must
+-- not hide an otherwise exactly supported camera. Read their closure graph
+-- without replacing wrappers or evaluating their unrelated helper functions.
+do
+ local env,bridge,events,_,load=fixture();local original=load();original.hook()
+ local function wrap_prev(prev)return function(...)return prev(...)end end
+ local function wrap_game(game_update)return function(...)return game_update(...)end end
+ local function wrap_unknown(borrowed42)
+  local unrelated=function()error('Discovery executed an unrelated helper')end
+  local cycle
+  cycle=function(...)
+   if select('#',...)==-1234567 then return cycle(...),unrelated()end
+   return borrowed42(...)
+  end
+  return cycle
+ end
+ local first=wrap_prev(env.update);local second=wrap_game(first);local outer=wrap_unknown(second)
+ env.update=outer
+ local before=string.dump(outer,true);local callback=up(outer,'borrowed42');local cycle=up(outer,'cycle')
+ assert(bridge.refresh()and bridge.count==1,'Unknown callback upvalue names hid the verified ActionCam owner')
+ assert(env.update==outer and string.dump(outer,true)==before and up(outer,'borrowed42')==callback and up(outer,'cycle')==cycle,'Discovery rewrote a foreign wrapper')
+ assert(up(second,'game_update')==first and up(first,'prev')==original.wrapper)
+ assert(bridge.acquire());local frame=up(original.step,'frame');local a,b,c=env.update(.016,'tail')
+ assert(events.step==1 and a=='game-update'and b==.016 and c=='tail'and up(original.step,'frame')==frame)
+ assert(bridge.release()and bridge.dispose(),'Generic callback discovery lost the exact camera restoration contract')
+end
+
 -- Function references stored in tables are outside callback-chain discovery.
 local env10,bridge10,_,_,load10=fixture();local o10=load10();local binds10=up(o10.bind,'PHOTO_BINDS')
 local hidden10={previous=env10.update};env10.update=function(...)return hidden10.previous(...)end
@@ -212,7 +239,7 @@ assert(up(o10.wrapper,'step')==o10.step and up(o10.bind,'PHOTO_BINDS')==binds10,
 -- elsewhere. Excessive wrapper chains never cause a partial camera mutation.
 local env11,bridge11,_,_,load11=fixture();local o11=load11();local binds11=up(o11.bind,'PHOTO_BINDS')
 env11.render=o11.wrapper
-for i=1,100 do env11.update=prior_wrapper(env11.update)end
+for i=1,2100 do env11.update=prior_wrapper(env11.update)end
 local ok11,why11=bridge11.refresh();assert(not ok11 and why11=='Camera callback chain cannot be verified')
 assert(up(o11.wrapper,'step')==o11.step and up(o11.hook,'apply')==o11.apply and up(o11.bind,'PHOTO_BINDS')==binds11)
 assert(not bridge11.acquire()and not bridge11.held,'An over-limit graph must not grant a Photo lease')

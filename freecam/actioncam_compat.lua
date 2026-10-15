@@ -154,15 +154,25 @@ function M.new(G,log)
    end
    return self.available,self.reason
   end
-  local queue,seen,found={},{},{};local index=1
-  local function enqueue(fn)
-   if type(fn)=='function'and not seen[fn]then seen[fn]=true;queue[#queue+1]=fn end
+  local queue,deferred,seen,found,helpers={},{},{},{},{};local index=1;local inspected=0
+  local function enqueue(fn,name)
+   if type(fn)~='function'or seen[fn]or helpers[fn]then return end
+   seen[fn]=true
+   local lower=type(name)=='string'and name:lower()or''
+   if chain_names[name]or name==''or lower:find('update',1,true)or lower:find('prev',1,true)or lower:find('render',1,true)then
+    queue[#queue+1]=fn
+   else deferred[#deferred+1]=fn end
   end
-  enqueue(update);enqueue(render)
-  while index<=#queue do
-   if index>96 then return status(false,'Camera callback chain cannot be verified')end
-   local fn=queue[index];index=index+1
-   if type(fn)=='function'then
+  -- Follow likely callback predecessors first, without requiring their names.
+  -- Other function upvalues remain a bounded, read-only fallback. Tables and
+  -- engine namespaces are never traversed or rewritten.
+  enqueue(render,'render');enqueue(update,'update')
+  while #queue>0 or index<=#deferred do
+   local fn
+   if #queue>0 then fn=table.remove(queue)else fn=deferred[index];index=index+1 end
+   if not helpers[fn]then
+    inspected=inspected+1
+    if inspected>2048 then return status(false,'Camera callback chain cannot be verified')end
     local record=records[fn]
     local candidate,why
     if record then
@@ -170,14 +180,20 @@ function M.new(G,log)
      if up(fn,'step')~=record.step_gate then return status(false,'ActionCam update ownership changed')end
     else candidate,why=verify(fn)end
     if candidate==false then return status(false,why)end
-    if candidate then found[#found+1]=candidate
+    if candidate then
+     found[#found+1]=candidate
+     -- All seven camera closures were fingerprinted above. Their private
+     -- helper graphs are not additional callback owners; still inspect the
+     -- update/render wrappers' external predecessor links for another camera.
+     for _,name in ipairs({'step','apply','bindings','restore','drop'})do helpers[candidate[name]]=true end
     elseif original_source(fn)and up(fn,'step')then return status(false,'Unsupported ActionCam wrapper; Photo Mode cannot share it')end
     for i=1,120 do
-     local name,value=dbg.getupvalue(fn,i);if not name then break end
-     -- Stripped loader wrappers retain closure links but not their names.
-     -- Discovery only reads function upvalues; install still requires all seven
-     -- exact ActionCam signatures and never writes intermediary/C closures.
-     if chain_names[name]or name==''then enqueue(value)end
+     local read,name,value=pcall(dbg.getupvalue,fn,i)
+     if not read then return status(false,'Camera callback chain cannot be inspected')end
+     if not name then break end
+     -- Generic discovery never authorizes installation: every candidate must
+     -- still pass the exact versioned seven-closure signature contract.
+     enqueue(value,name)
     end
    end
   end
