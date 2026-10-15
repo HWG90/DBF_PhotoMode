@@ -14,7 +14,50 @@ local function pose_near(a,b)
 end
 function M.new(sr,player_reader,log,clock)
  local self={epoch=0,retired=false,reason='Camera not discovered'};local accepted,verified,written;local validate
+ local history={};local history_scope;local serial=0
  local V=sr.Vector3;local A,W,U,C,B=sr.Application,sr.World,sr.Unit,sr.Camera,sr.Matrix4x4
+ local function clear_history()history={};history_scope=nil end
+ local function now()
+  local source=clock
+  if not source then
+   local api=rawget(_G,'DBF_PHOTO_CAMERA_API')or rawget(_G,'DBFMCM')or rawget(_G,'DBF_PHOTO_STANDALONE_API')
+   source=api and api.camera_input and api.camera_input.now
+  end
+  if type(source)=='function'then local ok,time=pcall(source);if ok and finite(time)then return time,source end end
+ end
+ local function numeric_pose(p)
+  return{position=copy(p.position),forward=copy(p.forward),right=copy(p.right),up=copy(p.up)}
+ end
+ local function exact_pose(a,b)
+  return near(a.position,b.position,1e-7)and near(a.forward,b.forward,1e-7)
+   and near(a.right,b.right,1e-7)and near(a.up,b.up,1e-7)
+ end
+ local function scope(world,player)
+  if not history_scope or history_scope.world~=world or history_scope.player~=player.root_handle or history_scope.identity~=player.identity then
+   clear_history();history_scope={world=world,player=player.root_handle,identity=player.identity}
+  end
+ end
+ local function observation(unit,cam,pose)
+  local entry
+  for _,item in ipairs(history)do if same(item.unit,unit)and same(item.cam,cam)then entry=item;break end end
+  if not entry then entry={unit=unit,cam=cam};history[#history+1]=entry end
+  if entry.current and not exact_pose(entry.current,pose)then entry.previous=entry.current;entry.current=nil end
+  if not entry.current then entry.current=numeric_pose(pose)end
+  local time,source=now();entry.current.serial=serial;entry.current.time=time;entry.current.clock=source
+  return entry
+ end
+ local function phase_match(entry,rendered)
+  -- Two distinct observed transforms, never an accumulating trail. Repeated
+  -- update/render probes of the same transform refresh it without evicting the
+  -- preceding engine update. Stored values are numbers, not engine poses.
+  local time,source=now()
+  for _,pose in pairs({entry.current,entry.previous})do
+   local recent=serial-pose.serial<=16
+   if pose.time~=nil then recent=source==pose.clock and time~=nil and time>=pose.time and time-pose.time<=.25 end
+   if recent and pose_near(pose,rendered)then return true end
+  end
+  return false
+ end
  local function vector(v)
   if v==nil then return nil end
   local ok,x,y,z=pcall(function()
@@ -42,7 +85,7 @@ function M.new(sr,player_reader,log,clock)
  local function refused(why,retired)
   verified=nil;self.reason=why
   if retired and accepted and not accepted.retired then
-   accepted.retired=true;self.epoch=self.epoch+1;written=nil;self.written=nil
+   accepted.retired=true;self.epoch=self.epoch+1;written=nil;self.written=nil;clear_history()
   end
   self.retired=accepted~=nil and accepted.retired==true
   return nil,why
@@ -64,6 +107,7 @@ function M.new(sr,player_reader,log,clock)
   return false
  end
  function self.refresh(force)
+  serial=serial+1
   -- Once discovery has proved uniqueness, retain that exact camera until its
   -- render/owner proof fails. Re-enumerating every Unit's camera count on every
   -- draw is expensive; narrow validation still obtains genuine current handles.
@@ -79,16 +123,16 @@ function M.new(sr,player_reader,log,clock)
   if accepted and not same(world,accepted.world)then refused('Main world replaced',true)end
   if type(A.worlds)=='function'then
    local worlds=read(A.worlds)
-   if type(worlds)~='table'then return refused('World inventory unavailable')end
+   if type(worlds)~='table'then clear_history();return refused('World inventory unavailable')end
    if not contains(worlds,world)then return refused('Main world is not in the current world inventory',true)end
   end
   local units=read(W.units,world)
-  if type(units)~='table'then return refused('Main-world unit inventory unavailable')end
+  if type(units)~='table'then clear_history();return refused('Main-world unit inventory unavailable')end
   prior_retired(world,units)
   local reader=type(player_reader)=='function'and player_reader or type(player_reader)=='table'and player_reader.frame
   local player=read(reader)
   if type(player)~='table'or player.local_owner~=true or player.identity==nil or player.root_handle==nil then
-   return refused('Verified local player unavailable')
+   clear_history();return refused('Verified local player unavailable')
   end
   if not same(player.world,world)then return refused('Local player is not in the main world')end
   if accepted and(accepted.player_identity~=player.identity or not same(accepted.player,player.root_handle))then
@@ -99,9 +143,10 @@ function M.new(sr,player_reader,log,clock)
   if not player_unit then return refused('Local player retired from the main world',true)end
   local alive=read(U.alive,player_unit)
   if alive~=true then return refused('Local player is not alive',alive==false)end
+  scope(world,player)
   local rendered=basis(read(W.debug_camera_pose,world))
-  if not rendered then return refused('Rendered main-world camera pose unavailable')end
-  local candidate,count,incomplete=nil,0,false;local prior_present=false
+  if not rendered then clear_history();return refused('Rendered main-world camera pose unavailable')end
+  local candidate,count,incomplete=nil,0,false;local prior_present=false;local candidates={}
   local seen={}
   for _,unit in pairs(units)do
    if not seen[unit]then
@@ -122,10 +167,9 @@ function M.new(sr,player_reader,log,clock)
        if cam then
         local wp=vector(read(C.world_position,cam));local lp=vector(read(C.local_position,cam,unit))
         local pose=basis(read(C.world_pose,cam))
-        if wp and lp and pose and near(wp,lp,.01)and near(wp,pose.position,.01)
-         and near(wp,rendered.position,.025)and near(pose.forward,rendered.forward,.01)
-         and near(pose.right,rendered.right,.01)and near(pose.up,rendered.up,.01)then
-         count=count+1;candidate={world=world,unit=unit,cam=cam,player=player_unit,
+        if not(wp and lp and pose)then incomplete=true
+        elseif near(wp,lp,.01)and near(wp,pose.position,.01)then
+         candidates[#candidates+1]={world=world,unit=unit,cam=cam,player=player_unit,
           player_position=point,player_identity=player.identity,position=wp,
           forward=pose.forward,right=pose.right,up=pose.up,rendered=rendered,scene=self}
         end
@@ -137,11 +181,22 @@ function M.new(sr,player_reader,log,clock)
    end
   end
   if accepted and not prior_present then refused('Camera unit left the main world',true)end
-  if incomplete then return refused('Camera inventory is temporarily unreadable')end
+  if incomplete then clear_history();return refused('Camera inventory is temporarily unreadable')end
+  scope(world,player)
+  local next_history={}
+  for _,frame in ipairs(candidates)do
+   local entry=observation(frame.unit,frame.cam,frame);next_history[#next_history+1]=entry
+   if phase_match(entry,rendered)then
+    local duplicate=false
+    if candidate and same(candidate.unit,frame.unit)and same(candidate.cam,frame.cam)then duplicate=true end
+    if not duplicate then count=count+1;candidate=frame end
+   end
+  end
+  history=next_history -- Retired/replaced camera instances retain no history.
   if count~=1 then return refused(count>1 and'Rendered camera is ambiguous'or'No main-world camera matches the rendered view')end
   if not identity(accepted,candidate)then
    if not accepted or not accepted.retired then self.epoch=self.epoch+1 end
-   written=nil
+   written=nil;self.written=nil
   end
   candidate.epoch=self.epoch
   accepted=candidate;verified=candidate;self.retired=false;self.reason=nil
@@ -160,16 +215,16 @@ function M.new(sr,player_reader,log,clock)
   if not same(world,snapshot.world)then return unavailable('Main world replaced',true)end
   if type(A.worlds)=='function'then
    local worlds=read(A.worlds)
-   if type(worlds)~='table'then return unavailable('World inventory unavailable')end
+   if type(worlds)~='table'then clear_history();return unavailable('World inventory unavailable')end
    if not contains(worlds,world)then return unavailable('Main world retired',true)end
   end
   local units=read(W.units,world)
-  if type(units)~='table'then return unavailable('Main-world unit inventory unavailable')end
+  if type(units)~='table'then clear_history();return unavailable('Main-world unit inventory unavailable')end
   if prior_retired(world,units)then return false,self.reason end
   local reader=type(player_reader)=='function'and player_reader or type(player_reader)=='table'and player_reader.frame
   local player=read(reader)
   if type(player)~='table'or player.local_owner~=true or player.identity==nil or player.root_handle==nil then
-   return unavailable('Verified local player unavailable')
+   clear_history();return unavailable('Verified local player unavailable')
   end
   if not same(player.world,world)then return unavailable('Local player is not in the main world')end
   if player.identity~=snapshot.player_identity or not same(player.root_handle,snapshot.player)then
@@ -183,10 +238,10 @@ function M.new(sr,player_reader,log,clock)
   if player_alive==false or unit_alive==false then return unavailable('Player or camera unit retired',true)end
   if player_alive~=true or unit_alive~=true then return unavailable('Player or camera lifetime unavailable')end
   local count=read(U.num_cameras,unit)
-  if not finite(count)or count<0 or count%1~=0 or count>32 then return unavailable('Camera inventory unreadable')end
+  if not finite(count)or count<0 or count%1~=0 or count>32 then clear_history();return unavailable('Camera inventory unreadable')end
   local current_cam;local complete=true
   for i=1,count do local cam=read(U.camera,unit,i);if not cam then complete=false end;if same(cam,snapshot.cam)then current_cam=cam end end
-  if not complete then return unavailable('Camera instance temporarily unreadable')end
+  if not complete then clear_history();return unavailable('Camera instance temporarily unreadable')end
   if not current_cam then return unavailable('Camera instance replaced',true)end
   -- Cleanup restores only a compare-owned local position. It still needs the
   -- same live main-world/player/camera instance, but that instance may already
@@ -194,7 +249,7 @@ function M.new(sr,player_reader,log,clock)
   if lifetime_only then return true end
   local wp=vector(read(C.world_position,current_cam));local lp=vector(read(C.local_position,current_cam,unit))
   local pose=basis(read(C.world_pose,current_cam));local rendered=basis(read(W.debug_camera_pose,world))
-  if not(wp and lp and pose and rendered)then return unavailable('Rendered camera pose temporarily unavailable')end
+  if not(wp and lp and pose and rendered)then clear_history();return unavailable('Rendered camera pose temporarily unavailable')end
   local root_pose=near(wp,lp,.01)and near(wp,pose.position,.01)
   local rendered_match=root_pose and pose_near(pose,rendered)
   local own_lag=false
@@ -213,9 +268,22 @@ function M.new(sr,player_reader,log,clock)
   local fresh={world=world,unit=unit,cam=current_cam,player=player_unit,player_identity=player.identity,
    player_position=point,position=wp,forward=pose.forward,right=pose.right,up=pose.up,rendered=rendered,epoch=self.epoch,scene=self}
   accepted=fresh;verified=fresh;self.reason=nil;self.retired=false
+  if rendered_match then scope(world,player);observation(unit,current_cam,pose)end
   return true
  end
- function self.valid(snapshot)return validate(snapshot)end
+ function self.valid(snapshot)
+  serial=serial+1
+  local ok,why,rediscover=validate(snapshot)
+  if ok==nil and rediscover then
+   local fresh,reason=self.refresh(true)
+   if fresh then
+    if snapshot.epoch~=self.epoch or not identity(snapshot,fresh)then return false,'Camera snapshot retired'end
+    return true
+   end
+   if self.retired then return false,reason end;return nil,reason
+  end
+  return ok,why
+ end
  function self.owned(snapshot)return validate(snapshot,true)end
  function self.mark_written(frame,position,forward,right,up)
   if not verified or frame.epoch~=self.epoch or not identity(frame,verified)then return false,'Camera snapshot is not verified'end
@@ -228,6 +296,9 @@ function M.new(sr,player_reader,log,clock)
   return true
  end
  function self.clear_written(frame)
+  -- The owned-write bridge ends with its lease. Numeric observations of a
+  -- genuinely rendered camera remain useful for an immediate same-scene reopen;
+  -- they still expire by time/generation and cannot bypass lifetime/uniqueness.
   if written and type(frame)=='table'and frame.epoch==written.epoch then written=nil;self.written=nil end
   return true
  end

@@ -62,19 +62,22 @@ return{new=function()
 end}
 ]=]
 local motion_source=[=[
-return{new=function(sr,photo)
- local state=G.TEST;local written
+return{new=function(sr,photo,look,runtime,freeze,cinema,config)
+ local state=G.TEST;local written,written_frame
  return{apply=function(frame,suspended)
-  assert(frame==state.frame,'Retired camera reached movement')
+  assert(frame.world==state.frame.world and frame.unit==state.frame.unit and frame.cam==state.frame.cam,'Retired camera reached movement')
   assert(state.compat.held,'Camera writes require ownership')
   state.writes=state.writes+1;state.suspended=suspended
-  photo.pos=photo.pos or{1,2,3};written=true
+  photo.pos=photo.pos or{1,2,3};written=true;written_frame=frame
   state.events[#state.events+1]='camera write'
   if state.motion_error then return false,state.motion_error end
   return true
  end,release=function()
   if state.position_pending then return false,'position pending'end
-  if written then state.events[#state.events+1]='position restored';written=nil end
+  if written then
+   state.events[#state.events+1]='position restored';written=nil
+   if config.scene.clear_written then config.scene.clear_written(written_frame)end
+  end
   return true
  end}
 end}
@@ -83,23 +86,55 @@ local animation_source='return{new=function()return function()end end}'
 local function replace(source,key,value)
  local count;source,count=source:gsub(key,function()return value end);assert(count==1,key);return source
 end
-local source=replace(template,'__STUDIO_FEATURES__',features)
-source=replace(source,'__CAMERA_SCENE__',scene_source)
-source=replace(source,'__CAMERA_MOTION__',motion_source)
-source=replace(source,'__ANIMATION_STATE__',animation_source)
-local function fixture(late_render)
+local function assemble(scene_code)
+ local value=replace(template,'__STUDIO_FEATURES__',features)
+ value=replace(value,'__CAMERA_SCENE__',scene_code)
+ value=replace(value,'__CAMERA_MOTION__',motion_source)
+ return replace(value,'__ANIMATION_STATE__',animation_source)
+end
+local source=assemble(scene_source)
+local scene_file=assert(io.open(root..'camera_scene.lua','rb'));local actual_scene_source=scene_file:read('*a');scene_file:close()
+local actual_scene_runtime=assemble(actual_scene_source)
+local function fixture(late_render,actual_scene)
  local state={updates=0,renders=0,inputs=0,writes=0,refreshes=0,stops=0,flushes=0,cached=0,before=0,after=0,ragdolls=0,events={}}
  local world,unit,cam,player={},{},{},{}
  state.frame={world=world,unit=unit,cam=cam,player=player,player_identity='avatar-one',epoch=1}
  state.player={world=world,root_handle=player,local_owner=true,identity='avatar-one',position={0,0,0}}
  local env=setmetatable({TEST=state},{__index=_G});env._G=env
  env.stingray={Vector3={},Matrix4x4={},Application={worlds=function()return{world}end}}
+ if actual_scene then
+  state.camera_position={0,0,1};state.rendered_position={0,0,1}
+  local sr=env.stingray
+  sr.Vector3=setmetatable({x=function(v)return v[1]end,y=function(v)return v[2]end,z=function(v)return v[3]end},{__call=function(_,...)return{...}end})
+  local function pose(p)return{position=p,forward={1,0,0},right={0,-1,0},up={0,0,1}}end
+  sr.Application.main_world=function()return world end
+  sr.World={units=function(w)assert(w==world);return{unit,player}end,
+   debug_camera_pose=function(w)assert(w==world);return pose(state.rendered_position)end}
+  sr.Unit={alive=function(u)assert(u==unit or u==player);return true end,
+   num_cameras=function(u)return u==unit and 1 or 0 end,
+   camera=function(u,index)assert(u==unit and index==1);return cam end}
+  sr.Camera={world_position=function(c)assert(c==cam);return state.camera_position end,
+   local_position=function(c,u)assert(c==cam and u==unit);return state.camera_position end,
+   world_pose=function(c)assert(c==cam);return pose(state.camera_position)end}
+  for _,name in ipairs({'translation','forward','right','up'})do
+   local field=name=='translation'and'position'or name
+   sr.Matrix4x4[name]=function(p)return p[field]end
+  end
+ end
  env.update=function(dt,...)
   state.updates=state.updates+1
+  if actual_scene and state.moving then
+   state.camera_position={state.camera_position[1]+.25,0,1}
+   state.player.position={state.camera_position[1],0,0}
+  end
   if state.game_error then error(state.game_error,0)end
   return'game-update',nil,...
  end
- local function game_render(...)state.renders=state.renders+1;return'game-render',nil,... end
+ local function game_render(...)
+  state.renders=state.renders+1
+  if actual_scene then state.rendered_position={unpack(state.camera_position)}end
+  return'game-render',nil,...
+ end
  if not late_render then env.render=game_render end
  state.compat={available=true,held=false,count=0,
   acquire=function()state.events[#state.events+1]='camera acquired';state.compat.held=true;return true end,
@@ -109,7 +144,7 @@ local function fixture(late_render)
    return previous(...)
   end end}
  env.shutdown=function(...)state.shutdowns=(state.shutdowns or 0)+1;return'shutdown',nil,... end
- local chunk=assert(loadstring(source,'owned-runtime-template'));setfenv(chunk,env);chunk()
+ local chunk=assert(loadstring(actual_scene and actual_scene_runtime or source,'owned-runtime-template'));setfenv(chunk,env);chunk()
  return env,state,env.DBF_PHOTO_CAMERA_RUNTIME,game_render
 end
 local function packed(...)return{n=select('#',...),...}end
@@ -174,4 +209,16 @@ disabled.render();disabled.update(.016)
 assert(ds.pose_flushes>0 and ds.restore_acknowledged and not ds.compat.held and do_.state=='stopped','MDL stopped owner must still service and acknowledge asynchronous teardown')
 assert(ds.writes==writes_before and ds.inputs==inputs_before and ds.ragdolls==ragdolls_before,'Pending teardown cannot sample input, write a camera or run active ragdoll capture')
 local flushes_before=ds.pose_flushes;disabled.update(.016);assert(ds.pose_flushes==flushes_before,'Acknowledged teardown leaves retained callbacks inert')
-print('Independent runtime: full-source compilation, transparent callbacks, idle no-writes, acquire/restore order, bounded transient gaps, camera replacement, retirement, late render, conflict/error cleanup, asynchronous MDL teardown and inert shutdown passed')
+local moving,ms,mo=fixture(false,true)
+moving.update(.016);moving.render();ms.moving=true
+for frame=1,6 do
+ moving.update(.016)
+ if frame==3 then ms.intent='enter'end
+ moving.render()
+ if frame>=3 then assert(mo.photo.active and ms.compat.held,'The first toggle while moving must use the actual Scene rendered-pose identity rather than reject a one-update pose lag')end
+end
+assert(not ms.rejected and ms.writes>=4,'Continuous movement must not consume the opening toggle as unavailable')
+ms.intent='exit';moving.update(.016);moving.render();assert(not mo.photo.active)
+ms.intent='enter';moving.update(.016);moving.render()
+assert(mo.photo.active and not ms.rejected,'The first immediate reopen while still moving must survive completed camera cleanup')
+print('Independent runtime: full-source compilation, transparent callbacks, idle no-writes, acquire/restore order, bounded transient gaps, moving first-press entry/reopen, camera replacement, retirement, late render, conflict/error cleanup, asynchronous MDL teardown and inert shutdown passed')

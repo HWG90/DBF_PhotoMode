@@ -6,7 +6,7 @@ local function fixture()
  local world={name='main'}
  local player={name='player'};local unit={name='camera'};local cam={name='camera-instance'}
  local S={world=world,units={player,unit},player=player,unit=unit,cam=cam,identity='local:1',p={2,3,4},
-  wp={0,0,1},lp={0,0,1},rendered=pose({0,0,1}),camera_pose=pose({0,0,1}),live={},calls=0}
+  wp={0,0,1},lp={0,0,1},rendered=pose({0,0,1}),camera_pose=pose({0,0,1}),live={},calls=0,time=0,camera_data={}}
  S.live[player]=true;S.live[unit]=true
  local function genuine(u)
   for _,entry in ipairs(S.units)do if entry==u then return true end end
@@ -20,17 +20,17 @@ local function fixture()
  function sr.World.units(w)assert(w==S.world);if S.units_error then error('units unavailable')end;return S.units end
  function sr.World.debug_camera_pose(w)assert(w==S.world);return S.rendered end
  function sr.Unit.alive(u)genuine(u);S.calls=S.calls+1;return S.live[u]end
- function sr.Unit.num_cameras(u)genuine(u);S.counts=(S.counts or 0)+1;return u==S.unit and 1 or u==S.second and 1 or 0 end
+ function sr.Unit.num_cameras(u)genuine(u);S.counts=(S.counts or 0)+1;if S.count_error then return nil end;return u==S.unit and 1 or u==S.second and 1 or 0 end
  function sr.Unit.camera(u,i)genuine(u);assert(i==1);if S.camera_error then error('camera temporarily unreadable')end;return u==S.second and S.second_cam or S.cam end
- function sr.Camera.world_position(c)assert(c==S.cam or c==S.second_cam);return S.wp end
- function sr.Camera.local_position(c,u)genuine(u);return S.lp end
- function sr.Camera.world_pose(c)return S.camera_pose end
+ function sr.Camera.world_position(c)assert(c==S.cam or c==S.second_cam);return S.camera_data[c]and S.camera_data[c].wp or S.wp end
+ function sr.Camera.local_position(c,u)genuine(u);return S.camera_data[c]and S.camera_data[c].lp or S.lp end
+ function sr.Camera.world_pose(c)return S.camera_data[c]and S.camera_data[c].pose or S.camera_pose end
  for name,key in pairs({translation='p',forward='f',right='r',up='u'})do sr.Matrix4x4[name]=function(m)return m[key]end end
  local function read()
   if S.player_error then error('player temporarily unavailable')end
   return{local_owner=S.local_owner~=false,identity=S.identity,root_handle=S.player,position=S.p,world=S.player_world or S.world}
  end
- S.scene=Scene.new(sr,read,function()end);return S
+ S.scene=Scene.new(sr,read,function()end,function()if S.clock_error then error('clock unavailable')end;return S.time end);return S
 end
 do
  local s=fixture();local frame=assert(s.scene.refresh())
@@ -118,5 +118,64 @@ do
  assert(s.scene.valid(frame)==false and s.scene.retired,'unavailable reader cannot mask a confirmed dead avatar')
  s=fixture();frame=assert(s.scene.refresh());s.player_error=true;s.units_error=true
  assert(s.scene.valid(frame)==nil and not s.scene.retired,'unavailable inventory is not proof of avatar retirement')
+end
+local function moving_pose(s,x,angle)
+ local c,t=math.cos(angle or 0),math.sin(angle or 0)
+ s.wp={x,x*.25,1};s.lp={x,x*.25,1};s.camera_pose=pose({x,x*.25,1},{c,t,0},{t,-c,0},{0,0,1})
+end
+do
+ local s=fixture();moving_pose(s,0,0);s.rendered=s.camera_pose
+ local frame=assert(s.scene.refresh())
+ for tick=1,90 do
+  assert(s.scene.refresh(),'before-update rendered camera remains ready')
+  moving_pose(s,tick*.25,tick*.01);s.time=s.time+1/120
+  for probe=1,8 do
+   local fresh=assert(s.scene.refresh(),'one-update camera/debug skew must not discard readiness')
+   assert(fresh.epoch==frame.epoch and fresh.position[1]==tick*.25)
+   assert(s.scene.valid(frame)==true,'repeated pre-render validation must retain the preceding observed transform')
+  end
+  s.rendered=s.camera_pose
+  local drawn=assert(s.scene.refresh())
+  if tick==45 then
+   assert(s.scene.mark_written(drawn,drawn.position,drawn.forward,drawn.right,drawn.up))
+   assert(s.scene.clear_written(drawn)and s.scene.written==nil)
+   -- The next iteration represents immediate reopening after normal cleanup.
+  end
+ end
+ assert(s.scene.epoch==1,'continuous directional/rotational motion is not camera replacement')
+end
+do
+ local s=fixture();moving_pose(s,0);s.rendered=s.camera_pose;assert(s.scene.refresh())
+ moving_pose(s,1);assert(s.scene.refresh(),'fresh numeric history bridges one prior game update')
+ s.time=.30;assert(s.scene.refresh()==nil,'historical render proof expires in real time')
+ s.rendered=s.camera_pose;assert(s.scene.refresh(),'actual current render proof recovers readiness')
+ moving_pose(s,2);s.count_error=true;assert(s.scene.refresh()==nil)
+ s.count_error=false;assert(s.scene.refresh(true)==nil,'unknown camera inventory clears historical proof')
+ s.rendered=s.camera_pose;assert(s.scene.refresh())
+ moving_pose(s,3);s.units_error=true;assert(s.scene.refresh()==nil)
+ s.units_error=false;assert(s.scene.refresh(true)==nil,'unknown World.units cannot reuse a previous historical proof')
+ s.rendered=s.camera_pose;local old=assert(s.scene.refresh())
+ s.unit={};s.cam={};s.live[s.unit]=true;s.units={s.player,s.unit};moving_pose(s,4)
+ assert(s.scene.refresh()==nil and s.scene.retired,'camera replacement cannot inherit the prior instance history')
+ assert(s.scene.valid(old)==false)
+ s.rendered=s.camera_pose;assert(s.scene.refresh().epoch==2)
+end
+do
+ local s=fixture();moving_pose(s,0);s.rendered=s.camera_pose
+ s.second={};s.second_cam={};s.live[s.second]=true;s.units[#s.units+1]=s.second
+ s.camera_data[s.second_cam]={wp={50,0,1},lp={50,0,1},pose=pose({50,0,1})}
+ assert(s.scene.refresh())
+ moving_pose(s,1)
+ s.camera_data[s.second_cam]={wp={0,0,1},lp={0,0,1},pose=pose({0,0,1})}
+ assert(s.scene.refresh()==nil and s.scene.reason:find('ambiguous',1,true),
+  'a current matching camera and a different historical matching camera are ambiguous')
+ s.rendered=pose({999,999,1});assert(s.scene.refresh()==nil,'unmatched unrelated render poses remain refused')
+end
+do
+ local s=fixture();s.clock_error=true;moving_pose(s,0);s.rendered=s.camera_pose;assert(s.scene.refresh())
+ moving_pose(s,1);assert(s.scene.refresh())
+ for i=1,20 do s.scene.refresh()end
+ assert(s.scene.refresh()==nil,'without a clock, a bounded observation serial prevents indefinite history retention')
+ s.rendered=s.camera_pose;assert(s.scene.refresh())
 end
 print('camera_scene_tests: rendered-camera identity, ambiguity, finite pose and retirement passed')
