@@ -277,4 +277,104 @@ assert(not native.write(assert(native.context()),partial_record,'target',77,4294
 num(behavior+0x60,brow,8);num(airow,16);prior_writes=memwrites
 assert(not native.observe(assert(native.context()),entity)and not native.write(assert(native.context()),partial_record,'still',0x680,0x600)and memwrites==prior_writes,'Dead own AI accepted partial suppression')
 num(airow,0)
+-- Post-write records remove only the caller's redundant observation. They do
+-- not bypass expected-value writes, partial-commit ownership or old adapters.
+do
+ local function fixture(verified)
+  local s={time=0,records={},ids={},observations=0,restore_observations=0,detector_observations=0,writes=0,verified=verified,visits={}}
+  function s.add(e)
+   local fields={};for i,key in ipairs({'still','target','alert','detector','hostiles'})do
+    fields[key]={value=({0x200,77,5,1,3})[i],token=key..e,address=e*256+i}
+   end
+   s.records[e]={entity=e,identity='perf:'..e,invalid=4294967295,fields=fields};s.ids[#s.ids+1]=e;return s.records[e]
+  end
+  local function read(e)return s.records[e]and clone(s.records[e])or nil,'retired'end
+  local b={now=function()return s.time end,context=function()if s.context_error then return nil,'authority temporarily unavailable'end;return{identity='perf',solo=true,player_count=1}end,
+   scan=function()return s.ids,0 end,
+   observe=function(_,e)s.observations=s.observations+1;s.visits[e]=(s.visits[e]or 0)+1;return read(e)end,
+   observe_restore=function(_,e)s.restore_observations=s.restore_observations+1;return read(e)end,
+   observe_detector=function(_,e)s.detector_observations=s.detector_observations+1;return read(e)end}
+  function b.write(_,r,key,value,expected)
+   local current=assert(s.records[r.entity]);local field=assert(current.fields[key]);assert(current.identity==r.identity and field.token==r.fields[key].token and field.value==expected,'Fast path accepted a stale expected-value write')
+   s.writes=s.writes+1;field.value=value
+   if s.partial==key then s.partial=nil;return false,'readback unavailable',true end
+   if not s.verified then return true,nil,true end
+   local after=clone(current)
+   if s.bad=='entity'then after.entity=after.entity+1000
+   elseif s.bad=='identity'then after.identity='another generation'
+   elseif s.bad=='token'then after.fields[key].token='another component'
+   elseif s.bad=='address'then after.fields[key].address=0
+   elseif s.bad=='owner'then after.fields[key].owner=99
+   elseif s.bad=='value'then after.fields[key].value=value+1 end
+   return true,nil,true,after
+  end
+  b.restore=b.write;s.backend=b;s.control=C.new(b);return s
+ end
+ for _,verified in ipairs({false,true})do
+  local s=fixture(verified);local r=s.add(1);assert(s.control.queue('dummy')and s.control.flush(false))
+  assert(s.writes==5 and s.observations==(verified and 1 or 6),'Verified post-write path did not remove exactly the redundant caller reads')
+  assert(s.control.release()and r.fields.still.value==0x200 and r.fields.detector.value==1)
+  assert(s.restore_observations==(verified and 1 or 2),'Verified restoration record was not reused')
+ end
+ for _,bad in ipairs({'entity','identity','token','address','owner','value'})do
+  local s=fixture(true);s.bad=bad;local r=s.add(1);assert(s.control.queue('dummy')and s.control.flush(false))
+  assert(s.observations==6,'Unverified post-write identity/readback bypassed the old observation path: '..bad)
+  assert(s.control.release()and r.fields.still.value==0x200 and r.fields.detector.value==1)
+ end
+ local s=fixture(true);local r=s.add(1);s.partial='detector'
+ assert(s.control.queue('dummy')and s.control.flush(false)and s.control.affected==0)
+ assert(s.observations==2,'Partial committed write must fall back to a fresh observation')
+ assert(s.control.release()and r.fields.detector.value==1 and r.fields.still.value==0x200,'Partial commit lost detector/movement cleanup leases')
+ s=fixture(true);r=s.add(1);assert(s.control.queue('dummy')and s.control.flush(false));s.partial='still'
+ assert(not s.control.release()and s.control.count()>0,'Partial committed restore discarded its retained lease')
+ assert(s.control.release()and s.control.count()==0 and r.fields.still.value==0x200 and r.fields.detector.value==1)
+
+ -- Stable registries retain bounded round-robin suppression without rebuilding
+ -- sorted ID arrays or formatting an unchanged status each gameplay frame.
+ s=fixture(true);for e=64,1,-1 do s.add(e)end
+ assert(s.control.queue('dummy'));for _=1,4 do assert(s.control.flush(false))end
+ for e=1,64 do assert(s.visits[e]and s.records[e].fields.detector.value==0,'Stable iteration starved an admitted enemy')end
+ local original_sort,original_format=table.sort,string.format;local sorts,formats=0,0
+ table.sort=function(...)sorts=sorts+1;return original_sort(...)end
+ string.format=function(pattern,...)if pattern:find('Enemy behavior:',1,true)then formats=formats+1 end;return original_format(pattern,...)end
+ local ran,problem=pcall(function()
+  for _=1,4 do assert(s.control.flush(false))end
+  assert(sorts==0 and formats==0,'Unchanged enemy registries/status rebuilt each frame')
+  s.records[1].fields.still.value=0x200;s.records[1].fields.target.value=77
+  assert(s.control.flush(false));assert(s.records[1].fields.still.value==0x280 and s.records[1].fields.target.value==4294967295,'Optimization throttled per-update movement/target suppression')
+ end)
+ table.sort,string.format=original_sort,original_format;assert(ran,problem)
+ s.records[1]=nil;for i=#s.ids,1,-1 do if s.ids[i]==1 then table.remove(s.ids,i)end end
+ for _=1,4 do assert(s.control.flush(false))end
+ local incoming=s.add(65);s.time=.1;for _=1,5 do assert(s.control.flush(false))end
+ assert(incoming.fields.detector.value==0 and incoming.fields.still.value==0x280,'Registry retirement/discovery lost a new enemy')
+ s.context_error=true;assert(not s.control.flush(false));s.context_error=false;assert(s.control.flush(false)and s.control.status:find('Enemy behavior: Dummy',1,true),'Cached status retained an authority error after recovery')
+ assert(s.control.release())
+
+ -- Model the review helper's acknowledged-method migration. Authoritative
+ -- maps/leases are shared; derived ID/status caches are rebuilt, never copied.
+ local function cell(fn,name)for i=1,80 do local n,v=debug.getupvalue(fn,i);if not n then break end;if n==name then return i,v end end end
+ local function copy_state(target,source)
+  for _,name in ipairs({'requested','context','held','detectors','cursor','next_refresh','round','detector_round'})do
+   local ti=assert(cell(target,name));local si,value=cell(source,name);assert(si);debug.setupvalue(target,ti,value)
+  end
+  for _,name in ipairs({'held_dirty','detector_dirty'})do local index=cell(target,name);if index then debug.setupvalue(target,index,true)end end
+ end
+ local function migrate(ai,b)
+  local old={};for k,v in pairs(ai)do if type(v)=='function'then old[k]=v end end
+  local replacement=C.new(b);copy_state(replacement.flush,old.flush);debug.setupvalue(replacement.flush,assert(cell(replacement.flush,'self')),ai)
+  for k,v in pairs(replacement)do if type(v)=='function'then assert(old[k]);ai[k]=v end end
+  return function()copy_state(old.flush,ai.flush);for k,v in pairs(old)do ai[k]=v end end
+ end
+ s=fixture(true);local first=s.add(1);s.add(2);assert(s.control.queue('dummy')and s.control.flush(false))
+ local same_object=s.control;assert(s.control.queue('passive'));local original_writes=s.writes
+ local rollback=migrate(s.control,s.backend)
+ assert(s.control==same_object and s.control.mode=='dummy'and s.control.pending and s.writes==original_writes,'Migration changed mode, public identity or live leases')
+ assert(s.control.flush(false)and s.control.mode=='passive'and first.fields.still.value==0x200 and first.fields.detector.value==0,'Migration lost pending mode request or owned baseline')
+ incoming=s.add(3);s.time=.1;assert(s.control.flush(false)and incoming.fields.detector.value==0,'Migrated dirty registry missed a new arrival')
+ rollback();assert(s.control==same_object and s.control.mode=='passive')
+ assert(s.control.queue('dummy')and s.control.flush(false)and incoming.fields.still.value==0x280,'Rollback reused stale registry membership')
+ assert(s.control.queue('normal')and s.control.flush(false)and s.control.count()==0 and incoming.fields.detector.value==1 and first.fields.detector.value==1,'Migration/rollback lost Normal cleanup')
+ print('AI control performance: verified caller reads 6->1 per initial Dummy, safe fallback/partial cleanup, stable bounded registries/status and lease-preserving migration/rollback passed')
+end
 print('Photo AI: honest Passive/Dummy behavior, bounded changed-only updates, conditional restoration, transient target safety, retry/generation/component/world ownership, fixed build/registry guards and fresh byte-backed native lookups passed')

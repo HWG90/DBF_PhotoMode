@@ -30,28 +30,50 @@ function M.new(sr,memory)
   local data=memory.read(at,size);assert(type(data)=='string'and#data==size,'AI read incomplete');return data
  end
  local function u32(at)return word(read(at,4),0)end
- local function ptr(at)local p=address(read(at,8),0);assert(p==0 or(p>=65536 and p<2^47 and p%8==0),'AI pointer invalid');return p~=0 and p or nil end
+ local function checked_pointer(p)assert(p==0 or(p>=65536 and p<2^47 and p%8==0),'AI pointer invalid');return p~=0 and p or nil end
+ local function ptr(at)return checked_pointer(address(read(at,8),0))end
+ -- Copies live only for this operation. A span crossing unreadable padding
+ -- falls back to the original scalar reads; optional components stay isolated.
+ local function span(at,size)local ok,data=pcall(read,at,size);if ok then return data end end
+ local function copied_pointer(copied,offset,at)
+  if copied then return checked_pointer(address(copied,offset))end
+  return ptr(at)
+ end
  local function image(base,stamp)local pe=u32(base+60);assert(pe>=64 and pe<1048576 and read(base+pe,4)=='PE\0\0'and u32(base+pe+8)==stamp,'Enemy behavior build unsupported')end
  image(memory.game,M.game_stamp);image(memory.exe,M.exe_stamp)
  -- Registry fingerprint shared with the already verified local-subject route.
  assert(read(memory.exe+0x9d8c0,22)=='\x48\x89\x5c\x24\x08\x48\x89\x74\x24\x10\x57\x48\x83\xec\x20\x48\x8b\x35\x1a\x28\x97\x01','AI Unit registry changed')
- local function map(header,key)
-  local h=read(header,24);local data,cap,empty,seed=address(h,0),word(h,8),word(h,12),word(h,16)
+ local function map(header,key,copied)
+  local h=copied or read(header,24);local data,cap,empty,seed=address(h,0),word(h,8),word(h,12),word(h,16)
   assert(data>=65536 and cap>0 and cap<=1048576 and bit.band(cap,cap-1)==0,'AI map layout changed')
   if not key then return data,cap,empty end
   local low=key%65536;local hash=(low*seed+(((key-low)/65536*seed)%65536)*65536)%4294967296
-  for i=0,math.min(cap,64)-1 do local row=read(data+((hash+i)%cap)*8,8);local found=word(row,0)
-   if found==key then local index=word(row,4);if index~=4294967295 then assert(index<1048576,'AI row index invalid');return index end;return end
-   if found==empty then return end
+  local inspected,limit=0,math.min(cap,64)
+  while inspected<limit do
+   local slot=(hash+inspected)%cap;local length=math.min(8,limit-inspected,cap-slot)
+   local block=span(data+slot*8,length*8)
+   for i=0,length-1 do
+    local row=block or read(data+(slot+i)*8,8);local offset=block and i*8 or 0;local found=word(row,offset)
+    if found==key then local index=word(row,offset+4);if index~=4294967295 then assert(index<1048576,'AI row index invalid');return index end;return end
+    if found==empty then return end
+   end
+   inspected=inspected+length
   end
  end
  local function part(manager,spec,e)
   if not manager then return end
-  local index=map(manager+spec.map,e);if index==nil then return end
-  local list=ptr(manager+spec.list);local descriptor=list and ptr(list+index*8);if not descriptor then return end
+  local header=span(manager+spec.map,spec.rows-spec.map+8)
+  local index=map(manager+spec.map,e,header);if index==nil then return end
+  local list=copied_pointer(header,spec.list-spec.map,manager+spec.list)
+  local descriptor=list and ptr(list+index*8);if not descriptor then return end
   local d=read(descriptor,24);if word(d,8)~=e or d:byte(21)%2~=1 then return end
-  local rows=ptr(manager+spec.rows);if not rows then return end
+  local rows=copied_pointer(header,spec.rows-spec.map,manager+spec.rows);if not rows then return end
   return rows+index*spec.stride,descriptor
+ end
+ local function managers()return span(memory.game+L.ALERT,L.BEHAVIOR-L.ALERT+8)end
+ local function manager(label,copied)
+  if copied then return checked_pointer(address(copied,L[label]-L.ALERT))end
+  return ptr(memory.game+L[label])
  end
  function self.now()return memory.now()end
  -- Read the current mission record, rather than classifying nearby enemies.
@@ -75,7 +97,8 @@ function M.new(sr,memory)
  end
  local function session_authority(cleanup)
   local net=ptr(memory.game+L.NET);if not net then return nil,'Host authority unavailable','unknown_session'end
-  local local_peer,host_peer=read(net+0xb398,8),read(net+0xb3a8,8);local zero=string.rep('\0',8)
+  local peer_bytes=span(net+0xb398,24)
+  local local_peer,host_peer=peer_bytes and peer_bytes:sub(1,8)or read(net+0xb398,8),peer_bytes and peer_bytes:sub(17,24)or read(net+0xb3a8,8);local zero=string.rep('\0',8)
   if local_peer==zero then return nil,'Local peer authority unavailable','unknown_session'end
   local N,G=sr.Network,sr.GameSession
   if not(N and G and type(N.game_session)=='function')then return nil,'Solo session reader unavailable','unknown_session'end
@@ -119,9 +142,21 @@ function M.new(sr,memory)
   local row=read(ctx.world+L.WORLD_RECORDS+i*24,24);if word(row,8)~=e then return end
   local ref=word(row,12);local registry=ptr(memory.exe+L.UNIT_REGISTRY);if not registry then return end
   local index=ref%4194304;local generation=math.floor(ref/4194304)
-  if index>=u32(registry+0x98)or read(assert(ptr(registry+0xa0))+index,1):byte()~=generation then return end
-  local object=ptr(assert(ptr(registry+0x88))+index*8);if not object or ptr(object+0x18)~=ctx.scene_native then return end
-  local vt=ptr(object);if not vt or ptr(vt+0xf8)~=memory.exe+0x2bd890 or ptr(vt+0xc8)~=memory.exe+0x2c3990 then return end
+  local registry_data=span(registry+0x88,32)
+  local capacity=registry_data and word(registry_data,16)or u32(registry+0x98)
+  if index>=capacity then return end
+  local generations=copied_pointer(registry_data,24,registry+0xa0)
+  if read(assert(generations)+index,1):byte()~=generation then return end
+  local pointers=copied_pointer(registry_data,0,registry+0x88)
+  local object=ptr(assert(pointers)+index*8);if not object then return end
+  local object_data=span(object,32)
+  local object_world=copied_pointer(object_data,24,object+0x18)
+  if object_world~=ctx.scene_native then return end
+  local vt=copied_pointer(object_data,0,object);if not vt then return end
+  local methods=span(vt+0xc8,56)
+  local alive=copied_pointer(methods,48,vt+0xf8)
+  local visible=copied_pointer(methods,0,vt+0xc8)
+  if alive~=memory.exe+0x2bd890 or visible~=memory.exe+0x2c3990 then return end
   return ref
  end
  local function identity(ctx,e,ref)return ctx.identity..':'..e..':'..ref end
@@ -130,40 +165,45 @@ function M.new(sr,memory)
  function self.observe_restore(ctx,e)
   if not valid_context(ctx)then return nil,'Enemy scene or authority changed'end
   local ref=unit(ctx,e);if not ref then return nil,'retired'end
-  local ai,token=part(ptr(memory.game+L.AI),specs.ai,e);if not ai or u32(ai)==16 then return nil,'retired'end
-  return {kind='movement',entity=e,identity=identity(ctx,e,ref),unit=ref,fields={still={value=u32(ai+4),address=ai+4,size=4,token=token}}}
+  local ai,token=part(ptr(memory.game+L.AI),specs.ai,e);if not ai then return nil,'retired'end
+  local values=read(ai,8);if word(values,0)==16 then return nil,'retired'end
+  return {kind='movement',entity=e,identity=identity(ctx,e,ref),unit=ref,fields={still={value=word(values,4),address=ai+4,size=4,token=token}}}
  end
  -- A detector can be borrowed by another enemy. Resolve its real owner even
  -- after that borrower dies, without depending on the owner's Behavior row.
  function self.observe_detector(ctx,e)
   if not valid_context(ctx)then return nil,'Enemy scene or authority changed'end
   local ref=unit(ctx,e);if not ref then return nil,'retired'end
-  local ai=part(ptr(memory.game+L.AI),specs.ai,e);if not ai or u32(ai)==16 then return nil,'retired'end
-  local detector,token=part(ptr(memory.game+L.DETECTOR),specs.detector,e)
+  local copied=managers()
+  local ai=part(manager('AI',copied),specs.ai,e);if not ai or u32(ai)==16 then return nil,'retired'end
+  local detector,token=part(manager('DETECTOR',copied),specs.detector,e)
   if not detector then return nil,'Enemy detector component unavailable'end
   return {kind='detector',entity=e,identity=identity(ctx,e,ref),unit=ref,fields={detector={value=read(detector+0x13f0,1):byte(),address=detector+0x13f0,size=1,token=token}}}
  end
  function self.observe(ctx,e)
   if not valid_context(ctx)then return nil,'Enemy scene or authority changed'end
   local ref=unit(ctx,e);if not ref then return nil,'retired'end
-  local ai,ai_token=part(ptr(memory.game+L.AI),specs.ai,e);if not ai or u32(ai)==16 then return nil,'retired'end
+  local copied=managers()
+  local ai,ai_token=part(manager('AI',copied),specs.ai,e);if not ai then return nil,'retired'end
+  local ai_values=span(ai,8);if(ai_values and word(ai_values,0)or u32(ai))==16 then return nil,'retired'end
   local invalid=u32(memory.game+L.INVALID);local fields={};local issues={}
-  local function field(key,at,size,token)
-   local ok,value=pcall(function()return size==1 and read(at,1):byte()or u32(at)end)
+  local function field(key,at,size,token,copied)
+   local ok,value=pcall(function()if copied~=nil then return copied end;return size==1 and read(at,1):byte()or u32(at)end)
    if ok then fields[key]={value=value,address=at,size=size,token=token}
    else issues[#issues+1]=key..' field unreadable'end
   end
   local function optional_part(key,label)
-   local ok,row,token=pcall(function()return part(ptr(memory.game+L[label]),specs[key],e)end)
+   local ok,row,token=pcall(function()return part(manager(label,copied),specs[key],e)end)
    if not ok or not row then issues[#issues+1]=key..' component unavailable';return end
    return row,token
   end
-  field('still',ai+4,4,ai_token)
+  field('still',ai+4,4,ai_token,ai_values and word(ai_values,4))
   local behavior,b_token=optional_part('behavior','BEHAVIOR')
   local owner=e
   if behavior then
-   field('target',behavior+0x18,4,b_token)
-   local ok,value=pcall(u32,behavior+0x68)
+   local values=span(behavior+0x18,0x54)
+   field('target',behavior+0x18,4,b_token,values and word(values,0))
+   local ok,value=pcall(function()return values and word(values,0x50)or u32(behavior+0x68)end)
    if ok and value~=0 and value~=invalid then owner=value end
   end
   local requested_owner=owner
@@ -171,10 +211,10 @@ function M.new(sr,memory)
    local owner_ref=ref
    if entity~=e then
     owner_ref=unit(ctx,entity)
-    local owner_ai=owner_ref and part(ptr(memory.game+L.AI),specs.ai,entity)
+    local owner_ai=owner_ref and part(manager('AI',copied),specs.ai,entity)
     if not owner_ref or not owner_ai or u32(owner_ai)==16 then return nil,'Borrowed detector owner retired'end
    end
-   local row,token=part(ptr(memory.game+L.DETECTOR),specs.detector,entity)
+   local row,token=part(manager('DETECTOR',copied),specs.detector,entity)
    if not row then return nil,'Detector component unavailable'end
    return row,token,owner_ref
   end
@@ -199,7 +239,7 @@ function M.new(sr,memory)
    detector_owner_issue=owner_issue}
  end
  local function write_field(ctx,record,key,value,expected,cleanup)
-  local committed=false
+  local committed=false;local verified
   local ran,why=pcall(function()
    assert((ctx.cleanup==true)==cleanup,'Enemy write context mismatch')
    if cleanup then
@@ -213,8 +253,9 @@ function M.new(sr,memory)
    assert(type(value)=='number'and value==math.floor(value)and value>=0 and value<2^(8*field.size),'Invalid enemy field value')
    memory.write(field.address,le(value,field.size));committed=true
    local after=observe(ctx,record.entity);assert(after and after.identity==record.identity and after.fields[key]and after.fields[key].token==field.token and after.fields[key].owner_identity==field.owner_identity and after.fields[key].value==value,'Enemy write readback changed')
+   verified=after
   end)
-  return ran,not ran and tostring(why)or nil,committed
+  return ran,not ran and tostring(why)or nil,committed,ran and verified or nil
  end
  function self.write(ctx,record,key,value,expected)return write_field(ctx,record,key,value,expected,false)end
  function self.restore(ctx,record,key,value,expected)return write_field(ctx,record,key,value,expected,true)end
