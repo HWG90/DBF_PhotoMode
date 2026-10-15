@@ -139,6 +139,8 @@ local function fixture(late_render,actual_scene)
  end
  local function game_render(...)
   state.renders=state.renders+1
+  state.refreshes_at_game_render=state.refreshes
+  if state.stop_on_render then env.DBF_PHOTO_MODE_OWNER={stopped=true}end
   if actual_scene then state.rendered_position={unpack(state.camera_position)}end
   return'game-render',nil,...
  end
@@ -238,4 +240,7 @@ is.intent='exit';idle.render();idle.update(.016);local after_exit=is.unit_scans 
 for frame=1,600 do idle.update(.016);idle.render()end
 assert((is.unit_scans or 0)==after_exit,'Normal gameplay after exit must stop enumerating camera Units')
 is.bookmark=true;idle.update(.016);assert((is.unit_scans or 0)>after_exit,'A retained camera bookmark keeps its fresh lifetime checks')
+local retiring,rs,ro=fixture();rs.warming=true;rs.stop_on_render=true
+retiring.render()
+assert(rs.refreshes==rs.refreshes_at_game_render and rs.ragdolls==0,'An owner stopped inside game render must not trigger post-render entry discovery or ragdoll work')
 print('Independent runtime: full-source compilation, transparent callbacks, idle no-writes, acquire/restore order, bounded transient gaps, moving first-press entry/reopen, camera replacement, retirement, late render, conflict/error cleanup, asynchronous MDL teardown and inert shutdown passed')

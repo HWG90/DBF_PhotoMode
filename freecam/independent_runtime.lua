@@ -199,7 +199,7 @@ local function hook_render()
   local result=pack(pcall(observed,...))
   if not result[1]then cleanup_error('game render',result[2]);error(result[2],0)end
   local owner=rawget(G,'DBF_PHOTO_MODE_OWNER')
-  if not stopped and not runtime.stopping and not PHOTO.active and DBF_FREECAM.entry_pending()then
+  if not stopped and not runtime.stopping and not(owner and owner.stopped)and not PHOTO.active and DBF_FREECAM.entry_pending()then
    -- A first opening during movement can precede the game's debug-pose update.
    -- Qualify the view after render, then satisfy that same request next frame.
    local ready,problem=pcall(refresh_camera)
