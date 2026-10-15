@@ -136,3 +136,106 @@ assert(not pcall(backend.pose_frame),'Changed public bone-mode binding accepted'
 assert(backend.pose_valid(pose_frame,true)==true and#writes==before_pose_writes,'Read-only fixed-pose ownership check mutated renderer')
 put(exe+0x4128e0,'\0');assert(not pcall(factory.new,sr,memory),'Changed renderer binding passed exact build validation')
 print('Subject renderer backend: visibility restoration plus lazy fixed-pose root/component ownership, null/layout/mode guards, transient read retry, foreign world and recycled generations passed')
+
+-- TwoPointChain feed links are separate render Units, not Unit children. Only
+-- a verified row between two current local carried entities grants membership.
+put(exe+0x4128e0,'\x48\x8b\xd1\xe9\xe8\xfb\xff\xff')
+put(game+0x8c75fa,'\x48\x8b\x1d\x87\xf5\xa5\x02')
+put(game+0x8c7623,'\x44\x8b\x43\x0c\x0f\x57\xc0\x33\xc9\x49\x69\xc0\x9c\x00\x00\x00\x48\x03\x43\x38')
+put(game+0x8c7676,'\x48\x8b\x43\x30\x0f\x47\x4b\x04\x89\x4b\x04\x48\x8d\x4b\x18\x4a\x89\x3c\xc0\x8b\x57\x08')
+put(game+0x8c6eb9,'\x44\x8b\x49\x20\x44\x8b\x51\x28\x44\x0f\xaf\xd2\x41\x8d\x79\xff\x45\x85\xc9\x74\x33\x4c\x8b\x59\x18')
+put(game+0x8c567f,'\x41\x89\x5f\x04')
+local feed,feed_objects=unit(8,{255,0,255})
+assert(ptr(feed.native+0x1d0)==0 and ptr(feed.native+0x1d8)==0,'Chain fixture accidentally joined the child graph')
+local chain_manager,chain_descriptors,chain_rows,chain_descriptor=alloc(256),alloc(32),alloc(4*0x9c),alloc(32)
+pointer(game+0x3326b88,chain_manager);u32(chain_manager,4);u32(chain_manager+8,1)
+pointer(chain_manager+0x30,chain_descriptors);pointer(chain_manager+0x38,chain_rows)
+local function configure_chain(index,descriptor)
+ index=index or 0;descriptor=descriptor or chain_descriptor
+ u32(chain_manager,4);u32(chain_manager+8,index+1);map(chain_manager,0x18,{[1002]=index})
+ pointer(chain_descriptors+index*8,descriptor);u32(descriptor+8,1002);u32(descriptor+12,pack.ref);put(descriptor+0x14,'\1')
+ u32(chain_rows+index*0x9c,feed.ref);u32(chain_rows+index*0x9c+4,1001)
+end
+local function feed_part(group)
+ for _,part in ipairs(backend.resolve().groups[group or'hide_weapons'])do if part.ref==feed.ref then return part end end
+end
+local function mask(object)return memory.read(object+0xdc,1):byte()end
+local function restore_feed_fixture()
+ put(feed_objects[1]+0xdc,'\255');put(feed_objects[2]+0xdc,'\0');put(feed_objects[3]+0xdc,'\255')
+end
+local function refused_hide(part,message)
+ local n=#writes
+ assert(not backend.owned(part),message..': stale membership still reports owned')
+ assert(not pcall(backend.write,part,1,false)and#writes==n,message..': stale membership reached a native visibility setter')
+end
+configure_chain()
+local feed_row=assert(feed_part());assert(feed_row.chain_link and feed_row.chain_link.descriptor==chain_descriptor and feed_row.chain_link.owner_entity==1002 and feed_row.chain_link.target_entity==1001)
+assert(feed_part('hide_player')and not feed_part('hide_armour')and backend.owned(feed_row),'Verified feed link did not join player/weapon groups only')
+local chains=core.new(backend)
+assert(chains.apply({hide_weapons=true})and mask(feed_objects[1])==0 and mask(feed_objects[2])==0 and mask(feed_objects[3])==0,'Weapon hiding omitted independently rendered feed meshes')
+assert(chains.release()and mask(feed_objects[1])==255 and mask(feed_objects[2])==0 and mask(feed_objects[3])==255,'Feed release changed the originally hidden mesh or failed to restore visible meshes')
+assert(chains.apply({hide_player=true})and mask(feed_objects[1])==0 and mask(feed_objects[3])==0)
+assert(chains.release()and mask(feed_objects[2])==0)
+
+-- Follow a manager compaction through its current owner map; do not read the
+-- old numeric row index once the same descriptor and link move to another row.
+assert(chains.apply({hide_weapons=true}));feed_row=assert(feed_part())
+configure_chain(1);u32(chain_rows,foreign.ref);u32(chain_rows+4,1900)
+assert(backend.owned(feed_row),'Manager row compaction retired a still-owned stable descriptor/link')
+local moved=assert(feed_part());assert(moved.chain_link.index==1 and chains.apply({hide_weapons=true}))
+assert(mask(feed_objects[1])==0 and chains.release()and mask(feed_objects[1])==255,'Compaction lost the original feed visibility restoration lease')
+
+-- Reassigned equipment relationships cannot authorize a new hide. Dropping a
+-- link's membership still restores its own live generation's original masks.
+configure_chain();feed_row=assert(feed_part());assert(chains.apply({hide_weapons=true}))
+u32(chain_rows+4,1900);refused_hide(feed_row,'Foreign chain endpoint')
+assert(not feed_part()and chains.apply({hide_weapons=true})and mask(feed_objects[1])==255 and mask(feed_objects[3])==255,'Removed endpoint retained stale membership or lost same-Unit restoration')
+assert(chains.release());configure_chain()
+local function mutate_refuse(change,undo,message)
+ local part=assert(feed_part());change();refused_hide(part,message);undo()
+ assert(backend.owned(assert(feed_part())),message..': fixture did not recover')
+end
+mutate_refuse(function()map(chain_manager,0x18,{[1900]=0})end,function()configure_chain()end,'Foreign chain owner map')
+mutate_refuse(function()u32(chain_descriptor+8,1900)end,function()u32(chain_descriptor+8,1002)end,'Reassigned descriptor owner')
+mutate_refuse(function()u32(chain_descriptor+12,foreign.ref)end,function()u32(chain_descriptor+12,pack.ref)end,'Reassigned descriptor owner Unit')
+mutate_refuse(function()put(chain_descriptor+0x14,'\0')end,function()put(chain_descriptor+0x14,'\1')end,'Retired chain descriptor')
+local replacement_descriptor=alloc(32)
+mutate_refuse(function()
+ u32(replacement_descriptor+8,1002);u32(replacement_descriptor+12,pack.ref);put(replacement_descriptor+0x14,'\1');pointer(chain_descriptors,replacement_descriptor)
+end,function()pointer(chain_descriptors,chain_descriptor)end,'Replaced chain descriptor')
+mutate_refuse(function()u32(chain_rows,foreign.ref)end,function()u32(chain_rows,feed.ref)end,'Reassigned chain render Unit')
+mutate_refuse(function()u32(equipment+12,0xffffffff)end,function()u32(equipment+12,1002)end,'Dropped source equipment')
+mutate_refuse(function()u32(equipment,0xffffffff)end,function()u32(equipment,1001)end,'Dropped target weapon')
+mutate_refuse(function()u32(base+24+12,foreign.ref)end,function()u32(base+24+12,weapon.ref)end,'Reassigned target entity Unit')
+mutate_refuse(function()put(generations+4,'\2')end,function()put(generations+4,'\1')end,'Retired source equipment generation')
+mutate_refuse(function()pointer(pack.native+0x18,world.native+4096)end,function()pointer(pack.native+0x18,world.native)end,'Foreign source equipment world')
+mutate_refuse(function()pointer(weapon.native+0x18,world.native+4096)end,function()pointer(weapon.native+0x18,world.native)end,'Foreign target weapon world')
+
+-- The renderer always receives a handle actually returned by World.units.
+local actual_feed_handle=table.remove(handles,#handles);assert(actual_feed_handle==feed)
+local count_before=#writes;assert(not pcall(backend.resolve)and#writes==count_before,'Missing World.units feed handle was fabricated')
+handles[#handles+1]=actual_feed_handle
+local actual_weapon_handle=table.remove(handles,3);assert(actual_weapon_handle==weapon)
+assert(not pcall(backend.resolve)and#writes==count_before,'Missing World.units endpoint handle was fabricated')
+table.insert(handles,3,actual_weapon_handle)
+
+-- Retired/recycled link Units must never receive an old visibility restore.
+local function retired_restore(change,undo,message)
+ assert(chains.apply({hide_weapons=true}));local part=assert(feed_part());local first=#writes
+ change();assert(backend.valid(part,1)==false and chains.release(),message..': retirement was not recognized')
+ for i=first+1,#writes do assert(writes[i].ref~=feed.ref,message..': old link handle received a restore setter')end
+ undo();restore_feed_fixture()
+end
+retired_restore(function()put(generations+8,'\2')end,function()put(generations+8,'\1')end,'Recycled chain generation')
+retired_restore(function()pointer(feed.native+0x18,world.native+4096)end,function()pointer(feed.native+0x18,world.native)end,'Retired chain world')
+local replacement_feed=alloc(512);pointer(replacement_feed,vtable);u32(replacement_feed+8,feed.ref);pointer(replacement_feed+0x18,world.native)
+retired_restore(function()pointer(slots+8*8,replacement_feed)end,function()pointer(slots+8*8,feed.native)end,'Replaced chain native Unit')
+
+-- Unsupported active chain layouts fail closed; a null optional manager keeps
+-- ordinary player/weapon visibility available on builds/scenes without chains.
+count_before=#writes;u32(chain_manager,385);assert(not pcall(backend.resolve)and#writes==count_before);u32(chain_manager,4)
+put(game+0x8c567f,'\0');assert(not pcall(backend.resolve)and#writes==count_before,'Changed chain row semantics passed fingerprint validation');put(game+0x8c567f,'\x41\x89\x5f\x04')
+pointer(game+0x3326b88,0);put(game+0x8c567f,'\0')
+assert(not feed_part()and backend.resolve().local_owner,'Absent optional chain manager disabled normal subject controls')
+put(game+0x8c567f,'\x41\x89\x5f\x04')
+print('Subject TwoPointChain backend: independent feed meshes, local equipment proof, manager compaction, relationship replacement, actual Unit handles, retired generations/worlds, original-mask restoration and exact layout guards passed')

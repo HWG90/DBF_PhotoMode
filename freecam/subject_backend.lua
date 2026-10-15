@@ -58,6 +58,7 @@ function M.new(sr,memory)
   return unit
  end
  local root_cache;local self={}
+ local carried,chain_link_valid
  local function locate(part,mesh)
   assert(native(part.ref)==part.native and ptr(part.native+0x18)==part.world_native,'Subject Unit owner changed')
   local count=word(part.native+0xc8);assert(count<=512,'Subject mesh count changed');local meshes=ptr(part.native+0xd0)
@@ -107,12 +108,58 @@ function M.new(sr,memory)
  function self.owned(part)
   local ok,result=pcall(function()
    if owner_key(owner())~=part.owner_key or not self.valid(part)then return false end
+   if part.chain_link and not chain_link_valid(part.chain_link)then return false end
    for _,link in ipairs(part.attachment_path or{})do
     if native(link.ref)~=link.native or native(link.parent_ref)~=link.parent or ptr(link.native+0x1d0)~=link.parent then return false end
    end
    return true
   end)
   return ok and result==true
+ end
+ carried=function(local_player)
+  local result={};local inventory=ptr(game+0x3326738);local ii=lookup(inventory,40,local_player.avatar,4194304)
+  if ii then
+   local row=ptr(inventory+80)+ii*48
+   for _,offset in ipairs({0,4,8,12,16})do
+    local entity=word(row+offset)
+    if entity~=0 and entity~=4294967295 then
+     local index=lookup(local_player.entities,0xf1aeb0,entity,4194304)
+     if index then
+      local record=local_player.entities+0xf32f18+index*24
+      assert(word(record+8)==entity and word(record+20)%2==1,'Carried equipment identity changed')
+      result[entity]={ref=word(record+12),weapon=offset~=12}
+     end
+    end
+   end
+  end
+  return result
+ end
+ local function chain_manager()
+  -- Verified separately from Unit child attachments: ammunition feeds are
+  -- independent TwoPointChain Units owned by two carried equipment entities.
+  local manager=ptr(game+0x3326b88)
+  if manager==0 then return end
+  assert(read(game+0x8c75fa,7)=='\x48\x8b\x1d\x87\xf5\xa5\x02'
+   and read(game+0x8c7623,20)=='\x44\x8b\x43\x0c\x0f\x57\xc0\x33\xc9\x49\x69\xc0\x9c\x00\x00\x00\x48\x03\x43\x38'
+   and read(game+0x8c7676,22)=='\x48\x8b\x43\x30\x0f\x47\x4b\x04\x89\x4b\x04\x48\x8d\x4b\x18\x4a\x89\x3c\xc0\x8b\x57\x08'
+   and read(game+0x8c6eb9,25)=='\x44\x8b\x49\x20\x44\x8b\x51\x28\x44\x0f\xaf\xd2\x41\x8d\x79\xff\x45\x85\xc9\x74\x33\x4c\x8b\x59\x18'
+   and read(game+0x8c567f,4)=='\x41\x89\x5f\x04','Subject chain layout changed')
+  assert(manager>=65536 and manager<2^47,'Subject chain manager unavailable')
+  local capacity,count=word(manager),word(manager+8)
+  assert(capacity>0 and capacity<=384 and count<=capacity,'Subject chain bounds changed')
+  return manager,count
+ end
+ chain_link_valid=function(link)
+  local equipment=carried(owner());local source,target=equipment[link.owner_entity],equipment[link.target_entity]
+  if not source or not target or source.ref~=link.owner_ref or target.ref~=link.target_ref then return false end
+  if native(source.ref)~=link.owner_native or native(target.ref)~=link.target_native
+   or ptr(link.owner_native+0x18)~=link.world_native or ptr(link.target_native+0x18)~=link.world_native then return false end
+  local manager,count=chain_manager();if manager~=link.manager then return false end
+  local index=lookup(manager,0x18,link.owner_entity,count)
+  if index==nil then return false end
+  local descriptor=ptr(ptr(manager+0x30)+index*8);local row=ptr(manager+0x38)+index*0x9c
+  return descriptor==link.descriptor and word(descriptor+20)%2==1 and word(descriptor+8)==link.owner_entity and word(descriptor+12)==link.owner_ref
+   and word(row)==link.ref and word(row+4)==link.target_entity
  end
  function self.frame()
   local local_player=owner();local ref=local_player.root;local world=sr.Application.main_world();assert(world,'Local player world unavailable')
@@ -173,18 +220,26 @@ function M.new(sr,memory)
   end
   add(root,groups.hide_player)
   for offset=0,116,4 do local a,b,c,d=clothes:byte(offset+1,offset+4);local ref=a+b*256+c*65536+d*16777216;add(ref,groups.hide_armour);add(ref,groups.hide_player)end
-  local inventory=ptr(game+0x3326738);local ii=lookup(inventory,40,avatar,4194304)
-  if ii then
-   local row=ptr(inventory+80)+ii*48
-   for _,offset in ipairs({0,4,8,12,16})do
-    local entity=word(row+offset)
-    if entity~=0 and entity~=4294967295 then
-     local index=lookup(entities,0xf1aeb0,entity,4194304)
-     if index then local record=entities+0xf32f18+index*24;assert(word(record+8)==entity and word(record+20)%2==1,'Carried equipment identity changed');local ref=word(record+12);if offset~=12 then add(ref,groups.hide_weapons)end;add(ref,groups.hide_player)end
+  local world=sr.Application.main_world();assert(world,'Subject world unavailable');local world_native=memory.world_address(world)
+  local equipment=carried(local_player)
+  for _,item in pairs(equipment)do if item.weapon then add(item.ref,groups.hide_weapons)end;add(item.ref,groups.hide_player)end
+  local chain_links={};local manager,count=chain_manager()
+  if manager then
+   for entity,item in pairs(equipment)do
+    local index=lookup(manager,0x18,entity,count)
+    if index~=nil then
+     local descriptor=ptr(ptr(manager+0x30)+index*8);local row=ptr(manager+0x38)+index*0x9c
+     assert(word(descriptor+8)==entity and word(descriptor+12)==item.ref,'Subject chain equipment owner changed')
+     local target_entity=word(row+4);local target=equipment[target_entity];local ref=word(row)
+     if word(descriptor+20)%2==1 and target and ref~=0 and ref~=4294967295 then
+      local owner_native,target_native=native(item.ref),native(target.ref)
+      assert(ptr(owner_native+0x18)==world_native and ptr(target_native+0x18)==world_native,'Subject chain endpoint world changed')
+      chain_links[ref]={manager=manager,index=index,descriptor=descriptor,owner_entity=entity,owner_ref=item.ref,target_entity=target_entity,target_ref=target.ref,ref=ref,owner_native=owner_native,target_native=target_native,world_native=world_native}
+      add(ref,groups.hide_player);if item.weapon or target.weapon then add(ref,groups.hide_weapons)end
+     end
     end
    end
   end
-  local world=sr.Application.main_world();assert(world,'Subject world unavailable');local world_native=memory.world_address(world)
   local graph,paths,visiting={},{},{};local total=0
   local function walk(ref,depth,path)
    assert(depth<=16 and not visiting[ref],'Subject attachment depth/cycle changed')
@@ -231,7 +286,7 @@ function M.new(sr,memory)
    local n=word(unit+0xc8);assert(n>=0 and n<=512,'Subject mesh count changed');local meshes=ptr(unit+0xd0);local objects={}
    for mesh=1,n do objects[mesh]=ptr(meshes+(mesh-1)*16);assert(objects[mesh]>=65536 and objects[mesh]<2^47,'Subject mesh object invalid')end
    parts[ref]={identity=table.concat({world_native,ref,unit},':'),ref=ref,handle=handle,native=unit,mesh_count=n,meshes=meshes,mesh_objects=objects,world_native=world_native,
-    owner_key=owner_key(local_player),attachment_path=paths[ref]}
+    owner_key=owner_key(local_player),attachment_path=paths[ref],chain_link=chain_links[ref]}
   end
   for group,items in pairs(groups)do local out,seen={},{};for _,ref in ipairs(items)do if not seen[ref]then out[#out+1]=parts[ref];seen[ref]=true end end;groups[group]=out end
   return{local_owner=true,identity=identity,groups=groups}
