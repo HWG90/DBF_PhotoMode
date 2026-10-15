@@ -232,6 +232,7 @@ local DBF_FREECAM=(function()
 __CONTROLLER__
 end)().new(PHOTO,CFG,function()return target~=nil and anchor~=nil and not SPEC.active and H.dbf_actioncam_compat.available end,log,DBF_PLAYER_FREEZE,DBF_PHOTO_OPTIONS,DBF_PHOTO_RUNTIME,DBF_PHOTO_MENU,DBF_PHOTO_COMPOSITION,DBF_SAVED_CAMERA,DBF_SCREENSHOTS,DBF_FOCUS_SAMPLER,DBF_PHOTO_LIGHTS,H.dbf_subject,H.dbf_director,nil,function()return H.dbf_input_epoch end,H.dbf_ai,H.dbf_poses,H.dbf_actioncam_compat,H.dbf_cinema)
 H.dbf_actioncam_compat.set_priority(DBF_FREECAM.actioncam_priority)
+H.dbf_actioncam_compat.set_input_blocked(DBF_FREECAM.actioncam_input_blocked)
 PHOTO.dbf_stop=DBF_FREECAM.stop
 PHOTO.dbf_clear_saved=DBF_SAVED_CAMERA.clear
 DBF_PHOTO_LIGHTS.update_from_photo=function()

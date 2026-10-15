@@ -52,7 +52,8 @@ now=.4;d,why,metadata=sampler.sample(1,1);assert(d==45 and calls==1 and metadata
 now=1.02;assert(sampler.sample(.5,.5)==23 and calls==1,'Cooldown ends after capture completion')
 now=1.1;assert(sampler.sample(.5,.5)==23 and calls==2,'Depth must refresh after cooldown')
 assert(#paths==2 and paths[1]==paths[2],'Sampler must reuse one bounded owned file')
-meta.identity='depth-b';now=1.3;assert(not sampler.sample(.5,.5)and calls==2 and not files[sampler.path],'Retired target must discard old depth during cooldown')
+meta.identity='depth-b';now=1.3;local d,why,pending=sampler.sample(.5,.5)
+assert(not d and calls==2 and not files[sampler.path]and pending.pending==true and pending.retry_at>now,'Retired target must discard old depth and expose the remaining cooldown before retry')
 now=2.2;mode='throw';d,why=sampler.sample(.5,.5);assert(not d and why:find('native readback refused',1,true)and calls==3 and not files[sampler.path],'Native failure must clean partial depth')
 now=2.4;assert(not sampler.sample(.5,.5)and calls==3,'Failed readbacks must also respect cooldown')
 now=3.3;mode='missing';assert(not sampler.sample(.5,.5)and calls==4 and not files[sampler.path],'Missing readback file must not return stale focus')
@@ -71,8 +72,9 @@ meta.format=0;assert(not other.ready(),'Unsupported native depth format must ref
 local display_meta={format=1,kind=2,mips=1,array=1,width=5,height=5,identity='depth-stable',display_identity='display:hdr:a'}
 local function display_guard()return allowed,display_meta end
 now=20;delay=.03;local transitioning=assert(factory.new(sr,nil,display_guard,config));before=calls
-local d,why=transitioning.sample(.5,.5)
+local d,why,pending=transitioning.sample(.5,.5)
 assert(not d and why:find('display settling',1,true)and calls==before,'First display generation must settle before native readback')
+assert(pending.pending==true and pending.retry_at==22,'Cold readback must expose its stable retry time without a GPU copy')
 now=21.999;assert(not transitioning.sample(.5,.5)and calls==before,'Two-second startup pause must not capture')
 now=22;assert(transitioning.sample(.5,.5)==23 and calls==before+1,'Stable initial display must resume normal sampling')
 now=22.4;assert(transitioning.sample(.5,.5)==23 and calls==before+1,'Stable display must retain ordinary cached focus')
@@ -84,7 +86,8 @@ assert(not transitioning.sample(.5,.5)and calls==before+1,'Another display gener
 now=25.999;assert(not transitioning.sample(.5,.5)and calls==before+1)
 now=26;assert(transitioning.sample(.5,.5)==23 and calls==before+2,'Stable SDR generation must resume autofocus without changing its chosen mode')
 locked=true;display_meta.display_identity='display:hdr:new-backing';now=26.1
-assert(not transitioning.sample(.5,.5)and files[transitioning.path]and calls==before+2,'Failed transition cleanup must retain ownership and avoid capture')
+local d,why,pending=transitioning.sample(.5,.5)
+assert(not d and files[transitioning.path]and calls==before+2 and pending==nil,'Failed transition cleanup must retain ownership and refuse automatic capture retry')
 locked=false;now=26.2
 assert(not transitioning.sample(.5,.5)and not files[transitioning.path]and calls==before+2,'Transition pause must retry bounded owned-file cleanup')
 now=28.1;assert(transitioning.sample(.5,.5)==23 and calls==before+3)

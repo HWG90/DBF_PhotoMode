@@ -9,7 +9,7 @@ local PANEL_WIDTH,PANEL_HEIGHT,HUD_MARGIN=760,440,180
 function M.new(view,actions,existing)
  local legend=M.legend_factory and M.legend_factory.new(view)
  local self=existing or{page=1,scroll=0,selection=1,size_scale=1};local nav_held={};local nav_time={};local nav_ready=false;local last_focus
- local rows={};local selected_hit;local hits={};local held=false;local drag;local resize;local scroll_drag;local move_panel;local geometry;local panel_bounds;local pointer_x,pointer_y;local pressed_key
+ local rows={};local selected_hit;local hits={};local held=false;local drag;local resize;local scroll_drag;local move_panel;local geometry;local panel_bounds;local pointer_x,pointer_y;local pressed_key;local reveal_index;local row_scroll_max=0
  local layout_initialized=existing~=nil;local layout_dirty=false;local opacity_dirty=false
  local opacity_control={id='menu_opacity',type='slider',min=10,max=100,step=1,fine_step=1,default=38}
  local slowmo_control={id='slowmo_speed',type='slider',label='Slow motion speed',min=.05,max=1,step=.05,fine_step=.01}
@@ -48,7 +48,7 @@ function M.new(view,actions,existing)
   self.panel_x=stored_layout('menu_x');self.panel_y=stored_layout('menu_y');self.size_scale=stored_layout('menu_scale');layout_dirty=false;return true
  end
  local function finish_layout()if layout_dirty then layout_dirty=false;self.persist_layout()end;finish_opacity()end
- function self.close()blur_number();finish_layout();if self.light_gizmos then self.light_gizmos.cancel()end;if legend then legend.clear()end;view.release();panel_bounds=nil;hits={};drag=nil;resize=nil;scroll_drag=nil;move_panel=nil;key_capture=nil;text_edit=nil;color_edit=nil;popup=nil;popup_close_on_release=false;self.bound_key=nil;self.editing_value=nil;self.notice=nil;nav_ready=false;held=false;right_held=nil;pointer_x,pointer_y=nil,nil;pressed_key=nil end
+ function self.close()blur_number();finish_layout();if self.light_gizmos then self.light_gizmos.cancel()end;if legend then legend.clear()end;view.release();panel_bounds=nil;hits={};drag=nil;resize=nil;scroll_drag=nil;move_panel=nil;key_capture=nil;text_edit=nil;color_edit=nil;popup=nil;popup_close_on_release=false;self.bound_key=nil;self.editing_value=nil;self.notice=nil;nav_ready=false;held=false;right_held=nil;pointer_x,pointer_y=nil,nil;pressed_key=nil;reveal_index=nil end
  local function suspend_input()blur_number();finish_layout();if self.light_gizmos then self.light_gizmos.cancel()end;if legend then legend.clear()end;nav_ready=false;held=false;right_held=nil;drag=nil;resize=nil;scroll_drag=nil;move_panel=nil;pressed_key=nil;pointer_x,pointer_y=nil,nil end
  function self.suspend()suspend_input();panel_bounds=nil;if legend then view.draw({})end end
  function self.bind(handle,pages)
@@ -116,6 +116,7 @@ function M.new(view,actions,existing)
  end
  local function selectable(c)return c and c.type~='text'and not c.disabled end
  local function reveal(index)
+  reveal_index=index
   if index<=self.scroll then self.scroll=index-1 elseif index>self.scroll+visible_count then self.scroll=index-visible_count end
  end
  local function shift_value(c,direction,fine)
@@ -240,14 +241,15 @@ function M.new(view,actions,existing)
    for i=first,last do row_total=row_total+tab_widths[i]end
    for i=first,last do local index=i;local page=self.pages[i]
     local tabw=row_total<=tab_budget and tab_widths[i]+(tab_budget-row_total)/(last-first+1)or tab_budget*tab_widths[i]/row_total
-    button(page.name,{x=tab_x,y=top-(68+29*row_index)*s,w=tabw-4*s,h=25*s},function()self.page=index;self.selection=1;self.scroll=0;self.editing_value=nil;text_edit=nil;color_edit=nil;key_capture=nil;popup=nil;scroll_drag=nil end,'tab:'..i,i==self.page,12,page.id);tab_x=tab_x+tabw
+    button(page.name,{x=tab_x,y=top-(68+29*row_index)*s,w=tabw-4*s,h=25*s},function()self.page=index;self.selection=1;self.scroll=0;self.editing_value=nil;text_edit=nil;color_edit=nil;key_capture=nil;popup=nil;scroll_drag=nil;reveal_index=nil end,'tab:'..i,i==self.page,12,page.id);tab_x=tab_x+tabw
    end
   end
   local tab_extra=(tab_rows-1)*29*s
-  local page=self.pages[self.page];rows={};selected_hit=nil
+  local page=self.pages[self.page];rows={};selected_hit=nil;local row_sections={};local pending_section
   for _,c in ipairs(page.controls)do
+   if type(c.photo_section)=='string'and c.photo_section~=''then pending_section=c.photo_section end
    local neutral_status=c.type=='text'and((c.status_only and(c.label or '')=='')or(c.id=='shader_status'and c.label=='Shader overlay: none'))
-   if c.id~='controls'and not(actions.freeze and c.id=='freeze_player')and not(actions.slowmo and(c.id=='slowmo_speed'or c.id=='lock_camera'))and not c.layout_storage and not neutral_status then rows[#rows+1]=c end
+   if c.id~='controls'and not(actions.freeze and c.id=='freeze_player')and not(actions.slowmo and(c.id=='slowmo_speed'or c.id=='lock_camera'))and not c.layout_storage and not neutral_status then rows[#rows+1]=c;row_sections[#rows]=pending_section;pending_section=nil end
   end
   self.selection=math.max(1,math.min(#rows,self.selection));if not selectable(rows[self.selection])then for i,c in ipairs(rows)do if selectable(c)then self.selection=i;break end end end
   if self.editing_value and self.editing_value.disabled then self.editing_value=nil;text_edit=nil end;if popup and popup.c.disabled then popup=nil end
@@ -258,10 +260,32 @@ function M.new(view,actions,existing)
    rect(left,toolbar_y,width-32*s,1*s,T.border,.85,303,false,'photo_global_controls_separator')
   end
   local content_top=top-(77+footer_extra)*s-tab_extra;local content_bottom=bottom+(color_edit and 100 or 16)*s;local row=32*s
-  visible_count=math.max(1,math.floor((content_top-content_bottom)/row));self.scroll=math.max(0,math.min(math.max(0,#rows-visible_count),self.scroll))
+  local available=content_top-content_bottom
+  local function row_height(index)return row+(row_sections[index]and 18*s or 0)end
+  local function fit_rows(offset)
+   local count,used=0,0
+   for index=offset+1,#rows do local height=row_height(index);if used+height>available then break end;count=count+1;used=used+height end
+   return math.max(1,count)
+  end
+  local tail_height=0;row_scroll_max=#rows
+  for index=#rows,1,-1 do local height=row_height(index);if tail_height+height>available then break end;tail_height=tail_height+height;row_scroll_max=index-1 end
+  self.scroll=math.max(0,math.min(row_scroll_max,self.scroll))
+  if reveal_index then
+   local target=math.max(1,math.min(#rows,reveal_index));reveal_index=nil
+   if target<=self.scroll then self.scroll=target-1 end
+   while target>self.scroll+fit_rows(self.scroll)and self.scroll<row_scroll_max do self.scroll=self.scroll+1 end
+  end
+  visible_count=fit_rows(self.scroll)
   local hovered_control;local popup_anchor
+  local cursor_y=content_top
   for i=self.scroll+1,math.min(#rows,self.scroll+visible_count)do
-   local c=rows[i];local y=content_top-29*s-(i-self.scroll-1)*row;local rb={x=left-4*s,y=y,w=width-34*s,h=29*s};local hover=over(rb);local selected=focused and i==self.selection and not c.disabled
+   if row_sections[i]then
+    local caption=row_sections[i]:upper();local label_width=math.min(width-64*s,measure(caption,9*s)+12*s)
+    local heading=text(caption,left+3*s,cursor_y-14*s,label_width,12*s,9,T.muted,310,nil,'photo_section_label');heading.ui_role='photo_section_label'
+    rect(left+label_width+8*s,cursor_y-8*s,width-48*s-label_width,1*s,T.border,.65,301,false,'photo_section_divider')
+    cursor_y=cursor_y-18*s
+   end
+   local c=rows[i];local y=cursor_y-29*s;cursor_y=cursor_y-row;local rb={x=left-4*s,y=y,w=width-34*s,h=29*s};local hover=over(rb);local selected=focused and i==self.selection and not c.disabled
    reset_regions[#reset_regions+1]={x=rb.x,y=rb.y,w=rb.w,h=rb.h,c=c}
    if hover then hovered_control=c end
    rect(rb.x,rb.y,rb.w,rb.h,selected and T.gold or T.hover,selected and .12 or hover and .09 or 0,301,false,'setting_row')
@@ -289,13 +313,13 @@ function M.new(view,actions,existing)
     if not c.disabled then local index=i;hits[#hits+1]={x=rb.x,y=rb.y,w=rb.w,h=rb.h,action=function()self.selection=index;self.editing_value=nil;text_edit=nil end,key=c};hits[#hits+1]=b;if i==self.selection then selected_hit=b end end
    end
   end
-  local function scrollbar(kind,b,total,count,offset,modal)
-   if total<=count then return end;local thumb=math.max(24*s,b.h*count/total);local travel=b.h-thumb;local maximum_scroll=total-count;local ty=b.y+travel*(1-offset/maximum_scroll)
+  local function scrollbar(kind,b,total,count,offset,modal,scroll_max)
+   if total<=count then return end;local thumb=math.max(24*s,b.h*count/total);local travel=b.h-thumb;local maximum_scroll=scroll_max or total-count;local ty=b.y+travel*(1-offset/maximum_scroll)
    rect(b.x+5*s,b.y,3*s,b.h,T.line,1,modal and 902 or 306,modal);local thumb_b={x=b.x+3*s,y=ty,w=7*s,h=thumb};rect(thumb_b.x,ty,thumb_b.w,thumb,over(b,modal)and T.gold or T.border_hover,1,modal and 904 or 307,modal,'scrollbar')
    local function set(my,grab)local progress=math.max(0,math.min(1,(my-grab-b.y)/travel));local offset_value=math.floor((1-progress)*maximum_scroll+.5);if kind=='popup'then popup_scroll=offset_value else self.scroll=offset_value end end
    b.key='scroll:'..kind;b.action=function(_,my)local grab=my>=ty and my<=ty+thumb and my-ty or thumb/2;scroll_drag={move=function(py)set(py,grab)end};set(my,grab)end;hits[#hits+1]=b
   end
-  scrollbar('rows',{x=x+width-18*s,y=content_top-visible_count*row,w=16*s,h=visible_count*row},#rows,visible_count,self.scroll)
+  scrollbar('rows',{x=x+width-18*s,y=content_bottom,w=16*s,h=available},#rows,visible_count,self.scroll,false,row_scroll_max)
   if color_edit then
    text('COLOR CHANNELS',left,bottom+73*s,148*s,16*s,10,T.muted);local hex=self.handle.get(color_edit.id);local bw=(width-44*s)/3
    -- The source row may scroll out of view while the channel editor is open.
@@ -443,7 +467,7 @@ function M.new(view,actions,existing)
    end
    if choose then finish_number()end
   elseif prev or nexttab then
-   self.page=(self.page-1+(prev and -1 or 1))%#self.pages+1;self.selection=1;self.scroll=0;color_edit=nil;self.editing_value=nil;popup=nil;scroll_drag=nil
+   self.page=(self.page-1+(prev and -1 or 1))%#self.pages+1;self.selection=1;self.scroll=0;color_edit=nil;self.editing_value=nil;popup=nil;scroll_drag=nil;reveal_index=nil
   elseif up or downrow then
    if #rows>0 then move_row(up and -1 or 1)end
   elseif popup then
@@ -456,7 +480,7 @@ function M.new(view,actions,existing)
    if left or right then shift_value(c,left and -1 or 1,down(16));reveal(self.selection)end
    if choose then if not selected_hit or selected_hit.c~=c then reveal(self.selection)else activate(selected_hit)end;if key_capture then for k=1,255 do if down(k)then baseline[k]=true end end end end
   end
-  if input.wheel and input.wheel~=0 then if popup then popup_scroll=math.max(0,math.min(#popup.c.choices-popup_count,popup_scroll-(input.wheel>0 and 1 or -1)))else self.scroll=math.max(0,math.min(math.max(0,#rows-visible_count),self.scroll-(input.wheel>0 and 1 or -1)));color_edit=nil end end
+  if input.wheel and input.wheel~=0 then if popup then popup_scroll=math.max(0,math.min(#popup.c.choices-popup_count,popup_scroll-(input.wheel>0 and 1 or -1)))else self.scroll=math.max(0,math.min(row_scroll_max,self.scroll-(input.wheel>0 and 1 or -1)));color_edit=nil end end
   if input.click and drag and input.x then scrub_slider(input.x,down(16))end
   if input.click and not held and input.x and input.y then
    local target;for i=#hits,1,-1 do local b=hits[i];if input.x>=b.x and input.x<=b.x+b.w and input.y>=b.y and input.y<=b.y+b.h then target=b;break end end

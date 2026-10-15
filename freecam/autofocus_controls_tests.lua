@@ -1,13 +1,13 @@
 local root=assert(rawget(_G,'DBF_PHOTO_TEST_ROOT'))
 local core=dofile(root..'vendor/core.lua');local options=dofile(root..'photo_options.lua');local menu=dofile(root..'photo_menu.lua');menu.legend_factory=dofile(root..'control_legend.lua')
-local clock=0;local keys={};local mouse={x=700,y=200};local missing_pointer=false;local focused=true;local mcm=false;local mode=0;local lease=false;local commands;local calls={};local distance=3.456789;local fail=false;local retired=0
+local clock=0;local keys={};local mouse={x=700,y=200};local missing_pointer=false;local focused=true;local mcm=false;local mode=0;local lease=false;local commands;local calls={};local distance=3.456789;local fail=false;local retired=0;local settling_until
 local provider={down=function(k)return keys[k]or false end,focused=function()return focused end,
  acquire=function()assert(mode==0);lease=true;mode=3;return {}end,release=function()lease=false;mode=0;return true end,
  set_focus=function(menu_focus)assert(lease);mode=menu_focus and 1 or 3;return true end,
  sample=function()assert(lease and(mode==1 or mode==3));return{wheel=0,escape=keys[27],mouse_x=0,mouse_y=0,dt=.016}end,
  menu_sample=function()assert(mode==1);if missing_pointer then return end;return{x=mouse.x,y=mouse.y,click=keys[1]or false,wheel=0,dt=.016}end}
 local sampler={interval=.5,now=function()return clock end,release=function()retired=retired+1;return true end,
- sample=function(u,v)calls[#calls+1]={u,v};if fail then return nil,'No depth sample'end;return distance end}
+ sample=function(u,v)calls[#calls+1]={u,v};if fail then return nil,'No depth sample'end;if settling_until and clock<settling_until then return nil,'Auto-focus paused: display settling',{pending=true,retry_at=settling_until}end;return distance end}
 local api=core.new(nil,function()end);api.is_open=function()return mcm end;api.close=function()mcm=false;return true end;api.camera_input=provider
 api.photo_resolution=function()return 1920,1080 end;api.create_photo_view=function()return{draw=function(c)commands=c end,release=function()commands={}end}end;DBFMCM=api
 local effects={native_dof_candidate=true,native_dof_ready=true,parameters={focus_distance=true,aperture=true,dof=true},release=function()return true end}
@@ -56,6 +56,43 @@ clock=1.5;distance=12.123;tick();assert(#calls==center_count+1 and near(handle.g
 handle.set('focus_distance',1.405);clock=3;tick();assert(handle.get('focus_mode')==1 and near(handle.get('focus_distance'),1.405)and #calls==center_count+1,'Manual/typed authoritative writes must cancel automatic focus')
 handle.set('focus_mode',3);capture=true;clock=4;tick();assert(#calls==center_count+1,'Screenshots must not trigger GPU autofocus readback');capture=false
 handle.set('focus_mode',2);tick();count=#calls;press(1);handle.set('focus_distance',2.789);tick();press(1);assert(handle.get('focus_mode')==1 and #calls==count,'Manual/typed focus must cancel a pending double click')
-handle.set('focus_mode',2);tick();press(9);assert(mode==3);double_click();assert(#calls==count and mode==3,'Double-click mode must never steal camera input focus or use hidden cursor coordinates')
-local before=retired;controller.stop();assert(mode==0 and not photo.active and retired>before,'Photo exit must release the sampler and input');controller.close();DBFMCM=nil
-print('Autofocus controls: persistent double-click subjects, timing/position/held edges, UV/UI exclusions, valid cursor/depth retention, unchanged input ownership, center sampling, manual override, screenshot/hidden/lens/focus-loss/MCM/exit cleanup passed')
+
+-- One double-click must survive the sampler's mandatory cold/display-settle
+-- pause. It retries only that UV, without repeated GPU work on every frame.
+handle.set('focus_mode',2);tick();tick(.4);settling_until=clock+2;distance=6.543
+count=#calls;double_click();local selected=calls[#calls]
+assert(#calls==count+1 and near(handle.get('focus_distance'),2.789),'Cold subject focus must retain the previous valid distance while warming')
+tick(.5);assert(#calls==count+1,'Pending subject focus must respect the sampler retry time')
+tick(1.5);assert(#calls==count+2 and calls[#calls][1]==selected[1]and calls[#calls][2]==selected[2]and near(handle.get('focus_distance'),6.543),
+ 'The original double-click must focus its subject automatically once depth settles')
+tick(1);assert(#calls==count+2,'Successful subject focus must consume its queued retry')
+settling_until=nil
+local function queued_subject()
+ handle.set('focus_mode',2);if mode==3 then press(9)end;tick();tick(.4)
+ mouse={x=700,y=270};settling_until=clock+2;count=#calls;double_click()
+ assert(#calls==count+1,'Cancellation fixture must begin with one pending cold sample')
+end
+for _,cancel in ipairs({
+ function()handle.set('focus_distance',2.222);tick()end,
+ function()handle.set('focus_mode',1);tick()end,
+ function()capture=true;tick();capture=false;tick()end,
+ function()handle.set('hide_controls',true);tick();handle.set('hide_controls',false);tick()end,
+ function()focused=false;tick();focused=true;tick()end,
+ function()mcm=true;tick();mcm=false;tick()end,
+ function()missing_pointer=true;tick();missing_pointer=false;tick()end,
+ function()mouse={x=0/0,y=270};tick();mouse={x=700,y=270};tick()end,
+ function()local p=find('photo_panel');mouse={x=p.x+3,y=p.y+50};press(1)end,
+})do
+ queued_subject();cancel();local after=#calls;local valid=handle.get('focus_distance');tick(3)
+ assert(#calls==after and handle.get('focus_distance')==valid,'Cancelled subject focus must never apply a delayed depth result')
+ settling_until=nil
+end
+queued_subject();settling_until=clock+60;tick(4.1)
+assert(#calls==count+1,'A permanently settling display must expire the request instead of retrying indefinitely')
+settling_until=nil;tick(1);assert(#calls==count+1,'Expired subject focus must require a new double-click')
+queued_subject();settling_until=nil;distance=8.765;mouse={x=750,y=270};double_click();local latest=#calls;tick(3)
+assert(#calls==latest and near(handle.get('focus_distance'),8.765),'A new subject must replace the old pending request without later overwriting it')
+count=#calls;handle.set('focus_mode',2);tick();press(9);assert(mode==3);double_click();assert(#calls==count and mode==3,'Double-click mode must never steal camera input focus or use hidden cursor coordinates')
+queued_subject();local pending_count=#calls;local before=retired;controller.stop();tick(3)
+assert(mode==0 and not photo.active and retired>before and #calls==pending_count,'Photo exit must cancel pending focus and release the sampler and input');controller.close();DBFMCM=nil
+print('Autofocus controls: persistent double-click subjects, bounded cold-depth retry, request replacement/cancellation, timing/position/held edges, UV/UI exclusions, unchanged input ownership, center sampling and exit cleanup passed')

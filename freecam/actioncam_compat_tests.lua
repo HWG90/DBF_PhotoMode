@@ -216,4 +216,67 @@ for i=1,100 do env11.update=prior_wrapper(env11.update)end
 local ok11,why11=bridge11.refresh();assert(not ok11 and why11=='Camera callback chain cannot be verified')
 assert(up(o11.wrapper,'step')==o11.step and up(o11.hook,'apply')==o11.apply and up(o11.bind,'PHOTO_BINDS')==binds11)
 assert(not bridge11.acquire()and not bridge11.held,'An over-limit graph must not grant a Photo lease')
-print('ActionCam compatibility: actual source, both load orders, idle profiles/FOV, exclusive Photo writes, FP restoration, callback results, unsupported source, cleanup retry, binding edges and bounded stripped loader chains passed')
+
+-- Native/MCM menus may own input while Photo is closed. Keep ActionCam's
+-- settings/update bookkeeping running, but never draw its camera or replay a
+-- mouse/key binding that was pressed while navigating those menus.
+do
+ local env,bridge,e,camera,load=fixture();local original=load();original.hook()
+ assert(bridge.refresh()and not bridge.held)
+ local menu=false;bridge.set_input_blocked(function()return menu end)
+ local options=up(original.step,'options_step');local option_calls=0
+ put(original.step,'options_step',function(...)option_calls=option_calls+1;return options(...)end)
+ local bindings=up(original.step,'bindings_step');bindings()
+ local opt=up(up(original.bind,'switch_profile'),'OPT');local initial=opt.profile
+ local next_profile=initial==1 and 2 or 1;local profile_binding='actioncam.profile_'..next_profile
+ local restarts=0;local restart=original.H.full_restart
+ original.H.full_restart=function(...)restarts=restarts+1;return restart(...)end
+ prime_fov(original,camera);local writes=e.fov;env.render('gameplay')
+ assert(e.fov==writes+1,'Closed menus must retain original ActionCam camera behavior')
+
+ menu=true
+ local frame=up(original.step,'frame');local game_updates=e.step
+ env.update(.016,'menu')
+ assert(option_calls==1 and up(original.step,'frame')==frame+1 and e.step==game_updates+1,
+  'A menu must suppress camera/input only; original options and game updates must continue')
+ prime_fov(original,camera);writes=e.fov;local renders=e.render
+ -- A click bound to an ActionCam profile is still a normal ModBindingsMenu
+ -- level. The owner must drain it exactly like keyboard profile/restart keys.
+ e.down[profile_binding]=true;e.down['actioncam.restart']=true
+ bindings();env.render('menu-click')
+ assert(e.fov==writes and e.render==renders+1 and opt.profile==initial and restarts==0 and not bridge.held,
+  'Menu clicks must not write the camera, change a profile or start Photo ownership')
+ menu=false;bindings();env.render('menu-closed')
+ assert(e.fov==writes+1 and opt.profile==initial and restarts==0,
+  'Camera may resume after menu close, but held menu shortcuts must not replay')
+ e.down[profile_binding]=false;e.down['actioncam.restart']=false
+ bindings();bindings()
+ e.down[profile_binding]=true;bindings()
+ assert(opt.profile==next_profile,'A fresh profile press must work again after the menu binding drains')
+ e.down[profile_binding]=false;bindings()
+ e.down['actioncam.restart']=true;bindings()
+ assert(restarts==1,'A fresh restart press must work again after leaving the menu')
+ e.down['actioncam.restart']=false;bindings()
+
+ -- An attached reader must explicitly return false. Missing/failed native UI
+ -- state cannot grant camera writes; omitting the optional reader is allowed.
+ for _,reader in ipairs({function()return nil end,function()return 0 end,function()return 'closed'end,function()error('UI stack unavailable')end})do
+  bridge.set_input_blocked(reader);prime_fov(original,camera);writes=e.fov
+  env.render('unknown-menu')
+  assert(e.fov==writes,'Unknown or failed menu state must keep the camera suspended')
+ end
+ bridge.set_input_blocked(function()return false end);prime_fov(original,camera);writes=e.fov;env.render('explicit-closed')
+ assert(e.fov==writes+1,'Exact false must resume the original gameplay camera')
+ bridge.set_input_blocked(nil);prime_fov(original,camera);writes=e.fov;env.render('no-reader')
+ assert(e.fov==writes+1,'The optional absent reader must preserve legacy behavior')
+
+ -- Photo's exclusive lease still suppresses both update and render even when
+ -- no native menu is open; a menu never replaces or releases that lease.
+ bridge.set_input_blocked(function()return false end);assert(bridge.acquire())
+ frame=up(original.step,'frame');local calls=option_calls;prime_fov(original,camera);writes=e.fov
+ env.update(.016);env.render('photo')
+ assert(bridge.held and up(original.step,'frame')==frame and option_calls==calls and e.fov==writes,
+  'Photo ownership must remain stronger than the menu-only camera/input gate')
+ assert(bridge.release()and bridge.dispose())
+end
+print('ActionCam compatibility: actual source, both load orders, idle profiles/FOV, exclusive Photo writes, FP restoration, callback results, unsupported source, cleanup retry, binding edges, native menu camera gating and bounded stripped loader chains passed')

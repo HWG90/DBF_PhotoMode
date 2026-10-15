@@ -2,7 +2,7 @@
 local M={}
 function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,catalog,saved_camera,screenshots,focus_sampler,lights,subject,director,unused_input_release,update_epoch,ai,poses,camera_compat,cinema)
     local roll_value;local self={};local api,handle,provider;local held=true;local retry=0;local controls={};local resume_after;local suppress_escape;local panel;local menu_focus=false;local controls_hidden=false;local recovery_menu=false;local focus_edge=false;local hide_edge=false;local slow_edge=false;local lock_edge=false;local escape_edge=false;local screenshot_edge=false
-    local subject_pair;local subject_held;local subject_ready=false;local autofocus_write=false;local focus_deadline=0;local focus_elapsed=0;local focus_status='Manual focus';local focus_mode_seen;local menu_startup_reset=false
+    local subject_pair;local subject_held;local subject_request;local subject_ready=false;local autofocus_write=false;local focus_deadline=0;local focus_elapsed=0;local focus_status='Manual focus';local focus_mode_seen;local menu_startup_reset=false
     local lighting_write=false;local lighting_revision=-1
     local clear_subject_click,game_chat_active,bindings
     self._input_tick=0
@@ -65,6 +65,12 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         if photo.active or self._pending_start or self._pose_stop_pending then return true end
         if not api or not handle or not api.camera_input then return false end
         return api.camera_input.down(handle.get('toggle_key'))==true
+    end
+    function self.actioncam_input_blocked()
+        if not api or not api.camera_input then return false end
+        if self._native_menu_state()or self._external_menu_open()then return true end
+        if not api.camera_input.focused()then return true end
+        return game_chat_active()
     end
     self._poses=poses;self._pose_available=false;self._pose_caps={}
     function self._request_time_change(rate)
@@ -470,13 +476,13 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
     end
     local function focus_message(message)focus_status=message;if controls.focus_status then controls.focus_status.label=message end end
     clear_subject_click=function()
-        subject_pair=nil;subject_held=nil;subject_ready=false
+        subject_pair=nil;subject_held=nil;subject_request=nil;subject_ready=false
     end
     local function sample_focus(u,v,prefix)
         if not focus_sampler or type(focus_sampler.sample)~='function'then focus_message('Auto-focus unavailable');return false end
-        local called,distance,why=pcall(focus_sampler.sample,u,v)
+        local called,distance,why,info=pcall(focus_sampler.sample,u,v)
         if not called or type(distance)~='number'or distance~=distance or distance<=0 or distance==math.huge then
-            focus_message(prefix..': '..tostring(called and why or distance or 'No scene depth'));return false
+            focus_message(prefix..': '..tostring(called and why or distance or 'No scene depth'));return false,called and info or nil
         end
         local control=controls.focus_distance;local minimum=control and control.min or .1;local maximum=control and control.max or 200
         distance=math.max(minimum,math.min(maximum,math.floor(distance*1000+.5)/1000))
@@ -490,20 +496,37 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         self._remember_light_subject(u,v,distance)
         focus_message(prefix..': '..string.format('%.3f m',distance));return true
     end
+    function self._finish_subject_request(time)
+        local request=subject_request;if not request then return end
+        if time<request.started or time>request.deadline or request.attempts>=8 then
+            subject_request=nil;focus_message('Subject focus: depth is still unavailable; double-click to try again');return
+        end
+        if time<request.next_at then return end
+        request.attempts=request.attempts+1
+        local focused,info=sample_focus(request.u,request.v,'Subject focus')
+        if focused or type(info)~='table'or info.pending~=true then subject_request=nil;return end
+        local next_at=info.retry_at
+        if type(next_at)~='number'or next_at~=next_at or math.abs(next_at)==math.huge then subject_request=nil;return end
+        request.next_at=math.max(time+.1,math.min(request.deadline,next_at))
+    end
     local function subject_click(input,w,h,time)
         if not input or not panel.contains_pointer or not subject_ready then
-            subject_pair=nil;subject_held=input and input.click or nil;subject_ready=input~=nil;return
+            subject_pair=nil;subject_request=nil;subject_held=input and input.click or nil;subject_ready=input~=nil;return
         end
         local pressed=input.click and not subject_held;subject_held=input.click
+        if pressed then subject_request=nil end
         local x,y=input.x,input.y
-        if type(x)~='number'or type(y)~='number'or x~=x or y~=y or w<=0 or h<=0 or x<0 or x>w or y<0 or y>h or panel.contains_pointer(x,y)then subject_pair=nil;return end
+        if type(x)~='number'or type(y)~='number'or x~=x or y~=y or w<=0 or h<=0 or x<0 or x>w or y<0 or y>h then subject_pair=nil;subject_request=nil;return end
+        if panel.contains_pointer(x,y)then subject_pair=nil;return end
         if subject_pair and(time<subject_pair.time or time-subject_pair.time>.35)then subject_pair=nil end
         if not pressed then return end
         local prior=subject_pair
         if prior and(x-prior.x)^2+(y-prior.y)^2<=64 then
             subject_pair=nil
             -- Native menu coordinates use bottom-left; scene depth uses top-left.
-            sample_focus(x/w,1-y/h,'Subject focus')
+            -- A cold sampler/display reset needs two stable seconds before a
+            -- readback. Keep this click instead of requiring another pair.
+            subject_request={u=x/w,v=1-y/h,started=time,next_at=time,deadline=time+4,attempts=0}
         else subject_pair={x=x,y=y,time=time}end
     end
     function self.stop(preserve_resume)
@@ -1076,7 +1099,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
                     local captured=panel.scene_tick and panel.scene_tick(input,provider.down)
                     if captured then clear_subject_click()
                     else
-                        if focus_mode==2 and focus_available and not controls_hidden and not editing then subject_click(input,w,h,time)end
+                        if focus_mode==2 and focus_available and not controls_hidden and not editing then subject_click(input,w,h,time);self._finish_subject_request(time)end
                         panel.tick(input,provider.down,true)
                     end
                 end

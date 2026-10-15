@@ -62,7 +62,7 @@ for _,standalone in ipairs({false,true})do
    if command.ui_key and command.ui_key:match('^tab:')and command.ui_role=='button'then tabs[#tabs+1]=command end
    if command.type=='rect'then assert(command.x>=0 and command.y>=0 and command.x+command.w<=viewport_w+.001 and command.y+command.h<=viewport_h+.001,'Compact photo surface escaped viewport')end
   end
-  assert(backing and backing.x>viewport_w/2 and backing.y>viewport_h/5 and backing.h<viewport_h/3 and backing.a<.6,'Photo panel must be shallow, translucent and clear of the ship HUD')
+  assert(backing and backing.x>viewport_w/2 and backing.y>viewport_h/5 and backing.h<viewport_h/2 and backing.a<.6,'Expanded Photo panel must stay translucent and clear of the ship HUD')
   assert(strip and strip.y+strip.h<backing.y and layout.contains_pointer(strip.x+strip.w/2,strip.y+strip.h/2),'Persistent footer must own its pointer surface')
   assert(#tabs==#visible,'Every category must stay reachable')
   for index,tab in ipairs(tabs)do

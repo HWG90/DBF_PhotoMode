@@ -86,7 +86,7 @@ function M.pages(reset,recenter,catalog,saved_actions)
  -- IDs, defaults and callbacks remain shared with MCM and saved settings.
  for _,control in ipairs(saved_actions and saved_actions.camera_controls or{})do camera_controls[#camera_controls+1]=control end
  camera_controls[#camera_controls+1]={id='reset_photo',type='button',label='Reset photo adjustments',button_label='Reset',on_activate=reset}
- return {
+ local definition={
  {id='camera_tools',name='Camera',require_confirmation=false,controls=camera_controls},
  {id='lens',name='Lens',require_confirmation=false,controls={
  lens_control(slider('fov','Field of view (0 = gameplay)',0,120,1)),
@@ -169,6 +169,47 @@ function M.pages(reset,recenter,catalog,saved_actions)
  subject_control('hide_player','Hide entire player'),subject_control('hide_armour','Hide armour and helmet'),subject_control('hide_weapons','Hide carried weapons'),
  {id='subject_status',type='text',label='Subject controls are waiting for a verified player'},
  {id='subject_hint',type='text',label='Visibility is restored when Photo Mode closes.'}}}}
+ -- Group existing rows without introducing stored settings or collapsible UI.
+ -- Keep the original row objects so live gates and callbacks retain ownership.
+ local sections={
+ camera_tools={{'Camera tools','screenshot','lock_camera','recenter'},{'Movement','speed','look_sensitivity','wheel_step','roll_speed','freeze_player','slowmo_speed'},
+  {'Saved camera','save_camera','clear_saved_camera','saved_camera_radius','saved_camera_status'},{'Reset','reset_photo'}},
+ lens={{'Lens','fov','focal_preset','focal_length_status'},
+  {'Focus & depth of field','dof','dof_mode','focus_mode','focus_distance','aperture','focus_status','focus_hint'},
+  {'Camera tilt','roll','roll_preset'},
+  {'Shader bokeh','dof_quality','dof_strength','bokeh_shape','lens_status','known_issues'}},
+ color={{'Tone','color_status','exposure','contrast','saturation','bloom'},{'Filters','filter','filter_strength'}},
+ effects={{'Scene effects','scene_status','scene_shader','scene_strength'},{'Depth & fog','scene_depth_range','fog_distance','fog_density'},
+  {'Shader overlays','shader','shader_opacity','shader_scale','shader_animate','shader_status'},{'Finishing','vignette','vignette_width','grain','grain_size'}},
+ lighting={{'Lights','light_add','light_selected','light_enabled','light_kind','light_status'},
+  {'Appearance','light_intensity','light_color','light_range','light_cone'},
+  {'Placement','light_aim','light_place','light_follow','light_right','light_forward','light_up','light_drag_hint'},
+  {'Subject presets','light_preset','light_apply_preset','light_preset_hint'},
+  {'Saved setups','light_setup_slot','light_setup_recall','light_setup_save','light_setup_clear','light_setup_status'},
+  {'Remove lights','light_remove','light_clear'}},
+ composition={{'Framing','frame','grid','clean_view','hide_hud','hide_controls'},
+  {'Logo','logo','logo_size','logo_color','logo_opacity','logo_x','logo_y'},
+  {'Controls legend','show_legend','legend_open','legend_docked','legend_tab_y','legend_columns','legend_size','legend_x','legend_y'},
+  {'Menu layout','menu_x','menu_y','menu_scale','menu_opacity'}},
+ director={{'Action shots','cinema_begin','cinema_reposition','cinema_end','cinema_status','cinema_hint'},
+  {'Enemy behavior','ai_behavior','ai_reset','ai_status','ai_hint','ai_limits'},
+  {'Saved shots','director_slot','director_recall','director_save','director_clear','director_status','director_hint'}},
+ subject={{'Pose','subject_pose','subject_pose_play','subject_pose_stop','subject_pose_status','subject_pose_hint'},
+  {'Visibility','hide_player','hide_armour','hide_weapons','subject_status','subject_hint'}}}
+ for _,page in ipairs(definition)do
+  local indexed,ordered,used={},{},{}
+  for _,control in ipairs(page.controls)do indexed[control.id]=control end
+  for _,group in ipairs(sections[page.id]or{})do
+   local first=true
+   for i=2,#group do local control=indexed[group[i]];if control then
+    if first then control.photo_section=group[1];first=false end
+    ordered[#ordered+1]=control;used[control]=true
+   end end
+  end
+  for _,control in ipairs(page.controls)do if not used[control]then ordered[#ordered+1]=control end end
+  page.controls=ordered
+ end
+ return definition
 end
 function M.read(handle)
  local values={};for key in pairs(M.defaults)do values[key]=handle.get(key)end;return values

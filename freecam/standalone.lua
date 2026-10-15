@@ -1,5 +1,27 @@
 -- Private settings/input/rendering service. Does not publish or impersonate DBFMCM.
 local M={}
+-- The engine's clip flag is insufficient with gameplay mouse focus disabled.
+-- Use client coordinates translated to screen space, including negative monitors.
+function M.cursor_clip(user,ffi,input)
+ local rect=ffi.new('long[4]');local points=ffi.new('SS_POINT[2]')
+ local self={focused=input.focused}
+ function self.current()
+  if user.SS_GetClipCursor(rect)==0 then return end
+  return{tonumber(rect[0]),tonumber(rect[1]),tonumber(rect[2]),tonumber(rect[3])}
+ end
+ function self.client()
+  local hwnd=input.window();if not hwnd or user.SS_GetClientRect(hwnd,rect)==0 then return end
+  points[0].x=rect[0];points[0].y=rect[1];points[1].x=rect[2];points[1].y=rect[3]
+  if user.SS_ClientToScreen(hwnd,points)==0 or user.SS_ClientToScreen(hwnd,points+1)==0 then return end
+  return{tonumber(points[0].x),tonumber(points[0].y),tonumber(points[1].x),tonumber(points[1].y)}
+ end
+ function self.apply(bounds)
+  if not bounds then return user.SS_ClipCursor(nil)~=0 end
+  for i=0,3 do rect[i]=bounds[i+1]end
+  return user.SS_ClipCursor(rect)~=0
+ end
+ return self
+end
 function M.input(host,sr,available,parent)
  local ffi=require('ffi');local bit=require('bit')
  pcall(ffi.cdef,[[
@@ -7,6 +29,8 @@ function M.input(host,sr,available,parent)
   short SS_GetAsyncKeyState(int) __asm__("GetAsyncKeyState");void *SS_GetForegroundWindow(void) __asm__("GetForegroundWindow");
   int SS_GetCursorPos(SS_POINT *) __asm__("GetCursorPos");int SS_ScreenToClient(void *,SS_POINT *) __asm__("ScreenToClient");
   int SS_GetClientRect(void *,long *) __asm__("GetClientRect");unsigned long SS_GetWindowThreadProcessId(void *,unsigned long *) __asm__("GetWindowThreadProcessId");
+  int SS_ClientToScreen(void *,SS_POINT *) __asm__("ClientToScreen");
+  int SS_GetClipCursor(long *) __asm__("GetClipCursor");int SS_ClipCursor(const long *) __asm__("ClipCursor");
   unsigned long SS_GetCurrentProcessId(void) __asm__("GetCurrentProcessId");
   int mcm_install(void *);int mcm_capture(int);int mcm_captured(void);void mcm_release(void);
   int mcm_wheel(void);int mcm_mouse_x(void);int mcm_mouse_y(void);double mcm_seconds(void);
@@ -23,20 +47,21 @@ function M.input(host,sr,available,parent)
  assert(native.mcm_escape_passthrough()==1,'Photo input Escape policy unavailable')
  pcall(ffi.cdef,'int mcm_load_menu_cursor(const char*);void *mcm_menu_cursor(void);')
  local cursor_ok,cursor_loaded=pcall(function()return native.mcm_load_menu_cursor(host.dir..'/assets/helldivers_cursor.cur')~=0 end)
- local capture=host.require('src/photo_input_capture.lua').new(sr.Window,parent)
  local input={};local hwnd;local point=ffi.new('SS_POINT[1]');local rect=ffi.new('long[4]');local owner=ffi.new('unsigned long[1]')
  function input.poll()
   hwnd=user.SS_GetForegroundWindow();user.SS_GetWindowThreadProcessId(hwnd,owner);if owner[0]~=pid then hwnd=nil end
  end
  function input.down(key)return hwnd~=nil and bit.band(tonumber(user.SS_GetAsyncKeyState(key)),0x8000)~=0 end
  function input.focused()return hwnd~=nil end;function input.window()return hwnd end
+ local capture=host.require('src/photo_input_capture.lua').new(sr.Window,parent,M.cursor_clip(user,ffi,input))
  function input.now()return tonumber(native.mcm_seconds())end
  function input.wheel()return tonumber(native.mcm_wheel())end
  function input.look()return tonumber(native.mcm_mouse_x()),tonumber(native.mcm_mouse_y())end
  function input.lock_aim()sr.Window.set_mouse_focus(false);return sr.Window.mouse_focus()==false end
  function input.menu_cursor(menu)
   sr.Window.set_mouse_focus(false);sr.Window.set_show_cursor(menu);sr.Window.set_clip_cursor(true)
-  return sr.Window.mouse_focus()==false and sr.Window.show_cursor()==menu and sr.Window.clip_cursor()==true
+  if sr.Window.mouse_focus()~=false or sr.Window.show_cursor()~=menu or sr.Window.clip_cursor()~=true then return false end
+  return capture.confine(not menu)
  end
  function input.mouse()
   if not hwnd or user.SS_GetCursorPos(point)==0 or user.SS_ScreenToClient(hwnd,point)==0 or user.SS_GetClientRect(hwnd,rect)==0 then return end

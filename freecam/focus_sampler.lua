@@ -170,7 +170,7 @@ function M.new(sr,depth,verify,options)
     end
     if now<display_stable_at then
      local done,why=remove();self.status='Auto-focus paused: display settling'
-     return nil,done and self.status or why
+     return nil,done and self.status or why,done and{pending=true,retry_at=display_stable_at}or nil
     end
    end
    if identity and meta.identity~=identity then local done,why=remove();if not done then return nil,why end;identity=nil end
@@ -185,7 +185,7 @@ function M.new(sr,depth,verify,options)
     if not captured then remove();last_error='Focus readback failed: '..tostring(error);self.status=last_error;return nil,last_error end
     cached={captured_at=finish,capture_ms=self.last_capture_ms};identity=meta.identity;last_error=nil
    end
-   if not cached then return nil,last_error or'Focus readback cooling down'end
+   if not cached then return nil,last_error or'Focus readback cooling down',not last_error and{pending=true,retry_at=next_capture}or nil end
    local file=io.open(path,'rb');if not file then remove();cached=nil;last_error='Focus depth file was not written';self.status=last_error;return nil,last_error end
    local ran,distance,info=pcall(M.read,file,u,v,options);file:close()
    if not ran then

@@ -13,7 +13,7 @@ function M.new(G,log)
  G=G or _G;log=log or function()end
  local dbg=G.debug or debug
  local self={held=false,available=true,reason=nil,count=0}
- local records={};local roots;local priority;local announced
+ local records={};local roots;local priority;local input_reader;local announced
  local chain_names={previous=true,previous_update=true,original_update=true,prior=true,original=true,wrapped=true,callback=true,fn=true,base=true}
  local function up(fn,wanted)
   if type(fn)~='function'or not dbg or type(dbg.getupvalue)~='function'then return end
@@ -83,6 +83,11 @@ function M.new(G,log)
   if not priority then return false end
   local ok,pressed=pcall(priority);return not ok or pressed==true
  end
+ local function input_blocked()
+  if not input_reader then return false end
+  local ok,blocked=pcall(input_reader)
+  return not ok or type(blocked)~='boolean'or blocked
+ end
  local function sync_edges(record)
   local env=getfenv(record.bindings);local menu=rawget(env._G or env,'ModBindingsMenu')
   local held=false
@@ -101,7 +106,7 @@ function M.new(G,log)
    if not(type(binding.id)=='string'and binding.id:match('^actioncam%.photo_'))then record.filtered[#record.filtered+1]=binding end
   end
   record.binding_gate=function(...)
-   if self.held or priority_down()then sync_edges(record);record.drain=true;return end
+   if self.held or priority_down()or input_blocked()then sync_edges(record);record.drain=true;return end
    if record.drain then record.drain=sync_edges(record);return end
    return record.bindings(...)
   end
@@ -110,7 +115,7 @@ function M.new(G,log)
    return record.step(...)
   end
   record.apply_gate=function(...)
-   if self.held then return end
+   if self.held or input_blocked()then return end
    return record.apply(...)
   end
   -- All contracts are checked first; rollback only our assignments if one fails.
@@ -185,6 +190,7 @@ function M.new(G,log)
   return status(true)
  end
  function self.set_priority(reader)assert(reader==nil or type(reader)=='function');priority=reader end
+ function self.set_input_blocked(reader)assert(reader==nil or type(reader)=='function');input_reader=reader end
  function self.acquire()
   local ok,why=self.refresh();if not ok then return false,why end
   if self.entry_failed then return false,'The previous ActionCam handoff must finish cancelling before Photo starts'end
