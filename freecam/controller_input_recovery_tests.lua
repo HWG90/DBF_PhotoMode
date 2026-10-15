@@ -90,6 +90,19 @@ end
 
 -- Native capture can disappear while the application stays foreground and the
 -- menu-focus selection stays true. The controller owns cleanup and reacquisition.
+local disabled=fixture();disabled.api.photo_standalone=true
+assert(disabled.handle.set('enabled',false));disabled.press(80)
+assert(not disabled.photo.active and disabled.mode==1 and disabled.input.status().active,'Disabled-camera settings must own a real lease')
+local loan=disabled.controller.editor_bridge
+assert(loan.acquire('Epic LUT') and disabled.mode==0 and not disabled.input.status().active and disabled.focus,'Inactive settings loan must release Photo native and cursor capture')
+assert(loan.release('Epic LUT'));disabled.close()
+
+local cleanup=fixture();cleanup.start();cleanup.fail_restore_focus=true
+assert(not cleanup.controller.editor_bridge.acquire('Epic LUT') and cleanup.input.status().cleanup_pending,'An unacknowledged release cannot grant an editor loan')
+assert(cleanup.controller.editor_bridge.status().owner==nil)
+cleanup.fail_restore_focus=false;assert(cleanup.controller.editor_bridge.acquire('Epic LUT'))
+assert(cleanup.controller.editor_bridge.release('Epic LUT'));cleanup.close()
+
 local f=fixture();f.start();local installs=f.installs;local drawn=f.menu_ticks
 f.mode=0;f.tick()
 assert(f.photo.active and f.mode==0 and not f.input.status().active and f.suspends>0,'Lost menu capture must cleanly relinquish its old lease while retaining the shot')

@@ -31,6 +31,11 @@ function M.new(window,parent,cursor)
   local called,saved=pcall(function()return{focus=window.mouse_focus(),cursor=window.show_cursor(),clip=window.clip_cursor()}end)
   if not called then return nil,tostring(saved)end
   for _,name in ipairs({'focus','cursor','clip'})do if type(saved[name])~='boolean'then return nil,'Photo cursor state unavailable'end end
+  -- A private helper's native gate cannot see a different frontend's DLL.
+  -- Disabled engine mouse focus therefore cannot be a gameplay baseline.
+  -- Refuse before taking a token or changing Window/native state; the owning
+  -- editor must restore its own original flags before Photo may snapshot them.
+  if saved.focus~=true then return nil,'Game mouse focus is already disabled; close the other input owner before opening Photo Mode'end
   local bounds=cursor and cursor.current()
   if cursor and not bounds then return nil,'Windows cursor bounds unavailable'end
   local token={};lease={token=token,owner=owner,saved=saved,clip_saved=bounds};return token

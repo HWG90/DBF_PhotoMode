@@ -98,8 +98,16 @@ function M.new(backend,window)
   local state=input.status();assert(type(state)=='table','Native menu input ownership unavailable')
   -- A newer frontend owns its Window state even if its values happen to match
   -- ours. Forget our restoration claim before considering the native UI stack.
-  if state.available==false then handoff=nil;return false end
-  assert(state.available==true,'Native menu input availability unknown')
+  if state.available==false then
+   if type(input.external_status)=='function'then
+    local external=input.external_status()
+    assert(type(external)=='table'and type(external.claimed)=='boolean','External cursor ownership unknown')
+    if external.claimed then handoff=nil;return false end
+    -- A menu waiting to acquire is intent, not a newer cursor writer. Restore
+    -- our valid baseline so its first capture can start from gameplay focus.
+    assert(external.open==true and external.available==false,'Native menu input availability unknown')
+   else handoff=nil;return false end
+  else assert(state.available==true,'Native menu input availability unknown')end
   assert(state.active==false and state.native_mode==0,'Native menu input capture is not released')
   if not allow_unfocused then assert(state.focused==true,'Native menu game window is not focused')end
   return true,state

@@ -183,6 +183,20 @@ do
  f.available=true;f.menu=false
  assert(f.input.native_menu_resume()and f.writes==before and not f.focus and f.cursor,'A discarded native cursor record later overwrote its foreign frontend')
 
+ -- A mod menu may become visible before its capture tick. It must not steal
+ -- the native menu's saved gameplay baseline merely by requesting input.
+ f=fixture();assert(f.input.native_menu_handoff());f.menu=false;f.available=false
+ f.input.external_status=function()return{open=true,available=false,claimed=false}end
+ assert(f.input.native_menu_resume()and f.focus and not f.cursor,'Open-only editor intent discarded the native-menu gameplay baseline')
+ f=fixture();assert(f.input.native_menu_handoff());f.available=false
+ f.input.external_status=function()return{open=true,available=false,claimed=true}end
+ before=f.writes;assert(f.input.native_menu_resume()and f.writes==before,'Actual external capture must retain its newer Window flags')
+ f=fixture();assert(f.input.native_menu_handoff());f.menu=false;f.available=false
+ f.input.external_status=function()return{open=true,available=false}end
+ before=f.writes;assert(not f.input.native_menu_resume()and f.writes==before,'Unknown external ownership must retain the native-menu snapshot')
+ f.input.external_status=function()return{open=true,available=false,claimed=false}end
+ assert(f.input.native_menu_resume()and f.focus and not f.cursor,'Unknown ownership lost its retry baseline')
+
  -- Closing Photo while native UI is up leaves only the owned handoff record;
  -- an idle close notification or the closed-menu handoff finishes it safely.
  f=fixture();assert(f.input.native_menu_handoff());f.menu=false

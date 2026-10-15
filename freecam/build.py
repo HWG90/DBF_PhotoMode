@@ -209,6 +209,7 @@ H.dbf_input_after_update=function(...)
  return ...
 end
 H.dbf_input_before_update=function()
+ if H.dbf_input_recovery then H.dbf_input_recovery.poll(H.dbf_recovery_key and H.dbf_recovery_key()or 121)end
  if DBF_PLAYER_FREEZE.needs_input_capture()then
   local api=rawget(_G,'DBF_PHOTO_CAMERA_API')or rawget(_G,'DBFMCM')or rawget(_G,'DBF_PHOTO_STANDALONE_API')
   local input=api and api.camera_input
@@ -241,6 +242,28 @@ end)
 local DBF_FREECAM=(function()
 __CONTROLLER__
 end)().new(PHOTO,CFG,function()return target~=nil and anchor~=nil and not SPEC.active and H.dbf_actioncam_compat.available end,log,DBF_PLAYER_FREEZE,DBF_PHOTO_OPTIONS,DBF_PHOTO_RUNTIME,DBF_PHOTO_MENU,DBF_PHOTO_COMPOSITION,DBF_SAVED_CAMERA,DBF_SCREENSHOTS,DBF_FOCUS_SAMPLER,DBF_PHOTO_LIGHTS,H.dbf_subject,H.dbf_director,nil,function()return H.dbf_input_epoch end,H.dbf_ai,H.dbf_poses,H.dbf_actioncam_compat,H.dbf_cinema)
+H.dbf_input_recovery=(function()
+__INPUT_RECOVERY__
+end)().new({window=sr.Window,log=log,
+ input=function()
+  local api=rawget(_G,'DBF_PHOTO_CAMERA_API')or rawget(_G,'DBFMCM')or rawget(_G,'DBF_PHOTO_STANDALONE_API')
+  return api and api.camera_input
+ end,
+ stop_photo=DBF_FREECAM.recovery_stop,
+ views=function()
+  local views={};local package_table=rawget(_G,'package');local loaded=type(package_table)=='table'and package_table.loaded
+  local epic=type(loaded)=='table'and loaded['dbf.epic_lut.frontend.v1']
+  if epic then views[#views+1]={key=epic,name='Epic LUT',close=epic.recover_input or epic.dismiss}end
+  local mcm=rawget(_G,'DBFMCM')
+  if mcm then views[#views+1]={key=mcm,name='MCM',close=mcm.close}end
+  local loader=rawget(_G,'LiveLuaLoader')
+  if loader then views[#views+1]={key=loader,name='LLL',close=loader.close_manager}end
+  return views
+ end})
+DBF_FREECAM.input_recovery=H.dbf_input_recovery
+H.dbf_recovery_key=DBF_FREECAM.recovery_key
+rawset(_G,'DBF_PHOTO_EDITOR_INPUT',DBF_FREECAM.editor_bridge)
+rawset(_G,'DBF_PHOTO_INPUT_RECOVERY',H.dbf_input_recovery)
 H.dbf_actioncam_compat.set_priority(DBF_FREECAM.actioncam_priority)
 H.dbf_actioncam_compat.set_input_blocked(DBF_FREECAM.actioncam_input_blocked)
 PHOTO.dbf_stop=DBF_FREECAM.stop
@@ -310,6 +333,7 @@ end)()
         marker='local DBF_PHOTO_RUNTIME=(function()'
         if hook.count(marker)!=1:raise ValueError('Photo camera lifecycle embed contract changed')
         hook=hook.replace(marker,camera_lifecycle+marker,1)
+    hook=hook.replace('__INPUT_RECOVERY__',(ROOT/'input_recovery.lua').read_text(encoding='utf-8'))
     return hook
 
 

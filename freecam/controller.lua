@@ -151,6 +151,55 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         self._input_recovery_reason=message
         return false,message
     end
+    -- External editors borrow input while Photo retains its camera placement.
+    self.editor_bridge={}
+    local editor_bridge=self.editor_bridge
+    function editor_bridge.status()return{owner=self.editor_owner,active=self.editor_owner~=nil}end
+    function editor_bridge.acquire(owner)
+        if type(owner)~='string'or owner==''then return false,'Editor owner name required'end
+        if self.input_recovery and self.input_recovery.status().active then return false,'Input recovery is in progress'end
+        if self.editor_owner and self.editor_owner~=owner then return false,'Photo input is already lent to another editor' end
+        if self.editor_owner==owner then return true end
+        if self._pose_stop_pending or self._pose_time_pending or self._pending_start or self._cinema_begin_pending then
+            return false,'Waiting for Photo camera cleanup'
+        end
+        if freeze and freeze.needs_input_capture and freeze.needs_input_capture()then
+            local ok,why=self._request_time_change(nil)
+            if ok==false then return false,why end
+            if self._pose_time_pending or freeze.needs_input_capture()then return false,'Waiting for Photo pause restoration' end
+        end
+        -- The disabled-camera settings panel can hold input while photo.active
+        -- is false. Every successful loan must release that provider as well.
+        if freeze and freeze.cleanup_pending then
+            local ok,pending=pcall(freeze.cleanup_pending)
+            if not ok or pending~=false then return false,'Waiting for Photo pause cleanup'end
+        end
+        if panel and panel.suspend then panel.suspend()end
+        local ok,why=self._release_input();if ok==false then return false,why end
+        photo.input={}
+        self.editor_owner=owner;return true
+    end
+    function editor_bridge.release(owner)
+        if self.editor_owner and self.editor_owner~=owner then return false,'Photo input belongs to another editor'end
+        if self.editor_owner==owner then self.editor_owner=nil end
+        return true
+    end
+    function self.recovery_key()return handle and handle.get('recover_input_key')or 121 end
+    function self.request_input_recovery()
+        if not self.input_recovery then return false,'Input recovery is unavailable'end
+        held=true;return self.input_recovery.request()
+    end
+    function self.recovery_stop()
+        if self.editor_owner then
+            local read,state=pcall(api and api.camera_input and api.camera_input.external_status or function()end)
+            if not read or type(state)~='table'or state.available~=true or state.open~=false or state.active~=false or state.pending_restore~=false or state.owner~=nil then
+                return false,'An editor still owns the Photo input handoff'
+            end
+            self.editor_owner=nil
+        end
+        held=true;self.slowmo_active=false
+        return self.stop()
+    end
     function self.actioncam_priority()
         if photo.active or self._pending_start or self._pose_stop_pending then return true end
         if not api or not handle or not api.camera_input then return false end
@@ -826,6 +875,12 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
     end
     local function inform_toggle(reveal_hidden) if self._external_menu_open() then local closed,why=api.close();if closed==false then log(tostring(why));return end end;local ok,why=toggle(reveal_hidden);if ok==false then log('freecam: '..tostring(why)) end end
     function self.tick(dt)
+        rawset(_G,'DBF_PHOTO_EDITOR_INPUT',self.editor_bridge)
+        if self.input_recovery then
+            rawset(_G,'DBF_PHOTO_INPUT_RECOVERY',self.input_recovery)
+            self.input_recovery.poll(self.recovery_key())
+            if self.input_recovery.status().active then photo.input={};return end
+        end
         self._input_tick=self._input_tick+1
         if self._pose_stop_pending then
             self.stop(self._pose_stop_pending.preserve_resume)
@@ -869,6 +924,9 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
                 {id='slowmo_key',type='keybind',label='Prototype slow-motion toggle (solo)',default=220},
                 {id='slowmo_speed',type='slider',label='Simulation speed',default=0.2,min=0.05,max=1,step=0.05,fine_step=0.01,on_change=self._slowmo_setting_changed},
                 {id='screenshot_key',type='keybind',label='Screenshot key',default=19},
+                {id='recover_input',type='button',label='Recover gameplay mouse',on_activate=self.request_input_recovery},
+                {id='recover_input_key',type='keybind',label='Input recovery key (Ctrl+Shift)',default=121},
+                {id='input_recovery_hint',type='text',label='Default Ctrl+Shift+F10 closes mod menus and restores gameplay mouse control.'},
                 {id='controls',type='text',label='Defaults: P toggles | WASD moves | Shift/Ctrl rise/descend | Q/E roll | Wheel: speed | L: lock camera | Backslash: slow motion | Escape: exit'},
             }}}}
             if options then
@@ -982,6 +1040,10 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
             end
         end
         if not handle or not api.camera_input then self.stop();return end
+        if self.editor_owner then
+            photo.input={}
+            return
+        end
         -- Native-menu handoff owns its temporary Window flags independently
         -- of capture. Clean them before a fresh lease can snapshot a baseline,
         -- including when Photo Mode was closed while Escape was still open.
@@ -1328,7 +1390,10 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         if subject then local called,cleared,reason=pcall(subject.release);if not called or cleared==false then return false,called and reason or cleared end end
         if ok==false then return false,why end
         if freeze and freeze.cleanup_pending and freeze.cleanup_pending()then return false,'Hover restoration is waiting for a resumed update'end
+        if self.editor_owner then return false,'An external editor still owns its Photo input handoff'end
         if handle then handle.unregister();handle=nil end
+        if rawget(_G,'DBF_PHOTO_EDITOR_INPUT')==editor_bridge then rawset(_G,'DBF_PHOTO_EDITOR_INPUT',nil)end
+        if rawget(_G,'DBF_PHOTO_INPUT_RECOVERY')==self.input_recovery then rawset(_G,'DBF_PHOTO_INPUT_RECOVERY',nil)end
         return true
     end
     function self.entry_pending()return self._pending_start~=nil end

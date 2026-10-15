@@ -1,5 +1,145 @@
 -- Private settings/input/rendering service. Does not publish or impersonate DBFMCM.
 local M={}
+local function inactive()return{open=false,active=false,pending_restore=false,available=true,claimed=false}end
+local function normalized(value,label,open,inactive_fallback)
+ if type(value)~='table'or type(value.active)~='boolean'or(value.owner~=nil and type(value.owner)~='string')then
+  return nil,label..' input ownership unavailable'
+ end
+ local pending=value.pending_restore
+ if pending==nil and inactive_fallback and value.active==false and value.owner==nil then
+  local exact=true;for key in pairs(value)do if key~='active'then exact=false end end
+  if exact then pending=false end
+ end
+ if type(pending)~='boolean'or type(open)~='boolean'then return nil,label..' input ownership unavailable'end
+ local active=value.active;local owner=value.owner
+ return{open=open,active=active,pending_restore=pending,owner=owner,claimed=active or pending or owner~=nil,
+  available=not(open or active or pending or owner~=nil)}
+end
+function M.epic_status(front)
+ if front==nil then return inactive()end
+ if type(front)~='table'then return nil,'Epic LUT frontend ownership unavailable'end
+ local called,value
+ if type(front.input_status)=='function'then
+  called,value=pcall(front.input_status)
+ elseif front.input_status~=nil then return nil,'Epic LUT input ownership reader unavailable'
+ elseif type(front.capture)=='table'and type(front.capture.status)=='function'then
+  called,value=pcall(front.capture.status)
+ else return nil,'Epic LUT input ownership reader unavailable'end
+ if not called then return nil,'Epic LUT input ownership read failed: '..tostring(value)end
+ local open;if type(value)=='table'then open=value.open end
+ if open==nil and type(front.menu)=='table'then open=front.menu.visible end
+ return normalized(value,'Epic LUT',open,false)
+end
+function M.external_status(globals)
+ globals=globals or _G
+ if type(globals)~='table'then return nil,'External input globals unavailable'end
+ local result=inactive();result.owners={};result.providers={}
+ local function include(value,label)
+  result.open=result.open or value.open;result.active=result.active or value.active
+  result.pending_restore=result.pending_restore or value.pending_restore
+  if not value.available then result.available=false end
+  if value.claimed then result.claimed=true;result.providers[label]=true;result.owners[#result.owners+1]=value.owner or label end
+ end
+ local loader=rawget(globals,'LiveLuaLoader')
+ if loader~=nil then
+  if type(loader)~='table'or type(loader.input_status)~='function'then return nil,'LLL input ownership reader unavailable'end
+  local called,value=pcall(loader.input_status)
+  if not called then return nil,'LLL input ownership read failed: '..tostring(value)end
+  local open=false;if type(value)=='table'and value.open~=nil then open=value.open end
+  local state,why=normalized(value,'LLL',open,true)
+  if not state then return nil,why end;include(state,'LLL')
+ end
+ -- A private Photo service can predate MCM. Read the current public provider
+ -- each time instead of relying only on the parent captured during startup.
+ local mcm=rawget(globals,'DBFMCM')
+ if mcm~=nil then
+  if type(mcm)~='table'or type(mcm.input_status)~='function'or type(mcm.is_open)~='function'then return nil,'MCM input ownership reader unavailable'end
+  local called,value=pcall(mcm.input_status);local opened,open=pcall(mcm.is_open)
+  if not called or not opened then return nil,'MCM input ownership read failed'end
+  local state,why=normalized(value,'MCM',open,true)
+  if not state then return nil,why end;result.mcm=state;include(state,'MCM')
+ end
+ local packages=rawget(globals,'package')
+ if type(packages)~='table'or type(packages.loaded)~='table'then return nil,'Epic LUT registry unavailable'end
+ local epic,why=M.epic_status(rawget(packages.loaded,'dbf.epic_lut.frontend.v1'))
+ if not epic then return nil,why end;include(epic,'Epic LUT')
+ result.owner=result.owners[1]
+ return result
+end
+-- The same ownership/recovery implementation is injectable for isolated tests;
+-- production binds it to the real Camera service and this Photo helper only.
+function M.ownership(available,parent,globals)
+ local self={};globals=globals or _G
+ function self.external_status()
+  local state,why=M.external_status(globals);if not state then return nil,why end
+  if parent then
+   local called,active,reason=pcall(parent)
+   if not called or type(active)~='boolean'then return nil,called and(reason or'Parent input ownership unavailable')or tostring(active)end
+   if active then
+    state.available=false
+    local claimed=true
+    if type(reason)=='table'then
+     local detail,problem=normalized(reason,'Parent',reason.open,false)
+     if not detail then return nil,problem end
+     if state.mcm then
+      for _,key in ipairs({'open','active','pending_restore','owner'})do
+       if state.mcm[key]~=detail[key]then return nil,'MCM input ownership changed during observation'end
+      end
+     end
+     claimed=detail.claimed;state.open=state.open or detail.open
+    end
+    if claimed then
+     state.active=true;state.claimed=true
+     if not state.providers.MCM then state.providers.MCM=true;state.owners[#state.owners+1]='MCM' end
+     state.owner=state.owner or'MCM'
+    end
+   end
+  end
+  return state
+ end
+ function self.parent()
+  local state,why=self.external_status();if not state then return nil,why end
+  return not state.available,state.owner
+ end
+ function self.restore_parent()
+  local state,why=self.external_status();if not state then return nil,why end
+  return state.claimed,state.owner
+ end
+ function self.available()
+  local active=self.parent();if active~=false then return false end
+  if available then local called,value=pcall(available);return called and value==true end
+  return true
+ end
+ function self.attach(camera,native,input)
+  camera.external_status=self.external_status
+  local function preflight()
+   local external,reason=self.external_status();assert(external and external.available==true,reason or'An external editor owns input')
+   local state=camera.status();assert(type(state)=='table','Photo input ownership unavailable')
+   assert(state.active==false and state.owned==false and state.cleanup_pending==false,'Photo input lease must be released before recovery')
+   assert(state.available==true,'Photo input recovery is blocked by another owner')
+   assert(type(state.native_mode)=='number'and state.native_mode>=0 and state.native_mode<=3 and state.native_mode%1==0,'Photo native input state unavailable')
+   input.poll();assert(state.focused==true and input.focused()==true,'Focus the game before input recovery')
+   for _,name in ipairs({'native_menu_active','chat_active'})do
+    assert(type(camera[name])=='function'and camera[name]()==false,'Close native menus and chat before input recovery')
+   end
+   assert(type(camera.native_menu_resume)=='function','Native menu cursor recovery unavailable')
+  end
+  function camera.recover_native()
+   local called,done=pcall(function()
+    preflight()
+    native.mcm_release()
+    assert(tonumber(native.mcm_captured())==0,'Photo native input release readback failed')
+    assert(camera.native_menu_resume()==true,'Native menu cursor restoration is pending')
+    preflight() -- A new editor/focus transition cannot grant recovery success.
+    return true
+   end)
+   if not called then return false,tostring(done)end
+   return done==true
+  end
+  return camera
+ end
+ return self
+end
 -- The engine's clip flag is insufficient with gameplay mouse focus disabled.
 -- Use client coordinates translated to screen space, including negative monitors.
 function M.cursor_clip(user,ffi,input)
@@ -23,6 +163,7 @@ function M.cursor_clip(user,ffi,input)
  return self
 end
 function M.input(host,sr,available,parent)
+ local ownership=M.ownership(available,parent,_G)
  local ffi=require('ffi');local bit=require('bit')
  pcall(ffi.cdef,[[
   typedef struct {long x;long y;} SS_POINT;
@@ -60,7 +201,7 @@ function M.input(host,sr,available,parent)
  end
  function input.down(key)return hwnd~=nil and bit.band(tonumber(user.SS_GetAsyncKeyState(key)),0x8000)~=0 end
  function input.focused()return hwnd~=nil end;function input.window()return hwnd end
- local capture=host.require('src/photo_input_capture.lua').new(sr.Window,parent,not(native_clip_ok and native_clip)and M.cursor_clip(user,ffi,input)or nil)
+ local capture=host.require('src/photo_input_capture.lua').new(sr.Window,ownership.restore_parent,not(native_clip_ok and native_clip)and M.cursor_clip(user,ffi,input)or nil)
  function input.now()return tonumber(native.mcm_seconds())end
  function input.wheel()return tonumber(native.mcm_wheel())end
  function input.look()return tonumber(native.mcm_mouse_x()),tonumber(native.mcm_mouse_y())end
@@ -109,12 +250,8 @@ function M.input(host,sr,available,parent)
   return ok and result~=0,reason or 'Simulation control requires a verified solo session'
  end
  jit.off(input.photo_apply,true)
- local camera=host.require('src/vendor/camera_input.lua').new(native,capture,input,function()
-  local loader=rawget(_G,'LiveLuaLoader');local status=loader and loader.input_status and loader.input_status()
-  if status and(status.owner or status.active or status.pending_restore)then return false end
-  if available then local ok,ready=pcall(available);return ok and ready==true end
-  return true
- end)
+ local camera=host.require('src/vendor/camera_input.lua').new(native,capture,input,ownership.available)
+ ownership.attach(camera,native,input)
  camera.native_escape_passthrough=true;camera.photo_input_owner='War Journalist'
  camera.cursor_graphic=cursor_ok and cursor_loaded and 'Helldivers'or 'Windows arrow'
  return camera
@@ -128,7 +265,8 @@ function M.shared(host,sr,mcm)
   if type(status)~='table'or type(status.active)~='boolean'or type(status.pending_restore)~='boolean'then return nil,'MCM input ownership unavailable'end
   local open=mcm.is_open()
   if type(open)~='boolean'then return nil,'MCM menu ownership unavailable'end
-  return open or status.owner~=nil or status.active or status.pending_restore
+  return open or status.owner~=nil or status.active or status.pending_restore,
+   {open=open,active=status.active,pending_restore=status.pending_restore,owner=status.owner}
  end
  facade.camera_input=M.input(host,sr,function()return parent()==false end,parent)
  return facade

@@ -29,7 +29,7 @@ ACTIVE_MODULES=('actioncam_compat.lua','animation_state.lua','chat_context.lua',
     'photo_options.lua','lens.lua','composition.lua','postfx.lua','photo_runtime.lua','hud.lua','render_profile.lua',
     'camera_profile.lua','photo_menu.lua','control_legend.lua','screenshot.lua','screenshot_backend.lua',
     'depth_resource.lua','focus_sampler.lua','photo_lights.lua','photo_light_gizmos.lua','photo_light_presets.lua','subject_backend.lua','subject.lua','subject_poses.lua','ragdoll_pause.lua','director.lua','ai_backend.lua','ai_control.lua',
-    'saved_camera.lua','cinema_camera.lua','controller.lua','hover_pause.lua',
+    'saved_camera.lua','cinema_camera.lua','controller.lua','input_recovery.lua','hover_pause.lua',
     'hover_pause_backend.lua','scene_dof_overlay.lua','shader_template_guard.lua','standalone.lua','photo_input_capture.lua',
     'bsl_startup.lua','mdl.lua','lll.lua','assets/logo_art.lua','assets/helldiver_crest.lua','assets/faction_art.lua','assets/subject_pose_frames.lua')
 
@@ -162,10 +162,16 @@ def public_docs(files,prefix=''):
         files[prefix+'gallery/'+ARTWORK_VERSION+'/'+path.name]=path.read_bytes()
     return files
 
-def build(output,camera_engine='legacy'):
+def build(output,camera_engine='legacy',input_recovery_candidate=False):
     if camera_engine not in ('legacy','independent'):raise ValueError('Unknown camera engine')
     if camera_engine=='independent'and output.resolve().is_relative_to((ROOT/'dist/releases').resolve()):
         raise ValueError('Independent camera candidates must stay outside dist/releases')
+    if input_recovery_candidate:
+        if VERSION!='1.0.1':raise ValueError('Input recovery candidate retains the reviewed 1.0.1 package schema')
+        review_roots=[(ROOT/'dist/review').resolve()]
+        review_roots.extend(parent for parent in ROOT.resolve().parents if parent.name=='review'and parent.parent.name=='dist')
+        if not any(output.resolve().is_relative_to(folder)for folder in review_roots):
+            raise ValueError('Input recovery candidates must stay inside dist/review')
     output=output.resolve();output.mkdir(parents=True,exist_ok=True)
     photo=load('release_photo_build',ROOT/'freecam/build.py');independent=None
     if camera_engine=='legacy':
@@ -175,11 +181,17 @@ def build(output,camera_engine='legacy'):
     else:
         independent=load('release_independent_camera',ROOT/'freecam/independent_build.py')
         generated=independent.generate(dof_candidate=True,native_candidate=True,combined_scene_candidate=True,builder=photo).encode()
+    if input_recovery_candidate:
+        generated=b"rawset(_G,'DBF_PHOTO_INPUT_RECOVERY_CANDIDATE',true)\n"+generated
     photo.compile_lua(generated,'WarJournalist-'+VERSION)
     assert b'e07f49224f0a5759'in generated and b'PhotoHoverGuardInstall'not in generated and b'__INPUT_RELEASE__'not in generated
     assert b'dbf_input_release'not in generated and b'SendInput('not in generated,'Synthetic blanket input release returned to the runtime'
     if VERSION in ('1.0','1.0.1'):
-        assert b'DBF_PHOTO_EDITOR_INPUT'not in generated and b'self.editor_bridge'not in generated,'Unreleased external-editor bridge must stay outside the 1.0 package'
+        if input_recovery_candidate:
+            for feature in (b'DBF_PHOTO_EDITOR_INPUT',b'DBF_PHOTO_INPUT_RECOVERY',b'H.dbf_input_recovery'):
+                assert feature in generated,'Input recovery candidate feature missing: '+feature.decode()
+        else:
+            assert b'DBF_PHOTO_EDITOR_INPUT'not in generated and b'self.editor_bridge'not in generated and b'DBF_PHOTO_INPUT_RECOVERY'not in generated,'Unreleased external-editor bridge/recovery must stay outside the 1.0 package; use --input-recovery-candidate for review'
         assert b'H.dbf_ragdoll_pause'in generated and b'Ragdoll pose held'in generated,'Verified ragdoll pose guard missing'
     (output/'ActionCam-Freecam.lua').write_bytes(generated)
     core,shared,audit=resources(output)
@@ -189,6 +201,8 @@ def build(output,camera_engine='legacy'):
         provenance.update(camera_engine='independent',candidate_only=True,
             independent_builder_sha256=sha((ROOT/'freecam/independent_build.py').read_bytes()))
         provenance['source_modules_sha256'].update({name:sha((ROOT/'freecam'/name).read_bytes())for name in independent.MODULES})
+    if input_recovery_candidate:
+        provenance.update(camera_engine=camera_engine,candidate_only=True,candidate_profile='input-recovery')
     (output/'PROVENANCE.json').write_bytes(json_bytes(provenance))
     original_payload=photo.payload_files
     compatibility_source=independent.ownership_source(photo)if independent else None
@@ -204,12 +218,27 @@ def build(output,camera_engine='legacy'):
         'The 1.0.1 filenames identify the retained package schema, not a new stable release.\n'
         'Provenance: camera_engine=independent; candidate_only=true.\n'
     ).encode()if independent else None
+    if input_recovery_candidate:
+        candidate_readme=(
+            'INPUT RECOVERY DEVELOPMENT CANDIDATE - NOT A STABLE RELEASE\n\n'
+            'This candidate tests Photo Mode / external-editor input handoff and recovery.\n'
+            'Camera engine: '+camera_engine+'. It has not been proven in the live game.\n'
+            'Offline fixtures and package startup checks do not establish live mouse capture,\n'
+            'editor coexistence or gameplay recovery. The accepted shader/compositor assets are unchanged.\n\n'
+            'Current stable recovery: War Journalist v1.0.1\n'
+            'https://github.com/HWG90/DBF_PhotoMode/releases/tag/v1.0.1\n'
+            'Keep the stable package and your settings, presets and screenshots. Restore that complete\n'
+            'runtime if the candidate fails. Use only one Photo Mode runtime; do not mix runtime versions.\n'
+            'The 1.0.1 filenames identify the retained package schema, not a new stable release.\n'
+            'Provenance: candidate_profile=input-recovery; candidate_only=true.\n'
+        ).encode()
     candidate_docs=(ROOT/'docs/INDEPENDENT-CAMERA.md').read_bytes()if independent else None
+    recovery_docs=(ROOT/'docs/INPUT-RECOVERY.md').read_bytes()if input_recovery_candidate else None
     def payload(folder):
         files=original_payload(folder,compatibility_source=compatibility_source)if independent else original_payload(folder)
-        if independent:
-            files['CANDIDATE-README.txt']=candidate_readme
-            files['INDEPENDENT-CAMERA.md']=candidate_docs
+        if candidate_readme:files['CANDIDATE-README.txt']=candidate_readme
+        if candidate_docs:files['INDEPENDENT-CAMERA.md']=candidate_docs
+        if recovery_docs:files['INPUT-RECOVERY.md']=recovery_docs
         for p in sorted((ROOT/'freecam/assets/logos').rglob('*')):
             if p.is_file():files['assets/logos/'+p.relative_to(ROOT/'freecam/assets/logos').as_posix()]=p.read_bytes()
         files=public_docs(files)
@@ -224,10 +253,11 @@ def build(output,camera_engine='legacy'):
     # The legacy BSL packager copies a limited document list. Complete its
     # public documentation and image links without changing embedded runtime.
     with zipfile.ZipFile(bsl)as z:bsl_files={name:z.read(name)for name in z.namelist()if name!='FILES-SHA256.txt'}
-    if independent:
+    if candidate_readme:
         bsl_files['CANDIDATE-README.txt']=candidate_readme
-        bsl_files['INDEPENDENT-CAMERA.md']=candidate_docs
         bsl_files['INSTALL.txt']=candidate_readme+b'\n'+bsl_files['INSTALL.txt']
+    if candidate_docs:bsl_files['INDEPENDENT-CAMERA.md']=candidate_docs
+    if recovery_docs:bsl_files['INPUT-RECOVERY.md']=recovery_docs
     bsl.write_bytes(zip_bytes(public_docs(bsl_files)))
     bsl_receipt=json.loads((output/'BSL-BUILD-RECEIPT.json').read_text());bsl_receipt['sha256']=sha(bsl.read_bytes())
     (output/'BSL-BUILD-RECEIPT.json').write_bytes(json_bytes(bsl_receipt))
@@ -239,7 +269,7 @@ def build(output,camera_engine='legacy'):
     asset_name='War-Journalist-'+VERSION+'-Assets.zip';asset_body=zip_bytes(assets);(output/asset_name).write_bytes(asset_body)
     # The complete MDL ZIP is directly importable by Arsenal for GameData only.
     with zipfile.ZipFile(mdl)as z:mdl_files={name:z.read(name)for name in z.namelist()if name!='FILES-SHA256.txt'}
-    if independent:mdl_files['INSTALL.txt']=candidate_readme+b'\n'+mdl_files['INSTALL.txt']
+    if candidate_readme:mdl_files['INSTALL.txt']=candidate_readme+b'\n'+mdl_files['INSTALL.txt']
     mdl_files=flat_mdl_files(mdl_files,json.loads(assets['manifest.json']));mdl.write_bytes(zip_bytes(public_docs(mdl_files,'dbf_freecam/')))
     lll_files=payload(output);lll_files['main.lua']=(ROOT/'freecam/lll.lua').read_bytes();lll_files['config/defaults.cfg']=b'{}\n'
     modules=sorted(name for name in lll_files if name.startswith('src/')and name.endswith('.lua'))
@@ -247,7 +277,7 @@ def build(output,camera_engine='legacy'):
         'lll':{'entry':'main.lua','defaults':'config/defaults.cfg','modules':modules,'restart_only':True,'retain_until_exit':True}})
     lll_files['ASSET-MANIFEST.json']=json_bytes(audit)
     lll_files['INSTALL.txt']=(ROOT/'freecam/README.md').read_bytes()+b'\nLLL: copy dbf_freecam into the LLL Mods directory. Import the included Arsenal/ asset ZIP, enable and deploy the assets, and restart normally. Choose one Photo Mode runtime loader. All required assets are inside this download.\n'
-    if independent:lll_files['INSTALL.txt']=candidate_readme+b'\n'+lll_files['INSTALL.txt']
+    if candidate_readme:lll_files['INSTALL.txt']=candidate_readme+b'\n'+lll_files['INSTALL.txt']
     for name,body in lll_files.items():
         if name.endswith('.lua'):photo.compile_lua(body,'WarJournalist-LLL-'+name)
     files={'dbf_freecam/'+name:body for name,body in lll_files.items()};files.update(asset_files(core,shared,audit,'GameData/'))
@@ -265,14 +295,16 @@ def build(output,camera_engine='legacy'):
              'nested_assets':{'name':asset_name,'sha256':sha(asset_body),'bytes':len(asset_body),'distribution':'Embedded inside LLL only; standalone file is local helper only'},'mdl_assets':'GameData directly included by outer Arsenal manifest; no nested archives','all_assets_bundled_per_loader':True,
              'source_snapshots_only':True,'game_process_accessed':False,'deployment':'not installed','publication_performed':False}
     if independent:receipt.update(camera_engine='independent',candidate_only=True)
+    if input_recovery_candidate:receipt.update(camera_engine=camera_engine,candidate_only=True,candidate_profile='input-recovery')
     (output/'RELEASE-BUILD-RECEIPT.json').write_bytes(json_bytes(receipt));(output/'SHA256SUMS.txt').write_text(''.join(sha(p.read_bytes())+'  '+p.name+'\n'for p in paths))
     print(json.dumps({'output':str(output),**receipt},indent=2));return paths
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--output',type=Path)
     parser.add_argument('--camera-engine',choices=('legacy','independent'),default='legacy',help='Independent is an opt-in review candidate; legacy remains the release default')
+    parser.add_argument('--input-recovery-candidate',action='store_true',help='Explicitly allow the reviewed editor-input/recovery APIs in development packages under dist/review only')
     parser.add_argument('--promote-assets',action='store_true',help='Promote the explicitly approved retained compositor snapshots once')
     args=parser.parse_args()
     if args.promote_assets:promote_snapshots()
-    output=args.output or(ROOT/'dist/review/independent-camera-20261015'if args.camera_engine=='independent'else ROOT/'dist/releases'/('War-Journalist-'+VERSION))
-    build(output,camera_engine=args.camera_engine)
+    output=args.output or(ROOT/'dist/review/input-recovery-20261015'if args.input_recovery_candidate else ROOT/'dist/review/independent-camera-20261015'if args.camera_engine=='independent'else ROOT/'dist/releases'/('War-Journalist-'+VERSION))
+    build(output,camera_engine=args.camera_engine,input_recovery_candidate=args.input_recovery_candidate)

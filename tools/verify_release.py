@@ -264,7 +264,9 @@ def _release_asset_closure(files, prefix, bsl, version, allow_legacy_registry=Fa
             'registry_sha256': hashlib.sha256(group[2]).hexdigest()}, startup
 
 
-def verify_current(path, version, standalone=False, allow_legacy_registry=False):
+def verify_current(path, version, standalone=False, allow_legacy_registry=False, input_recovery_candidate=False):
+    if input_recovery_candidate:
+        assert version == '1.0.1', 'Input recovery exception applies only to the explicit 1.0.1 development candidate'
     import photo_assets
     from test_packaged_standalone import pe_imports
     files = _release_files(path)
@@ -321,8 +323,16 @@ def verify_current(path, version, standalone=False, allow_legacy_registry=False)
         for feature in ('H.dbf_ragdoll_pause', 'function self.ragdoll_frame()', 'frame.ragdoll_active',
                         'Ragdoll pose held', 'path_snapshot', 'native_menu_resume', 'terminids={name="Terminids"'):
             assert feature in code, '1.0 runtime feature missing: '+feature
-        assert 'DBF_PHOTO_EDITOR_INPUT' not in code and 'self.editor_bridge' not in code, 'Unreleased external-editor bridge included'
         provenance = json.loads(metadata['PROVENANCE.json'])
+        if input_recovery_candidate:
+            assert version == '1.0.1' and provenance.get('candidate_only') is True and provenance.get('candidate_profile') == 'input-recovery', 'Input recovery exception requires explicit development candidate provenance'
+            assert provenance.get('camera_engine') in ('legacy', 'independent'), 'Input recovery camera-engine identity missing'
+            assert "rawset(_G,'DBF_PHOTO_INPUT_RECOVERY_CANDIDATE',true)" in code, 'Input recovery candidate marker missing'
+            for feature in ('DBF_PHOTO_EDITOR_INPUT', 'DBF_PHOTO_INPUT_RECOVERY', 'H.dbf_input_recovery'):
+                assert feature in code, 'Input recovery candidate feature missing: '+feature
+            assert re.fullmatch('[0-9a-f]{64}', provenance['source_modules_sha256'].get('input_recovery.lua', '')), 'Input recovery source provenance missing'
+        else:
+            assert 'DBF_PHOTO_EDITOR_INPUT' not in code and 'self.editor_bridge' not in code and 'DBF_PHOTO_INPUT_RECOVERY' not in code, 'Unreleased external-editor bridge/recovery included; use the dedicated development candidate verifier'
         for module in ('ragdoll_pause.lua', 'cinema_camera.lua', 'assets/faction_art.lua'):
             assert re.fullmatch('[0-9a-f]{64}', provenance['source_modules_sha256'].get(module, '')), '1.0 source provenance missing: '+module
     vendor = json.loads(metadata['VENDOR-PROVENANCE.json'])
