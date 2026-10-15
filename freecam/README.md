@@ -1,4 +1,4 @@
-War Journalist 0.9.11 - Helldivers 2 Photo Mode
+War Journalist 1.0 - Helldivers 2 Photo Mode
 
 CHOOSE ONE LOADER PACKAGE
 BSL (recommended): requires Bingus Shared Loader v15+ / API 1. Import the full
@@ -34,12 +34,24 @@ Both startup orders are supported. Unrecognized ActionCam versions/hooks are
 left untouched and Photo Mode refuses unsafe camera ownership. Disable that
 unsupported ActionCam and restart normally before using Photo Mode.
 
-CINEMA CAMERA (DEVELOPMENT)
+CINEMA CAMERA AND CAMERA PATHS
 Director > Begin action shot keeps the placed camera static and returns gameplay
 controls after owned poses and simulation pause restore. Use the Photo Mode key
-to reposition, or exit Photo Mode to restore the normal gameplay camera. The
-screenshot shortcut still works. Cinema mode does not resume after restarting.
-Live aiming/combat, hoverpack and display handoffs need acceptance.
+to reposition, or exit Photo Mode to restore the normal gameplay camera. If Freeze
+Action was on before the shot, returning to placement refreezes; the selected
+slow-motion speed stays cached. The Cinema hint fades after three seconds.
+Director can record up to 32 scene-local camera points, with per-segment duration
+and Smooth or Cut transitions. Camera paths are not saved across restarts.
+The screenshot shortcut remains available during action shots. Cinema never
+activates automatically after restart. Broader combat and equipment coverage
+still needs testing.
+
+GLOBAL CONTROLS AND SAVED PREFERENCES
+Freeze/Resume Action, solo AI behavior, Slow Motion with a speed slider and Lock
+Camera stay above the settings. The AI emblem follows a verified mission faction.
+Menu position, size, opacity and controls-drawer visibility/layout survive restart.
+Frozen ragdolls hold their observed pose at exact zero time and restore their
+original bone transfer before resuming; fixed Subject poses take priority.
 
 MANUAL ASSET INSTALL
 With the game closed, copy the patch triplets from Addon (BSL) or GameData
@@ -65,8 +77,8 @@ Drag the title bar to move the menu. Resize with its corner grip. Position
 and size survive restarts. The left-edge controls drawer has a movable tab.
 
 LENS, DIRECTOR AND LIGHTING
-Native camera has adjustable focus/aperture. Shader (preview) adds 32/64-sample
-round/hex bokeh. Full-resolution scene effects and color grading can be used
+Native camera has adjustable focus/aperture. Shader (preview) offers 1x-8x blur strength with round/hex bokeh; Standard
+uses 64 samples and Smoother 128 above 1x strength (32/64 samples at 1x). Full-resolution scene effects and color grading can be used
 alongside Shader DoF. WARMING UP SCENE means resources are still loading.
 Director stores five camera positions/angles relative to the player; these
 presets survive restarts. The separate temporary Save Camera action retains

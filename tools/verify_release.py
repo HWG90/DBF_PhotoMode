@@ -1,4 +1,4 @@
-"""Verify immutable War Journalist releases (0.9.5 through 0.9.11 and legacy gates)."""
+"""Verify immutable War Journalist releases (0.9.5 through 1.0 and legacy gates)."""
 import argparse
 from collections import Counter
 from datetime import datetime, timezone
@@ -14,7 +14,7 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 PREFIX = 'dbf_freecam/'
-SHADER_RELEASES = {'0.9.5': '0.9.5', '0.9.6': '0.9.6', '0.9.7': '0.9.6', '0.9.8': '0.9.6', '0.9.9': '0.9.6', '0.9.10': '0.9.6', '0.9.11': '0.9.6'}
+SHADER_RELEASES = {'0.9.5': '0.9.5', '0.9.6': '0.9.6', '0.9.7': '0.9.6', '0.9.8': '0.9.6', '0.9.9': '0.9.6', '0.9.10': '0.9.6', '0.9.11': '0.9.6', '1.0': '0.9.6'}
 REQUIRED = {'main.lua', 'src/actioncam.lua', 'src/standalone.lua', 'config/defaults.cfg',
             'INSTALL.txt', 'PROVENANCE.json', 'manifest.json', 'FILES-SHA256.txt',
             'LICENSE-Bingus.txt', 'PhotoCapture64.dll', 'standalone-library.txt'}
@@ -317,6 +317,14 @@ def verify_current(path, version, standalone=False, allow_legacy_registry=False)
     for logo in ('Super Earth crest', 'Super Citizen Edition', 'Heart of Democracy', 'Into the Unjust'):
         assert logo in code, 'Updated embedded logo missing: '+logo
     assert not any(word in code for word in ('Beddivers', 'Brasildivers', 'Shafts of Despair')), 'Excluded joke logo in runtime'
+    if version == '1.0':
+        for feature in ('H.dbf_ragdoll_pause', 'function self.ragdoll_frame()', 'frame.ragdoll_active',
+                        'Ragdoll pose held', 'path_snapshot', 'native_menu_resume', 'terminids={name="Terminids"'):
+            assert feature in code, '1.0 runtime feature missing: '+feature
+        assert 'DBF_PHOTO_EDITOR_INPUT' not in code and 'self.editor_bridge' not in code, 'Unreleased external-editor bridge included'
+        provenance = json.loads(metadata['PROVENANCE.json'])
+        for module in ('ragdoll_pause.lua', 'cinema_camera.lua', 'assets/faction_art.lua'):
+            assert re.fullmatch('[0-9a-f]{64}', provenance['source_modules_sha256'].get(module, '')), '1.0 source provenance missing: '+module
     vendor = json.loads(metadata['VENDOR-PROVENANCE.json'])
     native_name = runtime['standalone-library.txt'].decode().strip()
     assert re.fullmatch(r'mcm_input_[0-9a-f]+\.dll', native_name)
@@ -341,7 +349,7 @@ def verify_current(path, version, standalone=False, allow_legacy_registry=False)
     for name in ('INSTALL.txt', 'KNOWN-ISSUES.md', 'RELEASE-NOTES.md', 'ASSET-MANIFEST.json'):
         assert metadata.get(name), 'Release metadata missing: '+name
     asset_manifest = json.loads(metadata['ASSET-MANIFEST.json'])
-    if version in ('0.9.7', '0.9.8', '0.9.9', '0.9.10', '0.9.11'):
+    if version in ('0.9.7', '0.9.8', '0.9.9', '0.9.10', '0.9.11', '1.0'):
         assert asset_manifest['shader_asset_version'] == SHADER_RELEASES[version], 'Release must retain the frozen 0.9.6 shader assets'
     for key, expected in (('version', version), ('shader_libraries_core', 44), ('materials_shared', 44), ('registry_resources_core', 1), ('registry_ids', audit['registry_ids'])):
         assert asset_manifest[key] == expected, 'Packaged asset manifest disagrees with resource closure: '+key

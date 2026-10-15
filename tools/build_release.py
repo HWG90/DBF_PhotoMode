@@ -18,8 +18,8 @@ import photo_assets
 import photo_light_assets
 
 VERSION=(ROOT/'VERSION').read_text().strip()
-ASSET_VERSION='0.9.6' # Reused unchanged by 0.9.7 through 0.9.9; prior shader snapshots remain immutable.
-ARTWORK_VERSION='0.9.7' # The 0.9.8/0.9.9 hotfixes retain the accepted cover and feature gallery.
+ASSET_VERSION='0.9.6' # Reuse the accepted frozen compositor through 1.0; never rebuild it implicitly.
+ARTWORK_VERSION='0.9.7' # Retain the accepted cover and feature gallery.
 SNAPSHOTS=ROOT/('freecam/assets/shaders/release-'+ASSET_VERSION)
 APPROVED_GPU='f5960f63e1247ac40af4bb37ccbd59ac26c9168aad9eb40936c082c9ddf40194'
 CINEMATIC_GPU='0ee49d87cc1250ab5582934fba8f925d33bf63cb2555651f1974a52dfa55c9b7'
@@ -28,7 +28,7 @@ BASE_REVIEW=ROOT/'dist/releases/photo-scene-depth-review/War-Journalist-Scene-De
 ACTIVE_MODULES=('actioncam_compat.lua','animation_state.lua','chat_context.lua','look.lua','simulation.lua','simulation_backend.lua',
     'photo_options.lua','lens.lua','composition.lua','postfx.lua','photo_runtime.lua','hud.lua','render_profile.lua',
     'camera_profile.lua','photo_menu.lua','control_legend.lua','screenshot.lua','screenshot_backend.lua',
-    'depth_resource.lua','focus_sampler.lua','photo_lights.lua','photo_light_gizmos.lua','photo_light_presets.lua','subject_backend.lua','subject.lua','subject_poses.lua','director.lua','ai_backend.lua','ai_control.lua',
+    'depth_resource.lua','focus_sampler.lua','photo_lights.lua','photo_light_gizmos.lua','photo_light_presets.lua','subject_backend.lua','subject.lua','subject_poses.lua','ragdoll_pause.lua','director.lua','ai_backend.lua','ai_control.lua',
     'saved_camera.lua','cinema_camera.lua','controller.lua','hover_pause.lua',
     'hover_pause_backend.lua','scene_dof_overlay.lua','shader_template_guard.lua','standalone.lua','photo_input_capture.lua',
     'bsl_startup.lua','mdl.lua','lll.lua','assets/logo_art.lua','assets/helldiver_crest.lua','assets/faction_art.lua','assets/subject_pose_frames.lua')
@@ -170,6 +170,9 @@ def build(output):
     photo.compile_lua(generated,'WarJournalist-'+VERSION)
     assert b'e07f49224f0a5759'in generated and b'PhotoHoverGuardInstall'not in generated and b'__INPUT_RELEASE__'not in generated
     assert b'dbf_input_release'not in generated and b'SendInput('not in generated,'Synthetic blanket input release returned to the runtime'
+    if VERSION=='1.0':
+        assert b'DBF_PHOTO_EDITOR_INPUT'not in generated and b'self.editor_bridge'not in generated,'Unreleased external-editor bridge must stay outside the 1.0 package'
+        assert b'H.dbf_ragdoll_pause'in generated and b'Ragdoll pose held'in generated,'Verified ragdoll pose guard missing'
     (output/'ActionCam-Freecam.lua').write_bytes(generated)
     core,shared,audit=resources(output)
     provenance={'version':VERSION,'runtime_sha256':sha(generated),'source_modules_sha256':{name:sha((ROOT/'freecam'/name).read_bytes())for name in ACTIVE_MODULES},

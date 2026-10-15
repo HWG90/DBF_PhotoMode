@@ -1,51 +1,35 @@
 ![War Journalist](docs/artwork/war-journalist-0.9.7-cover.png)
 
-# War Journalist 0.9.11 development candidate
+# War Journalist 1.0
 
-A Helldivers 2 Photo Mode: free camera, a compact movable studio menu,
+A Helldivers 2 Photo Mode: free camera, a movable photo studio menu,
 Native and shader depth of field, autofocus, color grading, scene effects,
-photo lighting, Director camera presets and enemy behavior controls,
+photo lighting, Cinema action shots, camera paths, solo enemy behavior,
 213 fixed subject pose frames, subject visibility and PNG capture.
 
 [Download on Nexus](https://www.nexusmods.com/helldivers2/mods/17248?tab=files) ·
 [GitHub downloads](https://github.com/HWG90/DBF_PhotoMode/releases) ·
-[0.9.11 Cinema candidate notes](docs/RELEASE-0.9.11.md) ·
-[0.9.9 compatibility notes](docs/RELEASE-0.9.9.md) ·
-[0.9.10 ActionCam compatibility notes](docs/RELEASE-0.9.10.md) ·
-[0.9.7 feature notes](docs/RELEASE-0.9.7.md)
+[1.0 release notes](docs/RELEASE-1.0.md)
 
-## What's new
+**A huge thank-you to everyone sharing their photos, testing builds, and reporting bugs.**
+Seeing the shots you are making with War Journalist has been the best part of building it.
+Keep them coming!
 
-- **Cinema camera development mode:** Director → Begin action shot holds the placed camera while returning movement/combat input to the Helldiver. The usual Photo Mode key returns to camera placement. The camera remains exclusive to War Journalist until the mode ends. This candidate needs live aiming/combat and ActionCam coexistence verification; it is not a published release.
+## What's included
 
-- **ActionCam camera handoff:** supported original ActionCam 2.3.1 / runtime 10.31 and 2.4 / runtime 10.32 keep their normal gameplay camera, First Person and profiles. War Journalist takes exclusive ownership only during Photo Mode, then hands the camera back after cleanup. Both startup orders and ActionCam 2.4 binding levels are covered by isolated tests; live coexistence still needs validation.
-- **Separate controls:** ActionCam's independent Photo Mode bindings yield to War Journalist. Its profile/restart shortcuts remain available outside Photo Mode, with the Photo toggle taking priority for shared keys. Unknown ActionCam hooks are left untouched and cannot grant an unsafe photo-camera lease.
-- **AMD compatibility hotfix:** removed 198 inherited shader registrations whose assets were absent from the package. The registry now contains the game's 77 native entries and all 44 bundled Photo Mode shaders. Testers reported stable Alt-Tab, fullscreen, bloom and DoF changes before and after opening Photo Mode with the registry-only package.
-- **Complete assets retained:** the shader programs, materials, lights and artwork match the 0.9.9 baseline. No deferred-startup mode is included.
-
-The 0.9.8 corrections remain included:
-
-- **Steady Native DoF:** temporary or older render packets no longer reset a valid owned lens. The blur was confirmed steady with the camera still and while moving.
-- **Held inputs preserved:** entering and leaving Photo Mode no longer forces all keys and mouse buttons to release. Held ADS now stays correct while posing, confirmed in-game. The data-only hoverpack pause guard remains and still requires neutral hover controls.
-
-The complete 0.9.7 feature set, UI and artwork are retained:
-
-- **213 fixed pose frames:** select a pose while the scene stays paused. Gestures, cooperative variants, kneeling poses and both push-ups are included. Reset restores the original pose before play resumes. These are sampled emote/action frames, not 213 store items; see the [pose catalogue](docs/SUBJECT-POSE-CATALOGUE.md).
-- **Cape correction:** supported capes follow the posed shoulders and restore across pose changes. The integrated fix was confirmed in-game; it preserves the frozen cloth shape without advancing physics. Wider cape coverage remains open.
-- **Menu opacity:** a compact bottom-right slider controls the background from 10% to 100%, saves across restarts, and resets to 38% with right-click.
-- **Solo Director enemy behavior:** Normal, Passive, and Dummy, plus Reset to Normal. The chosen mode continues after Photo Mode closes and applies to newly discovered enemies; game restart returns to Normal. Joining players cancel the mode and restore owned changes. Persistence and Reset were confirmed live.
-- **Light placement tools:** numbered scene indicators, draggable lights with Shift precision, subject-focused portrait/three-point/side rigs, and five lighting setups saved across restarts.
-- **Retained lighting setup:** reopening Photo Mode restores your lights at their previous placements within the same scene. Explicit saved setup slots can also be recalled after restarting.
-- **Stronger shader DoF:** 1x–8x blur strength, 4x by default, with more samples and the accepted color conversion retained.
-- **Color editing:** explicit Apply, with a live color swatch and HEX value visible while adjusting RGB.
-- **Subject hiding:** nested equipment is included, fixing the reported floating parts.
-- **Readiness and recovery:** poses unlock independently of paused game time; temporary scene/respawn reads no longer clear the selected enemy behavior.
-- **Cleanup guards:** menu-close failures still allow other cleanup, and GUI teardown checks world lifetime. HDR/SDR and other display-setting crashes remain unresolved.
-
-Native/shader DoF, autofocus, the combined compositor, three photo lights,
-five Director camera presets, saved menu geometry, fine Shift scrubbing,
-screenshots, and curated logos remain included. See the
-[0.9.5 notes](docs/RELEASE-0.9.5.md) for those features and their test scope.
+- **Cinema action shots:** place the camera, begin an action shot, and control your Helldiver while the camera holds its position, angle and lens. Returning to Photo Mode restores your previous Freeze Action state. Your selected slow-motion speed is retained, and the Cinema hint fades away after three seconds.
+- **Camera paths:** record up to 32 scene-local points with per-segment durations, smooth travel or timed cuts. Five separate player-relative Director camera presets remain saved across restarts.
+- **Reachable global controls:** Freeze/Resume Action, solo AI behavior, Slow Motion with a speed slider, and Lock Camera stay available above the settings. The AI indicator uses the current mission's faction emblem when verified.
+- **Photo studio:** move and resize the menu, adjust opacity, navigate with W/S and A/D, and use Shift for fine slider scrubbing. Menu geometry and controls-drawer visibility/layout survive restarts. The contextual controls drawer docks at the left edge.
+- **Native and shader lenses:** focus distance, aperture, double-click subject focus, center autofocus, focal-length presets and portrait roll. The combined shader compositor layers depth effects, grading and preview bokeh without the former color rectangle or dim/cool tint.
+- **Fixed subject poses:** 213 sampled frames and variants apply while paused; Reset restores the original pose. Supported cape variants follow the posed shoulders. See the [pose catalogue](docs/SUBJECT-POSE-CATALOGUE.md).
+- **Photo lighting:** up to three point/spot lights, draggable position indicators, a color editor with Apply and a live swatch, subject-directed rigs, and five saved lighting setups. Wider lighting coverage remains **Not tested fully**.
+- **Solo AI direction:** Normal, Passive and Dummy persist after closing Photo Mode and apply to newly discovered enemies. Reset returns normal combat. Multiplayer/joining players disable suppression; game restart begins at Normal.
+- **Correct frozen ragdolls:** an observed ragdoll pose stays still at exact zero time, resumes normally and yields to Subject poses. This reproduction and handoff were verified in game.
+- **Input and recovery fixes:** gameplay look returns after menu handoffs, native settings suspend the Photo camera, chat ignores the Photo shortcut, held ADS remains intact, and double-click focus uses buffered click timing. Camera cursor confinement is retained.
+- **Complete subject hiding:** owned equipment attachments, including the Maxigun feed belt, hide and restore with the subject. Curated Helldivers logos and Super Earth insignia remain included.
+- **Supported ActionCam coexistence:** ActionCam 2.3.1 and 2.4 retain their gameplay camera/profiles; War Journalist owns its camera only during Photo Mode and Cinema shots. Unknown camera hooks are refused safely.
+- **Radeon compatibility repair:** the package contains the game's 77 native shader registrations and its 44 shipped Photo Mode shaders. Radeon testers reported stable Alt-Tab, fullscreen, bloom and DoF changes with this repair.
 
 ## Install
 
