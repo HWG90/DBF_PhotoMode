@@ -60,6 +60,7 @@ function M.new(sr,context,backend,hover_guard)
                 if rate==0 then local ready,reason=guard_call('acquire');assert(ready,reason)end
                 if math.abs(saved.applied-rate)>0.0000001 then backend.set(saved.policy,rate)end
                 saved.applied=backend.value(saved.policy);saved.start=backend.now();verified_time=nil
+                assert(type(saved.start)=='number'and saved.start==saved.start and math.abs(saved.start)<math.huge,'Simulation clock unavailable')
                 if saved.applied>0 then local released,reason=guard_call('release');assert(released,reason)end
             end)
             if not ok then self.release();return false,tostring(why)end
@@ -72,9 +73,11 @@ function M.new(sr,context,backend,hover_guard)
         if not ok then self.release();return false,tostring(policy) end
         if policy.value==0 then self.release();return false,'Simulation is already paused by another owner' end
         local read,time=pcall(sr.World.time,world)
-        if not read or type(time)~='number' then self.release();return false,'World clock unavailable' end
+        if not read or type(time)~='number'or time~=time or math.abs(time)==math.huge then self.release();return false,'World clock unavailable' end
+        local clock_read,start=pcall(backend.now)
+        if not clock_read or type(start)~='number'or start~=start or math.abs(start)==math.huge then self.release();return false,'Simulation clock unavailable'end
         if rate==0 then local ready,reason=guard_call('acquire');if not ready then return false,reason end end
-        saved={policy=policy,world=world,unit=unit,start=backend.now(),applied=rate};elapsed=0;world_time=time;verified_time=nil
+        saved={policy=policy,world=world,unit=unit,start=start,applied=rate};elapsed=0;world_time=time;verified_time=nil
         local applied,why=pcall(backend.set,policy,rate)
         if not applied then self.release();return false,tostring(why)end
         saved.applied=backend.value(policy)
@@ -91,12 +94,17 @@ function M.new(sr,context,backend,hover_guard)
         local ok,why=pcall(function()
             assert(backend.value(saved.policy)==saved.applied,'Native simulation ownership lost')
             if saved.applied==0 then local held,reason=guard_call('hold');assert(held,reason)end
-            local now=backend.now();elapsed=now-saved.start
-            if saved.applied==0 and elapsed>0.15 then
+            local now=backend.now()
+            assert(type(now)=='number'and now==now and math.abs(now)<math.huge,'Simulation clock unavailable')
+            elapsed=now-saved.start
+            -- The engine can finish several damped simulation steps after a
+            -- zero-policy readback. Allow that bounded acquisition interval,
+            -- then require the actual world clock to remain fixed. delta_time
+            -- can still contain a completed step and is not proof of motion.
+            if saved.applied==0 and elapsed>=0.5 then
                 local time=sr.World.time(world)
-                assert(type(time)=='number','Gameplay clock unavailable')
+                assert(type(time)=='number'and time==time and math.abs(time)<math.huge,'Gameplay clock unavailable')
                 if verified_time then assert(math.abs(time-verified_time)<0.00001,'Gameplay clock advanced despite native pause')else verified_time=time end
-                assert(math.abs(sr.World.delta_time(world))<0.000001,'Gameplay world time step is still advancing')
             end
         end)
         if not ok then self.release();return false,tostring(why) end

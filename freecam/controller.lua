@@ -1055,11 +1055,12 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         self._refresh_camera_path()
         if self._cinema_begin_pending then
             -- Fixed body/cape leases restore on the owning update before time resumes.
-            local ok,why=self._request_time_change(nil)
+            -- Cinema only lifts Freeze. The selected positive slow-motion
+            -- policy survives the same way it does when Photo Mode closes.
+            local ok,why=self._request_time_change(self._resume_time_rate())
             if not ok then self._cinema_begin_pending=nil;self._cinema.cancel();self._cinema_error(why);return end
             photo.input={}
             if self._pose_time_pending or self._poses and(self._poses.active or self._poses.pending)then return end
-            self.slowmo_active=false
             if freeze and freeze.cleanup_pending and freeze.cleanup_pending()then return end
             if panel then local called,closed,reason=pcall(panel.close);if not called or closed==false then self._cinema_error(called and reason or closed);return end end
             if provider then local released,reason=provider.release();if not released then self._cinema_error(reason);return end;provider=nil end

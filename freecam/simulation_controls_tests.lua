@@ -1,7 +1,8 @@
 local root=rawget(_G,'DBF_PHOTO_TEST_ROOT')or'freecam/'
 local Core=dofile('src/core.lua');local Controller=dofile(root..'controller.lua');local Simulation=dofile(root..'simulation.lua');local Options=dofile(root..'photo_options.lua')
-local function fixture(hover)
-    local f={keys={},rate=1.25,epoch=10,world_time=20,clock=1,focused=true,allowed=true,unit=1,world=2,logs={}}
+local Cinema=dofile(root..'cinema_camera.lua')
+local function fixture(hover,cinema_enabled)
+    local f={keys={},rate=1.25,epoch=10,world_time=20,clock=1,focused=true,allowed=true,unit=1,world=2,logs={},writes={}}
     local api=Core.new(nil,function()end);api.is_open=function()return false end
     api.photo_resolution=function()return 1920,1080 end;api.create_photo_view=function()return{}end
     api.camera_input={down=function(k)return f.keys[k]or false end,focused=function()return f.focused end,
@@ -10,7 +11,7 @@ local function fixture(hover)
     local sr={Network={game_session=function()return 1 end},GameSession={other_peers=function()return f.peers or{}end,synchronizing_peers=function()return{}end},
         World={time=function()return f.world_time end,delta_time=function()return f.rate==0 and 0 or .016*f.rate end}}
     local backend={snapshot=function()return{value=f.rate}end,value=function()return f.rate end,now=function()return f.clock end,
-        set=function(_,rate)assert(not f.reject_zero or rate~=0,'zero denied');f.rate=rate end}
+        set=function(_,rate)assert(not f.reject_zero or rate~=0,'zero denied');f.rate=rate;f.writes[#f.writes+1]=rate end}
     local guard
     if hover then
         guard={prepare=function()f.prepared_epoch=f.epoch;f.guard_owned=true;return true end,
@@ -26,7 +27,8 @@ local function fixture(hover)
             editing_key=function()return false end,editing_text=function()return false end}
     end}
     f.photo={};DBFMCM=api
-    f.controller=Controller.new(f.photo,{},function()return true end,function(message)f.logs[#f.logs+1]=message end,f.freeze,Options,nil,factory,nil,nil,nil,nil,nil,nil,nil,nil,function()return f.epoch end)
+    if cinema_enabled then f.cinema=Cinema.new(f.photo,function()return{world=f.world,epoch=1,player=f.unit,gameplay_input=true}end,function()return f.clock end)end
+    f.controller=Controller.new(f.photo,{},function()return true end,function(message)f.logs[#f.logs+1]=message end,f.freeze,Options,nil,factory,nil,nil,nil,nil,nil,nil,nil,nil,function()return f.epoch end,nil,nil,nil,f.cinema)
     function f.tick()f.clock=f.clock+.016;f.controller.tick(.016)end
     function f.update()f.epoch=f.epoch+1;if f.rate>0 then f.world_time=f.world_time+.016*f.rate end;f.tick()end
     function f.press(key)f.keys[key]=true;f.tick();f.keys[key]=false;f.tick()end
@@ -80,5 +82,48 @@ f.controller._cinema=nil;assert(f.controller.close());near(f.rate,1.25)
 f=fixture();assert(f.handle.set('freeze_player',false));f.press(220);f.press(80);f.reject_zero=true
 assert(not f.actions.freeze()and not f.freeze.paused());near(f.rate,1.25);assert(not f.controller.slowmo_active and f.handle.get('slowmo_speed')==.2)
 f.reject_zero=false;assert(f.controller.close());near(f.rate,1.25)
+
+-- Action shots only lift Freeze. Keep the active slow-motion ownership and
+-- original baseline across gameplay handoff, repositioning and Photo exit.
+f=fixture(false,true);h=f.handle
+assert(h.set('slowmo_speed',.3));f.press(220);near(f.rate,.3)
+f.press(80);near(f.rate,0);assert(h.set('slowmo_speed',.45));near(f.rate,0)
+assert(h.set('fov',60));f.photo.pos={1,2,3};f.photo.view={yaw=.2,pitch=.1};f.tick()
+local writes_before=#f.writes
+assert(h.activate('cinema_begin'));f.tick()
+near(f.rate,.45);assert(f.cinema.state=='perform'and not f.owned and f.controller.slowmo_active and h.get('slowmo_speed')==.45 and not h.get('freeze_player'),'Static action shot discarded the cached slow-motion resume policy')
+for i=writes_before+1,#f.writes do near(f.writes[i],.45)end
+for i=1,10 do f.update();near(f.rate,.45)end
+f.press(80);near(f.rate,.45);assert(f.cinema.state=='place'and f.owned and f.controller.slowmo_active,'Repositioning changed the action-shot timescale')
+writes_before=#f.writes;assert(h.activate('cinema_begin'));f.tick();near(f.rate,.45)
+assert(#f.writes==writes_before and not f.owned and f.controller.slowmo_active,'An already-unpaused slow-motion action shot rewrote its timescale')
+f.press(80);near(f.rate,.45)
+assert(f.controller.stop());near(f.rate,.45);assert(f.controller.slowmo_active and h.get('slowmo_speed')==.45,'Photo exit discarded the slow-motion selection')
+assert(f.controller.close());near(f.rate,1.25)
+
+-- The path uses exactly the same resume policy, including a qualified hover
+-- pause. Playback's camera clock advances independently of the retained rate.
+f=fixture(true,true);h=f.handle
+assert(h.set('slowmo_speed',.25));f.press(220);f.press(80);f.update();near(f.rate,0)
+assert(h.set('slowmo_speed',.6)and h.set('fov',70));f.photo.pos={0,0,0};f.photo.view={yaw=0,pitch=0};f.tick()
+assert(h.activate('path_add')and h.set('path_duration',1));f.photo.pos={10,0,0};assert(h.activate('path_add'));f.tick()
+writes_before=#f.writes;assert(h.activate('path_play'));f.tick()
+near(f.rate,.6);assert(f.cinema.path_playing and not f.owned and not f.guard_owned and f.controller.slowmo_active,'Camera path did not resume its selected slow rate after hover restoration')
+for i=writes_before+1,#f.writes do near(f.writes[i],.6)end
+f.clock=f.clock+.5;f.tick();near(f.rate,.6);assert(f.photo.pos[1]>0 and f.photo.pos[1]<10,'Slow simulation time incorrectly drove camera-path playback')
+f.press(80);near(f.rate,.6);assert(f.cinema.state=='place'and not f.cinema.path_playing and f.owned)
+writes_before=#f.writes;assert(h.activate('path_play'));f.tick();near(f.rate,.6)
+assert(#f.writes==writes_before and f.cinema.path_playing and not f.owned,'An already-unpaused camera path rewrote its timescale')
+f.press(80);near(f.rate,.6)
+assert(f.controller.stop());near(f.rate,.6);assert(f.controller.slowmo_active,'Path exit cleared the active slow-motion policy');near(h.get('slowmo_speed'),.6)
+assert(f.controller.close());near(f.rate,1.25)
+
+-- Without Slow Motion selected, unpausing keeps the pre-Photo gameplay rate.
+f=fixture(false,true);h=f.handle;f.press(80);near(f.rate,0)
+assert(h.set('fov',60));f.photo.pos={1,2,3};f.photo.view={yaw=0,pitch=0};f.tick()
+assert(h.activate('cinema_begin'));f.tick();near(f.rate,1.25)
+assert(not f.controller.slowmo_active and f.cinema.state=='perform'and not f.owned,'A plain action shot invented a slow-motion policy')
+assert(f.controller.close());near(f.rate,1.25)
 DBFMCM=nil
 print('Simulation controls: retained active rates, freeze/resume and Photo transitions, frozen edits, original-speed restore, hover update qualification, footer actual-state and solo/ownership gates passed')
+print('Cinema timescale: static/path shots only unfreeze, retained selected slow rate and cache across handoff/reposition/exit, qualified hover restoration, wall-time path playback and exact original-speed restore passed')
