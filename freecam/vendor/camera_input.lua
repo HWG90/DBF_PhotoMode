@@ -1,20 +1,55 @@
 -- Photo input is fully captured; raw mouse deltas belong only to the camera.
 local M={}
 function M.new(native,capture,input,available)
-    local self={api=2,isolated_look=true};local token;local last_time;local mode=3
+    local self={api=2,isolated_look=true};local token;local last_time;local mode=3;local cleanup_pending=false
+    function self.status()
+        input.poll()
+        local owned=token~=nil and capture.owns(token)==true
+        local observed,actual=pcall(native.mcm_captured)
+        local checked,allowed=pcall(available)
+        local native_mode=observed and tonumber(actual)or nil
+        return{active=token~=nil,owned=owned,mode=mode,native_mode=native_mode,cleanup_pending=cleanup_pending,
+            available=checked and allowed==true,focused=input.focused()==true,
+            ready=token~=nil and owned and not cleanup_pending and input.focused()==true and checked and allowed==true and native_mode==mode}
+    end
+    local function ready(menu)
+        local state=self.status()
+        if not state.active or not state.owned then return false,'Photo input lease is not owned'end
+        if state.cleanup_pending then return false,'Photo input cleanup is pending'end
+        if not state.ready then return false,'Photo input capture is unavailable or was lost'end
+        if menu and state.mode~=1 then return false,'Photo menu input is not acquired'end
+        return true
+    end
+    local function cursor(menu)
+        if not input.menu_cursor then return true end
+        local called,ok=pcall(input.menu_cursor,menu)
+        if not called or ok~=true then return false,called and'Photo cursor state failed'or tostring(ok)end
+        return true
+    end
     function self.release()
-        if not token then return true end
-        if not capture.owns(token) then token=nil;return true end
-        native.mcm_release()
-        if native.mcm_captured()~=0 then return false,'Camera input release pending' end
-        local ok,why=capture.release(token)
-        if ok then token=nil end
-        return ok,why
+        if not token then cleanup_pending=false;last_time=nil;return true end
+        if not capture.owns(token) then token=nil;cleanup_pending=false;last_time=nil;return true end
+        local called,ok,why=pcall(function()
+            native.mcm_release()
+            if native.mcm_captured()~=0 then return false,'Camera input release pending'end
+            return capture.release(token)
+        end)
+        if called and ok==true then token=nil;cleanup_pending=false;last_time=nil;return true end
+        cleanup_pending=true
+        return false,called and why or tostring(ok)
     end
     function self.acquire(bindings)
         input.poll()
-        if token then return nil,'Camera input already acquired' end
-        if not input.focused() or not available() or native.mcm_captured()~=0 then return nil,'Close menus and focus the game first' end
+        if token then
+            local state=self.status()
+            if not cleanup_pending and state.owned and state.native_mode==mode then return nil,'Camera input already acquired'end
+            local ok,why=self.release();if not ok then return nil,why end
+        end
+        local checked,allowed=pcall(available)
+        if not input.focused() or not checked or allowed~=true or native.mcm_captured()~=0 then return nil,'Close menus and focus the game first' end
+        if type(self.native_menu_resume)=='function'then
+            local ok,why=self.native_menu_resume();if ok==false then return nil,why end
+        end
         -- Native capture snapshots gameplay-held keys and forwards their releases.
         -- Activation must not discard the toggle merely because movement is held.
         local why;token,why=capture.acquire('dbf_freecam')
@@ -26,14 +61,11 @@ function M.new(native,capture,input,available)
             last_time=input.now and input.now() or nil
         end)
         if not ready then self.release();return nil,tostring(reason) end
-        mode=3;return token
+        mode=3;cleanup_pending=false;return token
     end
     function self.sample(bindings)
-        input.poll()
-        if not token or not capture.owns(token) or not input.focused() or not available() or native.mcm_captured()~=mode then
-            self.release();return nil
-        end
-        if input.menu_cursor and not input.menu_cursor(mode==1)then self.release();return nil end
+        local valid,why=ready(false);if not valid then return nil,why end
+        local shown,reason=cursor(mode==1);if not shown then return nil,reason end
         local elapsed
         if input.now then local now=input.now();elapsed=last_time and math.max(0,math.min(0.1,now-last_time)) or 0;last_time=now end
         local dx,dy=0,0
@@ -44,20 +76,19 @@ function M.new(native,capture,input,available)
             up=input.down(bindings.up or 16),down=input.down(bindings.down or 17),escape=input.down(27),wheel=input.wheel(),mouse_x=dx,mouse_y=dy,dt=elapsed}
     end
     function self.set_focus(menu)
-        if not token or not capture.owns(token) then return false,'Photo input not acquired' end
+        local valid,reason=ready(false);if not valid then return false,reason end
         local desired=menu and 1 or 3
         local ok,why=pcall(function()
             assert(input.menu_cursor,'Photo cursor switching unavailable')
             assert(native.mcm_capture(desired)~=0,'Photo focus switch failed')
             assert(input.menu_cursor(menu),'Photo cursor state failed')
         end)
-        if not ok then self.release();return false,tostring(why)end
+        if not ok then return false,tostring(why)end
         mode=desired;last_time=input.now and input.now()or nil;return true
     end
     function self.menu_sample()
-        input.poll()
-        if not token or not capture.owns(token)or not input.focused()or native.mcm_captured()~=1 then return end
-        if not input.menu_cursor(true)then self.release();return end
+        local valid,why=ready(true);if not valid then return nil,why end
+        local shown,reason=cursor(true);if not shown then return nil,reason end
         local x,y;if input.mouse then x,y=input.mouse()end
         local elapsed;if input.now then local now=input.now();elapsed=last_time and math.max(0,math.min(.1,now-last_time))or 0;last_time=now end
         return {x=x,y=y,click=input.down(1),wheel=input.wheel(),dt=elapsed,click_events=input.click_events and input.click_events()or nil}

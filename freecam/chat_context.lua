@@ -40,6 +40,7 @@ local function native_backend()
 end
 function M.new(backend,window)
  local self={};local checked;local menu_checked;local init_error
+ local handoff;local owned_handoffs=setmetatable({},{__mode='k'})
  if not backend then local ok,value=pcall(native_backend);if ok then backend=value else init_error=tostring(value)end end
  local function active()
   assert(backend,init_error or 'Chat context unavailable')
@@ -92,18 +93,69 @@ function M.new(backend,window)
   local ok,value,why=pcall(menu_active);if not ok then self.menu_reason=tostring(value);return nil,self.menu_reason end
   self.menu_reason=why;return value,why
  end
- function self.native_menu_handoff(input)
-  -- Drop only our capture lease. Preserve the verified native menu's cursor
-  -- after the provider restores its old gameplay snapshot. No key injection.
-  if self.native_menu_active()~=true then return input.release()end
-  local ok,why=input.release();if ok==false then return false,why end
-  if not window then return true end
-  local called,problem=pcall(function()
-   assert(window.set_mouse_focus(false)~=false,'Native menu mouse focus refused')
-   assert(window.set_show_cursor(true)~=false,'Native menu cursor refused')
-   assert(window.mouse_focus()==false and window.show_cursor()==true,'Native menu cursor readback failed')
+ local function handoff_input(input,allow_unfocused)
+  assert(type(input)=='table'and type(input.status)=='function','Native menu input ownership unavailable')
+  local state=input.status();assert(type(state)=='table','Native menu input ownership unavailable')
+  -- A newer frontend owns its Window state even if its values happen to match
+  -- ours. Forget our restoration claim before considering the native UI stack.
+  if state.available==false then handoff=nil;return false end
+  assert(state.available==true,'Native menu input availability unknown')
+  assert(state.active==false and state.native_mode==0,'Native menu input capture is not released')
+  if not allow_unfocused then assert(state.focused==true,'Native menu game window is not focused')end
+  return true,state
+ end
+ function self.native_menu_resume(input)
+  if not handoff then return true end
+  local called,ok,why=pcall(function()
+   if not handoff_input(input)then return true end
+   assert(handoff.input==input,'Native menu cursor owner changed')
+   assert(self.native_menu_active()==false,'Native menu is open or its state is unavailable')
+   for _,entry in ipairs(handoff.flags)do
+    if entry.written~=nil then
+     local current=window[entry.get]();assert(type(current)=='boolean','Native menu cursor state unavailable')
+     if current==entry.written and current~=entry.saved then
+      assert(window[entry.set](entry.saved)~=false,'Native menu cursor restoration refused')
+      assert(window[entry.get]()==entry.saved,'Native menu cursor restoration readback failed')
+     end
+     -- A changed flag belongs to its newer writer. Other unchanged flags can
+     -- still be restored independently (the game may already hide its cursor).
+     entry.written=nil
+    end
+   end
+   handoff=nil;return true
   end)
-  return called,not called and tostring(problem)or nil
+  if not called then return false,tostring(ok)end
+  return ok==true,why
+ end
+ function self.native_menu_handoff(input)
+  -- Release Photo's native/cursor lease first, then lend the native menu only
+  -- these two Window flags. Keep their original baseline across all retries.
+  local called,ok,why=pcall(function()
+   local released,reason=input.release();assert(released==true,reason or'Native menu input release pending')
+   if self.native_menu_active()~=true then return self.native_menu_resume(input)end
+   if not window then return true end
+   local owned,state=handoff_input(input,true);if not owned then return true end
+   if not handoff then
+    local focus,cursor=window.mouse_focus(),window.show_cursor()
+    assert(type(focus)=='boolean'and type(cursor)=='boolean','Native menu cursor baseline unavailable')
+    handoff={input=input,flags={{get='mouse_focus',set='set_mouse_focus',saved=focus,desired=false},
+     {get='show_cursor',set='set_show_cursor',saved=cursor,desired=true}}}
+   end
+   assert(handoff.input==input,'Native menu cursor owner changed')
+   -- Keep the post-release baseline even if focus disappeared before this
+   -- handoff. Defer all Window writes until the game is foreground again.
+   assert(state.focused==true,'Native menu game window is not focused')
+   for _,entry in ipairs(handoff.flags)do
+    -- Record the attempted value before calling a setter: it can succeed and
+    -- still fail its readback. Cleanup later compares the actual flag first.
+    entry.written=entry.desired
+    assert(window[entry.set](entry.desired)~=false,'Native menu cursor handoff refused')
+    assert(window[entry.get]()==entry.desired,'Native menu cursor readback failed')
+   end
+   return true
+  end)
+  if not called then return false,tostring(ok)end
+  return ok==true,why
  end
  self.active=self.chat_active
  function self.attach(api)
@@ -111,8 +163,14 @@ function M.new(backend,window)
   if type(input)~='table'then return false end
   if input.chat_active==nil then input.chat_active=self.chat_active end
   if input.native_menu_active==nil then input.native_menu_active=self.native_menu_active end
-  if input.native_menu_active==self.native_menu_active and input.native_menu_handoff==nil then
-   input.native_menu_handoff=function()return self.native_menu_handoff(input)end
+  if input.native_menu_active==self.native_menu_active then
+   if input.native_menu_handoff==nil and input.native_menu_resume==nil then
+    owned_handoffs[input]=function()return self.native_menu_handoff(input)end
+    input.native_menu_handoff=owned_handoffs[input]
+   end
+   if input.native_menu_handoff==owned_handoffs[input]and input.native_menu_resume==nil then
+    input.native_menu_resume=function()return self.native_menu_resume(input)end
+   end
   end
   return input.chat_active==self.chat_active
  end

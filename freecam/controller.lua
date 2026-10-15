@@ -126,6 +126,20 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         local ok,why=finish();if ok~=false then provider=nil end
         return ok,why
     end
+    function self._recover_input(reason)
+        clear_subject_click();photo.input={sequence=photo.sample_sequence or 0,mouse_x=0,mouse_y=0,wheel=0,dt=0}
+        if panel and panel.suspend then panel.suspend()end
+        -- Hover's zero-time guard must resume through the normal stop path
+        -- before its input lease can be relinquished. Other paused scenes can
+        -- retain their composition while a fresh input lease is acquired.
+        local ok,why
+        if freeze and freeze.needs_input_capture and freeze.needs_input_capture()then ok,why=self.stop()
+        else ok,why=self._release_input()end
+        local message=ok==false and why or reason
+        if message and self._input_recovery_reason~=message then log('Photo input recovery: '..tostring(message))end
+        self._input_recovery_reason=message
+        return false,message
+    end
     function self.actioncam_priority()
         if photo.active or self._pending_start or self._pose_stop_pending then return true end
         if not api or not handle or not api.camera_input then return false end
@@ -722,7 +736,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
             else panel.dismiss()end
         end
         menu_focus=next_focus;controls_hidden=false
-        if provider and provider.set_focus then local ok,why=provider.set_focus(menu_focus);if not ok then log(tostring(why))end end
+        if provider and provider.set_focus then local ok,why=provider.set_focus(menu_focus);if not ok then return self._recover_input(why)end end
         return true
     end
     function self._start_camera()
@@ -952,6 +966,10 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
             end
         end
         if not handle or not api.camera_input then self.stop();return end
+        -- Native-menu handoff owns its temporary Window flags independently
+        -- of capture. Clean them before a fresh lease can snapshot a baseline,
+        -- including when Photo Mode was closed while Escape was still open.
+        if type(api.camera_input.native_menu_resume)=='function'then api.camera_input.native_menu_resume()end
         self._native_menu_blocked=self._native_menu_state()
         if self._native_menu_yield then
             local waiting=self._native_menu_yield;waiting.elapsed=waiting.elapsed+math.max(.001,math.min(.1,tonumber(dt)or 0))
@@ -1005,7 +1023,11 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
             local escape=key_down(27)
             if escape and not escape_edge and not panel.editing_key()then
                 if not panel.dismiss()then self.stop()end
-            else panel.tick(provider.menu_sample(),provider.down)end
+            else
+                local input,why=provider.menu_sample()
+                if not input then self._recover_input(why);return end
+                panel.tick(input,provider.down)
+            end
             escape_edge=escape;photo.input={};return
         end
         if self._pending_start then
@@ -1162,7 +1184,15 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         end
         if not provider then
             local token=api.camera_input.acquire(bindings());if not token then return end;provider=api.camera_input
-            if provider.set_focus and menu_focus then provider.set_focus(true)end
+            if provider.set_focus and menu_focus then
+                local ok,why=provider.set_focus(true);if ok==false then self._recover_input(why);return end
+            end
+        end
+        if type(provider.status)=='function'then
+            local called,state=pcall(provider.status)
+            if not called or type(state)~='table'or state.ready~=true then
+                self._recover_input(called and 'Native input capture was interrupted'or tostring(state));return
+            end
         end
         local focus_mode=controls.focus_mode and handle.get('focus_mode')or 1
         if capturing or controls_hidden or not menu_focus or not focus_available or editing or focus_mode~=2 then clear_subject_click()end
@@ -1201,7 +1231,8 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
                     clear_subject_click()
                     if not panel.dismiss()then menu_focus=false;provider.set_focus(false);suppress_escape=true end
                 else
-                    local input=provider.menu_sample()
+                    local input,why=provider.menu_sample()
+                    if not input then self._recover_input(why);return end
                     local captured=panel.scene_tick and panel.scene_tick(input,provider.down)
                     if captured then clear_subject_click()
                     else
@@ -1214,10 +1245,9 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
             end
         end
         if capturing then screenshots.tick();photo.input={sequence=photo.sample_sequence or 0,mouse_x=0,mouse_y=0,wheel=0,dt=0};return end
-        local sample=provider.sample(bindings())
+        local sample,problem=provider.sample(bindings())
         if not sample then
-            local ok,why=self._release_input();if ok==false and why then log(tostring(why))end
-            photo.input={sequence=photo.sample_sequence or 0,mouse_x=0,mouse_y=0,wheel=0,dt=0};return
+            self._recover_input(problem);return
         end
         if not sample.escape then suppress_escape=nil end
         if sample.escape and not suppress_escape then

@@ -88,7 +88,8 @@ do
   set_show_cursor=function(value)calls[#calls+1]='cursor:'..tostring(value);if cursor_refused then return false end;show_cursor=value;return true end,
   mouse_focus=function()return mouse_focus end,show_cursor=function()return not bad_readback and show_cursor end}
  reader=module.new(fixture,window)
- local input={release=function()calls[#calls+1]='release';if release_refused then return false,'lease busy'end;mouse_focus=true;show_cursor=false;return true end}
+ local input={release=function()calls[#calls+1]='release';if release_refused then return false,'lease busy'end;mouse_focus=true;show_cursor=false;return true end,
+  status=function()return{active=false,native_mode=0,available=true,focused=true}end}
  assert(reader.native_menu_handoff(input)and mouse_focus==false and show_cursor==true)
  assert(table.concat(calls,',')=='release,focus:false,cursor:true','Native menu cursor restoration must follow provider lease restoration')
  calls={};release_refused=true;assert(reader.native_menu_handoff(input)==false and #calls==1,'A refused input release must retain ownership without touching the native cursor')
@@ -97,11 +98,94 @@ do
  bad_readback=true;assert(reader.native_menu_handoff(input)==false,'An accepted cursor write with failed readback must not acknowledge handoff')
  bad_readback=false;assert(reader.native_menu_handoff(input),'A cursor readback failure must retain a successful retry path')
  ids={};depth=0;calls={};assert(reader.native_menu_handoff(input)and #calls==1,'A closed native menu must only restore the provider lease')
- local attached={camera_input=input};assert(reader.attach(attached)and input.native_menu_active==reader.native_menu_active and type(input.native_menu_handoff)=='function')
+ local attached={camera_input=input};assert(reader.attach(attached)and input.native_menu_active==reader.native_menu_active and type(input.native_menu_handoff)=='function'and type(input.native_menu_resume)=='function')
  local foreign_reader=function()return true end;local foreign_handoff=function()return true end
- local foreign_input={chat_active=foreign,native_menu_active=foreign_reader,native_menu_handoff=foreign_handoff}
- assert(not reader.attach({camera_input=foreign_input})and foreign_input.chat_active==foreign and foreign_input.native_menu_active==foreign_reader and foreign_input.native_menu_handoff==foreign_handoff,'Attachment must preserve all foreign reader/handoff ownership')
+ local foreign_resume=function()return true end
+ local foreign_input={chat_active=foreign,native_menu_active=foreign_reader,native_menu_handoff=foreign_handoff,native_menu_resume=foreign_resume}
+ assert(not reader.attach({camera_input=foreign_input})and foreign_input.chat_active==foreign and foreign_input.native_menu_active==foreign_reader and foreign_input.native_menu_handoff==foreign_handoff and foreign_input.native_menu_resume==foreign_resume,'Attachment must preserve all foreign reader/handoff ownership')
  local reader_only={native_menu_active=foreign_reader};reader.attach({camera_input=reader_only})
  assert(reader_only.native_menu_active==foreign_reader and reader_only.native_menu_handoff==nil,'A foreign menu reader must not acquire this reader\'s cursor handoff')
+ local foreign_pair={native_menu_active=reader.native_menu_active,native_menu_handoff=foreign_handoff}
+ reader.attach({camera_input=foreign_pair});assert(foreign_pair.native_menu_resume==nil,'A foreign handoff paired with our reader must not acquire our resume hook')
+ local owned_reader={native_menu_active=reader.native_menu_active,native_menu_resume=foreign_resume}
+ reader.attach({camera_input=owned_reader});assert(owned_reader.native_menu_resume==foreign_resume and owned_reader.native_menu_handoff==nil,'A foreign resume hook was replaced or paired with a new owned handoff')
 end
 print('Native Escape context: bounded/coherent stack, covered options, build/signature refusal, cursor handoff ordering, retry and foreign ownership passed')
+
+-- Follow the Window ownership lent to native UI after Photo input releases.
+-- The first release restores gameplay; later releases are genuine no-ops.
+do
+ local function fixture()
+  local f={focus=false,cursor=false,available=true,focused=true,active=true,native_mode=1,menu=true,writes=0}
+  local window={mouse_focus=function()if f.bad_focus_readback and f.focus then return false end;return f.focus end,
+   show_cursor=function()return f.cursor end,
+   set_mouse_focus=function(value)
+    f.writes=f.writes+1;if value and f.refuse_restore then return false end;f.focus=value;return true
+   end,
+   set_show_cursor=function(value)
+    f.writes=f.writes+1;if value and f.refuse_handoff then return false end;f.cursor=value;return true
+   end}
+  f.input={release=function()
+   if not f.released then f.focus=true;f.cursor=false;f.released=true end
+   f.active=false;f.native_mode=0;return true
+  end,status=function()
+   if f.status_error then error('Input owner reader unavailable')end
+   if f.status_missing then return end
+   return{active=f.active,native_mode=f.native_mode,available=f.available,focused=f.focused}
+  end}
+  f.reader=module.new({module=function()return nil end,read=function()error('Unexpected read')end},window)
+  f.reader.native_menu_active=function()return f.menu end
+  assert(f.reader.attach({camera_input=f.input}))
+  return f
+ end
+ local f=fixture();assert(f.input.native_menu_handoff()and not f.focus and f.cursor)
+ f.menu=false;local before=f.writes
+ assert(f.reader.native_menu_active()==false and f.writes==before and not f.focus,'The native menu reader performed cursor cleanup as a side effect')
+ -- The game can hide its cursor first. Restore only our remaining focus write.
+ f.cursor=false;assert(f.input.native_menu_resume()and f.focus and not f.cursor and f.writes==before+1)
+ before=f.writes;assert(f.input.native_menu_resume()and f.writes==before,'Completed native cursor cleanup repeated Window writes')
+
+ f=fixture();f.refuse_handoff=true
+ assert(not f.input.native_menu_handoff()and not f.focus and not f.cursor)
+ f.refuse_handoff=false;assert(f.input.native_menu_handoff()and not f.focus and f.cursor)
+ f.menu=false;assert(f.input.native_menu_resume()and f.focus and not f.cursor,'A retried handoff replaced the gameplay baseline with its own false focus')
+
+ f=fixture();assert(f.input.native_menu_handoff());f.menu=false;f.refuse_restore=true
+ before=f.writes;assert(not f.input.native_menu_resume()and not f.focus and f.cursor and f.writes==before+1)
+ f.refuse_restore=false;assert(f.input.native_menu_resume()and f.focus and not f.cursor,'Failed native cursor restoration lost its retry record')
+ f=fixture();assert(f.input.native_menu_handoff());f.menu=false;f.bad_focus_readback=true
+ assert(not f.input.native_menu_resume()and f.focus and f.cursor,'Failed restoration readback was acknowledged')
+ f.bad_focus_readback=false;assert(f.input.native_menu_resume()and f.focus and not f.cursor,'Partial restoration readback failure did not retain the remaining cursor flag')
+
+ -- Record the first restored baseline while unfocused, but do not write UI
+ -- flags. A later foreground retry must not snapshot an interim UI state.
+ f=fixture();f.focused=false;assert(not f.input.native_menu_handoff()and f.focus and not f.cursor and f.writes==0)
+ f.focus=false;f.cursor=true;f.focused=true
+ assert(f.input.native_menu_handoff());f.menu=false
+ assert(f.input.native_menu_resume()and f.focus and not f.cursor,'Foreground retry replaced the original post-release gameplay baseline')
+
+ f=fixture();assert(f.input.native_menu_handoff());before=f.writes
+ assert(not f.input.native_menu_resume()and f.writes==before,'An open native menu allowed cursor restoration')
+ f.menu=nil;assert(not f.input.native_menu_resume()and f.writes==before,'Unknown native menu state allowed cursor restoration')
+ f.menu=false
+ for _,key in ipairs({'status_error','status_missing'})do f[key]=true
+  assert(not f.input.native_menu_resume()and f.writes==before,'An unavailable input owner allowed native cursor restoration');f[key]=false
+ end
+ f.available=nil;assert(not f.input.native_menu_resume()and f.writes==before);f.available=true
+ f.focused=false;assert(not f.input.native_menu_resume()and f.writes==before);f.focused=true
+ f.active=true;assert(not f.input.native_menu_resume()and f.writes==before);f.active=false
+ f.native_mode=3;assert(not f.input.native_menu_resume()and f.writes==before);f.native_mode=0
+ assert(f.input.native_menu_resume()and f.focus and not f.cursor,'Unknown ownership discarded a recoverable native cursor record')
+
+ -- Known foreign ownership takes precedence even before native UI closes.
+ f=fixture();assert(f.input.native_menu_handoff());before=f.writes;f.available=false
+ assert(f.input.native_menu_resume()and f.writes==before and not f.focus and f.cursor)
+ f.available=true;f.menu=false
+ assert(f.input.native_menu_resume()and f.writes==before and not f.focus and f.cursor,'A discarded native cursor record later overwrote its foreign frontend')
+
+ -- Closing Photo while native UI is up leaves only the owned handoff record;
+ -- an idle close notification or the closed-menu handoff finishes it safely.
+ f=fixture();assert(f.input.native_menu_handoff());f.menu=false
+ assert(f.reader.native_menu_handoff(f.input)and f.focus and not f.cursor,'Closed-menu handoff dropped its outstanding gameplay restoration')
+end
+print('Native cursor continuation: preserved gameplay baseline, foreground/partial-write/readback retries, per-flag restoration, pure readers, unknown ownership suspension and foreign takeover passed')
