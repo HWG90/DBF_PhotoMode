@@ -86,3 +86,55 @@ for _=1,#grouped_pages[5].controls+2 do
 end
 grouped_menu.close()
 print('Flat photo sections: real MCM registration/callbacks, noninteractive captions/dividers, 640/1080/4K bounds, visible focus/aperture and section-aware keyboard scrolling passed')
+
+-- Global AI edits the same authoritative MCM value, independent of the open
+-- tab. Unknown factions have no invented emblem; verified artwork is optional.
+local ai_core=dofile('src/core.lua').new(nil,function()end);local ai_changes=0
+local ai_handle=ai_core.register({id='ai_toolbar',name='Photo',pages=options.pages(function()end,function()end,nil,
+ {ai_change=function()ai_changes=ai_changes+1 end,camera_controls={{id='slowmo_speed',type='slider',label='Simulation speed',default=.2,min=.05,max=1,step=.05}}})})
+local ai_mod=ai_core.mods.ai_toolbar;ai_mod.controls.ai_behavior.disabled=false
+local ai_commands;local ai_keys={};local ai_ready=true;local faction
+local ai_menu=dofile(root..'photo_menu.lua').new({draw=function(c)ai_commands=c end,release=function()end},
+ {focus=function()end,hud=function()end,hide=function()end,exit=function()end,freeze=function()end,freeze_state=function()return false,true end,
+  slowmo=function()end,slowmo_state=function()return false,true end,ai=function()return{available=ai_ready,status='Solo mission behavior'}end,faction=function()return faction end})
+ai_menu.bind(ai_handle,ai_mod.pages)
+local ai_w,ai_h=1920,1080
+local function ai_draw(focused)ai_menu.draw(ai_w,ai_h,focused~=false,false,{focus='TAB',hide='H'})end
+local function ai_tick(input)ai_menu.tick(input or{click=false,dt=.016},function(key)return ai_keys[key]or false end)end
+local function ai_find(predicate)for _,command in ipairs(ai_commands)do if predicate(command)then return command end end;error('Missing global AI draw command')end
+local function ai_click(bounds)ai_tick({x=bounds.x+bounds.w/2,y=bounds.y+bounds.h/2,click=true});ai_tick({click=false});ai_draw()end
+for _,resolution in ipairs({{640,480},{800,600},{1920,1080},{3840,2160}})do
+ ai_w,ai_h=unpack(resolution)
+ for page in ipairs(ai_mod.pages)do
+  ai_menu.page=page;ai_menu.scroll=0;ai_menu.selection=1;ai_draw()
+  local strip=ai_find(function(c)return c.ui_role=='photo_global_controls_strip'end)
+  local freeze=ai_find(function(c)return c.ui_key=='freeze_action'end);local field=ai_find(function(c)return c.ui_key=='ai_behavior_action'end)
+  local slow=ai_find(function(c)return c.ui_key=='slowmo_action'end);local rate=ai_find(function(c)return c.ui_key=='slowmo_speed'end);local lock=ai_find(function(c)return c.ui_key=='lock_camera_action'end)
+  assert(freeze.x+freeze.w<field.x and freeze.y==field.y,'AI must be immediately after Freeze/Resume')
+  assert((slow.y==field.y and slow.x>=field.x+field.w)or slow.y+slow.h<field.y,'Responsive wrapping changed toolbar order')
+  assert(slow.x+slow.w<rate.x and rate.x+rate.w<lock.x and slow.y==lock.y,'Slow Motion/rate/Lock order changed')
+  for _,control in ipairs({freeze,field,slow,rate,lock})do assert(control.x>=strip.x and control.x+control.w<=strip.x+strip.w+.001 and control.y>=strip.y and control.y+control.h<=strip.y+strip.h+.001,'Global AI toolbar escaped its backdrop')end
+  for _,command in ipairs(ai_commands)do
+   assert(command.ui_role~='ai_faction_icon','Unknown faction invented an emblem')
+   if command.type=='text'and(command.full_text=='Freeze Action'or command.full_text=='AI: Normal'or command.full_text=='Slow Motion: OFF'or command.full_text=='Lock Camera: OFF')then assert(command.text==command.full_text and command.size>=9,'Global tools became clipped or illegible')end
+   assert(not(command.ui_role=='field'and(command.control_id=='ai_reset'or command.control_id=='ai_status')),'AI rows remained in scrolling tabs')
+  end
+ end
+end
+ai_w,ai_h=1920,1080;ai_menu.page=7;ai_menu.scroll=0;ai_draw();ai_tick()
+local function choose_ai(name)
+ ai_click(ai_find(function(c)return c.ui_key=='ai_behavior_action'end))
+ local option=ai_find(function(c)return c.popup and c.full_text=='  '..name end)
+ ai_click(option.text_bounds)
+end
+choose_ai('Passive');assert(ai_handle.get('ai_behavior')==2 and ai_changes==1,'Global AI detached the Passive callback')
+choose_ai('Dummy');assert(ai_handle.get('ai_behavior')==3 and ai_changes==2)
+choose_ai('Normal');assert(ai_handle.get('ai_behavior')==1 and ai_changes==3,'Normal did not restore the original AI callback')
+ai_handle.set('ai_behavior',3);ai_draw();local field=ai_find(function(c)return c.ui_key=='ai_behavior_action'end)
+ai_keys[2]=true;ai_tick({x=field.x+field.w/2,y=field.y+field.h/2,click=false});ai_keys[2]=false;ai_tick();ai_draw();assert(ai_handle.get('ai_behavior')==1,'Right-click did not reset global AI')
+ai_ready=false;ai_draw();ai_click(ai_find(function(c)return c.ui_key=='ai_behavior_action'end));for _,c in ipairs(ai_commands)do assert(not c.popup,'Unavailable AI opened a dropdown')end
+ai_ready=true;ai_mod.controls.ai_behavior.disabled=true;ai_draw();ai_click(ai_find(function(c)return c.ui_key=='ai_behavior_action'end));for _,c in ipairs(ai_commands)do assert(not c.popup,'Multiplayer/solo gate was bypassed')end
+ai_mod.controls.ai_behavior.disabled=false;faction={name='Fixture faction',triangles={{0,0,1,0,.5,1}},color={100,150,200}};ai_draw()
+local emblem=ai_find(function(c)return c.ui_role=='ai_faction_icon'end);assert(emblem.type=='triangle'and emblem.points[1]>=field.x and emblem.c[2]==150,'Verified faction artwork was not retained')
+faction={name='Unavailable artwork'};ai_draw();for _,c in ipairs(ai_commands)do assert(c.ui_role~='ai_faction_icon','Missing artwork produced an invented symbol')end
+ai_menu.close();print('Global AI toolbar: authoritative callbacks/Normal/reset/solo gates, tab independence, measured one/two-row layout, readable labels and verified-only faction emblem passed')

@@ -5,7 +5,7 @@ M.defaults={fov=0,focal_preset=1,roll=0,roll_preset=1,saved_camera_radius=60,loc
  shader=1,shader_opacity=10,shader_scale=1,shader_animate=true,scene_shader=1,scene_strength=100,fog_distance=25,fog_density=50,scene_depth_range=100,vignette=0,vignette_width=18,grain=0,grain_size=1.5,
  frame=1,grid=1,logo=1,logo_size=100,logo_x=90,logo_y=8,logo_opacity=85,logo_color='#FFFFFF',clean_view=false,hide_hud=true,hide_controls=false,
  light_selected=1,light_preset=1,light_setup_slot=1,light_kind=1,light_enabled=true,light_intensity=3,light_color='#FFFFFF',light_range=8,light_cone=45,light_right=0,light_forward=1,light_up=0,light_follow=false,
- hide_player=false,hide_armour=false,hide_weapons=false,subject_pose=1,director_slot=1,ai_behavior=1,
+ hide_player=false,hide_armour=false,hide_weapons=false,subject_pose=1,director_slot=1,ai_behavior=1,path_point=1,path_duration=3,path_transition=1,
  show_legend=true,legend_open=true,legend_docked=true,legend_tab_y=75,legend_columns=2,legend_x=2,legend_y=2,legend_size=38}
 M.ai_modes={'normal','passive','dummy'}
 M.subject_poses={'salute','wave','taunt'}
@@ -69,6 +69,11 @@ function M.pages(reset,recenter,catalog,saved_actions)
  local function director_action(id,label,action)
   return{id=id,type='button',label=label,button_label=label,disabled=true,on_activate=saved_actions and saved_actions[action]or function()end}
  end
+ local function path_control(control)
+  control.disabled=true
+  control.on_change=function(value)if saved_actions and saved_actions.path_change then saved_actions.path_change(control.id,value)end end
+  return control
+ end
  local function ai_control()
   local control=choice('ai_behavior','Enemy behavior',{'Normal','Passive','Dummy'});control.disabled=true
   control.on_change=function(value)if saved_actions and saved_actions.ai_change then saved_actions.ai_change(value)end end
@@ -85,6 +90,12 @@ function M.pages(reset,recenter,catalog,saved_actions)
  -- Move the existing controller-owned movement/pause definitions intact. Their
  -- IDs, defaults and callbacks remain shared with MCM and saved settings.
  for _,control in ipairs(saved_actions and saved_actions.camera_controls or{})do camera_controls[#camera_controls+1]=control end
+ for _,control in ipairs({ai_control(),director_action('ai_reset','Reset AI to Normal','ai_reset'),
+  {id='ai_status',type='text',label='Enemy behavior unavailable: waiting for a verified solo mission'},
+  {id='ai_hint',type='text',label='Solo only. Persists after Photo Mode exits; joining players reset behavior to Normal.'},
+  {id='ai_limits',type='text',label='Passive allows movement; Dummy also stops voluntary movement. Physics, damage and active attacks can continue.'}})do
+  control.photo_global_ai=true;camera_controls[#camera_controls+1]=control
+ end
  camera_controls[#camera_controls+1]={id='reset_photo',type='button',label='Reset photo adjustments',button_label='Reset',on_activate=reset}
  local definition={
  {id='camera_tools',name='Camera',require_confirmation=false,controls=camera_controls},
@@ -152,11 +163,13 @@ function M.pages(reset,recenter,catalog,saved_actions)
  director_action('cinema_end','Return to gameplay camera','cinema_end'),
  {id='cinema_status',type='text',label='Place a camera, then begin an action shot'},
  {id='cinema_hint',type='text',label='The camera stays placed while you move and fight. Your Photo Mode key returns to placement; Screenshot still works.'},
- ai_control(),
- director_action('ai_reset','Reset AI to Normal','ai_reset'),
- {id='ai_status',type='text',label='Enemy behavior unavailable: waiting for a verified solo mission'},
- {id='ai_hint',type='text',label='Solo only. Persists after Photo Mode exits; joining players reset behavior to Normal.'},
- {id='ai_limits',type='text',label='Passive allows movement; Dummy also stops voluntary movement. Physics, damage and active attacks can continue.'},
+ path_control(choice('path_point','Recorded camera point',{'No recorded points'})),
+ director_action('path_add','Add camera point','path_add'),director_action('path_remove','Remove selected point','path_remove'),
+ path_control(slider('path_duration','Segment duration (s)',.1,60,.1)),
+ path_control(choice('path_transition','Transition to next point',{'Smooth','Cut'})),
+ director_action('path_play','Play camera path','path_play'),director_action('path_clear','Clear camera path','path_clear'),
+ {id='path_status',type='text',label='No camera points recorded'},
+ {id='path_hint',type='text',label='Place the camera and add each point. Duration and transition lead to the next point; the final camera is held. Your Photo Mode key stops playback and returns to placement. Paths last for this scene only.'},
  choice('director_slot','Camera shot slot',{'Shot 1 — empty','Shot 2 — empty','Shot 3 — empty','Shot 4 — empty','Shot 5 — empty'}),
  director_action('director_save','Save relative shot','director_save'),director_action('director_recall','Recall relative shot','director_recall'),director_action('director_clear','Clear selected shot','director_clear'),
  {id='director_status',type='text',label='Shots store camera position and angle relative to the player.'},
@@ -173,7 +186,8 @@ function M.pages(reset,recenter,catalog,saved_actions)
  -- Keep the original row objects so live gates and callbacks retain ownership.
  local sections={
  camera_tools={{'Camera tools','screenshot','lock_camera','recenter'},{'Movement','speed','look_sensitivity','wheel_step','roll_speed','freeze_player','slowmo_speed'},
-  {'Saved camera','save_camera','clear_saved_camera','saved_camera_radius','saved_camera_status'},{'Reset','reset_photo'}},
+  {'Saved camera','save_camera','clear_saved_camera','saved_camera_radius','saved_camera_status'},
+  {'Enemy behavior','ai_behavior','ai_reset','ai_status','ai_hint','ai_limits'},{'Reset','reset_photo'}},
  lens={{'Lens','fov','focal_preset','focal_length_status'},
   {'Focus & depth of field','dof','dof_mode','focus_mode','focus_distance','aperture','focus_status','focus_hint'},
   {'Camera tilt','roll','roll_preset'},
@@ -192,7 +206,7 @@ function M.pages(reset,recenter,catalog,saved_actions)
   {'Controls legend','show_legend','legend_open','legend_docked','legend_tab_y','legend_columns','legend_size','legend_x','legend_y'},
   {'Menu layout','menu_x','menu_y','menu_scale','menu_opacity'}},
  director={{'Action shots','cinema_begin','cinema_reposition','cinema_end','cinema_status','cinema_hint'},
-  {'Enemy behavior','ai_behavior','ai_reset','ai_status','ai_hint','ai_limits'},
+  {'Camera path','path_point','path_add','path_remove','path_duration','path_transition','path_play','path_clear','path_status','path_hint'},
   {'Saved shots','director_slot','director_recall','director_save','director_clear','director_status','director_hint'}},
  subject={{'Pose','subject_pose','subject_pose_play','subject_pose_stop','subject_pose_status','subject_pose_hint'},
   {'Visibility','hide_player','hide_armour','hide_weapons','subject_status','subject_hint'}}}

@@ -49,6 +49,125 @@ static volatile LONG previous_raw[256];
 static volatile LONG previous_legacy[256];
 static volatile LONG previous_mouse_raw,previous_mouse_legacy;
 
+/* Only artwork-independent client confinement is owned here. ClipCursor is
+ * thread independent; no SetCapture/button-routing ownership is acquired. */
+static SRWLOCK clip_lock=SRWLOCK_INIT;
+static RECT clip_previous,clip_applied;
+static bool clip_owned;
+extern "C" __declspec(dllexport) int mcm_cursor_confinement(void) { return 1; }
+extern "C" __declspec(dllexport) int mcm_cursor_confined(void) {
+    AcquireSRWLockShared(&clip_lock);
+    RECT current;
+    int confined=owner && GetForegroundWindow()==owner &&
+        InterlockedCompareExchange(&captured,0,0)==3 && clip_owned &&
+        GetClipCursor(&current) && EqualRect(&current,&clip_applied);
+    ReleaseSRWLockShared(&clip_lock);return confined;
+}
+static void restore_clip_locked(void) {
+    RECT current;
+    if (clip_owned && GetClipCursor(&current)) {
+        /* A saved game rectangle must not confine the newly foreground app. */
+        const RECT *restore=owner && GetForegroundWindow()==owner ? &clip_previous : NULL;
+        if (!EqualRect(&current,&clip_applied) || ClipCursor(restore)) clip_owned=false;
+    }
+}
+static void camera_clip(int capture) {
+    AcquireSRWLockExclusive(&clip_lock);
+    RECT current;
+    if (capture != 3 || !owner || GetForegroundWindow()!=owner) {
+        restore_clip_locked();
+        ReleaseSRWLockExclusive(&clip_lock);return;
+    }
+    RECT client;
+    POINT first,last;
+    if (!GetClientRect(owner,&client) || client.right<=client.left || client.bottom<=client.top) {
+        restore_clip_locked();
+        ReleaseSRWLockExclusive(&clip_lock);return;
+    }
+    first.x=client.left;first.y=client.top;last.x=client.right;last.y=client.bottom;
+    if (!ClientToScreen(owner,&first) || !ClientToScreen(owner,&last) || !GetClipCursor(&current)) {
+        ReleaseSRWLockExclusive(&clip_lock);return;
+    }
+    RECT target={first.x,first.y,last.x,last.y};
+    if (!clip_owned) clip_previous=current;
+    if (EqualRect(&current,&target)) { clip_applied=current;clip_owned=true; }
+    else if (ClipCursor(&target)) {
+        clip_applied=target;clip_owned=true;
+        RECT observed;if (GetClipCursor(&observed)) clip_applied=observed;
+    }
+    ReleaseSRWLockExclusive(&clip_lock);
+}
+
+/* Queue physical edges rather than sampling a held state once per render.
+ * RAW and legacy reports share held state plus a short counterpart history;
+ * a complete RAW down/up preceding its legacy copy still emits one pair. */
+typedef struct { double seconds; int x,y,button,down; } MCM_CLICK_EVENT;
+typedef struct { double seconds; DWORD time; int button,down,routes; } MCM_CLICK_SEEN;
+static SRWLOCK click_lock=SRWLOCK_INIT;
+static MCM_CLICK_EVENT click_queue[64];
+static MCM_CLICK_SEEN click_seen[64];
+static unsigned click_read,click_count,click_seen_read,click_seen_count;
+static int click_held[5];
+static void clear_clicks_locked(void) {
+    click_read=click_count=click_seen_read=click_seen_count=0;
+    for (int i=0;i<5;++i) click_held[i]=0;
+}
+static void capture_mode(int active,bool force_clear=false) {
+    AcquireSRWLockExclusive(&click_lock);
+    LONG prior=InterlockedExchange(&captured,active);
+    if (prior!=active || force_clear) clear_clicks_locked();
+    ReleaseSRWLockExclusive(&click_lock);
+}
+static void click_edge(int button,int down,int x,int y,double seconds,DWORD time,int route) {
+    for (unsigned i=0;i<click_seen_count;++i) {
+        MCM_CLICK_SEEN *seen=&click_seen[(click_seen_read+i)%64];
+        LONG delta=(LONG)(time-seen->time);
+        if (seen->button==button && seen->down==down && !(seen->routes&route) &&
+            seconds>=seen->seconds && seconds-seen->seconds<=0.25 && delta>=-2 && delta<=2) {
+            seen->routes|=route;return;
+        }
+    }
+    if (click_held[button-1]==down) return;
+    click_held[button-1]=down;
+    if (click_count==64) { click_read=(click_read+1)%64;--click_count; }
+    MCM_CLICK_EVENT event={seconds,x,y,button,down};
+    click_queue[(click_read+click_count)%64]=event;++click_count;
+    if (click_seen_count==64) { click_seen_read=(click_seen_read+1)%64;--click_seen_count; }
+    MCM_CLICK_SEEN seen={seconds,time,button,down,route};
+    click_seen[(click_seen_read+click_seen_count)%64]=seen;++click_seen_count;
+}
+static void click_events(USHORT flags,int capture,int x,int y,double seconds,DWORD time,int route) {
+    if (capture!=1 || (route!=1 && route!=2)) return;
+    const USHORT down[5]={RI_MOUSE_LEFT_BUTTON_DOWN,RI_MOUSE_RIGHT_BUTTON_DOWN,
+        RI_MOUSE_MIDDLE_BUTTON_DOWN,RI_MOUSE_BUTTON_4_DOWN,RI_MOUSE_BUTTON_5_DOWN};
+    const USHORT up[5]={RI_MOUSE_LEFT_BUTTON_UP,RI_MOUSE_RIGHT_BUTTON_UP,
+        RI_MOUSE_MIDDLE_BUTTON_UP,RI_MOUSE_BUTTON_4_UP,RI_MOUSE_BUTTON_5_UP};
+    AcquireSRWLockExclusive(&click_lock);
+    if (InterlockedCompareExchange(&captured,0,0)==1) {
+        for (int i=0;i<5;++i) {
+            if (flags&down[i]) click_edge(i+1,1,x,y,seconds,time,route);
+            if (flags&up[i]) click_edge(i+1,0,x,y,seconds,time,route);
+        }
+    }
+    ReleaseSRWLockExclusive(&click_lock);
+}
+extern "C" __declspec(dllexport) int mcm_next_click(MCM_CLICK_EVENT *event) {
+    if (!event) return 0;
+    AcquireSRWLockExclusive(&click_lock);
+    if (!click_count || InterlockedCompareExchange(&captured,0,0)!=1) {
+        ReleaseSRWLockExclusive(&click_lock);return 0;
+    }
+    *event=click_queue[click_read];click_read=(click_read+1)%64;--click_count;
+    ReleaseSRWLockExclusive(&click_lock);return 1;
+}
+static double event_seconds(void) {
+    LARGE_INTEGER now,frequency;QueryPerformanceCounter(&now);QueryPerformanceFrequency(&frequency);
+    return (double)now.QuadPart/(double)frequency.QuadPart;
+}
+static LRESULT finish_message(LRESULT result) {
+    camera_clip((int)InterlockedCompareExchange(&captured,0,0));return result;
+}
+
 /* Capability is owned by this clone; shared MCM libraries remain unchanged. */
 extern "C" __declspec(dllexport) int mcm_escape_passthrough(void) { return 1; }
 
@@ -116,13 +235,14 @@ static USHORT mouse_flags(UINT msg, WPARAM wp) {
 static LRESULT CALLBACK guarded_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     int capture = hwnd==owner && GetForegroundWindow()==owner ? (int)InterlockedCompareExchange(&captured,0,0) : 0;
     if (msg==WM_KILLFOCUS || (msg==WM_ACTIVATEAPP && !wp)) {
-        InterlockedExchange(&captured,0);
+        capture_mode(0,true);
         InterlockedExchange(&look_x,0);InterlockedExchange(&look_y,0);
         for (int i=0;i<256;++i) { InterlockedExchange(&keys[i],0); InterlockedExchange(&previous_raw[i],0); InterlockedExchange(&previous_legacy[i],0); }
         for (int i=0;i<5;++i) InterlockedExchange(&buttons[i],0);
         InterlockedExchange(&previous_mouse_raw,0);InterlockedExchange(&previous_mouse_legacy,0);
         capture=0;
     }
+    camera_clip(capture);
     if (msg==WM_INPUT) {
         RAWINPUT raw;UINT size=sizeof raw;
         UINT read=GetRawInputData((HRAWINPUT)lp,RID_INPUT,&raw,&size,sizeof(RAWINPUTHEADER));
@@ -134,6 +254,9 @@ static LRESULT CALLBACK guarded_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) 
                 block=keyboard_event_gate(key,up,capture,previous_raw);
             }
             else if (raw.header.dwType==RIM_TYPEMOUSE) {
+                POINT point;
+                if (capture==1 && GetCursorPos(&point) && ScreenToClient(hwnd,&point))
+                    click_events(raw.data.mouse.usButtonFlags,capture,point.x,point.y,event_seconds(),(DWORD)GetMessageTime(),1);
                 if (capture && (raw.data.mouse.usButtonFlags & RI_MOUSE_WHEEL))
                     InterlockedExchangeAdd(&wheel,(SHORT)raw.data.mouse.usButtonData);
                 if (capture == 3 && !(raw.data.mouse.usFlags & MOUSE_MOVE_ABSOLUTE)) {
@@ -144,20 +267,23 @@ static LRESULT CALLBACK guarded_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) 
             }
             if (block) {
                 /* WM_INPUT foreground packets require DefWindowProc cleanup. */
-                return DefWindowProcW(hwnd,msg,wp,lp);
+                return finish_message(DefWindowProcW(hwnd,msg,wp,lp));
             }
-        } else if (capture) return DefWindowProcW(hwnd,msg,wp,lp);
+        } else if (capture) return finish_message(DefWindowProcW(hwnd,msg,wp,lp));
     } else if (msg==WM_KEYDOWN || msg==WM_SYSKEYDOWN || msg==WM_KEYUP || msg==WM_SYSKEYUP) {
         UINT key=(UINT)wp;int up=msg==WM_KEYUP || msg==WM_SYSKEYUP;
-        if (keyboard_event_gate(key,up,capture,previous_legacy))return 0;
+        if (keyboard_event_gate(key,up,capture,previous_legacy))return finish_message(0);
     } else if (msg>=WM_MOUSEFIRST && msg<=WM_MOUSELAST) {
-        if (!previous_mouse_release(&previous_mouse_legacy,mouse_flags(msg,wp)) && mouse_gate(mouse_flags(msg,wp),capture))return 0;
-    } else if (mcm_policy(msg,99,capture))return 0;
+        USHORT flags=mouse_flags(msg,wp);
+        if (capture==1 && flags)
+            click_events(flags,capture,(short)LOWORD(lp),(short)HIWORD(lp),event_seconds(),(DWORD)GetMessageTime(),2);
+        if (!previous_mouse_release(&previous_mouse_legacy,mouse_flags(msg,wp)) && mouse_gate(mouse_flags(msg,wp),capture))return finish_message(0);
+    } else if (mcm_policy(msg,99,capture))return finish_message(0);
     if (capture == 1 && msg==WM_SETCURSOR) {
         HCURSOR graphic=mcm_menu_cursor();
-        SetCursor(graphic ? graphic : LoadCursorW(NULL,IDC_ARROW));return TRUE;
+        SetCursor(graphic ? graphic : LoadCursorW(NULL,IDC_ARROW));return finish_message(TRUE);
     }
-    return CallWindowProcW(previous,hwnd,msg,wp,lp);
+    return finish_message(CallWindowProcW(previous,hwnd,msg,wp,lp));
 }
 
 extern "C" __declspec(dllexport) int mcm_install(HWND hwnd) {
@@ -199,7 +325,7 @@ extern "C" __declspec(dllexport) int mcm_capture(int active) {
     }
     if (!active || !InterlockedCompareExchange(&captured,0,0))InterlockedExchange(&wheel,0);
     InterlockedExchange(&look_x,0);InterlockedExchange(&look_y,0);
-    InterlockedExchange(&captured,active);return 1;
+    capture_mode(active);camera_clip(active);return 1;
 }
 /* Session observations come from the engine on the calling Lua thread only.
  * Unknown/error observations default to denial. The DLL owns the decision;
@@ -231,7 +357,7 @@ extern "C" __declspec(dllexport) int mcm_captured(void) {
     return owner && GetForegroundWindow()==owner ? (int)InterlockedCompareExchange(&captured,0,0) : 0;
 }
 extern "C" __declspec(dllexport) void mcm_release(void) {
-    InterlockedExchange(&captured,0);InterlockedExchange(&wheel,0);
+    capture_mode(0,true);camera_clip(0);InterlockedExchange(&wheel,0);
     InterlockedExchange(&look_x,0);InterlockedExchange(&look_y,0);
     /* Keep an inert callback until held menu keys/buttons have released.
      * Its DLL is pinned; all ordinary traffic continues through previous.

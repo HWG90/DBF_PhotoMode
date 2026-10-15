@@ -8,7 +8,7 @@
     "mcm_input_eed2e92830f3.dll": "d1f84d7a48e49f1927bdad9785d135746f918259e84a38f44aa9f4afae38c6c3",
     "bingus_memory.lua": "eb3a8c7c5246340e8932d009d208c4e6d43d5429fe8405298ff96bae163d0260",
     "bingus_runtime.lua": "74b3805771639bbbca448709e188b1b16c487eb420605c91e1056b740273c77b",
-    "camera_input.lua": "c10218b454dde521b0d9a51d38f58496486f903b0f7c8a8abd367f04da7fcf1b",
+    "camera_input.lua": "478dc3655b4f9bc995bb2bc77132ed3a63a45c8e4f1e59d48a0849f15ca5d0be",
     "capture.lua": "70c05a6b724719a4d015ba5147fb0becfb78222751beb773fcae135fee52abea",
     "core.lua": "c008876010ae194e61aea0fa7441a25af607f4b6a80fcf5aa0941aab091b88a6",
     "font.lua": "83f7e1fd6076f6f86bc86bdb8ae302bfc2b0e5902ceae1a2041420b3b722dcc0",
@@ -18,7 +18,8 @@
     "PhotoCapture_455c13a828a8.dll": "455c13a828a8229d9da887d797e394ba3901024a4811c7e50f1f4736a8a6f564",
     "PhotoCapture_7da458d8a23d.dll": "7da458d8a23d5a94039d33007957c62acce5b45ea4183bdd02e8731d19ff6a62",
     "mcm_input_fcf5b050abc2.dll": "0751ab7d0e738c3a0449a376ad083f4c7ce83ff0846b1bcb78397645e45432fa",
-    "mcm_input_f501fa41de0c.dll": "081317909068b193f62ac67adc45cce4c86d51a50784d35e092f02d73bd5a1a4"
+    "mcm_input_f501fa41de0c.dll": "081317909068b193f62ac67adc45cce4c86d51a50784d35e092f02d73bd5a1a4",
+    "mcm_input_fed2f0c90b9d.dll": "6a4f6f440c9fca66948f963d394ab3df0b192076e87ae0ce9a4d2bcb6142cac5"
   },
   "native_encoding": "hex; decoded only by package builder",
   "native_runtime": "Windows built-in APIs; static CRT",
@@ -92,5 +93,7 @@
     "addon_dependency": false,
     "game_build_stamp": "6AB3B43F",
     "behavior": "Read-only chat widget open byte; ignores game chat messages and sends no input or chat"
-  }
+  },
+  "native_input_source_sha256": "fed2f0c90b9d12384ae2cd3e74b35a205b2fab3d0909689ce9e7728edea8fca7",
+  "native_input_change": "Native camera client confinement with foreground-only restore and desktop release on focus loss; bounded timestamped RAW/legacy click queue; existing Escape/ADS release and custom cursor policies retained."
 }

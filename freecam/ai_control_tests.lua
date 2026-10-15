@@ -176,6 +176,27 @@ num(airow,0);num(airow+4,0x200);num(brow+0x68,entity);num(brow+0x18,77);num(drow
 map(world+L.WORLD_ENTITIES,entity,0);num(world+L.WORLD_RECORDS+8,entity);num(world+L.WORLD_RECORDS+12,ref)
 local registry,pointers,generations,unit,vt=allocate(),allocate(),allocate(),allocate(),allocate();num(exe+L.UNIT_REGISTRY,registry,8);num(registry+0x98,10);num(registry+0x88,pointers,8);num(registry+0xa0,generations,8);num(generations+5,1,1);num(pointers+5*8,unit,8);num(unit+0x18,0x30000000,8);num(unit,vt,8);num(vt+0xf8,exe+0x2bd890,8);num(vt+0xc8,exe+0x2c3990,8)
 local native=B.new(sr,memory);local ctx=assert(native.context());assert(ctx.solo and ctx.player_count==1);local record=assert(native.observe(ctx,entity));assert(record.fields.detector.value==1 and record.fields.still.value==0x200)
+do
+ local before=memwrites;local mission_record=0x6a000000
+ local owner_code='\x4c\x8b\x25\xa0\x12\xfe\x01\x49\x8b\x9c\x24\x88\xe2\x0a\x00\x4c\x8d\xab\xf0\x00\x00\x00'
+ put(game+0x1345099,owner_code);put(game+0x13450ee,'\x41\x0f\xb6\x45\x08');num(state+0xae288,mission_record,8)
+ for id,name in pairs({[2]='terminids',[3]='automatons',[4]='illuminate'})do
+  num(mission_record+0xf8,id,1);now=now+.6;assert(native.faction()==name,'Mission faction enum mapping changed')
+ end
+ num(mission_record+0xf8,1,1);now=now+.6;assert(native.faction()==nil,'Human/unknown records must not invent an enemy emblem')
+ num(mission_record+0xf8,2,1);num(state+L.STATE_VALUE,2);now=now+.6;assert(native.faction()==nil,'Ship/loading states must not display a cached mission emblem')
+ num(state+L.STATE_VALUE,4);put(game+0x13450ee,'xxxxx');now=now+.6;assert(native.faction()==nil,'Changed code fingerprint must refuse the native field')
+ put(game+0x13450ee,'\x41\x0f\xb6\x45\x08');fault_address=mission_record+0xf8;now=now+.6;assert(native.faction()==nil,'Unreadable mission record must fail safely');fault_address=nil
+ local original_read=memory.read;local changed=false
+ memory.read=function(at,size)
+  local data=original_read(at,size)
+  if at==mission_record+0xf8 and not changed then changed=true;num(state+0xae288,0,8)end
+  return data
+ end
+ now=now+.6;assert(native.faction()==nil,'Retired mission owner must not supply faction data');memory.read=original_read
+ num(state+0xae288,mission_record,8);now=now+.6;assert(native.faction()=='terminids')
+ assert(memwrites==before,'Faction observation must never write gameplay state')
+end
 assert(record.fields.detector.owner==entity and record.fields.detector.owner_identity==record.identity,'Detector owner lacks generation identity')
 num(net+0xb3a8,0,8);local solo_context=assert(native.context());assert(solo_context.identity==ctx.identity,'Host-id establishment retired a live solo scene');num(net+0xb3a8,123,8)
 assert(native.write(ctx,record,'detector',0,1));assert(memwrites==1);assert(not native.write(ctx,record,'detector',1,1),'Stale expected value accepted')

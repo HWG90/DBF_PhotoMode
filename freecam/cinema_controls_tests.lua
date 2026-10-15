@@ -2,7 +2,8 @@ local root=rawget(_G,'DBF_PHOTO_TEST_ROOT')or'freecam/'
 local Core=dofile('src/core.lua');local Controller=dofile(root..'controller.lua');local Options=dofile(root..'photo_options.lua')
 local Cinema=dofile(root..'cinema_camera.lua');local Menu=dofile(root..'photo_menu.lua')
 local photo={};local context={world='mission',epoch=1,player='local:1',gameplay_input=true}
-local cinema=Cinema.new(photo,function()return context end)
+local now=100
+local cinema=Cinema.new(photo,function()return context end,function()return now end)
 local keys={};local native_open=false;local captured=false;local acquire_count,release_count=0,0;local focused=true;local chat=false
 local rate=1;local hover_pending=false;local fail_release=false;local effect_releases=0;local snapshot_requests=0;local screenshot_active=false
 local camera_lease=false;local camera_acquires,camera_releases=0,0;local effect_ok=true
@@ -80,5 +81,44 @@ tick();assert(h.activate('cinema_begin'));tick();assert(cinema.state=='perform'a
 effect_ok=false;context.player='respawned';tick()
 assert(not photo.active and cinema.state=='off'and camera_lease and ctrl.camera_owned()and camera_releases==0,'Failed Cinema render cleanup returned camera to ActionCam')
 effect_ok=true;tick();assert(not camera_lease and camera_releases==1,'ActionCam ownership did not restore after successful Cinema cleanup retry')
+-- Exercise the registered Director controls through real Core callbacks. New
+-- point storage is runtime-only; editing one selected segment must not modify
+-- another segment when synchronizing the duration/transition fields.
+assert(controls.path_play.disabled and controls.path_point.disabled)
+press(80);photo.pos={0,0,0};photo.view={yaw=math.rad(179),pitch=0};effects.fov=.8;tick()
+assert(photo.active and captured and not controls.path_add.disabled and controls.path_play.disabled)
+assert(h.activate('path_add'));tick()
+assert(cinema.path_snapshot().count==1 and h.get('path_point')==1 and not controls.path_duration.disabled and controls.path_play.disabled)
+assert(h.set('path_duration',2)and h.set('path_transition',2));tick()
+photo.pos={10,0,0};photo.view={yaw=math.rad(-179),pitch=0};effects.fov=1.2
+assert(h.activate('path_add'));tick()
+assert(h.get('path_point')==2 and not controls.path_play.disabled)
+assert(h.set('path_duration',4)and h.set('path_transition',1));tick()
+photo.pos={20,0,0};effects.fov=1.4;assert(h.activate('path_add'));tick()
+assert(h.set('path_point',1)and h.get('path_duration')==2 and h.get('path_transition')==2)
+local list=cinema.path_points();assert(#list==3 and list[1].duration==2 and list[1].transition=='cut'and list[2].duration==4 and list[2].transition=='smooth','Selecting a point recursively overwrote another recorded segment')
+assert(h.set('freeze_player',true));tick();tick();assert(rate==0 and captured)
+local path_lease_count=camera_acquires;local path_input_count=acquire_count;local released_before=release_count
+poses.active=true;owned_bone='fixed';hover_pending=true
+assert(h.activate('path_play'));tick();tick()
+assert(pose_request and captured and rate==0 and cinema.state=='place'and not cinema.path_playing,'Path playback bypassed the fixed-pose/zero-time restoration handoff')
+poses.active=false;poses.pending=false;owned_bone='original';tick()
+assert(captured and rate==1 and not cinema.path_playing,'Path playback started before the hover guard restored')
+hover_pending=false;tick()
+assert(cinema.path_playing and cinema.state=='perform'and not captured and rate==1 and photo.pos[1]==0)
+assert(camera_lease and camera_acquires==path_lease_count and camera_releases==1 and release_count==released_before+1,'Path playback changed exclusive camera ownership instead of releasing only avatar input')
+now=101.9;tick();assert(photo.pos[1]==0 and photo.options.fov==math.deg(.8),'A cut must hold the outgoing position and lens while avatar controls remain free')
+now=102;tick();assert(photo.pos[1]==10 and math.abs(photo.options.fov-math.deg(1.2))<1e-8)
+now=104;tick();local moving_position=photo.pos[1]
+assert(moving_position>10 and moving_position<20 and math.abs(photo.options.fov-math.deg(1.3))<1e-8 and cinema.path_snapshot().index==2,'Real wall time must advance the next smooth camera segment and its FOV')
+assert(not captured and acquire_count==path_input_count and camera_acquires==path_lease_count)
+press(80)
+assert(cinema.state=='place'and not cinema.path_playing and captured and photo.pos[1]==moving_position and acquire_count==path_input_count+1 and camera_acquires==path_lease_count,'The Photo Mode key must stop a moving path and recapture placement without reacquiring the camera lease')
+now=120;tick();assert(photo.pos[1]==moving_position,'Stopped playback advanced after returning to placement')
+assert(h.activate('path_remove'));tick();assert(cinema.path_snapshot().count==2)
+assert(h.activate('path_clear'));tick()
+assert(cinema.path_snapshot().count==0 and controls.path_point.disabled and controls.path_play.disabled and controls.path_remove.disabled,'Clearing the runtime path must refresh its usable controls')
+assert(ctrl.stop()and not camera_lease and not captured and rate==1,'Ending the edited path session must restore gameplay/camera/input ownership')
 assert(ctrl.close());DBFMCM=nil
 print('Cinema Director lifecycle: paused pose/hover restoration, cursor retry, static gameplay, exclusive camera ownership, uncaptured screenshots, native-menu/chat/focus handoffs, reposition and respawn cleanup passed')
+print('Director camera paths: real registered point/segment controls, selected-field synchronization, paused restoration, avatar handoff, cut/curve/FOV playback, Photo-key stop and complete cleanup passed')

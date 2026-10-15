@@ -54,6 +54,25 @@ function M.new(sr,memory)
   return rows+index*spec.stride,descriptor
  end
  function self.now()return memory.now()end
+ -- Read the current mission record, rather than classifying nearby enemies.
+ -- The current-build GameStart serializer and faction-specific native callers
+ -- use GameState+AE288 -> record+F8 (2 Bugs, 3 Cyborg, 4 Illuminate).
+ local faction_cache;local faction_deadline=0
+ function self.faction()
+  local now=memory.now();if now<faction_deadline then return faction_cache end
+  faction_deadline=now+.5;faction_cache=nil
+  local ok,value=pcall(function()
+   assert(read(memory.game+0x1345099,22)=='\x4c\x8b\x25\xa0\x12\xfe\x01\x49\x8b\x9c\x24\x88\xe2\x0a\x00\x4c\x8d\xab\xf0\x00\x00\x00','Mission faction owner reader changed')
+   assert(read(memory.game+0x13450ee,5)=='\x41\x0f\xb6\x45\x08','Mission faction byte reader changed')
+   local state=ptr(memory.game+L.GAME_STATE);local mode=ptr(memory.game+L.GAME_MODE)
+   if not(state and mode and u32(state+L.STATE_VALUE)==4 and u32(mode+8)==1)then return end
+   local record=ptr(state+0xae288);if not record then return end
+   local id=read(record+0xf8,1):byte()
+   if ptr(memory.game+L.GAME_STATE)~=state or ptr(state+0xae288)~=record or u32(state+L.STATE_VALUE)~=4 then return end
+   return ({[2]='terminids',[3]='automatons',[4]='illuminate'})[id]
+  end)
+  if ok then faction_cache=value end;return faction_cache
+ end
  local function session_authority(cleanup)
   local net=ptr(memory.game+L.NET);if not net then return nil,'Host authority unavailable','unknown_session'end
   local local_peer,host_peer=read(net+0xb398,8),read(net+0xb3a8,8);local zero=string.rep('\0',8)

@@ -1,0 +1,32 @@
+{
+  "retrieved_utc": "2026-10-15T00:55:55.487625+00:00",
+  "source_repository": "https://github.com/mrhamster112/DropIntel",
+  "commit": "e8bd15780a6be4b610c36903db1237bb33067772",
+  "upstream_art_credit": "Arrowhead Game Studios game faction logos, traced by Helldivers Wiki contributors, per source site footer",
+  "credit_page": "https://mrhamster112.github.io/DropIntel/",
+  "preferred_directory": "images/faction-icons; excluded separate faction-icons-drawn variants",
+  "files": [
+    {
+      "faction": "Automatons",
+      "file": "automatons.svg",
+      "url": "https://raw.githubusercontent.com/mrhamster112/DropIntel/e8bd15780a6be4b610c36903db1237bb33067772/images/faction-icons/Automatons.svg",
+      "sha256": "1262ff04a994d7e8ee49ed900b2bf1d01c689c8e0c0fac1cbf606f3794357d1e",
+      "bytes": 430
+    },
+    {
+      "faction": "Terminids",
+      "file": "terminids.svg",
+      "url": "https://raw.githubusercontent.com/mrhamster112/DropIntel/e8bd15780a6be4b610c36903db1237bb33067772/images/faction-icons/Terminids.svg",
+      "sha256": "5959341bc4ea2ad997fe473cc9387d7c094046c8a52bbd899245ba861e5ccb6c",
+      "bytes": 562
+    },
+    {
+      "faction": "Illuminate",
+      "file": "illuminate.svg",
+      "url": "https://raw.githubusercontent.com/mrhamster112/DropIntel/e8bd15780a6be4b610c36903db1237bb33067772/images/faction-icons/Illuminate.svg",
+      "sha256": "b8b11477f25aae1f881ffcf6a9f1346d55df7a2137470b6f38cf05c024a7d199",
+      "bytes": 668
+    }
+  ],
+  "traced_artist": "Dogo314, embedded <desc> credit in each original SVG"
+}

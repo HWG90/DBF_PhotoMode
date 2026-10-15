@@ -29,8 +29,18 @@ def build(output):
     metadata = {'library': name, 'sha256': hashlib.sha256((output / name).read_bytes()).hexdigest(),
                 'source_sha256': hashlib.sha256(source.read_bytes()).hexdigest(), 'imports': imports,
                 'runtime': 'Windows x64; static CRT', 'capability_export': 'int mcm_escape_passthrough(void): 1',
-                'change': 'Load the bundled Helldivers hardware cursor for menu WM_SETCURSOR only; existing Escape, capture, held-key/button release and raw-delta policies unchanged.',
+                'change': 'Retain Helldivers menu artwork; own a client-rectangle camera cursor lease with conditional restoration; buffer menu click edges across render frames. Escape, ADS preheld releases and raw-delta gates retain their event policies.',
                 'cursor_exports': ['int mcm_load_menu_cursor(const char *absolute_utf8_path)', 'HCURSOR mcm_menu_cursor(void)'],
+                'input_reliability_exports': ['int mcm_cursor_confinement(void): 1',
+                    'int mcm_cursor_confined(void): foreground mode3 clip readback',
+                    'int mcm_next_click(MCM_CLICK_EVENT *event)'],
+                'click_event_abi': {'fields': ['double seconds', 'int x', 'int y', 'int button', 'int down'],
+                    'bytes': 24, 'capacity': 64, 'overflow': 'drop oldest edge',
+                    'coordinates': 'client pixels', 'buttons': '1 left; 2 right; 3 middle; 4 X1; 5 X2',
+                    'timestamp': 'QueryPerformanceCounter seconds; same scale as mcm_seconds',
+                    'deduplication': 'RAW/legacy shared held state and bounded counterpart history',
+                    'cleared_on': ['capture mode changes', 'release', 'focus loss']},
+                'confinement': 'ClipCursor only; foreground owned window client rectangle; per-message reassertion after prior WNDPROC; compare-before-restore; exact saved rectangle in foreground, unclip on focus loss; preserve foreign writers; no SetCapture',
                 'deployment': 'not installed', 'game_attached': False}
     (output / 'photo-input-native.json').write_text(json.dumps(metadata, indent=2)+'\n', encoding='utf-8')
     (output / 'library.txt').write_text(name+'\n', encoding='utf-8')

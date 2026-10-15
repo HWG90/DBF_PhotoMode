@@ -16,6 +16,10 @@ function M.new(backend,log)
   local value,why=get_context();self.available=value~=nil
   return self.available,why,{normal=true,passive=self.available,dummy=self.available}
  end
+ function self.faction()
+  if type(backend.faction)~='function'then return end
+  local ok,value=pcall(backend.faction);if ok then return value end
+ end
  local function observe(e)local ok,r,why=pcall(backend.observe,context,e);if not ok then return nil,tostring(r)end;return r,why end
  local function detector_record(lease)
   local ok,r,why=pcall(backend.observe_detector or backend.observe,context,lease.entity)

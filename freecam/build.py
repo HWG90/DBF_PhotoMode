@@ -72,6 +72,9 @@ end)().new(sr,function()return anchor and anchor.unit,target and target.world,an
 local DBF_PHOTO_OPTIONS=(function()
 __PHOTO_OPTIONS__
 end)()
+DBF_PHOTO_OPTIONS.faction_art=(function()
+__FACTION_ART__
+end)()
 H.dbf_game_chat=(function()
 __CHAT_CONTEXT__
 end)().new(nil,sr.Window)
@@ -294,7 +297,7 @@ end)()
     hook=hook.replace('__PHOTO_DOF_CANDIDATE__',candidate).replace('__PHOTO_DOF_ARGUMENT__',',DBF_PHOTO_DOF_FACTORY'if dof_candidate else ',nil'if scene_candidate else '').replace('__PHOTO_SCENE_ARGUMENT__',',DBF_PHOTO_SCENE_FACTORY'if scene_candidate else '').replace('__CAPTURE_LIBRARY__',capture_library_name())
     for token,filename in [('__PHOTO_OPTIONS__','photo_options.lua'),('__PHOTO_LENS__','lens.lua'),('__PHOTO_COMPOSITION__','composition.lua'),('__PHOTO_POSTFX__','postfx.lua'),('__PHOTO_RUNTIME__','photo_runtime.lua'),('__PHOTO_HUD__','hud.lua'),('__PHOTO_PROFILE__','render_profile.lua'),('__PHOTO_MENU__','photo_menu.lua'),('__CONTROL_LEGEND__','control_legend.lua'),('__LOGO_ART__','assets/logo_art.lua'),('__CAMERA_PROFILE__','camera_profile.lua'),('__SAVED_CAMERA__','saved_camera.lua')]:
         hook=hook.replace(token,(ROOT/filename).read_text(encoding='utf-8'))
-    for token,filename in [('__SCREENSHOT__','screenshot.lua'),('__SCREENSHOT_BACKEND__','screenshot_backend.lua'),('__FOCUS_DEPTH__','depth_resource.lua'),('__FOCUS_SAMPLER__','focus_sampler.lua'),('__PHOTO_LIGHTS__','photo_lights.lua'),('__LIGHT_GIZMOS__','photo_light_gizmos.lua'),('__LIGHT_PRESETS__','photo_light_presets.lua'),('__CHAT_CONTEXT__','chat_context.lua'),('__HELLDIVER_CREST__','assets/helldiver_crest.lua'),('__SUBJECT_BACKEND__','subject_backend.lua'),('__SUBJECT__','subject.lua'),('__SUBJECT_POSES__','subject_poses.lua'),('__SUBJECT_POSE_FRAMES__','assets/subject_pose_frames.lua'),('__AI_BACKEND__','ai_backend.lua'),('__AI_CONTROL__','ai_control.lua'),('__DIRECTOR__','director.lua'),('__CINEMA_CAMERA__','cinema_camera.lua'),('__HOVER_PAUSE__','hover_pause.lua'),('__HOVER_PAUSE_BACKEND__','hover_pause_backend.lua')]:
+    for token,filename in [('__SCREENSHOT__','screenshot.lua'),('__SCREENSHOT_BACKEND__','screenshot_backend.lua'),('__FOCUS_DEPTH__','depth_resource.lua'),('__FOCUS_SAMPLER__','focus_sampler.lua'),('__PHOTO_LIGHTS__','photo_lights.lua'),('__LIGHT_GIZMOS__','photo_light_gizmos.lua'),('__LIGHT_PRESETS__','photo_light_presets.lua'),('__CHAT_CONTEXT__','chat_context.lua'),('__HELLDIVER_CREST__','assets/helldiver_crest.lua'),('__FACTION_ART__','assets/faction_art.lua'),('__SUBJECT_BACKEND__','subject_backend.lua'),('__SUBJECT__','subject.lua'),('__SUBJECT_POSES__','subject_poses.lua'),('__SUBJECT_POSE_FRAMES__','assets/subject_pose_frames.lua'),('__AI_BACKEND__','ai_backend.lua'),('__AI_CONTROL__','ai_control.lua'),('__DIRECTOR__','director.lua'),('__CINEMA_CAMERA__','cinema_camera.lua'),('__HOVER_PAUSE__','hover_pause.lua'),('__HOVER_PAUSE_BACKEND__','hover_pause_backend.lua')]:
         hook=hook.replace(token,(ROOT/filename).read_text(encoding='utf-8'))
     replace('-- One frame of Photo Mode: fly the detached camera and place it.',hook+'\n-- One frame of Photo Mode: fly the detached camera and place it.')
     replace("  if PHOTO_REF and PHOTO_REF.active then", "  if PHOTO_REF and PHOTO_REF.dbf_clear_saved and (reason=='death'or reason=='world gone'or reason=='restart'or reason=='shutdown')then PHOTO_REF.dbf_clear_saved(reason)end\n  if PHOTO_REF and PHOTO_REF.dbf_stop then PHOTO_REF.dbf_stop() end\n  if PHOTO_REF and PHOTO_REF.active then")
@@ -378,6 +381,7 @@ def payload_files(output):
         files[name]=body
     files['LICENSE-Bingus.txt']=(vendor/'LICENSE-Bingus.txt').read_bytes()
     files['LICENSE-Link.txt']=(vendor/'LICENSE-Link.txt').read_bytes()
+    files['FACTION-ART-CREDITS.json']=(ROOT/'assets/faction-art-provenance.json').read_bytes()
     files['VENDOR-PROVENANCE.json']=(vendor/'PROVENANCE.json').read_bytes()
     for path in (ROOT/'assets').glob('*.png'):files['assets/'+path.name]=path.read_bytes()
     files['assets/helldivers_cursor.cur']=(ROOT/'assets/helldivers_cursor.cur').read_bytes()
@@ -441,7 +445,7 @@ def package_bsl(output,version=None,dof_candidate=False):
         'Addon/ee6b1ba7e22d71ed.patch_0.gpu_resources':registry_gpu,'PROVENANCE.json':files['PROVENANCE.json'],
         'ASSET-MANIFEST.json':(json.dumps(asset_audit,indent=2)+'\n').encode(),
         'VENDOR-PROVENANCE.json':files['VENDOR-PROVENANCE.json'],
-        'LICENSE-Bingus.txt':files['LICENSE-Bingus.txt'],'LICENSE-Link.txt':files['LICENSE-Link.txt'],'README.md':(ROOT.parent/'README.md').read_bytes(),
+        'LICENSE-Bingus.txt':files['LICENSE-Bingus.txt'],'LICENSE-Link.txt':files['LICENSE-Link.txt'],'FACTION-ART-CREDITS.json':files['FACTION-ART-CREDITS.json'],'README.md':(ROOT.parent/'README.md').read_bytes(),
         'INSTALL.txt':(ROOT/'README.md').read_bytes(),'Source/bsl_startup.lua':(ROOT/'bsl_startup.lua').read_bytes()}
     for name,body in files.items():
         if name.startswith('assets/'):package[name]=body

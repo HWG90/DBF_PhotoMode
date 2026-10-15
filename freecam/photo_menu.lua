@@ -13,6 +13,7 @@ function M.new(view,actions,existing)
  local layout_initialized=existing~=nil;local layout_dirty=false;local opacity_dirty=false
  local opacity_control={id='menu_opacity',type='slider',min=10,max=100,step=1,fine_step=1,default=38}
  local slowmo_control={id='slowmo_speed',type='slider',label='Slow motion speed',min=.05,max=1,step=.05,fine_step=.01}
+ local ai_control;local ai_status
  self.editing_value=nil;self.bound_key=nil;if legend and self.handle then legend.bind(self.handle)end
  local key_capture;local armed=false;local baseline={};local color_edit;local popup;local popup_close_on_release=false;local popup_scroll=0;local visible_count=1;local popup_count=1;local text_edit;local reset_regions={};local right_held
  local finish_number
@@ -53,7 +54,10 @@ function M.new(view,actions,existing)
  function self.suspend()suspend_input();panel_bounds=nil;if legend then view.draw({})end end
  function self.bind(handle,pages)
   if self.handle~=handle then blur_number();finish_opacity();text_edit=nil;self.editing_value=nil end;self.handle=handle;self.pages=pages;if legend then legend.bind(handle)end
-  for _,page in ipairs(pages)do for _,c in ipairs(page.controls or{})do if c.id=='slowmo_speed'then
+  ai_control=nil;ai_status=nil
+  for _,page in ipairs(pages)do for _,c in ipairs(page.controls or{})do
+   if c.id=='ai_behavior'then ai_control=c elseif c.id=='ai_status'then ai_status=c end
+   if c.id=='slowmo_speed'then
    for _,key in ipairs({'min','max','step','fine_step'})do if type(c[key])=='number'then slowmo_control[key]=c[key]end end
   end end end
   if not layout_initialized then
@@ -173,9 +177,18 @@ function M.new(view,actions,existing)
   if self.prepare_light_gizmos then self.prepare_light_gizmos(w,h,focused,hidden)end
   if hidden or not valid(w)or not valid(h)or not self.pages or #self.pages==0 then finish_layout();if self.light_gizmos then self.light_gizmos.cancel()end;if legend then legend.clear()end;view.draw({});panel_bounds=nil;hits={};resize=nil;scroll_drag=nil;move_panel=nil;return end
   if view.refresh_font then view.refresh_font()end
-  local footer_extra=actions.slowmo and 36 or 0
+  local has_ai=type(actions.ai)=='function'and ai_control~=nil
+  local footer_extra=(actions.slowmo or has_ai)and 36 or 0
   local commands={};hits={};reset_regions={};local base=math.max(.75,math.min(w/1920,h/1080));local maximum=math.min(w/(PANEL_WIDTH+48),h/(PANEL_HEIGHT+102+HUD_MARGIN+footer_extra));local minimum=math.min(maximum,math.max(.35,base*.65))
   local s=math.max(minimum,math.min(maximum,base*self.size_scale));local width=PANEL_WIDTH*s;local footprint=(PANEL_HEIGHT+62+footer_extra)*s
+  local toolbar_font=has_ai and math.max(11,9/s)or 11
+  local function tool_width(label,minimum,extra)return math.max(minimum*s,measure(label,toolbar_font*s)+(extra or 18)*s)end
+  local toolbar_wrap=has_ai and(width<680 or tool_width('Resume Action',112)+tool_width('AI: Passive',140,50)+tool_width('Slow Motion: OFF',128)+tool_width('Lock Camera: OFF',124)+172*s>width-32*s)
+  if toolbar_wrap then
+   footer_extra=64;maximum=math.min(w/(PANEL_WIDTH+48),h/(PANEL_HEIGHT+102+HUD_MARGIN+footer_extra));minimum=math.min(maximum,math.max(.35,base*.65))
+   s=math.max(minimum,math.min(maximum,base*self.size_scale));width=PANEL_WIDTH*s;footprint=(PANEL_HEIGHT+62+footer_extra)*s
+   toolbar_font=math.max(11,9/s)
+  end
   local x=self.panel_x and self.panel_x*(w-width)or w-width-24*s;local strip_bottom=self.panel_y and self.panel_y*(h-footprint)or(16+HUD_MARGIN)*s
   x=math.max(8*s,math.min(w-width-8*s,x));strip_bottom=math.max(8*s,math.min(h-footprint-8*s,strip_bottom))
   local bottom=strip_bottom+62*s;local top=bottom+(PANEL_HEIGHT+footer_extra)*s;local left=x+16*s
@@ -203,6 +216,7 @@ function M.new(view,actions,existing)
    local fill=disabled and T.panel or pressed and T.pressed or selected and(hover and T.selected_hover or T.selected)or hover and(field and T.field_hover or T.hover)or(field and T.field or T.panel)
    local command=rect(b.x,b.y,b.w,b.h,fill,modal and 1 or field and(pressed and .18 or hover and .12 or .02)or(selected and .18 or .04),modal and 901 or 302,modal,field and 'field'or 'button');command.hovered=hover==true;command.pressed=pressed==true;command.control_id=type(key)=='table'and key.id or nil;command.ui_key=type(key)=='string'and key or nil
    if modal or not field and hover then border(b,disabled and T.line or selected and T.gold or hover and T.border_hover or T.border,modal and 903 or 305,modal)end
+   return command
   end
   local function icon(id,b,color)
    local ix,iy=b.x+8*s,b.y+8*s
@@ -249,14 +263,15 @@ function M.new(view,actions,existing)
   for _,c in ipairs(page.controls)do
    if type(c.photo_section)=='string'and c.photo_section~=''then pending_section=c.photo_section end
    local neutral_status=c.type=='text'and((c.status_only and(c.label or '')=='')or(c.id=='shader_status'and c.label=='Shader overlay: none'))
-   if c.id~='controls'and not(actions.freeze and c.id=='freeze_player')and not(actions.slowmo and(c.id=='slowmo_speed'or c.id=='lock_camera'))and not c.layout_storage and not neutral_status then rows[#rows+1]=c;row_sections[#rows]=pending_section;pending_section=nil end
+   local global_ai=has_ai and(c.photo_global_ai or c.id=='ai_behavior'or c.id=='ai_reset'or c.id=='ai_status'or c.id=='ai_hint'or c.id=='ai_limits')
+   if c.id~='controls'and not(actions.freeze and c.id=='freeze_player')and not(actions.slowmo and(c.id=='slowmo_speed'or c.id=='lock_camera'))and not global_ai and not c.layout_storage and not neutral_status then rows[#rows+1]=c;row_sections[#rows]=pending_section;pending_section=nil end
   end
   self.selection=math.max(1,math.min(#rows,self.selection));if not selectable(rows[self.selection])then for i,c in ipairs(rows)do if selectable(c)then self.selection=i;break end end end
   if self.editing_value and self.editing_value.disabled then self.editing_value=nil;text_edit=nil end;if popup and popup.c.disabled then popup=nil end
   rect(left,top-71*s-tab_extra,width-32*s,1,T.border,.6,301)
   if footer_extra>0 then
-   local toolbar_y=top-111*s-tab_extra
-   rect(x+8*s,toolbar_y,width-16*s,36*s,T.background,math.min(1,math.max(.72,opacity/100+.22)),301,false,'photo_global_controls_strip')
+   local toolbar_y=top-(75+footer_extra)*s-tab_extra
+   rect(x+8*s,toolbar_y,width-16*s,footer_extra*s,T.background,math.min(1,math.max(.72,opacity/100+.22)),301,false,'photo_global_controls_strip')
    rect(left,toolbar_y,width-32*s,1*s,T.border,.85,303,false,'photo_global_controls_separator')
   end
   local content_top=top-(77+footer_extra)*s-tab_extra;local content_bottom=bottom+(color_edit and 100 or 16)*s;local row=32*s
@@ -335,33 +350,69 @@ function M.new(view,actions,existing)
     surface(b,false,false,b.key,true);rect(bx,b.y,bw*v/255,2*s,T.gold,1,307);hits[#hits+1]=b
    end
   end
-  local hint=hovered_control or rows[self.selection];local label=hint and tostring(hint.label or '')or 'Photo settings'
-  text(hint and hint.disabled and 'Unavailable in this scene' or text_edit and(text_edit.error or(text_edit.typing and 'Enter / Space saves  |  Esc cancels  |  Ctrl+A replaces' or text_edit.c.fine_step and 'A/D step  |  Shift+A/D fine  |  Esc cancels' or 'Type number or A/D step  |  Enter / Space saves  |  Esc cancels'))or key_capture and 'Press the new shortcut  |  Esc cancels' or self.notice or(label..(hint and hint.type=='slider'and '  |  Shift+drag fine  |  Enter edits'or '  |  A/D changes  |  Enter edits')),left+24*s,bottom+1*s,width-56*s,12*s,10,hint and hint.disabled and T.disabled or T.muted)
   rect(x,strip_bottom,width,54*s,T.background,math.min(1,opacity/100+.02),300,false,'photo_controls_strip');rect(x,strip_bottom+54*s,width,1*s,T.border,.5,301)
   button('Toggle HUD',{x=left,y=strip_bottom+29*s,w=120*s,h=21*s},actions.hud,'hud',false,11)
   button('Hide controls ['..keys.hide..']',{x=left+128*s,y=strip_bottom+29*s,w=166*s,h=21*s},actions.hide,'hide',false,11)
   button('Exit photo mode',{x=left+302*s,y=strip_bottom+29*s,w=156*s,h=21*s},actions.exit,'exit',false,11)
+  local global_hint;local freeze_width=has_ai and tool_width('Resume Action',toolbar_wrap and 170 or 112)or 126*s
+  local slow_x,slow_width,rate_x,rate_width,lock_x,lock_width=left+134*s,134*s,left+312*s,140*s,left+508*s,216*s
+  local tool_y=top-(toolbar_wrap and 131 or 103)*s-tab_extra
+  if has_ai then
+   slow_x=toolbar_wrap and left or left+freeze_width+8*s+tool_width('AI: Passive',140,50)+8*s
+   slow_width=tool_width('Slow Motion: OFF',toolbar_wrap and 210 or 128)
+   lock_width=tool_width('Lock Camera: OFF',toolbar_wrap and 218 or 124);lock_x=left+width-32*s-lock_width
+   rate_x=slow_x+slow_width+8*s;rate_width=lock_x-rate_x-8*s
+  end
   if actions.freeze then
    local ok,frozen,enabled=pcall(actions.freeze_state or function()return false,false end)
-   button(ok and frozen==true and 'Resume Action'or 'Freeze Action',{x=left+(footer_extra>0 and 0 or 470)*s,y=footer_extra>0 and top-103*s-tab_extra or strip_bottom+29*s,w=(footer_extra>0 and 126 or 142)*s,h=21*s},actions.freeze,'freeze_action',ok and frozen==true,11,nil,not(ok and enabled==true))
+   button(ok and frozen==true and 'Resume Action'or 'Freeze Action',{x=left+(footer_extra>0 and 0 or 470)*s,y=footer_extra>0 and top-103*s-tab_extra or strip_bottom+29*s,w=footer_extra>0 and freeze_width or 142*s,h=21*s},actions.freeze,'freeze_action',ok and frozen==true,toolbar_font,nil,not(ok and enabled==true))
+  end
+  if has_ai then
+   local called,state=pcall(actions.ai);state=called and type(state)=='table'and state or{}
+   local disabled=ai_control.disabled or state.available==false
+   local b={x=left+freeze_width+8*s,y=top-103*s-tab_extra,w=toolbar_wrap and width-40*s-freeze_width or tool_width('AI: Passive',140,50),h=21*s,c=ai_control,key=ai_control}
+   local field=surface(b,false,disabled,ai_control,true);field.ui_key='ai_behavior_action'
+   local faction;local icon_size=16*s;local icon_x,icon_y=b.x+8*s,b.y+(b.h-icon_size)/2
+   if type(actions.faction)=='function'then local ok,value=pcall(actions.faction);if ok and type(value)=='table'then faction=value end end
+   local has_icon=false;local icon_color=disabled and T.disabled or faction and faction.color or T.white
+   if faction and type(faction.material)=='string'and faction.material~=''then
+    local command=rect(icon_x,icon_y,icon_size,icon_size,icon_color,1,309,false,'ai_faction_icon');command.preview_material=faction.material;command.preview_uv=faction.uv;has_icon=true
+   elseif faction and type(faction.triangles)=='table'and#faction.triangles>0 and#faction.triangles<=256 then
+    local triangles={};local valid=true
+    for _,triangle in ipairs(faction.triangles)do
+     if type(triangle)~='table'or#triangle~=6 then valid=false;break end
+     local points={};for i=1,6 do local value=triangle[i];if type(value)~='number'or value~=value or value<0 or value>1 then valid=false;break end;points[i]=(i%2==1 and icon_x or icon_y)+value*icon_size end
+     if not valid then break end;triangles[#triangles+1]=points
+    end
+    if valid then for _,points in ipairs(triangles)do commands[#commands+1]={type='triangle',points=points,x=icon_x,y=icon_y,w=icon_size,h=icon_size,c=icon_color,a=1,layer=309,ui_role='ai_faction_icon'}end;has_icon=true end
+   end
+   local selected=tonumber(self.handle.get('ai_behavior'))or 1;local name=ai_control.choices[selected]or'Normal';local pad=has_icon and 30 or 9
+   local label=text('AI: '..name,b.x+pad*s,b.y,b.w-(pad+20)*s,b.h,toolbar_font,disabled and T.disabled or selected~=1 and T.gold or T.white);label.control_id='ai_behavior';label.ui_role='ai_behavior_value'
+   text('v',b.x+b.w-18*s,b.y,12*s,b.h,toolbar_font,disabled and T.disabled or T.muted)
+   if popup and popup.c==ai_control then if disabled then popup=nil else popup_anchor=b end end
+   reset_regions[#reset_regions+1]={x=b.x,y=b.y,w=b.w,h=b.h,c=disabled and{disabled=true}or ai_control}
+   if not disabled and focused then hits[#hits+1]=b end
+   if over(b)then global_hint=(state.status or ai_status and ai_status.label or'Solo missions only. Normal restores enemy behavior.')..(faction and faction.name and'  |  '..faction.name or'')end
   end
   if actions.slowmo then
    local ok,active,enabled=pcall(actions.slowmo_state or function()return false,false end)
    slowmo_control.disabled=not(ok and enabled==true)
-   button(ok and active==true and 'Slow Motion: ON'or 'Slow Motion: OFF',{x=left+134*s,y=top-103*s-tab_extra,w=134*s,h=21*s},actions.slowmo,'slowmo_action',ok and active==true,11,nil,slowmo_control.disabled)
-   local b={x=left+312*s,y=top-105*s-tab_extra,w=140*s,h=25*s,c=slowmo_control,key='slowmo_speed'}
+   button(ok and active==true and 'Slow Motion: ON'or 'Slow Motion: OFF',{x=slow_x,y=tool_y,w=slow_width,h=21*s},actions.slowmo,'slowmo_action',ok and active==true,toolbar_font,nil,slowmo_control.disabled)
+   local b={x=rate_x,y=tool_y-2*s,w=rate_width,h=25*s,c=slowmo_control,key='slowmo_speed'}
    local rate=tonumber(self.handle.get('slowmo_speed'))or .2;local fraction=math.max(0,math.min(1,(rate-slowmo_control.min)/(slowmo_control.max-slowmo_control.min)))
    local ink=slowmo_control.disabled and T.disabled or T.gold
-   text('Speed',left+276*s,b.y,36*s,b.h,10,slowmo_control.disabled and T.disabled or T.muted)
+   if not has_ai then text('Speed',left+276*s,b.y,36*s,b.h,10,slowmo_control.disabled and T.disabled or T.muted)end
    surface(b,false,slowmo_control.disabled,'slowmo_speed',true)
-   local track=rect(b.x+6*s,b.y+11*s,b.w-12*s,3*s,T.border_hover,.85,306,false,'slowmo_speed_track');track.control_id='slowmo_speed'
+   local track=rect(b.x+6*s,b.y+11*s,b.w-(has_ai and 52 or 12)*s,3*s,T.border_hover,.85,306,false,'slowmo_speed_track');track.control_id='slowmo_speed'
    rect(track.x,track.y,track.w*fraction,track.h,ink,1,307)
    rect(track.x+math.max(0,track.w-4*s)*fraction,track.y-4*s,4*s,11*s,ink,1,308)
-   local label=text(string.format('%.0f%%',rate*100),left+458*s,b.y,42*s,b.h,12,ink,310,nil,'slowmo_speed_value');label.control_id='slowmo_speed'
+   local label=text(string.format('%.0f%%',rate*100),has_ai and b.x+b.w-42*s or left+458*s,b.y,42*s,b.h,has_ai and toolbar_font or 12,ink,310,nil,'slowmo_speed_value');label.control_id='slowmo_speed'
    b.track={x=track.x,y=b.y,w=track.w,h=b.h};if focused and not slowmo_control.disabled then hits[#hits+1]=b end
    local locked=self.handle.get('lock_camera')==true
-   button(locked and 'Lock Camera: ON'or 'Lock Camera: OFF',{x=left+508*s,y=top-103*s-tab_extra,w=216*s,h=21*s},function()return self.handle.set('lock_camera',not self.handle.get('lock_camera'))end,'lock_camera_action',locked,11)
+   button(locked and 'Lock Camera: ON'or 'Lock Camera: OFF',{x=lock_x,y=tool_y,w=lock_width,h=21*s},function()return self.handle.set('lock_camera',not self.handle.get('lock_camera'))end,'lock_camera_action',locked,toolbar_font)
   end
+  local hint=hovered_control or rows[self.selection];local label=hint and tostring(hint.label or '')or 'Photo settings'
+  text(global_hint or(hint and hint.disabled and 'Unavailable in this scene' or text_edit and(text_edit.error or(text_edit.typing and 'Enter / Space saves  |  Esc cancels  |  Ctrl+A replaces' or text_edit.c.fine_step and 'A/D step  |  Shift+A/D fine  |  Esc cancels' or 'Type number or A/D step  |  Enter / Space saves  |  Esc cancels'))or key_capture and 'Press the new shortcut  |  Esc cancels' or self.notice or(label..(hint and hint.type=='slider'and '  |  Shift+drag fine  |  Enter edits'or '  |  A/D changes  |  Enter edits'))),left+24*s,bottom+1*s,width-56*s,12*s,10,hint and hint.disabled and not global_hint and T.disabled or T.muted)
   local opacity_bounds={x=x+width-116*s,y=strip_bottom+27*s,w=100*s,h=25*s,c=opacity_control,key='menu_opacity'}
   local opacity_track={x=opacity_bounds.x+6*s,y=opacity_bounds.y+3*s,w=88*s,h=3*s};opacity_bounds.track=opacity_track
   local opacity_ink=focused and(over(opacity_bounds)or drag and drag.c==opacity_control)and T.gold or T.muted

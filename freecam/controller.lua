@@ -15,14 +15,79 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         if controls.cinema_status then controls.cinema_status.label=message end
         if self._cinema_last_error~=message then self._cinema_last_error=message;log('Cinema camera: '..message)end
     end
-    function self.begin_action_shot()
+    function self.begin_action_shot(path)
         if not self._cinema or not photo.active or self._cinema_begin_pending then return false,'Place the camera first'end
         if screenshots and screenshots.active()then return false,'Wait for the screenshot to finish'end
         if roll_value and handle then handle.set('roll',roll_value);roll_value=nil end
-        local ok,why=self._cinema.prepare(effects and effects.fov)
+        local ok,why
+        if path then ok,why=self._cinema.path_prepare()
+        else ok,why=self._cinema.prepare(effects and effects.fov)end
         if not ok then self._cinema_error(why);return false,why end
         self._cinema_last_error=nil;self._cinema_begin_pending={};photo.input={};clear_subject_click()
         return true
+    end
+    local path_sync=false;local path_count=-1
+    local function set_path_value(id,value)
+        local control=controls[id];if not control or not handle then return end
+        local disabled=control.disabled;control.disabled=false;path_sync=true
+        local called,ok,why=pcall(handle.set,id,value)
+        path_sync=false;control.disabled=disabled
+        if not called or ok==false then log('Camera path control: '..tostring(called and why or ok))end
+    end
+    function self._refresh_camera_path(sync)
+        if not controls.path_point then return end
+        local owner=self._cinema;local supported=owner and type(owner.path_snapshot)=='function'
+        local info=supported and owner.path_snapshot()or{count=0,limit=32,playing=false}
+        local placing=supported and photo.active and owner.state=='place'and photo.pos and photo.view and not self._cinema_begin_pending
+        local count=info.count
+        if sync or path_count~=count then
+            path_count=count
+            local list=supported and owner.path_points()or{};local labels={}
+            for i,point in ipairs(list)do labels[i]=string.format('Point %d — %s, %.1f s',i,point.transition=='cut'and'Cut'or'Smooth',point.duration)end
+            if #labels==0 then labels[1]='No recorded points'end
+            controls.path_point.choices=labels
+            local index=math.max(1,math.min(count,handle.get('path_point')or 1))
+            set_path_value('path_point',index)
+            if list[index]then
+                set_path_value('path_duration',list[index].duration)
+                set_path_value('path_transition',list[index].transition=='cut'and 2 or 1)
+            end
+        end
+        controls.path_point.disabled=not(placing and count>0)
+        controls.path_add.disabled=not(placing and count<info.limit)
+        controls.path_remove.disabled=not(placing and count>0)
+        controls.path_duration.disabled=not(placing and count>0)
+        controls.path_transition.disabled=not(placing and count>0)
+        controls.path_play.disabled=not(placing and count>=2)
+        controls.path_clear.disabled=not(placing and count>0)
+        if info.playing then controls.path_status.label=owner.status
+        elseif count>0 then controls.path_status.label=string.format('%d/%d camera points — %.1f s total; this scene only',count,info.limit,info.duration or 0)
+        else controls.path_status.label='No camera points recorded — place the camera, then add a point'end
+    end
+    function self._camera_path_change(id,value)
+        if path_sync or not self._cinema or not handle then return end
+        if id=='path_point'then self._refresh_camera_path(true);return end
+        local index=handle.get('path_point');local ok,why
+        if id=='path_duration'then ok,why=self._cinema.path_set_duration(index,value)
+        elseif id=='path_transition'then ok,why=self._cinema.path_set_transition(index,value==2 and'cut'or'smooth')end
+        if ok==false then self._cinema_error(why)end
+        self._refresh_camera_path(true)
+    end
+    function self._camera_path_action(action)
+        if not self._cinema or not handle then return false,'Camera paths unavailable'end
+        if action=='play'then return self.begin_action_shot(true)end
+        local ok,why
+        if action=='add'then
+            ok,why=self._cinema.path_add(effects and effects.fov,handle.get('path_duration'),handle.get('path_transition')==2 and'cut'or'smooth')
+            if ok then
+                controls.path_point.choices[#controls.path_point.choices+1]='New camera point'
+                set_path_value('path_point',why)
+            end
+        elseif action=='remove'then ok,why=self._cinema.path_remove(handle.get('path_point'))
+        elseif action=='clear'then ok,why=self._cinema.path_clear()
+        else return false,'Unknown camera path action'end
+        if ok==false then self._cinema_error(why)end
+        self._refresh_camera_path(true);return ok,why
     end
     function self.reposition_camera()
         if not self.cinema_performing()then return false,'No action shot is active'end
@@ -285,6 +350,16 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         elseif not ai_available then controls.ai_status.label='Enemy behavior unavailable: '..tostring(ai_reason)
         else controls.ai_status.label='Enemy behavior: Normal (0 affected)'end
     end
+    function self.toolbar_ai()
+        local control=controls.ai_behavior
+        return {available=control~=nil and not control.disabled,status=controls.ai_status and controls.ai_status.label or 'Enemy behavior unavailable'}
+    end
+    function self.toolbar_faction()
+        if ai and type(ai.faction)=='function'then
+            local ok,value=pcall(ai.faction)
+            if ok and options and options.faction_art then return options.faction_art[value]end
+        end
+    end
     local director_elapsed=.5;local director_available=false;local director_reason='Director is waiting for a verified player'
     local subject_fields={'hide_player','hide_armour','hide_weapons'}
     local function subject_change()
@@ -509,7 +584,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         if type(next_at)~='number'or next_at~=next_at or math.abs(next_at)==math.huge then subject_request=nil;return end
         request.next_at=math.max(time+.1,math.min(request.deadline,next_at))
     end
-    local function subject_click(input,w,h,time)
+    local function subject_button(input,w,h,time)
         if not input or not panel.contains_pointer or not subject_ready then
             subject_pair=nil;subject_request=nil;subject_held=input and input.click or nil;subject_ready=input~=nil;return
         end
@@ -518,16 +593,37 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         local x,y=input.x,input.y
         if type(x)~='number'or type(y)~='number'or x~=x or y~=y or w<=0 or h<=0 or x<0 or x>w or y<0 or y>h then subject_pair=nil;subject_request=nil;return end
         if panel.contains_pointer(x,y)then subject_pair=nil;return end
-        if subject_pair and(time<subject_pair.time or time-subject_pair.time>.35)then subject_pair=nil end
         if not pressed then return end
+        local interval,radius_x,radius_y=.5,8,8
+        if provider and type(provider.double_click_limits)=='function'then
+            local ok,seconds,x,y=pcall(provider.double_click_limits,w,h)
+            local function valid(value,maximum)return type(value)=='number'and value==value and value>0 and value<=maximum end
+            if ok and valid(seconds,5)and valid(x,256)and valid(y,256)then interval,radius_x,radius_y=seconds,x,y end
+        end
+        if subject_pair and(time<subject_pair.time or time-subject_pair.time>interval)then subject_pair=nil end
         local prior=subject_pair
-        if prior and(x-prior.x)^2+(y-prior.y)^2<=64 then
+        if prior and math.abs(x-prior.x)<=radius_x and math.abs(y-prior.y)<=radius_y then
             subject_pair=nil
             -- Native menu coordinates use bottom-left; scene depth uses top-left.
             -- A cold sampler/display reset needs two stable seconds before a
             -- readback. Keep this click instead of requiring another pair.
             subject_request={u=x/w,v=1-y/h,started=time,next_at=time,deadline=time+4,attempts=0}
         else subject_pair={x=x,y=y,time=time}end
+    end
+    local function subject_click(input,w,h,time)
+        if not(input and type(input.click_events)=='table')then return subject_button(input,w,h,time)end
+        -- The native queue contains fresh edges since menu ownership began.
+        -- Never infer another edge from polling while this queue is available:
+        -- a complete fast click may already be released before this frame.
+        if not panel.contains_pointer then clear_subject_click();return end
+        if not subject_ready then subject_pair=nil;subject_request=nil;subject_held=false;subject_ready=true end
+        for index,event in ipairs(input.click_events)do
+            if index>64 then break end
+            local age=event.age
+            if event.button==1 and type(event.click)=='boolean'and type(age)=='number'and age==age and age>=0 and age<=5 then
+                subject_button(event,w,h,time-age)
+            end
+        end
     end
     function self.stop(preserve_resume)
         self._pending_start=nil
@@ -777,6 +873,11 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
                     cinema_begin=self._cinema and function()self.begin_action_shot()end,
                     cinema_reposition=self._cinema and function()self.reposition_camera()end,
                     cinema_end=self._cinema and function()self.stop()end,
+                    path_change=self._cinema and self._camera_path_change,
+                    path_add=self._cinema and function()return self._camera_path_action('add')end,
+                    path_remove=self._cinema and function()return self._camera_path_action('remove')end,
+                    path_clear=self._cinema and function()return self._camera_path_action('clear')end,
+                    path_play=self._cinema and function()return self._camera_path_action('play')end,
                     director_save=director and function()director_action('save')end,
                     director_recall=director and function()director_action('recall')end,
                     director_clear=director and function()director_action('clear')end,
@@ -814,6 +915,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
                 -- Text/status controls live on pages, outside MCM's stored/action index.
                 controls={};for _,page in ipairs(api.mods.dbf_freecam.pages)do for _,control in ipairs(page.controls)do if control.id then controls[control.id]=control end end end
             end
+            self._refresh_camera_path(true)
             -- Session behavior survives Photo exit, but starts Normal after restart.
             self._set_ai_value(ai_requested)
             if not menu_startup_reset and options and options.reset_menu then
@@ -827,6 +929,8 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
                     hud=function()handle.set('hide_hud',not handle.get('hide_hud'))end,
                     freeze=self._toggle_freeze_action,
                     freeze_state=self._freeze_action_state,
+                    ai=self.toolbar_ai,
+                    faction=self.toolbar_faction,
                     slowmo=self._toggle_slow_motion,
                     slowmo_state=self._slowmo_action_state,
                     exit=function()self.stop()end})
@@ -948,6 +1052,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
             controls.cinema_end.disabled=not photo.active
             controls.cinema_status.label=self._cinema and self._cinema.status or 'Cinema camera unavailable'
         end
+        self._refresh_camera_path()
         if self._cinema_begin_pending then
             -- Fixed body/cape leases restore on the owning update before time resumes.
             local ok,why=self._request_time_change(nil)

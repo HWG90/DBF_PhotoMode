@@ -60,13 +60,16 @@ function M.new(native,capture,input,available)
         if not input.menu_cursor(true)then self.release();return end
         local x,y;if input.mouse then x,y=input.mouse()end
         local elapsed;if input.now then local now=input.now();elapsed=last_time and math.max(0,math.min(.1,now-last_time))or 0;last_time=now end
-        return {x=x,y=y,click=input.down(1),wheel=input.wheel(),dt=elapsed}
+        return {x=x,y=y,click=input.down(1),wheel=input.wheel(),dt=elapsed,click_events=input.click_events and input.click_events()or nil}
     end
     function self.down(key) input.poll();return input.down(key) end
     function self.focused() input.poll();return input.focused() end
     -- This clock belongs to native input, independently of simulation speed or
     -- whether movement sampling is suspended while a photo menu has focus.
     if type(input.now)=='function' then function self.now()return input.now()end end
+    if type(input.double_click_limits)=='function' then
+        function self.double_click_limits(...)return input.double_click_limits(...)end
+    end
     function self.pause_allowed()
         return input.photo_check~=nil and native.mcm_photo_pause_allowed(input.photo_check)~=0
     end

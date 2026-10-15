@@ -31,6 +31,7 @@ function M.input(host,sr,available,parent)
   int SS_GetClientRect(void *,long *) __asm__("GetClientRect");unsigned long SS_GetWindowThreadProcessId(void *,unsigned long *) __asm__("GetWindowThreadProcessId");
   int SS_ClientToScreen(void *,SS_POINT *) __asm__("ClientToScreen");
   int SS_GetClipCursor(long *) __asm__("GetClipCursor");int SS_ClipCursor(const long *) __asm__("ClipCursor");
+  unsigned int SS_GetDoubleClickTime(void) __asm__("GetDoubleClickTime");int SS_GetSystemMetrics(int) __asm__("GetSystemMetrics");
   unsigned long SS_GetCurrentProcessId(void) __asm__("GetCurrentProcessId");
   int mcm_install(void *);int mcm_capture(int);int mcm_captured(void);void mcm_release(void);
   int mcm_wheel(void);int mcm_mouse_x(void);int mcm_mouse_y(void);double mcm_seconds(void);
@@ -45,6 +46,12 @@ function M.input(host,sr,available,parent)
  pcall(ffi.cdef,'int mcm_escape_passthrough(void);')
  local native=ffi.load(host.dir..'/'..dll)
  assert(native.mcm_escape_passthrough()==1,'Photo input Escape policy unavailable')
+ pcall(ffi.cdef,[[
+  typedef struct {double seconds;int x;int y;int button;int down;} MCM_CLICK_EVENT;
+  int mcm_next_click(MCM_CLICK_EVENT *);int mcm_cursor_confinement(void);
+ ]])
+ local native_clip_ok,native_clip=pcall(function()return native.mcm_cursor_confinement()==1 end)
+ local native_click_ok=pcall(function()return native.mcm_next_click end)
  pcall(ffi.cdef,'int mcm_load_menu_cursor(const char*);void *mcm_menu_cursor(void);')
  local cursor_ok,cursor_loaded=pcall(function()return native.mcm_load_menu_cursor(host.dir..'/assets/helldivers_cursor.cur')~=0 end)
  local input={};local hwnd;local point=ffi.new('SS_POINT[1]');local rect=ffi.new('long[4]');local owner=ffi.new('unsigned long[1]')
@@ -53,10 +60,29 @@ function M.input(host,sr,available,parent)
  end
  function input.down(key)return hwnd~=nil and bit.band(tonumber(user.SS_GetAsyncKeyState(key)),0x8000)~=0 end
  function input.focused()return hwnd~=nil end;function input.window()return hwnd end
- local capture=host.require('src/photo_input_capture.lua').new(sr.Window,parent,M.cursor_clip(user,ffi,input))
+ local capture=host.require('src/photo_input_capture.lua').new(sr.Window,parent,not(native_clip_ok and native_clip)and M.cursor_clip(user,ffi,input)or nil)
  function input.now()return tonumber(native.mcm_seconds())end
  function input.wheel()return tonumber(native.mcm_wheel())end
  function input.look()return tonumber(native.mcm_mouse_x()),tonumber(native.mcm_mouse_y())end
+ function input.double_click_limits(w,h)
+  if not hwnd or user.SS_GetClientRect(hwnd,rect)==0 then return .5,8,8 end
+  local cw,ch=tonumber(rect[2]-rect[0]),tonumber(rect[3]-rect[1]);if cw<=0 or ch<=0 then return .5,8,8 end
+  if not w or not h then w,h=sr.Gui.resolution()end
+  return tonumber(user.SS_GetDoubleClickTime())/1000,math.max(8,tonumber(user.SS_GetSystemMetrics(36))*w/cw/2),math.max(8,tonumber(user.SS_GetSystemMetrics(37))*h/ch/2)
+ end
+ if native_click_ok then
+  local event=ffi.new('MCM_CLICK_EVENT[1]')
+  function input.click_events()
+   local events={};if not hwnd or user.SS_GetClientRect(hwnd,rect)==0 then return events end
+   local cw,ch=tonumber(rect[2]-rect[0]),tonumber(rect[3]-rect[1]);if cw<=0 or ch<=0 then return events end
+   local w,h=sr.Gui.resolution();local now=input.now()
+   for _=1,64 do
+    if native.mcm_next_click(event)==0 then break end
+    events[#events+1]={age=math.max(0,now-tonumber(event[0].seconds)),x=tonumber(event[0].x)*w/cw,y=h-tonumber(event[0].y)*h/ch,button=tonumber(event[0].button),click=event[0].down~=0}
+   end
+   return events
+  end
+ end
  function input.lock_aim()sr.Window.set_mouse_focus(false);return sr.Window.mouse_focus()==false end
  function input.menu_cursor(menu)
   sr.Window.set_mouse_focus(false);sr.Window.set_show_cursor(menu);sr.Window.set_clip_cursor(true)
