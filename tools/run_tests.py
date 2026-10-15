@@ -15,6 +15,7 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = (
+    'camera_scene_tests.lua', 'camera_motion_tests.lua', 'camera_ownership_tests.lua', 'camera_lens_tests.lua', 'independent_runtime_tests.lua',
     'actioncam_compat_tests.lua', 'actioncam_controls_tests.lua',
     'cinema_camera_tests.lua', 'cinema_controls_tests.lua', 'cinema_hint_tests.lua', 'tests.lua', 'look_tests.lua', 'simulation_tests.lua', 'ragdoll_pause_tests.lua', 'simulation_controls_tests.lua', 'hover_pause_tests.lua', 'hover_pause_backend_tests.lua', 'hover_pause_integration_tests.lua', 'input_release_tests.lua', 'studio_tests.lua',
     'menu_tests.lua', 'tab_layout_schema_tests.lua', 'tab_layout_tests.lua', 'resize_menu_tests.lua', 'photo_menu_interaction_tests.lua', 'slider_scrub_tests.lua', 'control_legend_tests.lua', 'cursor_confinement_tests.lua',
@@ -64,6 +65,10 @@ def main():
             if name=='actioncam_compat_tests.lua':
                 from freecam.build import actioncam_compat_source
                 source=('local ACTIONCAM_SOURCE='+lua_string((ROOT/'freecam/vendor/actioncam-2.3.1.lua').read_text(encoding='utf-8'))+'\nlocal ADAPTER_SOURCE='+lua_string(actioncam_compat_source())+'\nlocal LLL_SOURCE='+lua_string((ROOT/'freecam/lll.lua').read_text(encoding='utf-8'))+'\n').encode()+source
+            elif name=='independent_runtime_tests.lua':
+                from freecam.independent_build import generate
+                generated=generate(dof_candidate=True,native_candidate=True,combined_scene_candidate=True)
+                source=('local INDEPENDENT_RUNTIME_SOURCE='+lua_string(generated)+'\n').encode()+source
             started = time.monotonic()
             result = {'fixture': name, 'sha256': hashlib.sha256(source).hexdigest()}
             try:

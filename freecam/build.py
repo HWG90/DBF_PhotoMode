@@ -11,38 +11,20 @@ def capture_library_name():
     if not re.fullmatch(r'PhotoCapture(?:64|_[0-9a-f]{12,64})\.dll',name):raise ValueError('Invalid owned screenshot library name')
     return name
 
-def actioncam_compat_source():
+def actioncam_compat_source(verify_foundation=True):
     signatures=json.loads((ROOT/'vendor/actioncam-signatures.json').read_text(encoding='utf-8'))
-    assert signatures['source_sha256']==hashlib.sha256((ROOT/'vendor/actioncam-2.3.1.lua').read_bytes()).hexdigest(),'Supported ActionCam source changed; regenerate and verify its compatibility contracts'
+    if verify_foundation:
+        assert signatures['source_sha256']==hashlib.sha256((ROOT/'vendor/actioncam-2.3.1.lua').read_bytes()).hexdigest(),'Supported ActionCam source changed; regenerate and verify its compatibility contracts'
     supported=signatures.get('supported',{signatures['runtime_version']:signatures})
     encoded='{supported={'
     encoded+=','.join('['+json.dumps(version)+']={closures={'+','.join('['+json.dumps(name)+']='+json.dumps(value)for name,value in record['closures'].items())+'}}'for version,record in supported.items())+'}}'
     return (ROOT/'actioncam_compat.lua').read_text(encoding='utf-8').replace('__ACTIONCAM_SIGNATURES__',encoded)
 
 
-def patch(source,dof_candidate=False,scene_candidate=False,native_candidate=False,combined_scene_candidate=False):
+def studio_source(dof_candidate=False,scene_candidate=False,native_candidate=False,combined_scene_candidate=False,camera_lifecycle=''):
+    """Expand owned Photo studio features without reading or patching a camera controller."""
     if combined_scene_candidate and not dof_candidate:raise ValueError('Combined compositor requires DoF factory')
     if combined_scene_candidate and scene_candidate:raise ValueError('Combined compositor replaces the separate scene pass')
-    def replace(old,new):
-        nonlocal source
-        if source.count(old)!=1: raise ValueError('ActionCam source contract changed: '+old[:70])
-        source=source.replace(old,new)
-    replace('local function bindings_step()', 'local function legacy_bindings_step()')
-    # Routine statistics must not format and flush a diagnostic line each second.
-    # Event/error logs still use the original immediate writer.
-    source,count=re.subn(r'(CFG\.LOG_EVERY\s*=\s*)1\.0\b',r'\g<1>30.0',source,count=1)
-    if count!=1: raise ValueError('ActionCam diagnostic interval contract changed')
-    # A living ragdoll/respawn Unit can temporarily have no animation graph.
-    # pcall cannot catch the native copier's null dereference. Guard all Photo
-    # readers privately, retaining the original vendor source and SDK namespace.
-    animation_guard=(ROOT/'animation_state.lua').read_text(encoding='utf-8')
-    declaration='local H = {}   -- helper functions used by apply() (kept in one table: Lua allows max 60 outside variables per function)'
-    replace(declaration,declaration+'\nH.dbf_animation_get_state=(function()\n'+animation_guard+'\nend)().new(sr)')
-    if source.count('pcall(sr.Unit.animation_get_state,')!=7:
-        raise ValueError('ActionCam animation reader contract changed')
-    source=source.replace('pcall(sr.Unit.animation_get_state,','pcall(H.dbf_animation_get_state,')
-    # Freecam keys belong to MCM; profile/restart bindings continue using MBM.
-    source=re.sub(r'^  \{id = \'actioncam\.photo_[^\n]+\n','',source,flags=re.M)
     controller=(ROOT/'controller.lua').read_text(encoding='utf-8')
     hook="""
 rawset(_G,'DBF_PHOTO_SAFE_EFFECTS',true)
@@ -324,6 +306,37 @@ end)()
         hook=hook.replace(token,(ROOT/filename).read_text(encoding='utf-8'))
     for token,filename in [('__SCREENSHOT__','screenshot.lua'),('__SCREENSHOT_BACKEND__','screenshot_backend.lua'),('__FOCUS_DEPTH__','depth_resource.lua'),('__FOCUS_SAMPLER__','focus_sampler.lua'),('__PHOTO_LIGHTS__','photo_lights.lua'),('__LIGHT_GIZMOS__','photo_light_gizmos.lua'),('__LIGHT_PRESETS__','photo_light_presets.lua'),('__CHAT_CONTEXT__','chat_context.lua'),('__HELLDIVER_CREST__','assets/helldiver_crest.lua'),('__FACTION_ART__','assets/faction_art.lua'),('__SUBJECT_BACKEND__','subject_backend.lua'),('__SUBJECT__','subject.lua'),('__SUBJECT_POSES__','subject_poses.lua'),('__RAGDOLL_PAUSE__','ragdoll_pause.lua'),('__SUBJECT_POSE_FRAMES__','assets/subject_pose_frames.lua'),('__AI_BACKEND__','ai_backend.lua'),('__AI_CONTROL__','ai_control.lua'),('__DIRECTOR__','director.lua'),('__CINEMA_CAMERA__','cinema_camera.lua'),('__HOVER_PAUSE__','hover_pause.lua'),('__HOVER_PAUSE_BACKEND__','hover_pause_backend.lua')]:
         hook=hook.replace(token,(ROOT/filename).read_text(encoding='utf-8'))
+    if camera_lifecycle:
+        marker='local DBF_PHOTO_RUNTIME=(function()'
+        if hook.count(marker)!=1:raise ValueError('Photo camera lifecycle embed contract changed')
+        hook=hook.replace(marker,camera_lifecycle+marker,1)
+    return hook
+
+
+def patch(source,dof_candidate=False,scene_candidate=False,native_candidate=False,combined_scene_candidate=False):
+    if combined_scene_candidate and not dof_candidate:raise ValueError('Combined compositor requires DoF factory')
+    if combined_scene_candidate and scene_candidate:raise ValueError('Combined compositor replaces the separate scene pass')
+    def replace(old,new):
+        nonlocal source
+        if source.count(old)!=1: raise ValueError('ActionCam source contract changed: '+old[:70])
+        source=source.replace(old,new)
+    replace('local function bindings_step()', 'local function legacy_bindings_step()')
+    # Routine statistics must not format and flush a diagnostic line each second.
+    # Event/error logs still use the original immediate writer.
+    source,count=re.subn(r'(CFG\.LOG_EVERY\s*=\s*)1\.0\b',r'\g<1>30.0',source,count=1)
+    if count!=1: raise ValueError('ActionCam diagnostic interval contract changed')
+    # A living ragdoll/respawn Unit can temporarily have no animation graph.
+    # pcall cannot catch the native copier's null dereference. Guard all Photo
+    # readers privately, retaining the original vendor source and SDK namespace.
+    animation_guard=(ROOT/'animation_state.lua').read_text(encoding='utf-8')
+    declaration='local H = {}   -- helper functions used by apply() (kept in one table: Lua allows max 60 outside variables per function)'
+    replace(declaration,declaration+'\nH.dbf_animation_get_state=(function()\n'+animation_guard+'\nend)().new(sr)')
+    if source.count('pcall(sr.Unit.animation_get_state,')!=7:
+        raise ValueError('ActionCam animation reader contract changed')
+    source=source.replace('pcall(sr.Unit.animation_get_state,','pcall(H.dbf_animation_get_state,')
+    # Freecam keys belong to MCM; profile/restart bindings continue using MBM.
+    source=re.sub(r'^  \{id = \'actioncam\.photo_[^\n]+\n','',source,flags=re.M)
+    hook=studio_source(dof_candidate,scene_candidate,native_candidate,combined_scene_candidate)
     replace('-- One frame of Photo Mode: fly the detached camera and place it.',hook+'\n-- One frame of Photo Mode: fly the detached camera and place it.')
     replace("  if PHOTO_REF and PHOTO_REF.active then", "  if PHOTO_REF and PHOTO_REF.dbf_clear_saved and (reason=='death'or reason=='world gone'or reason=='restart'or reason=='shutdown')then PHOTO_REF.dbf_clear_saved(reason)end\n  if PHOTO_REF and PHOTO_REF.dbf_stop then PHOTO_REF.dbf_stop() end\n  if PHOTO_REF and PHOTO_REF.active then")
     replace('PHOTO.pos = last_written and {last_written[1], last_written[2], last_written[3]} or {cx, cy, cz}', 'PHOTO.pos = {cx, cy, cz}')
@@ -385,10 +398,10 @@ end
         source="rawset(_G,'DBF_PHOTO_NATIVE_LENS_CANDIDATE',true)\n"+source
     return source
 
-def payload_files(output):
+def payload_files(output,compatibility_source=None):
     """Complete public runtime payload shared by BSL and the MDL adapter."""
     files={'src/actioncam.lua':(output/'ActionCam-Freecam.lua').read_bytes(),
-        'src/actioncam_compat.lua':actioncam_compat_source().encode(),
+        'src/actioncam_compat.lua':(actioncam_compat_source()if compatibility_source is None else compatibility_source).encode(),
         'src/standalone.lua':(ROOT/'standalone.lua').read_bytes(),
         'src/photo_input_capture.lua':(ROOT/'photo_input_capture.lua').read_bytes(),
         'PROVENANCE.json':(output/'PROVENANCE.json').read_bytes()}

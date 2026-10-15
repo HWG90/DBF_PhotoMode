@@ -162,11 +162,19 @@ def public_docs(files,prefix=''):
         files[prefix+'gallery/'+ARTWORK_VERSION+'/'+path.name]=path.read_bytes()
     return files
 
-def build(output):
+def build(output,camera_engine='legacy'):
+    if camera_engine not in ('legacy','independent'):raise ValueError('Unknown camera engine')
+    if camera_engine=='independent'and output.resolve().is_relative_to((ROOT/'dist/releases').resolve()):
+        raise ValueError('Independent camera candidates must stay outside dist/releases')
     output=output.resolve();output.mkdir(parents=True,exist_ok=True)
-    photo=load('release_photo_build',ROOT/'freecam/build.py');foundation=(ROOT/'freecam/vendor/actioncam-2.3.1.lua').read_bytes()
-    vendor=json.loads((ROOT/'freecam/vendor/PROVENANCE.json').read_text());assert sha(foundation)==vendor['actioncam_source_sha256']
-    generated=photo.patch(foundation.decode(),dof_candidate=True,native_candidate=True,combined_scene_candidate=True).encode()
+    photo=load('release_photo_build',ROOT/'freecam/build.py');independent=None
+    if camera_engine=='legacy':
+        foundation=(ROOT/'freecam/vendor/actioncam-2.3.1.lua').read_bytes()
+        vendor=json.loads((ROOT/'freecam/vendor/PROVENANCE.json').read_text());assert sha(foundation)==vendor['actioncam_source_sha256']
+        generated=photo.patch(foundation.decode(),dof_candidate=True,native_candidate=True,combined_scene_candidate=True).encode()
+    else:
+        independent=load('release_independent_camera',ROOT/'freecam/independent_build.py')
+        generated=independent.generate(dof_candidate=True,native_candidate=True,combined_scene_candidate=True,builder=photo).encode()
     photo.compile_lua(generated,'WarJournalist-'+VERSION)
     assert b'e07f49224f0a5759'in generated and b'PhotoHoverGuardInstall'not in generated and b'__INPUT_RELEASE__'not in generated
     assert b'dbf_input_release'not in generated and b'SendInput('not in generated,'Synthetic blanket input release returned to the runtime'
@@ -177,10 +185,31 @@ def build(output):
     core,shared,audit=resources(output)
     provenance={'version':VERSION,'runtime_sha256':sha(generated),'source_modules_sha256':{name:sha((ROOT/'freecam'/name).read_bytes())for name in ACTIVE_MODULES},
                 'asset_audit':audit,'native_capture_library':photo.capture_library_name(),'hoverpack_native_hook_withdrawn':True,'deployment':'not installed','publication_performed':False}
+    if independent:
+        provenance.update(camera_engine='independent',candidate_only=True,
+            independent_builder_sha256=sha((ROOT/'freecam/independent_build.py').read_bytes()))
+        provenance['source_modules_sha256'].update({name:sha((ROOT/'freecam'/name).read_bytes())for name in independent.MODULES})
     (output/'PROVENANCE.json').write_bytes(json_bytes(provenance))
     original_payload=photo.payload_files
+    compatibility_source=independent.ownership_source(photo)if independent else None
+    candidate_readme=(
+        'INDEPENDENT CAMERA DEVELOPMENT CANDIDATE - NOT A STABLE RELEASE\n\n'
+        'This candidate replaces the camera engine only. It has not been proven in the live game.\n'
+        'Offline compilation, fixtures and package startup checks do not establish live camera,\n'
+        'input, native-menu, lens or gameplay behavior. The accepted shader/compositor assets are unchanged.\n\n'
+        'Current stable recovery: War Journalist v1.0.1\n'
+        'https://github.com/HWG90/DBF_PhotoMode/releases/tag/v1.0.1\n'
+        'Keep the stable package and your settings, presets and screenshots. Restore that complete\n'
+        'runtime if the candidate fails. Use only one Photo Mode runtime; do not mix runtime versions.\n'
+        'The 1.0.1 filenames identify the retained package schema, not a new stable release.\n'
+        'Provenance: camera_engine=independent; candidate_only=true.\n'
+    ).encode()if independent else None
+    candidate_docs=(ROOT/'docs/INDEPENDENT-CAMERA.md').read_bytes()if independent else None
     def payload(folder):
-        files=original_payload(folder)
+        files=original_payload(folder,compatibility_source=compatibility_source)if independent else original_payload(folder)
+        if independent:
+            files['CANDIDATE-README.txt']=candidate_readme
+            files['INDEPENDENT-CAMERA.md']=candidate_docs
         for p in sorted((ROOT/'freecam/assets/logos').rglob('*')):
             if p.is_file():files['assets/logos/'+p.relative_to(ROOT/'freecam/assets/logos').as_posix()]=p.read_bytes()
         files=public_docs(files)
@@ -195,6 +224,10 @@ def build(output):
     # The legacy BSL packager copies a limited document list. Complete its
     # public documentation and image links without changing embedded runtime.
     with zipfile.ZipFile(bsl)as z:bsl_files={name:z.read(name)for name in z.namelist()if name!='FILES-SHA256.txt'}
+    if independent:
+        bsl_files['CANDIDATE-README.txt']=candidate_readme
+        bsl_files['INDEPENDENT-CAMERA.md']=candidate_docs
+        bsl_files['INSTALL.txt']=candidate_readme+b'\n'+bsl_files['INSTALL.txt']
     bsl.write_bytes(zip_bytes(public_docs(bsl_files)))
     bsl_receipt=json.loads((output/'BSL-BUILD-RECEIPT.json').read_text());bsl_receipt['sha256']=sha(bsl.read_bytes())
     (output/'BSL-BUILD-RECEIPT.json').write_bytes(json_bytes(bsl_receipt))
@@ -206,6 +239,7 @@ def build(output):
     asset_name='War-Journalist-'+VERSION+'-Assets.zip';asset_body=zip_bytes(assets);(output/asset_name).write_bytes(asset_body)
     # The complete MDL ZIP is directly importable by Arsenal for GameData only.
     with zipfile.ZipFile(mdl)as z:mdl_files={name:z.read(name)for name in z.namelist()if name!='FILES-SHA256.txt'}
+    if independent:mdl_files['INSTALL.txt']=candidate_readme+b'\n'+mdl_files['INSTALL.txt']
     mdl_files=flat_mdl_files(mdl_files,json.loads(assets['manifest.json']));mdl.write_bytes(zip_bytes(public_docs(mdl_files,'dbf_freecam/')))
     lll_files=payload(output);lll_files['main.lua']=(ROOT/'freecam/lll.lua').read_bytes();lll_files['config/defaults.cfg']=b'{}\n'
     modules=sorted(name for name in lll_files if name.startswith('src/')and name.endswith('.lua'))
@@ -213,6 +247,7 @@ def build(output):
         'lll':{'entry':'main.lua','defaults':'config/defaults.cfg','modules':modules,'restart_only':True,'retain_until_exit':True}})
     lll_files['ASSET-MANIFEST.json']=json_bytes(audit)
     lll_files['INSTALL.txt']=(ROOT/'freecam/README.md').read_bytes()+b'\nLLL: copy dbf_freecam into the LLL Mods directory. Import the included Arsenal/ asset ZIP, enable and deploy the assets, and restart normally. Choose one Photo Mode runtime loader. All required assets are inside this download.\n'
+    if independent:lll_files['INSTALL.txt']=candidate_readme+b'\n'+lll_files['INSTALL.txt']
     for name,body in lll_files.items():
         if name.endswith('.lua'):photo.compile_lua(body,'WarJournalist-LLL-'+name)
     files={'dbf_freecam/'+name:body for name,body in lll_files.items()};files.update(asset_files(core,shared,audit,'GameData/'))
@@ -229,12 +264,15 @@ def build(output):
              'artifacts':{p.name:{'sha256':sha(p.read_bytes()),'bytes':p.stat().st_size}for p in paths},
              'nested_assets':{'name':asset_name,'sha256':sha(asset_body),'bytes':len(asset_body),'distribution':'Embedded inside LLL only; standalone file is local helper only'},'mdl_assets':'GameData directly included by outer Arsenal manifest; no nested archives','all_assets_bundled_per_loader':True,
              'source_snapshots_only':True,'game_process_accessed':False,'deployment':'not installed','publication_performed':False}
+    if independent:receipt.update(camera_engine='independent',candidate_only=True)
     (output/'RELEASE-BUILD-RECEIPT.json').write_bytes(json_bytes(receipt));(output/'SHA256SUMS.txt').write_text(''.join(sha(p.read_bytes())+'  '+p.name+'\n'for p in paths))
     print(json.dumps({'output':str(output),**receipt},indent=2));return paths
 
 if __name__=='__main__':
-    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--output',type=Path,default=ROOT/'dist/releases'/('War-Journalist-'+VERSION))
+    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--output',type=Path)
+    parser.add_argument('--camera-engine',choices=('legacy','independent'),default='legacy',help='Independent is an opt-in review candidate; legacy remains the release default')
     parser.add_argument('--promote-assets',action='store_true',help='Promote the explicitly approved retained compositor snapshots once')
     args=parser.parse_args()
     if args.promote_assets:promote_snapshots()
-    build(args.output)
+    output=args.output or(ROOT/'dist/review/independent-camera-20261015'if args.camera_engine=='independent'else ROOT/'dist/releases'/('War-Journalist-'+VERSION))
+    build(output,camera_engine=args.camera_engine)

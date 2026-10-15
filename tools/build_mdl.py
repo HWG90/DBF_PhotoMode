@@ -16,10 +16,17 @@ def package(output,version=None,payload_factory=None):
     source=files['src/actioncam.lua'].decode()
     # MDL teardown cannot remove camera wrappers safely. Keep those wrappers
     # inert after owned cleanup, without calling another provider's shutdown.
-    for signature in ('local function bindings_step()','local function step(dt)'):
+    independent="DBF_PHOTO_CAMERA_ENGINE','independent'"in source
+    # The owned runtime must keep draining asynchronous teardown after MDL
+    # marks its outer owner stopped. Its step handles that lifecycle itself.
+    signatures=('local function bindings_step()',)if independent else('local function bindings_step()','local function step(dt)')
+    for signature in signatures:
         assert source.count(signature)==1,'Camera lifecycle source contract changed'
         source=source.replace(signature,signature+"\n  local owner=rawget(_G,'DBF_PHOTO_MODE_OWNER');if owner and owner.stopped then return end",1)
-    source+="\nreturn {stop=function()local ok,why=DBF_FREECAM.close();if ok==false then return false,why end;drop_all('shutdown');return true end}\n"
+    if independent:
+        source+="\nreturn {stop=runtime.stop}\n"
+    else:
+        source+="\nreturn {stop=function()local ok,why=DBF_FREECAM.close();if ok==false then return false,why end;drop_all('shutdown');return true end}\n"
     files['src/actioncam.lua']=source.encode()
     bootstrap=(ROOT/'freecam/mdl.lua').read_text().replace('__VERSION__',version).encode()
     files['mod.lua']=bootstrap
