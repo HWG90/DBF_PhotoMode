@@ -970,7 +970,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
                     visible[#visible+1]=q
                 end end
                 -- Visibility belongs to this photo session. Fresh entry and P
-                -- reveal recover it, while startup resets the saved UI layout once.
+                -- reveal recover it; startup resets transient visibility only.
                 local panel_handle={};for key,value in pairs(handle)do panel_handle[key]=value end
                 panel_handle.get=function(key)if key=='hide_controls'then return controls_hidden end;return handle.get(key)end
                 panel_handle.set=function(key,value)if key=='hide_controls'then return set_hidden(value)end;return handle.set(key,value)end

@@ -82,6 +82,24 @@ do
  parent={x=12,y=24,w=376,h=750,scale=.65};paint(parent,400,800);bounds(400,800)
  flyout.clear()
 end
+-- Runtime visibility recovery must retain the user's disabled/collapsed
+-- drawer and normalized geometry when a completely new legend is created.
+do
+ local remembered={show_legend=false,legend_open=false,legend_docked=false,legend_tab_y=31,legend_columns=1,legend_x=67,legend_y=53,legend_size=49}
+ for key,value in pairs(remembered)do values[key]=value end;values.hide_controls=true
+ assert(options.reset_menu(handle)and values.hide_controls==false)
+ for key,value in pairs(remembered)do assert(values[key]==value,'Startup reset discarded the saved legend preference: '..key)end
+ local restarted=factory.new(view);restarted.bind(handle)
+ commands={};restarted.draw(commands,1920,1080,true,false)
+ assert(#commands==0 and not restarted.capturing_pointer(),'A disabled legend must stay disabled after runtime recreation')
+ assert(handle.set('show_legend',true));commands={};restarted.draw(commands,1920,1080,true,false)
+ assert(not find('control_legend')and find('legend_flyout_toggle'),'A collapsed saved drawer must retain only its opener')
+ assert(handle.set('legend_open',true));commands={};restarted.draw(commands,1920,1080,true,false)
+ local square=find('control_legend');local size=1080*.49
+ assert(square and math.abs(square.w-size)<.001 and math.abs(square.x-(1920-size)*.67)<.001 and math.abs(square.y-(1080-size)*.53)<.001,'Reopening the saved floating drawer must retain its exact normalized position and size')
+ local before=writes;restarted.clear();restarted.bind(handle);commands={};restarted.draw(commands,1920,1080,true,false)
+ assert(writes==before and find('control_legend'),'Clearing transient legend state must not rewrite saved preferences')
+end
 -- Integrated panel owns legend interactions and its lifecycle, retaining WASD selection.
 local panel_factory=dofile(root..'photo_menu.lua');panel_factory.legend_factory=factory
 values.legend_x=2;values.legend_y=2;values.legend_size=38;values.legend_columns=2;values.legend_open=true;values.legend_docked=true;values.fov=60

@@ -10,8 +10,11 @@ for _,standalone in ipairs({true,false})do
   show_legend=false,legend_open=false,legend_docked=false,legend_tab_y=22,legend_columns=1,legend_x=72,legend_y=58,legend_size=64,
   menu_x=.73,menu_y=.54,menu_scale=.85,menu_opacity=62}
  local expected_layout={menu_x=saved.menu_x,menu_y=saved.menu_y,menu_scale=saved.menu_scale,menu_opacity=saved.menu_opacity}
- local menu_keys={'hide_controls','show_legend','legend_open','legend_docked','legend_tab_y','legend_columns','legend_x','legend_y','legend_size'}
- local function check_menu_defaults()for _,key in ipairs(menu_keys)do assert(saved[key]==options.defaults[key],'Startup must reset only menu layout: '..key)end end
+ local expected_legend={};for _,key in ipairs({'show_legend','legend_open','legend_docked','legend_tab_y','legend_columns','legend_x','legend_y','legend_size'})do expected_legend[key]=saved[key]end
+ local function check_menu_defaults()
+  assert(saved.hide_controls==false,'Startup must recover the transient hidden menu')
+  for key,value in pairs(expected_legend)do assert(saved[key]==value,'Controls-drawer preferences must survive restart: '..key)end
+ end
  local function check_photo_values()
   assert(saved.enabled==true and saved.toggle_key==80 and saved.focus_key==9 and saved.hide_controls_key==72 and saved.speed==4.5 and saved.focus_distance==1.405 and saved.aperture==2 and saved.hide_hud==false,'Menu restart changed camera preferences or bindings')
   assert(saved.dof==true and saved.dof_mode==2 and saved.exposure==1.5 and saved.contrast==110 and saved.saturation==80 and saved.scene_shader==3 and saved.scene_strength==45,'Menu restart changed scene or lens adjustments')
@@ -79,6 +82,7 @@ for _,standalone in ipairs({true,false})do
  local session=launch();check_menu_defaults();check_photo_values()
  assert(session.panel().page==1 and session.panel().selection==1 and session.panel().scroll==0 and session.panel().size_scale==saved.menu_scale and session.panel().panel_x==saved.menu_x and session.panel().panel_y==saved.menu_y and not session.panel().editing_key()and not session.panel().editing_text(),'Fresh menu must reset navigation while restoring saved position/size')
  session.api.mods.dbf_freecam.handle.set_many({legend_open=false,legend_docked=false,legend_tab_y=31,legend_x=67,legend_y=53,legend_size=49})
+ for key in pairs(expected_legend)do expected_legend[key]=saved[key]end
  session.press(80)
  assert(session.photo.active and session.visible()and session.owned())
  session.drag(-120,80);session.resize(.9)
@@ -124,4 +128,4 @@ for _,standalone in ipairs({true,false})do
  else assert(not session.owned()and not session.visible(),'Shared disabled state must remain guarded')end
  assert(session.adapter.close());DBFMCM=nil;DBF_PHOTO_STANDALONE_API=nil
 end
-print('Photo menu startup: main position/size/opacity survive real shared/private Core restart, exact-once drag/resize/opacity saves, readable text, navigation/drawer reset, photo values/bindings retained, mouse Exit/Hide/P and standalone disabled recovery passed')
+print('Photo menu startup: main position/size/opacity and controls-legend preferences survive real shared/private Core restart, exact-once drag/resize/opacity saves, readable text, fresh navigation/transient visibility, photo values/bindings retained, mouse Exit/Hide/P and standalone disabled recovery passed')

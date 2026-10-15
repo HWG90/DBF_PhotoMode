@@ -228,11 +228,11 @@ end
 function M.read(handle)
  local values={};for key in pairs(M.defaults)do values[key]=handle.get(key)end;return values
 end
--- A new runtime starts with a visible, docked controls drawer. Keep all photo
--- adjustments, bindings and saved main-menu geometry. Navigation/edit state
--- starts fresh; dragging/resizing persists main geometry independently.
+-- Recover the transient hidden menu on a new runtime. Photo adjustments,
+-- bindings, main-menu layout and controls-drawer preferences stay saved.
+-- Navigation/edit state is reset by the panel independently.
 function M.reset_menu(handle)
- local values={};for _,key in ipairs({'hide_controls','show_legend','legend_open','legend_docked','legend_tab_y','legend_columns','legend_x','legend_y','legend_size'})do values[key]=M.defaults[key]end
+ local values={hide_controls=M.defaults.hide_controls}
  if handle.set_many then return handle.set_many(values)end
  for key,value in pairs(values)do local ok,why=handle.set(key,value);if ok==false then return false,why end end
  return true
