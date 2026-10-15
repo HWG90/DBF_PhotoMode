@@ -63,3 +63,26 @@ assert(pause.release());assert(multiplier==1.25)
 peers={'other'};assert(not pause.start(.2));assert(multiplier==1.25);peers={}
 assert(pause.start(.2));joining={'join'};assert(not pause.hold());assert(multiplier==1.25);joining={}
 print('Prototype slow motion: pause/rate transitions preserve original speed, world advances, multiplayer/join denied')
+
+-- A render-only ragdoll lease must restore bone transfer before any positive
+-- simulation step, including automatic ownership-loss exits and retry paths.
+local ragdoll_held,ragdoll_fail,ragdoll_restores=false,false,0
+local original_set=backend.set
+backend.set=function(policy,value)
+ if value>0 then assert(not ragdoll_held,'Time resumed before ragdoll bone transfer restored')end
+ return original_set(policy,value)
+end
+pause.ragdoll_guard={release=function()
+ ragdoll_restores=ragdoll_restores+1
+ if ragdoll_fail then return false,'Ragdoll restoration unavailable'end
+ ragdoll_held=false;return true
+end}
+assert(pause.start(0));ragdoll_held=true;ragdoll_fail=true
+assert(not pause.start(.25)and multiplier==0 and pause.paused(),'Failed ragdoll restoration must retain zero time')
+assert(not pause.release()and multiplier==0 and pause.paused(),'Exit must retain the pause until ragdoll restoration succeeds')
+ragdoll_fail=false;assert(pause.start(.25)and multiplier==.25 and not ragdoll_held)
+assert(pause.start(0));ragdoll_held=true;assert(pause.release()and multiplier==1.25 and not ragdoll_held)
+assert(pause.start(0));ragdoll_held=true;joining={'new peer'}
+assert(not pause.hold()and not ragdoll_held and multiplier==1.25,'Automatic authority loss must restore the ragdoll before time')
+joining={};assert(ragdoll_restores>=5)
+print('Ragdoll/simulation ordering: resume/exit/authority loss restore bones before positive time; failed restoration retains pause for retry passed')

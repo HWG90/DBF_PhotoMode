@@ -657,6 +657,10 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         self._native_menu_yield=nil
         self._cinema_begin_pending=nil;if self._cinema then self._cinema.cancel()end
         local time_waiting=self._pose_time_pending;self._pose_time_pending=nil
+        if freeze and freeze.ragdoll_guard then
+            local ok,why=freeze.ragdoll_guard.release()
+            if ok==false then photo.input={};return false,why end
+        end
         -- Bone leases are restored only by the owning update. Keep the paused
         -- camera/input ownership until that update acknowledges restoration.
         if self._poses and(self._poses.active or self._poses.pending or self._pose_stop_pending)then

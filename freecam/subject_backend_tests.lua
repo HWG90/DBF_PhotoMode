@@ -134,6 +134,68 @@ pointer(vtable+0x1a8,exe+0x2bd9a1);assert(backend.pose_valid(pose_frame,false)==
 local pose_address=memory.function_address;memory.function_address=function(fn)if fn==sr.Unit.animation_bone_mode then return exe+0x410471 end;return pose_address(fn)end
 assert(not pcall(backend.pose_frame),'Changed public bone-mode binding accepted');memory.function_address=pose_address
 assert(backend.pose_valid(pose_frame,true)==true and#writes==before_pose_writes,'Read-only fixed-pose ownership check mutated renderer')
+-- Ragdoll state belongs to the current local avatar slot, not the first row
+-- or a nearby ragdoll. Unknown ownership/layout is distinct from actual false.
+local ragdoll_guards={
+ {0x8e327d,'\x4c\x8b\x3d\x9c\x3a\xa4\x02'},
+ {0x8e34a7,'\x4c\x6b\xe9\x78'},
+ {0x8e3608,'\x4b\x8b\x84\x2f\x40\x78\x54\x00'},
+ {0x8e3610,'\x4c\x8d\x05\xf9\x8f\x96\x01\x48\xc1\xe8\x24'},
+ {0x8e361e,'\x83\xe0\x01'},
+ {0x224c610,'avatar_ragdoll_active\0'},
+}
+for _,guard in ipairs(ragdoll_guards)do put(game+guard[1],guard[2])end
+local ragdoll_descriptor=alloc(32);put(ragdoll_descriptor,memory.read(base,24))
+local ragdoll_flags=avatars+0x547840+3*0x78
+u32(avatars+0x6c,4);map(avatars,0xf8,{[900]=3});pointer(avatars+0x110+3*8,ragdoll_descriptor)
+put(avatars+0x547840,'\0\0\0\0\16\0\0\0') -- unrelated first slot is active
+put(ragdoll_flags,'\255\255\255\255\8\255\255\255')
+local ragdoll_frame=backend.ragdoll_frame()
+assert(ragdoll_frame.root_handle==hero and ragdoll_frame.component==bone_component
+ and ragdoll_frame.avatar_manager==avatars and ragdoll_frame.avatar_index==3
+ and ragdoll_frame.ragdoll==false and ragdoll_frame.ragdoll_active==false,'Ragdoll reader used a foreign slot or neighboring flag')
+put(ragdoll_flags,'\255\255\255\255\16\255\255\255')
+ragdoll_frame=backend.ragdoll_frame()
+assert(ragdoll_frame.ragdoll==true and ragdoll_frame.ragdoll_active==true,'High 64-bit flags lost the actual ragdoll bit')
+put(ragdoll_flags,'\0\0\0\0\32\0\0\0')
+assert(backend.ragdoll_frame().ragdoll==false,'Neighboring high flag was treated as ragdoll')
+local function reject_ragdoll(change,undo,message)
+ local first=#writes;change();local ok=pcall(backend.ragdoll_frame);undo()
+ assert(not ok and#writes==first,message)
+ assert(type(backend.ragdoll_frame().ragdoll)=='boolean','Recovered ragdoll read did not return a strict boolean')
+end
+for _,guard in ipairs(ragdoll_guards)do
+ reject_ragdoll(function()put(game+guard[1],'\0')end,function()put(game+guard[1],guard[2])end,'Changed ragdoll telemetry passed its guard')
+end
+reject_ragdoll(function()pointer(game+0x3326d20,0)end,function()pointer(game+0x3326d20,avatars)end,'Absent avatar manager was treated as not ragdolled')
+reject_ragdoll(function()u32(avatars+0x6c,4097)end,function()u32(avatars+0x6c,4)end,'Unbounded avatar slot was accepted')
+reject_ragdoll(function()map(avatars,0xf8,{[900]=4})end,function()map(avatars,0xf8,{[900]=3})end,'Out-of-bounds ragdoll slot was accepted')
+reject_ragdoll(function()map(avatars,0xf8,{[901]=3})end,function()map(avatars,0xf8,{[900]=3})end,'Missing local avatar was treated as not ragdolled')
+reject_ragdoll(function()u32(ragdoll_descriptor+8,901)end,function()u32(ragdoll_descriptor+8,900)end,'Foreign avatar descriptor was accepted')
+reject_ragdoll(function()u32(ragdoll_descriptor+12,foreign.ref)end,function()u32(ragdoll_descriptor+12,hero.ref)end,'Foreign render Unit was accepted as the local ragdoll')
+reject_ragdoll(function()put(ragdoll_descriptor+20,'\0')end,function()put(ragdoll_descriptor+20,'\1')end,'Retired ragdoll descriptor was accepted')
+reject_ragdoll(function()put(generations+1,'\2')end,function()put(generations+1,'\1')end,'Retired local render generation reached ragdoll read')
+-- A field read cannot combine the old slot with a new owner, world or row.
+local ragdoll_read=memory.read
+local function reject_read_race(change,undo,message)
+ local fired=false
+ memory.read=function(at,n)
+  local value=ragdoll_read(at,n)
+  if not fired and at==ragdoll_flags then fired=true;change()end
+  return value
+ end
+ local first=#writes;local ok=pcall(backend.ragdoll_frame);memory.read=ragdoll_read;undo()
+ assert(fired and not ok and#writes==first,message)
+end
+reject_read_race(function()map(avatars,0xf8,{[900]=2})end,function()map(avatars,0xf8,{[900]=3})end,'Compacted ragdoll row reused an old slot')
+reject_read_race(function()u32(base+8,901)end,function()u32(base+8,900)end,'Replaced local avatar survived ragdoll readback')
+reject_read_race(function()pointer(hero.native+0x18,world.native+4096)end,function()pointer(hero.native+0x18,world.native)end,'Foreign world survived ragdoll readback')
+reject_read_race(function()put(ragdoll_flags,'\0\0\0\0\16\0\0\0')end,function()put(ragdoll_flags,'\0\0\0\0\32\0\0\0')end,'Changing ragdoll bit survived readback')
+memory.read=function(at,n)if at==ragdoll_flags then error('Transient ragdoll flags unavailable')end;return ragdoll_read(at,n)end
+assert(not pcall(backend.ragdoll_frame),'Transient flags failure was mistaken for ragdoll=false');memory.read=ragdoll_read
+assert(backend.ragdoll_frame().ragdoll==false and#writes==before_pose_writes,'Ragdoll reader did not recover without setters')
+u32(avatars+0x6c,1);map(avatars,0xf8,{[900]=0})
+print('Subject ragdoll backend: exact telemetry guards, nonzero local slot, high-bit precision, strict false versus unknown, current descriptor, generation/world and readback race checks passed')
 put(exe+0x4128e0,'\0');assert(not pcall(factory.new,sr,memory),'Changed renderer binding passed exact build validation')
 print('Subject renderer backend: visibility restoration plus lazy fixed-pose root/component ownership, null/layout/mode guards, transient read retry, foreign world and recycled generations passed')
 

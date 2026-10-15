@@ -171,6 +171,31 @@ __SUBJECT_POSE_FRAMES__
 end)())
 DBF_PHOTO_OPTIONS.set_subject_poses(H.dbf_poses.catalog)
 do
+ local guard=(function()
+__RAGDOLL_PAUSE__
+ end)()
+ local ok,value=pcall(function()return guard.new(guard.native(sr,H.dbf_subject_backend),log)end)
+ if ok then H.dbf_ragdoll_pause=value;DBF_PLAYER_FREEZE.ragdoll_guard=value
+ else log('Frozen ragdoll guard unavailable: '..tostring(value))end
+end
+H.dbf_pose_flush=function(dt)
+ if not H.dbf_poses then return true end
+ if H.dbf_ragdoll_pause and(H.dbf_poses.active or H.dbf_poses.pending)then
+  local ok,why=H.dbf_ragdoll_pause.release();if ok==false then return false,why end
+ end
+ return H.dbf_poses.flush(dt)
+end
+H.dbf_ragdoll_after_render=function(...)
+ if H.dbf_ragdoll_pause then
+  local ok,ready,why=pcall(H.dbf_ragdoll_pause.flush,PHOTO.active and DBF_PLAYER_FREEZE.rate()==0,H.dbf_poses and(H.dbf_poses.active or H.dbf_poses.pending))
+  if not ok or ready==false then
+   local message=tostring(ok and why or ready)
+   if H.dbf_ragdoll_error~=message then H.dbf_ragdoll_error=message;log('Frozen ragdoll guard: '..message)end
+  else H.dbf_ragdoll_error=nil end
+ end
+ return ...
+end
+do
  local backend=(function()
 __AI_BACKEND__
  end)()
@@ -210,7 +235,7 @@ H.dbf_input_before_update=function()
   if input and type(input.native_menu_active)=='function'then menu_ok,menu=pcall(input.native_menu_active)end
   if not focused or api.is_open()or not menu_ok or menu~=false then
    if H.dbf_poses and(H.dbf_poses.active or H.dbf_poses.pending)then
-    H.dbf_poses.release();H.dbf_poses.flush()
+    H.dbf_poses.release();H.dbf_pose_flush()
     if H.dbf_poses.active or H.dbf_poses.pending then return end
    end
    DBF_PLAYER_FREEZE.release();return
@@ -297,7 +322,7 @@ end)()
     hook=hook.replace('__PHOTO_DOF_CANDIDATE__',candidate).replace('__PHOTO_DOF_ARGUMENT__',',DBF_PHOTO_DOF_FACTORY'if dof_candidate else ',nil'if scene_candidate else '').replace('__PHOTO_SCENE_ARGUMENT__',',DBF_PHOTO_SCENE_FACTORY'if scene_candidate else '').replace('__CAPTURE_LIBRARY__',capture_library_name())
     for token,filename in [('__PHOTO_OPTIONS__','photo_options.lua'),('__PHOTO_LENS__','lens.lua'),('__PHOTO_COMPOSITION__','composition.lua'),('__PHOTO_POSTFX__','postfx.lua'),('__PHOTO_RUNTIME__','photo_runtime.lua'),('__PHOTO_HUD__','hud.lua'),('__PHOTO_PROFILE__','render_profile.lua'),('__PHOTO_MENU__','photo_menu.lua'),('__CONTROL_LEGEND__','control_legend.lua'),('__LOGO_ART__','assets/logo_art.lua'),('__CAMERA_PROFILE__','camera_profile.lua'),('__SAVED_CAMERA__','saved_camera.lua')]:
         hook=hook.replace(token,(ROOT/filename).read_text(encoding='utf-8'))
-    for token,filename in [('__SCREENSHOT__','screenshot.lua'),('__SCREENSHOT_BACKEND__','screenshot_backend.lua'),('__FOCUS_DEPTH__','depth_resource.lua'),('__FOCUS_SAMPLER__','focus_sampler.lua'),('__PHOTO_LIGHTS__','photo_lights.lua'),('__LIGHT_GIZMOS__','photo_light_gizmos.lua'),('__LIGHT_PRESETS__','photo_light_presets.lua'),('__CHAT_CONTEXT__','chat_context.lua'),('__HELLDIVER_CREST__','assets/helldiver_crest.lua'),('__FACTION_ART__','assets/faction_art.lua'),('__SUBJECT_BACKEND__','subject_backend.lua'),('__SUBJECT__','subject.lua'),('__SUBJECT_POSES__','subject_poses.lua'),('__SUBJECT_POSE_FRAMES__','assets/subject_pose_frames.lua'),('__AI_BACKEND__','ai_backend.lua'),('__AI_CONTROL__','ai_control.lua'),('__DIRECTOR__','director.lua'),('__CINEMA_CAMERA__','cinema_camera.lua'),('__HOVER_PAUSE__','hover_pause.lua'),('__HOVER_PAUSE_BACKEND__','hover_pause_backend.lua')]:
+    for token,filename in [('__SCREENSHOT__','screenshot.lua'),('__SCREENSHOT_BACKEND__','screenshot_backend.lua'),('__FOCUS_DEPTH__','depth_resource.lua'),('__FOCUS_SAMPLER__','focus_sampler.lua'),('__PHOTO_LIGHTS__','photo_lights.lua'),('__LIGHT_GIZMOS__','photo_light_gizmos.lua'),('__LIGHT_PRESETS__','photo_light_presets.lua'),('__CHAT_CONTEXT__','chat_context.lua'),('__HELLDIVER_CREST__','assets/helldiver_crest.lua'),('__FACTION_ART__','assets/faction_art.lua'),('__SUBJECT_BACKEND__','subject_backend.lua'),('__SUBJECT__','subject.lua'),('__SUBJECT_POSES__','subject_poses.lua'),('__RAGDOLL_PAUSE__','ragdoll_pause.lua'),('__SUBJECT_POSE_FRAMES__','assets/subject_pose_frames.lua'),('__AI_BACKEND__','ai_backend.lua'),('__AI_CONTROL__','ai_control.lua'),('__DIRECTOR__','director.lua'),('__CINEMA_CAMERA__','cinema_camera.lua'),('__HOVER_PAUSE__','hover_pause.lua'),('__HOVER_PAUSE_BACKEND__','hover_pause_backend.lua')]:
         hook=hook.replace(token,(ROOT/filename).read_text(encoding='utf-8'))
     replace('-- One frame of Photo Mode: fly the detached camera and place it.',hook+'\n-- One frame of Photo Mode: fly the detached camera and place it.')
     replace("  if PHOTO_REF and PHOTO_REF.active then", "  if PHOTO_REF and PHOTO_REF.dbf_clear_saved and (reason=='death'or reason=='world gone'or reason=='restart'or reason=='shutdown')then PHOTO_REF.dbf_clear_saved(reason)end\n  if PHOTO_REF and PHOTO_REF.dbf_stop then PHOTO_REF.dbf_stop() end\n  if PHOTO_REF and PHOTO_REF.active then")
@@ -336,10 +361,10 @@ end
     replace('  pcall(bindings_step)', '  -- Photo input is sampled in render, independently of simulation time.')
     replace('  if previous_update then return previous_update(dt, ...) end', '  H.dbf_input_before_update()\n  if previous_update then return H.dbf_input_after_update(previous_update(dt, ...)) end\n  return H.dbf_input_after_update()')
     replace('    counts.render = counts.render + 1', '    bindings_step()\n    counts.render = counts.render + 1')
-    replace('    pcall(H.flicker_watch)', '    pcall(DBF_PHOTO_LIGHTS.cache_camera)\n    pcall(H.flicker_watch)')
+    replace('    pcall(H.flicker_watch)\n    return previous(...)', '    pcall(DBF_PHOTO_LIGHTS.cache_camera)\n    pcall(H.flicker_watch)\n    return H.dbf_ragdoll_after_render(previous(...))')
     replace("  if type(previous) ~= 'function' then return end\n  render_hooked = true",
             "  if type(previous) ~= 'function' then return end\n  previous=DBF_PHOTO_PROFILE.camera_factory.after_render(previous,function()return PHOTO.active end,log)\n  render_hooked = true")
-    replace('  pcall(options_step)', '  -- Freecam owns the sole MCM registration; ActionCam options are disabled.\n  pcall(DBF_PHOTO_LIGHTS.update_from_photo)\n  pcall(H.dbf_subject.flush,last_dt)\n  if H.dbf_poses then pcall(H.dbf_poses.flush,last_dt)end\n  if H.dbf_ai then pcall(H.dbf_ai.flush,PHOTO.active)end')
+    replace('  pcall(options_step)', '  -- Freecam owns the sole MCM registration; ActionCam options are disabled.\n  pcall(DBF_PHOTO_LIGHTS.update_from_photo)\n  pcall(H.dbf_subject.flush,last_dt)\n  pcall(H.dbf_pose_flush,last_dt)\n  if H.dbf_ai then pcall(H.dbf_ai.flush,PHOTO.active)end')
     source=source.replace("CFG.LOG_NAME   = 'ActionCam.log'", "CFG.LOG_NAME   = 'Freecam.log'")
     source=source.replace("'ActionCam_previous.log'", "'Freecam_previous.log'")
     source=source.replace('CFG.EXTRACT_RESEARCH      = true', 'CFG.EXTRACT_RESEARCH      = false')

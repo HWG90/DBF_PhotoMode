@@ -210,6 +210,39 @@ function M.new(sr,memory)
   end
   return result
  end
+ function self.ragdoll_frame()
+  -- Native avatar telemetry names this exact bit avatar_ragdoll_active.
+  -- Validate lazily so unrelated subject controls do not depend on this layout.
+  assert(read(game+0x8e327d,7)=='\x4c\x8b\x3d\x9c\x3a\xa4\x02'
+   and read(game+0x8e34a7,4)=='\x4c\x6b\xe9\x78'
+   and read(game+0x8e3608,8)=='\x4b\x8b\x84\x2f\x40\x78\x54\x00'
+   and read(game+0x8e3610,11)=='\x4c\x8d\x05\xf9\x8f\x96\x01\x48\xc1\xe8\x24'
+   and read(game+0x8e361e,3)=='\x83\xe0\x01'
+   and read(game+0x224c610,22)=='avatar_ragdoll_active\0','Subject ragdoll layout changed')
+  local frame=self.pose_frame();local current=owner()
+  assert(frame.owner_key==owner_key(current),'Subject ragdoll owner changed during lookup')
+  local avatars=ptr(game+0x3326d20)
+  assert(avatars>=65536 and avatars<2^47,'Subject ragdoll manager unavailable')
+  local capacity=word(avatars+0x6c)
+  assert(capacity>0 and capacity<=4096,'Subject ragdoll bounds changed')
+  local index=assert(lookup(avatars,0xf8,current.avatar,capacity),'Subject ragdoll avatar unavailable')
+  local descriptor=ptr(avatars+0x110+index*8);local record=read(descriptor,24)
+  assert(word(descriptor)==0x294dfa97 and word(descriptor+4)==0x4d1c334d
+   and word(descriptor+8)==current.avatar and word(descriptor+12)==frame.root_ref
+   and record:byte(21)%2==1,'Subject ragdoll component owner changed')
+  local address=avatars+0x547840+index*0x78;local flags=read(address,8)
+  -- Read byte 4 rather than a Lua double containing a 64-bit bitset: higher
+  -- active flags must not round away the ragdoll bit at position 36.
+  local active=math.floor(flags:byte(5)/16)%2==1
+  assert(self.pose_valid(frame,true)==true and owner_key(owner())==frame.owner_key
+   and ptr(game+0x3326d20)==avatars and word(avatars+0x6c)==capacity
+   and lookup(avatars,0xf8,current.avatar,capacity)==index
+   and ptr(avatars+0x110+index*8)==descriptor and read(descriptor,24)==record
+   and read(address,8)==flags,'Subject ragdoll owner changed during readback')
+  frame.ragdoll=active;frame.ragdoll_active=active
+  frame.avatar_manager=avatars;frame.avatar_index=index;frame.ragdoll_descriptor=descriptor
+  return frame
+ end
  function self.resolve()
   local local_player=owner();local players,player,game_ref,entities,avatar,root=local_player.players,local_player.player,local_player.game_ref,local_player.entities,local_player.avatar,local_player.root
   local avatars=ptr(game+0x3326d20);local ai=assert(lookup(avatars,248,avatar,word(avatars+0x6c)),'Local avatar renderer unavailable')

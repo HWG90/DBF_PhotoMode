@@ -22,6 +22,12 @@ function M.new(sr,context,backend,hover_guard)
         if ok==false then return false,why end
         return true,why
     end
+    local function restore_ragdoll()
+        if not self.ragdoll_guard then return true end
+        local called,ok,why=pcall(self.ragdoll_guard.release)
+        if not called then return false,tostring(ok)end
+        return ok~=false,why
+    end
     function self.prepare()
         if not solo()then return false,'Full photo pause requires a verified solo session'end
         local unit,world,confirmed=context()
@@ -38,6 +44,7 @@ function M.new(sr,context,backend,hover_guard)
     function self.cleanup_pending()return hover_guard and hover_guard.pending==true or false end
     function self.after_update()return guard_call('after_update')end
     function self.release()
+        local restored,problem=restore_ragdoll();if not restored then return false,problem end
         -- Preparation may own a data override before any time policy is acquired.
         if not saved then return guard_call('release')end
         local ok,why=pcall(function()
@@ -52,6 +59,7 @@ function M.new(sr,context,backend,hover_guard)
     function self.start(rate)
         rate=rate or 0
         if type(rate)~='number' or rate~=rate or rate<0 or rate>1 then return false,'Invalid simulation rate' end
+        if rate>0 then local restored,why=restore_ragdoll();if not restored then return false,why end end
         if saved then
             local unit,world,confirmed=context()
             if not solo() or unit~=saved.unit or world~=saved.world or not confirmed then self.release();return false,'Solo simulation ownership changed' end
