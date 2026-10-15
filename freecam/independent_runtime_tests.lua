@@ -33,15 +33,22 @@ function DBF_FREECAM.stop()
  state.stops=state.stops+1
  if state.cleanup_pending then return false,'effects pending'end
  PHOTO.active=false;PHOTO.pos=nil
+ state.warming=nil
  state.events[#state.events+1]='effects restored'
  return H.dbf_actioncam_compat.release()
 end
 function DBF_FREECAM.close()return DBF_FREECAM.stop()end
 function DBF_FREECAM.camera_suspended()return state.menu_open end
+function DBF_FREECAM.entry_pending()return state.warming==true end
+function DBF_FREECAM.scene_required()
+ return PHOTO.active or state.warming==true or state.cleanup_pending==true or state.slowmo==true or state.bookmark==true
+end
 local function bindings_step()
  state.inputs=state.inputs+1
  if state.intent=='enter'then
-  if not target or not anchor or SPEC.active then state.rejected=(state.rejected or 0)+1;state.intent=nil;return end
+  if CFG.ensure_scene then CFG.ensure_scene()end
+  if not target or not anchor or SPEC.active then state.warming=true;return end
+  state.warming=nil
   assert(H.dbf_actioncam_compat.acquire())
   PHOTO.active=true;PHOTO.cinema_state='place';state.intent=nil
  elseif state.intent=='exit'then
@@ -108,7 +115,7 @@ local function fixture(late_render,actual_scene)
   sr.Vector3=setmetatable({x=function(v)return v[1]end,y=function(v)return v[2]end,z=function(v)return v[3]end},{__call=function(_,...)return{...}end})
   local function pose(p)return{position=p,forward={1,0,0},right={0,-1,0},up={0,0,1}}end
   sr.Application.main_world=function()return world end
-  sr.World={units=function(w)assert(w==world);return{unit,player}end,
+  sr.World={units=function(w)assert(w==world);state.unit_scans=(state.unit_scans or 0)+1;return{unit,player}end,
    debug_camera_pose=function(w)assert(w==world);return pose(state.rendered_position)end}
   sr.Unit={alive=function(u)assert(u==unit or u==player);return true end,
    num_cameras=function(u)return u==unit and 1 or 0 end,
@@ -152,13 +159,13 @@ local env,s,owner=fixture()
 assert(owner.engine=='independent'and owner.api==1 and not owner.ready)
 local result=packed(env.update(.016,'tail',nil))
 assert(result.n==4 and result[1]=='game-update'and result[2]==nil and result[3]=='tail'and result[4]==nil)
-assert(s.updates==1 and owner.ready and s.before==1 and s.after==1)
+assert(s.updates==1 and not owner.ready and s.refreshes==0 and s.before==1 and s.after==1,'Ordinary gameplay must not discover a camera')
 result=packed(env.render('frame',nil))
 assert(result.n==4 and result[1]=='game-render'and result[3]=='frame'and result[4]==nil)
-assert(s.writes==0 and s.inputs==1,'Idle controller must not write a gameplay camera')
+assert(s.writes==0 and s.inputs==1 and s.refreshes==0,'Idle controller must not discover or write a gameplay camera')
 local ready_frame=s.frame
 s.frame=nil;s.intent='enter';env.render()
-assert(not owner.ready and not owner.photo.active and not s.compat.held and s.rejected==1,'A cached idle camera cannot authorize entry during a read gap')
+assert(not owner.ready and not owner.photo.active and not s.compat.held and s.warming,'A cached idle camera cannot authorize entry during a read gap')
 s.frame=ready_frame
 s.intent='enter';env.render()
 assert(owner.photo.active and s.compat.held and s.writes==1 and s.events[1]=='camera acquired')
@@ -215,10 +222,20 @@ for frame=1,6 do
  moving.update(.016)
  if frame==3 then ms.intent='enter'end
  moving.render()
- if frame>=3 then assert(mo.photo.active and ms.compat.held,'The first toggle while moving must use the actual Scene rendered-pose identity rather than reject a one-update pose lag')end
+ if frame>=4 then assert(mo.photo.active and ms.compat.held,'The first toggle while moving must use the actual Scene rendered-pose identity rather than reject a one-update pose lag')end
 end
-assert(not ms.rejected and ms.writes>=4,'Continuous movement must not consume the opening toggle as unavailable')
+assert(not ms.rejected and ms.writes>=3,'Continuous movement must not consume the opening toggle as unavailable')
 ms.intent='exit';moving.update(.016);moving.render();assert(not mo.photo.active)
 ms.intent='enter';moving.update(.016);moving.render()
+if not mo.photo.active then moving.update(.016);moving.render()end
 assert(mo.photo.active and not ms.rejected,'The first immediate reopen while still moving must survive completed camera cleanup')
+local idle,is,io_=fixture(false,true)
+for frame=1,600 do is.moving=true;idle.update(.016);idle.render()end
+assert(not io_.photo.active and (is.unit_scans or 0)==0 and is.writes==0,'600 moving gameplay frames with Photo closed must perform zero camera Unit inventory scans')
+is.intent='enter';idle.render();if not io_.photo.active then idle.update(.016);idle.render()end
+assert(io_.photo.active and is.compat.held,'A cold idle camera must open from one retained request')
+is.intent='exit';idle.render();idle.update(.016);local after_exit=is.unit_scans or 0
+for frame=1,600 do idle.update(.016);idle.render()end
+assert((is.unit_scans or 0)==after_exit,'Normal gameplay after exit must stop enumerating camera Units')
+is.bookmark=true;idle.update(.016);assert((is.unit_scans or 0)>after_exit,'A retained camera bookmark keeps its fresh lifetime checks')
 print('Independent runtime: full-source compilation, transparent callbacks, idle no-writes, acquire/restore order, bounded transient gaps, moving first-press entry/reopen, camera replacement, retirement, late render, conflict/error cleanup, asynchronous MDL teardown and inert shutdown passed')

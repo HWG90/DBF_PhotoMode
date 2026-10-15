@@ -252,6 +252,18 @@ function M.new(sr,player_reader,log,clock)
   if not(wp and lp and pose and rendered)then clear_history();return unavailable('Rendered camera pose temporarily unavailable')end
   local root_pose=near(wp,lp,.01)and near(wp,pose.position,.01)
   local rendered_match=root_pose and pose_near(pose,rendered)
+  local phase_lag=false
+  if root_pose and not rendered_match and not written then
+   -- A unique discovered camera may advance before the engine publishes its
+   -- rendered pose. Reuse the same bounded numeric proof as discovery instead
+   -- of rescanning every world's Unit at each update/render phase. More than
+   -- one candidate still needs full discovery to recheck render uniqueness.
+   scope(world,player)
+   local entry=history[1]
+   if #history==1 and same(entry.unit,unit)and same(entry.cam,current_cam)then
+    phase_lag=phase_match(observation(unit,current_cam,pose),rendered)
+   end
+  end
   local own_lag=false
   if root_pose and not rendered_match and written and written.epoch==self.epoch and written.uses<8 then
    -- Only bridge our exact, successfully written view and its immediately
@@ -261,7 +273,7 @@ function M.new(sr,player_reader,log,clock)
     and(pose_near(rendered,written.before)or pose_near(rendered,written.rendered)))
    if own_lag then written.uses=written.uses+1 end
   end
-  if not(rendered_match or own_lag)then
+  if not(rendered_match or own_lag or phase_lag)then
    unavailable('Current camera no longer matches the rendered view')
    return nil,self.reason,true -- Discovery may now find a different rendered camera.
   end

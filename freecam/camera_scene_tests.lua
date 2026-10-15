@@ -178,4 +178,24 @@ do
  assert(s.scene.refresh()==nil,'without a clock, a bounded observation serial prevents indefinite history retention')
  s.rendered=s.camera_pose;assert(s.scene.refresh())
 end
+do
+ local s=fixture()
+ for i=1,1000 do local unit={};s.live[unit]=true;s.units[#s.units+1]=unit end
+ moving_pose(s,0);s.rendered=s.camera_pose;assert(s.scene.refresh())
+ local initial_counts,initial_alive=s.counts,s.calls
+ for tick=1,60 do
+  assert(s.scene.refresh()) -- Before update, the previous render is exact.
+  moving_pose(s,tick*.25,tick*.01);s.time=s.time+1/120
+  local frame=assert(s.scene.refresh()) -- After update, debug pose lags.
+  assert(s.scene.refresh()) -- Pre-render observes the same bounded proof.
+  assert(s.scene.valid(frame)) -- Motion validates before its own writes.
+  assert(s.scene.valid(frame)) -- Its second check cannot trigger discovery.
+  s.rendered=s.camera_pose
+ end
+ assert(s.counts-initial_counts==60*5,
+  'one unique camera must use narrow camera validation, never a full Unit camera scan during phase skew')
+ assert(s.calls-initial_alive==60*5*4,
+  'phase proof must retain fresh player/camera lifetime checks without touching unrelated Units')
+ assert(s.scene.epoch==1,'phase-only movement must not retire or replace the current scene')
+end
 print('camera_scene_tests: rendered-camera identity, ambiguity, finite pose and retirement passed')

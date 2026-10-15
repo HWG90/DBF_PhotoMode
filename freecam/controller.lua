@@ -4,11 +4,19 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
     local roll_value;local self={};local api,handle,provider;local held=true;local retry=0;local controls={};local resume_after;local suppress_escape;local panel;local menu_focus=false;local controls_hidden=false;local recovery_menu=false;local focus_edge=false;local hide_edge=false;local slow_edge=false;local lock_edge=false;local escape_edge=false;local screenshot_edge=false
     local subject_pair;local subject_held;local subject_request;local subject_ready=false;local autofocus_write=false;local focus_deadline=0;local focus_elapsed=0;local focus_status='Manual focus';local focus_mode_seen;local menu_startup_reset=false
     local lighting_write=false;local lighting_revision=-1
+    self._idle_stopped=false
     local clear_subject_click,game_chat_active,bindings
     self._input_tick=0
     self._cinema=cinema
-    function self.camera_owned()return photo.active or self._cinema_begin_pending~=nil or self._pose_stop_pending~=nil or camera_compat and camera_compat.held==true or false end
+    function self.camera_owned()return photo.active or self._scene_start_pending~=nil or self._cinema_begin_pending~=nil or self._pose_stop_pending~=nil or camera_compat and camera_compat.held==true or false end
     function self.cinema_performing()return self._cinema and self._cinema.state=='perform' or false end
+    function self.scene_required()
+        return photo.active==true or self.slowmo_active==true or provider~=nil or recovery_menu or not self._idle_stopped or
+            self._scene_start_pending~=nil or self._pending_start~=nil or self._freeze_action_pending~=nil or self._pose_stop_pending~=nil or
+            self._pose_time_pending~=nil or self._cinema_begin_pending~=nil or self.cinema_performing() or
+            camera_compat and camera_compat.held==true or
+            saved_camera and type(saved_camera.has_saved)=='function'and saved_camera.has_saved()==true or false
+    end
     function self._cinema_error(why)
         local message=tostring(why)
         if self._cinema then self._cinema.status=message end
@@ -138,6 +146,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         return ok,why
     end
     function self._recover_input(reason)
+        self._idle_stopped=false
         clear_subject_click();photo.input={sequence=photo.sample_sequence or 0,mouse_x=0,mouse_y=0,wheel=0,dt=0}
         if panel and panel.suspend then panel.suspend()end
         -- Hover's zero-time guard must resume through the normal stop path
@@ -160,6 +169,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         if self.input_recovery and self.input_recovery.status().active then return false,'Input recovery is in progress'end
         if self.editor_owner and self.editor_owner~=owner then return false,'Photo input is already lent to another editor' end
         if self.editor_owner==owner then return true end
+        if self._scene_start_pending then local closed,why=self.stop(true);if closed~=true then return false,why end end
         if self._pose_stop_pending or self._pose_time_pending or self._pending_start or self._cinema_begin_pending then
             return false,'Waiting for Photo camera cleanup'
         end
@@ -201,7 +211,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         return self.stop()
     end
     function self.actioncam_priority()
-        if photo.active or self._pending_start or self._pose_stop_pending then return true end
+        if photo.active or self._scene_start_pending or self._pending_start or self._pose_stop_pending then return true end
         if not api or not handle or not api.camera_input then return false end
         return api.camera_input.down(handle.get('toggle_key'))==true
     end
@@ -213,6 +223,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
     end
     self._poses=poses;self._pose_available=false;self._pose_caps={}
     function self._request_time_change(rate)
+        self._idle_stopped=false
         if not freeze then return true end
         if rate~=0 and self._poses and(self._poses.active or self._poses.pending)then
             local waiting=self._pose_time_pending or{};waiting.rate=rate
@@ -700,6 +711,8 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         end
     end
     function self.stop(preserve_resume)
+        self._idle_stopped=false
+        self._scene_start_pending=nil
         self._cinema_restore_freeze=nil;self._cinema_hint_start=nil;self._cinema_hint_elapsed=0
         self._pending_start=nil
         self._freeze_action_pending=nil
@@ -756,6 +769,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         if self._panel_close_pending then return false,self._panel_close_pending end
         if restored==false then return false,reason end
         if camera_compat then local ok,why=camera_compat.release();if ok==false then return false,why end end
+        if restored==true then self._idle_stopped=true end
         return restored,reason
     end
     bindings=function()
@@ -804,14 +818,20 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         if provider and provider.set_focus then local ok,why=provider.set_focus(menu_focus);if not ok then return self._recover_input(why)end end
         return true
     end
+    local function retain_failed_input(input)
+        if type(input.status)~='function'then return end
+        local read,state=pcall(input.status)
+        if read and type(state)=='table'and(state.owned==true or state.cleanup_pending==true)then provider=input end
+    end
     function self._start_camera()
+        self._idle_stopped=false
         if camera_compat then
             local ok,why=camera_compat.acquire()
             if ok==false then self.stop();return false,why end
         end
         local input=api.camera_input
         local token,why=input.acquire(bindings())
-        if not token then self.stop();return false,why end
+        if not token then retain_failed_input(input);self.stop();return false,why end
         provider=input
         if panel and input.set_focus then
             local focused,problem=input.set_focus(true);if focused==false then self.stop();return false,problem end
@@ -831,6 +851,8 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
     end
     local function toggle(reveal_hidden)
         if self._native_menu_state()then return false,'Close the native Escape/settings menu first'end
+        self._idle_stopped=false
+        if self._scene_start_pending then return self.stop()end
         if self._pending_start then return self.stop()end
         if recovery_menu then
             local start=handle and handle.get('enabled')
@@ -847,7 +869,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
             -- panel without enabling, moving or pausing the camera.
             if reveal_hidden and api.photo_standalone and panel then
                 local input=api.camera_input;local token,why=input.acquire(bindings())
-                if not token then return false,why end
+                if not token then retain_failed_input(input);self.stop();return false,why end
                 provider=input;local ok,err=input.set_focus(true)
                 if ok==false then self.stop();return false,err end
                 recovery_menu=true;menu_focus=true;controls_hidden=false
@@ -857,7 +879,14 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
             end
             return false,'Freecam is disabled; enable it in MCM'
         end
-        if not can_start()then return false,'Camera is unavailable'end
+        local ready,reason,warming=can_start()
+        if not ready then
+            if warming==true then
+                self._scene_start_pending={input=api.camera_input,handle=handle,frames=0,elapsed=0,reason=reason}
+                return true,reason
+            end
+            return false,reason or'Camera is unavailable'
+        end
         local input=api.camera_input
         if not input then return false,'Install the MCM freecam input candidate first' end
         local preparing=freeze and freeze.prepare and handle.get('freeze_player')and(not input.pause_allowed or input.pause_allowed())
@@ -1065,6 +1094,22 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
             if not(opening and game_chat_active())then inform_toggle(true)end
         end
         held=key
+        if self._scene_start_pending then
+            local waiting=self._scene_start_pending
+            if waiting.input~=api.camera_input or waiting.handle~=handle or not handle.get('enabled')or
+                not api.camera_input.focused()or self._external_menu_open()or game_chat_active()or key_down(27)then
+                self.stop();return
+            end
+            waiting.frames=waiting.frames+1;waiting.elapsed=waiting.elapsed+math.max(.001,math.min(.1,tonumber(dt)or 0))
+            local ready,reason,warming=can_start();waiting.reason=reason or waiting.reason
+            if ready then
+                self._scene_start_pending=nil
+                local ok,why=toggle(true);if ok==false then log('freecam: '..tostring(why))end
+            elseif warming~=true or waiting.frames>=120 or waiting.elapsed>=.5 then
+                self.stop();log('freecam: '..tostring(waiting.reason or'Timed out waiting for the rendered camera'))
+            end
+            photo.input={};return
+        end
         local screenshot_key=key_down(handle.get('screenshot_key'))
         if screenshot_key and not screenshot_edge and photo.active and not recovery_menu and (provider or self.cinema_performing()and self._cinema.gameplay_input_ready())and api.camera_input.focused()and not self._external_menu_open()and not editing and not game_chat_active()and screenshots and not screenshots.active()then self.request_screenshot()end
         screenshot_edge=screenshot_key
@@ -1127,7 +1172,14 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
                 photo.input={};return
             end
         end
-        if not photo.active then self.stop(true);return end
+        if not photo.active then
+            -- A successful stop already acknowledged all owned cleanup. Keep
+            -- hotkeys/native-menu restoration alive without repeating release
+            -- callbacks every idle render. Any new entry or failed stop dirties
+            -- this latch before touching input, camera or simulation state.
+            if not self._idle_stopped then self.stop(true)end
+            return
+        end
         if not handle.get('enabled') or not can_start() then self.stop();return end
         if self._native_menu_blocked or self._native_menu_yield then
             clear_subject_click();if screenshots then screenshots.cancel()end

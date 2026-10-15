@@ -56,6 +56,7 @@ function M.new(photo,context,log)
   end
   return reason and 'Saved camera cleared: '..reason or 'Saved camera: none'
  end
+ function self.has_saved()return saved~=nil end
  return self
 end
 return M

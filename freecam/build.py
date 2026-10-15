@@ -241,7 +241,10 @@ end)().new(PHOTO,function()
 end)
 local DBF_FREECAM=(function()
 __CONTROLLER__
-end)().new(PHOTO,CFG,function()return target~=nil and anchor~=nil and not SPEC.active and H.dbf_actioncam_compat.available end,log,DBF_PLAYER_FREEZE,DBF_PHOTO_OPTIONS,DBF_PHOTO_RUNTIME,DBF_PHOTO_MENU,DBF_PHOTO_COMPOSITION,DBF_SAVED_CAMERA,DBF_SCREENSHOTS,DBF_FOCUS_SAMPLER,DBF_PHOTO_LIGHTS,H.dbf_subject,H.dbf_director,nil,function()return H.dbf_input_epoch end,H.dbf_ai,H.dbf_poses,H.dbf_actioncam_compat,H.dbf_cinema)
+end)().new(PHOTO,CFG,function()
+ if CFG.ensure_scene then local ready,why,retry=CFG.ensure_scene();if not ready then return false,why,retry end end
+ return target~=nil and anchor~=nil and not SPEC.active and H.dbf_actioncam_compat.available
+end,log,DBF_PLAYER_FREEZE,DBF_PHOTO_OPTIONS,DBF_PHOTO_RUNTIME,DBF_PHOTO_MENU,DBF_PHOTO_COMPOSITION,DBF_SAVED_CAMERA,DBF_SCREENSHOTS,DBF_FOCUS_SAMPLER,DBF_PHOTO_LIGHTS,H.dbf_subject,H.dbf_director,nil,function()return H.dbf_input_epoch end,H.dbf_ai,H.dbf_poses,H.dbf_actioncam_compat,H.dbf_cinema)
 H.dbf_input_recovery=(function()
 __INPUT_RECOVERY__
 end)().new({window=sr.Window,log=log,

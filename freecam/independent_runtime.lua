@@ -135,6 +135,21 @@ local function refresh_camera()
  status(PHOTO.active and(PHOTO.cinema_state=='perform'and'cinema'or'photo')or'ready')
  return frame
 end
+-- A closed, clean camera owns no scene handles. Only an opening request or a
+-- persistent time/bookmark/cleanup lease justifies discovery during gameplay.
+local function scene_needed()
+ return PHOTO.active or closing_reason~=nil or motion.pending==true or H.dbf_actioncam_compat.held==true
+  or type(DBF_FREECAM.scene_required)=='function'and DBF_FREECAM.scene_required()==true
+end
+local function idle_camera()
+ if target or anchor or current_frame then clear_context()end
+ status('idle')
+end
+CFG.ensure_scene=function()
+ if current_frame and runtime.ready then return true end
+ local frame=refresh_camera()
+ return frame~=nil,runtime.reason or scene.reason or'Waiting for a rendered camera',true
+end
 local function cleanup_error(where,why)
  log('Photo '..where..': '..tostring(why))
  local done=close_camera('error')
@@ -149,7 +164,8 @@ end
 local function render_photo()
  if stopped or runtime.stopping then return end
  local owner=rawget(G,'DBF_PHOTO_MODE_OWNER');if owner and owner.stopped then return end
- local frame=refresh_camera()
+ local frame
+ if scene_needed()then frame=refresh_camera()else idle_camera()end
  -- Keep servicing the menu/hotkey while idle so it can register before a
  -- player exists. During a transient read gap retain its existing GUI and
  -- camera lease briefly, issuing no camera writes or new input samples. A
@@ -163,7 +179,9 @@ local function render_photo()
    return
   end
  else unreadable_renders=0 end
+ local was_active=PHOTO.active
  if frame or not PHOTO.active and not H.dbf_actioncam_compat.held then bindings_step()end
+ if not was_active and PHOTO.active then frame=current_frame end
  if PHOTO.active and frame then
   local ok,why=motion.apply(frame,DBF_FREECAM.camera_suspended())
   if ok==false then cleanup_error('movement',why);return end
@@ -181,6 +199,12 @@ local function hook_render()
   local result=pack(pcall(observed,...))
   if not result[1]then cleanup_error('game render',result[2]);error(result[2],0)end
   local owner=rawget(G,'DBF_PHOTO_MODE_OWNER')
+  if not stopped and not runtime.stopping and not PHOTO.active and DBF_FREECAM.entry_pending()then
+   -- A first opening during movement can precede the game's debug-pose update.
+   -- Qualify the view after render, then satisfy that same request next frame.
+   local ready,problem=pcall(refresh_camera)
+   if not ready then cleanup_error('entry discovery',problem)end
+  end
   if not stopped and not runtime.stopping and not(owner and owner.stopped)then H.dbf_ragdoll_after_render()end
   return unpack(result,2,result.n)
  end
@@ -205,7 +229,7 @@ local function step(dt)
  hook_render()
  -- Scene refresh happens after the game's update as well as before it, so
  -- respawn and scene replacement cannot retain a borrowed previous camera.
- refresh_camera()
+ if scene_needed()then refresh_camera()else idle_camera()end
  H.dbf_input_before_update()
  flush_owned()
 end
@@ -219,7 +243,8 @@ local owned_update=function(dt,...)
   local done,problem=pcall(function()
    H.dbf_input_after_update()
    local owner=rawget(G,'DBF_PHOTO_MODE_OWNER')
-   if runtime.stopping or owner and owner.stopped then runtime.stop()else refresh_camera()end
+   if runtime.stopping or owner and owner.stopped then runtime.stop()
+   elseif scene_needed()then refresh_camera()else idle_camera()end
   end)
   if not done then cleanup_error('after update',problem)end
  end

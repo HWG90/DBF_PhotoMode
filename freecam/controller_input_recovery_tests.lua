@@ -70,7 +70,7 @@ local function fixture(hover)
   f.freeze=Simulation.new(sr,function()return 1,2,true end,backend,guard)
  end
  f.photo={};DBFMCM=api
- f.controller=Controller.new(f.photo,{},function()return true end,function(message)f.logs[#f.logs+1]=message end,
+ f.controller=Controller.new(f.photo,{},function()if f.scene_ready==false then return false,'Rendered camera is warming up',f.scene_retry==true end;return true end,function(message)f.logs[#f.logs+1]=message end,
   f.freeze,Options,nil,factory,nil,nil,nil,nil,nil,nil,nil,nil,function()return f.epoch end)
  function f.tick()f.clock=f.clock+.016;f.controller.tick(.016)end
  function f.press(key)f.keys[key]=true;f.tick();f.keys[key]=false;f.tick()end
@@ -249,3 +249,77 @@ f.press(80);gameplay_restored(f);f.close()
 
 print('Controller input recovery: real camera/cursor leases, lost menu capture, Tab/look recovery, retained cleanup retries, partial acquire/focus failures, LLL/MCM ownership and hover resume-before-release passed')
 print('Native Escape lifecycle: repeated handoff/reacquire/final exit, native cursor changes, idle cleanup, refused resume retry and same-value foreign ownership passed')
+
+-- Ordinary gameplay retains cheap hotkeys/native-menu resume, but no longer
+-- repeats all camera/effect/menu release callbacks after one successful stop.
+f=fixture()
+local idle_stops=0;local real_stop=f.controller.stop
+f.controller.stop=function(...)idle_stops=idle_stops+1;return real_stop(...)end
+assert(f.controller.scene_required()==false)
+for _=1,1000 do f.tick()end
+assert(idle_stops==0,'Clean idle renders repeated full Photo cleanup')
+f.start();assert(f.controller.scene_required()==true)
+f.press(80);assert(idle_stops==1 and not f.controller.scene_required(),'Photo exit must acknowledge cleanup once')
+for _=1,1000 do f.tick()end
+assert(idle_stops==1,'Successful exit kept invoking release callbacks during normal gameplay')
+f.close()
+
+-- A refused cursor restoration keeps the idle latch dirty and retains the
+-- exact input provider until its retry is acknowledged, then becomes quiet.
+f=fixture();f.start();f.fail_restore_focus=true
+idle_stops=0;real_stop=f.controller.stop
+f.controller.stop=function(...)idle_stops=idle_stops+1;return real_stop(...)end
+assert(f.controller.stop()==false and not f.photo.active and f.controller.scene_required())
+for _=1,3 do f.tick()end
+assert(idle_stops==4 and f.input.status().cleanup_pending,'Pending cleanup stopped retrying while Photo was inactive')
+f.fail_restore_focus=false;f.tick()
+assert(idle_stops==5 and not f.controller.scene_required())
+for _=1,100 do f.tick()end
+assert(idle_stops==5,'Acknowledged cleanup never reached clean idle')
+f.close()
+
+-- Acquisition can fail after native capture has partly changed the cursor.
+-- Its public owned/pending status must retain a provider for cleanup retries.
+f=fixture();f.fail_install=true;f.fail_restore_focus=true
+f.press(80)
+assert(not f.photo.active and f.input.status().cleanup_pending and f.controller.scene_required(),'Partial acquisition cleanup was orphaned')
+f.fail_restore_focus=false;f.tick()
+assert(not f.input.status().active and not f.input.status().cleanup_pending and not f.controller.scene_required())
+f.fail_install=false;f.start();f.press(80);f.close()
+print('Idle controller: 1000 clean renders and 1000 post-exit renders perform zero repeated stops; failed and partial-acquire cleanup retries remain live')
+
+-- Cold idle discovery may need another render while the avatar is moving.
+-- Keep one opening edge, but acquire no input/pause ownership before proof.
+f=fixture();f.scene_ready=false;f.scene_retry=true;f.press(80)
+assert(f.controller._scene_start_pending and not f.photo.active and f.leases==0 and f.mode==0)
+assert(f.controller.scene_required()and f.controller.camera_owned()and f.controller.actioncam_priority())
+for _=1,3 do f.tick()end
+assert(f.leases==0,'Scene warming captured input before camera proof')
+f.scene_ready=true;f.tick()
+assert(f.photo.active and f.leases==1 and not f.controller._scene_start_pending,'Delayed proof required a second opening key press')
+f.press(80);f.close()
+
+for _,cancel in ipairs({'toggle','focus','chat','native','escape','disabled','provider','editor'})do
+ f=fixture();f.scene_ready=false;f.scene_retry=true;f.press(80)
+ assert(f.controller._scene_start_pending)
+ if cancel=='toggle'then f.press(80)
+ elseif cancel=='focus'then f.focused=false;f.tick()
+ elseif cancel=='chat'then f.input.chat_active=function()return true end;f.tick()
+ elseif cancel=='native'then f.mcm=true;f.tick()
+ elseif cancel=='escape'then f.keys[27]=true;f.tick()
+ elseif cancel=='disabled'then assert(f.handle.set('enabled',false));f.tick()
+ elseif cancel=='provider'then local replacement={};for k,v in pairs(f.input)do replacement[k]=v end;f.api.camera_input=replacement;f.tick()
+ else assert(f.controller.editor_bridge.acquire('Epic LUT'));assert(f.controller.editor_bridge.release('Epic LUT'))end
+ assert(not f.controller._scene_start_pending and not f.photo.active and f.leases==0,'Cold scene request did not cancel: '..cancel)
+ f.close()
+end
+f=fixture();f.scene_ready=false;f.scene_retry=true;f.press(80)
+for _=1,120 do f.tick()end
+assert(not f.controller._scene_start_pending and f.leases==0 and not f.controller.scene_required(),'Cold scene request did not time out cleanly')
+f.close()
+f=fixture(true);f.scene_ready=false;f.scene_retry=true;f.press(80)
+assert(f.leases==0 and not f.guard_owned and f.rate==1,'Cold proof started hover preparation prematurely')
+f.scene_ready=true;f.tick();assert(f.controller._pending_start and f.leases==0 and f.rate==1)
+f.update();assert(f.photo.active and f.mode==1 and f.rate==0,'Scene-ready retry bypassed the ordinary hover update qualification')
+f.press(80);f.close()
+print('Cold scene opening: delayed proof retains one key edge, cancellation/timeout own no native input, and hover preparation still requires its gameplay update')
