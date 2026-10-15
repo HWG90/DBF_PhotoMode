@@ -108,7 +108,19 @@ function M.new(photo,context,clock)
  end
  function self.hold()
   if self.state~='perform'then return true end
-  if not photo.active or not shot or not same(shot.identity,current())then
+  if not photo.active or not shot then
+   halt_path();candidate,shot=nil,nil;points={};state('off');return false,'Cinema ended: player or scene changed'
+  end
+  local identity,problem=current()
+  if not identity then
+   -- An unavailable reader does not prove that numeric recorded compositions
+   -- belong to a different scene. End active playback before any camera write,
+   -- keeping its points available for an explicit retry after discovery recovers.
+   halt_path();candidate,shot=nil,nil;state('off')
+   self.status='Cinema stopped: '..problem..(#points>0 and'; recorded camera points retained'or'')
+   return false,self.status
+  end
+  if not same(shot.identity,identity)then
    halt_path();candidate,shot=nil,nil;points={};state('off');return false,'Cinema ended: player or scene changed'
   end
   local advanced,why=path_frame();if not advanced then halt_path();candidate,shot=nil,nil;state('off');return false,why end

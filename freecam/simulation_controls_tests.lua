@@ -94,10 +94,16 @@ assert(h.activate('cinema_begin'));f.tick()
 near(f.rate,.45);assert(f.cinema.state=='perform'and not f.owned and f.controller.slowmo_active and h.get('slowmo_speed')==.45 and not h.get('freeze_player'),'Static action shot discarded the cached slow-motion resume policy')
 for i=writes_before+1,#f.writes do near(f.writes[i],.45)end
 for i=1,10 do f.update();near(f.rate,.45)end
-f.press(80);near(f.rate,.45);assert(f.cinema.state=='place'and f.owned and f.controller.slowmo_active,'Repositioning changed the action-shot timescale')
+-- MCM may persist Freeze while perform mode deliberately leaves time running.
+-- Returning to placement must apply the actual pause even when Core.set(true)
+-- would skip its callback because the stored checkbox is already true.
+writes_before=#f.writes;assert(h.set('freeze_player',true));f.tick();near(f.rate,.45)
+assert(h.get('freeze_player')and #f.writes==writes_before,'Changing the stored Freeze policy during an action shot must not stop gameplay')
+f.press(80);near(f.rate,0);assert(f.cinema.state=='place'and f.owned and f.controller.slowmo_active and h.get('freeze_player')and h.get('slowmo_speed')==.45,'Repositioning must restore Freeze while retaining the cached action-shot slow-motion rate')
+assert(#f.writes==writes_before+1 and f.writes[#f.writes]==0,'An already-enabled Freeze checkbox must still perform exactly one actual refreeze on return to placement')
 writes_before=#f.writes;assert(h.activate('cinema_begin'));f.tick();near(f.rate,.45)
-assert(#f.writes==writes_before and not f.owned and f.controller.slowmo_active,'An already-unpaused slow-motion action shot rewrote its timescale')
-f.press(80);near(f.rate,.45)
+assert(#f.writes==writes_before+1 and not f.owned and f.controller.slowmo_active,'Replaying from frozen placement must resume the same selected slow-motion rate')
+f.press(80);near(f.rate,0);assert(h.get('freeze_player'))
 assert(f.controller.stop());near(f.rate,.45);assert(f.controller.slowmo_active and h.get('slowmo_speed')==.45,'Photo exit discarded the slow-motion selection')
 assert(f.controller.close());near(f.rate,1.25)
 
@@ -112,9 +118,13 @@ near(f.rate,.6);assert(f.cinema.path_playing and not f.owned and not f.guard_own
 for i=writes_before+1,#f.writes do near(f.writes[i],.6)end
 f.clock=f.clock+.5;f.tick();near(f.rate,.6);assert(f.photo.pos[1]>0 and f.photo.pos[1]<10,'Slow simulation time incorrectly drove camera-path playback')
 f.press(80);near(f.rate,.6);assert(f.cinema.state=='place'and not f.cinema.path_playing and f.owned)
+assert(f.controller._freeze_action_pending and h.get('freeze_player'),'Returning to a previously frozen hover shot must prepare its guarded refreeze without losing the slow-motion cache');near(h.get('slowmo_speed'),.6)
+f.tick();near(f.rate,.6);assert(f.controller._freeze_action_pending,'Hover refreeze must wait for a completed gameplay update')
+f.update();near(f.rate,0);assert(not f.controller._freeze_action_pending and f.guard_owned and f.controller.slowmo_active)
 writes_before=#f.writes;assert(h.activate('path_play'));f.tick();near(f.rate,.6)
-assert(#f.writes==writes_before and f.cinema.path_playing and not f.owned,'An already-unpaused camera path rewrote its timescale')
+assert(#f.writes==writes_before+1 and f.cinema.path_playing and not f.owned,'Replaying a refrozen hover path must restore its cached positive rate')
 f.press(80);near(f.rate,.6)
+assert(f.controller._freeze_action_pending);f.update();near(f.rate,0)
 assert(f.controller.stop());near(f.rate,.6);assert(f.controller.slowmo_active,'Path exit cleared the active slow-motion policy');near(h.get('slowmo_speed'),.6)
 assert(f.controller.close());near(f.rate,1.25)
 
@@ -123,7 +133,25 @@ f=fixture(false,true);h=f.handle;f.press(80);near(f.rate,0)
 assert(h.set('fov',60));f.photo.pos={1,2,3};f.photo.view={yaw=0,pitch=0};f.tick()
 assert(h.activate('cinema_begin'));f.tick();near(f.rate,1.25)
 assert(not f.controller.slowmo_active and f.cinema.state=='perform'and not f.owned,'A plain action shot invented a slow-motion policy')
+f.press(80);near(f.rate,0);assert(h.get('freeze_player'),'A plain frozen action shot must refreeze on return to placement')
+assert(f.controller.close());near(f.rate,1.25)
+
+-- No prior actual pause means no return refreeze, including a selected Slow
+-- Motion policy and a stale checkbox whose pause was already released.
+f=fixture(false,true);h=f.handle
+assert(h.set('freeze_player',false)and h.set('slowmo_speed',.35));f.press(220);f.press(80);near(f.rate,.35)
+assert(h.set('fov',65));f.photo.pos={1,2,3};f.photo.view={yaw=.1,pitch=.2};f.tick()
+writes_before=#f.writes;assert(h.activate('cinema_begin'));f.tick();near(f.rate,.35)
+assert(#f.writes==writes_before and f.controller.slowmo_active)
+f.press(80);near(f.rate,.35);assert(not h.get('freeze_player')and f.controller.slowmo_active,'An unfrozen slow-motion shot must return without an invented Freeze')
+assert(f.controller.stop());near(f.rate,.35);assert(f.controller.close());near(f.rate,1.25)
+
+f=fixture(false,true);h=f.handle;f.press(80);near(f.rate,0)
+assert(f.freeze.release());near(f.rate,1.25);assert(h.get('freeze_player'))
+assert(h.set('fov',60));f.photo.pos={1,2,3};f.photo.view={yaw=0,pitch=0};f.tick()
+assert(h.activate('cinema_begin'));f.tick();near(f.rate,1.25)
+f.press(80);near(f.rate,1.25);assert(not h.get('freeze_player'),'Return Freeze must cache the actual pause, not a stale enabled checkbox')
 assert(f.controller.close());near(f.rate,1.25)
 DBFMCM=nil
 print('Simulation controls: retained active rates, freeze/resume and Photo transitions, frozen edits, original-speed restore, hover update qualification, footer actual-state and solo/ownership gates passed')
-print('Cinema timescale: static/path shots only unfreeze, retained selected slow rate and cache across handoff/reposition/exit, qualified hover restoration, wall-time path playback and exact original-speed restore passed')
+print('Cinema timescale: temporary unfreeze, restored prior Freeze on placement, retained slow-motion cache, qualified hover refreeze, unfrozen/stale-checkbox cases and exact original-speed restore passed')

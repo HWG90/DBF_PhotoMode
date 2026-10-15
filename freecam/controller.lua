@@ -23,6 +23,8 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         if path then ok,why=self._cinema.path_prepare()
         else ok,why=self._cinema.prepare(effects and effects.fov)end
         if not ok then self._cinema_error(why);return false,why end
+        self._cinema_restore_freeze=self._freeze_action_state()
+        self._cinema_hint_start=nil;self._cinema_hint_elapsed=0
         self._cinema_last_error=nil;self._cinema_begin_pending={};photo.input={};clear_subject_click()
         return true
     end
@@ -103,7 +105,16 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         if controls.lock_camera then handle.set('lock_camera',false)end
         focus_edge=provider.down(handle.get('focus_key'));hide_edge=provider.down(handle.get('hide_controls_key'))
         screenshot_edge=provider.down(handle.get('screenshot_key'));escape_edge=provider.down(27)
-        -- Reposition is live by default. The user may explicitly pause again.
+        local restore_freeze=self._cinema_restore_freeze;self._cinema_restore_freeze=nil
+        if restore_freeze and controls.freeze_player then
+            self._freeze_action_error=nil
+            local accepted,problem
+            if handle.get('freeze_player')==true then accepted,problem=self._freeze_setting_changed(true)
+            else accepted,problem=handle.set('freeze_player',true)end
+            if accepted==false or self._freeze_action_error then
+                problem=self._freeze_action_error or problem;self._cinema_error(problem);return false,problem
+            end
+        end
         photo.input={};return true
     end
     self._ai=ai
@@ -640,6 +651,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         end
     end
     function self.stop(preserve_resume)
+        self._cinema_restore_freeze=nil;self._cinema_hint_start=nil;self._cinema_hint_elapsed=0
         self._pending_start=nil
         self._freeze_action_pending=nil
         self._native_menu_yield=nil
@@ -1104,7 +1116,17 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
             if panel and panel.draw_cinema then
                 local w,h=api.photo_resolution()
                 local key=handle.get('toggle_key');local label=key==20 and 'Caps Lock'or key>=32 and key<=126 and string.char(key)or('VK '..key)
-                panel.draw_cinema(w,h,label,capturing or not api.camera_input.focused()or not self._cinema.gameplay_input_ready())
+                local clock=api.camera_input.now;local read,time=false,nil
+                if type(clock)=='function'then read,time=pcall(clock)end
+                local age
+                if read and type(time)=='number'and time==time and math.abs(time)<math.huge then
+                    self._cinema_hint_start=self._cinema_hint_start or time;age=math.max(self._cinema_hint_elapsed or 0,time-self._cinema_hint_start)
+                else
+                    local step=tonumber(dt);step=step and step==step and math.abs(step)<math.huge and math.max(0,step)or 0
+                    age=(self._cinema_hint_elapsed or 0)+step
+                end
+                self._cinema_hint_elapsed=age
+                panel.draw_cinema(w,h,label,capturing or not api.camera_input.focused()or not self._cinema.gameplay_input_ready()or handle.get('hide_controls')==true,age)
             end
             if capturing then local _,status=screenshots.tick();if status and panel then panel.notice=status end end
             return -- Avatar receives input; keep the independent render/camera lease.

@@ -3,13 +3,13 @@ local M={}
 local function finite(n)return type(n)=='number'and n==n and math.abs(n)<1e8 end
 local function position(p)return type(p)=='table'and finite(p[1])and finite(p[2])and finite(p[3])end
 function M.new(photo,context,log)
- local self={};local saved;local distance;local reason
+ local self={};local saved;local distance;local reason;local restore_issue
  local function current()
   local ok,world,epoch,player,point=pcall(context)
   if ok and world~=nil and epoch~=nil and player~=nil and position(point)then return world,epoch,player,point end
  end
  function self.clear(why)
-  local had=saved~=nil;saved=nil;distance=nil;reason=why
+  local had=saved~=nil;saved=nil;distance=nil;reason=why;restore_issue=nil
   if had and why then log('Saved camera cleared: '..why)end
  end
  function self.hold(radius)
@@ -29,16 +29,31 @@ function M.new(photo,context,log)
    roll=photo.options and photo.options.roll or 0,fov=photo.options and photo.options.fov or 0}
   local dx,dy,dz=point[1]-candidate.pos[1],point[2]-candidate.pos[2],point[3]-candidate.pos[3]
   if dx*dx+dy*dy+dz*dz>radius*radius then return false,'Camera is outside the saved-camera radius' end
-  saved=candidate;reason=nil;self.hold(radius);log('Camera position saved');return true
+  saved=candidate;reason=nil;restore_issue=nil;self.hold(radius);log('Camera position saved');return true
  end
  function self.restore(radius,handle)
   if not self.hold(radius)then return false end
   photo.pos={saved.pos[1],saved.pos[2],saved.pos[3]};photo.view={yaw=saved.yaw,pitch=saved.pitch}
-  handle.set('roll',saved.roll);handle.set('fov',saved.fov)
+  local failed,details={},{}
+  for _,id in ipairs({'roll','fov'})do
+   local called,accepted,why=pcall(function()return handle.set(id,saved[id])end)
+   if not called or accepted==false then
+    failed[#failed+1]=id;details[#details+1]=id..': '..tostring(called and(why or'setting refused')or accepted)
+   end
+  end
+  if #failed>0 then
+   restore_issue=failed
+   local message='Saved camera restore incomplete: '..table.concat(details,'; ')
+   log(message);return false,message
+  end
+  restore_issue=nil
   log('Saved camera position restored');return true
  end
  function self.status(radius)
-  if saved then return string.format('Saved camera: %.1f / %.0f m',distance or 0,radius)end
+  if saved then
+   local label=string.format('Saved camera: %.1f / %.0f m',distance or 0,radius)
+   return restore_issue and label..' — restore incomplete: '..table.concat(restore_issue,', ')or label
+  end
   return reason and 'Saved camera cleared: '..reason or 'Saved camera: none'
  end
  return self

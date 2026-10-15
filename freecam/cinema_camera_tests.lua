@@ -95,3 +95,45 @@ assert(record(1,0,50,2,'smooth')and record(2,0,50,2,'smooth'))
 assert(path.path_prepare());now=0/0
 assert(not path.commit()and not path.path_playing and path.state=='place','An invalid real-time clock must refuse playback before acquiring perform ownership')
 print('Cinema camera path: bounded copied points, wall-time playback, shortest quaternion arcs, curve/FOV interpolation, timed cuts, completion/stop, and scene/player retirement passed')
+
+-- A transient missing/throwing context ends the active shot safely, but does
+-- not erase recorded numeric work. Playback never resumes itself or catches up
+-- through the unknown interval; an explicit retry uses a fresh timeline.
+for _,unavailable in ipairs({'nil','throw'})do
+ local broken=false;local clock=10
+ local current={world='retained-mission',epoch=7,player='retained-player',gameplay_input=true}
+ local photo={active=true,pos={1,2,3},view={yaw=.2,pitch=.1},options={fov=50,roll=5}}
+ local owner=Cinema.new(photo,function()
+  if broken then if unavailable=='throw'then error('Temporary reader failure')end;return nil end
+  return current
+ end,function()return clock end)
+ assert(owner.place()and owner.path_add(nil,3,'smooth'))
+ photo.pos={11,12,13};photo.view={yaw=.4,pitch=.3};photo.options={fov=70,roll=15}
+ assert(owner.path_add(nil,2,'cut')and owner.path_prepare()and owner.commit())
+ clock=11;assert(owner.hold())
+ local recorded=owner.path_points()
+ local position,view,input,lock_pose={90,91,92},{yaw=.8,pitch=.5},{forward=true},{}
+ photo.pos,photo.view,photo.input,photo.locked,photo.lock_pose=position,view,input,true,lock_pose
+ photo.options.fov,photo.options.roll=88,22
+ broken=true;clock=1000
+ local ok,why=owner.hold()
+ assert(ok==false and why:find('unavailable',1,true)and owner.state=='off'and not owner.path_playing and not owner.snapshot(),'Unknown context must end playback with an actionable unavailable status')
+ assert(owner.path_snapshot().count==2 and owner.status:find('retained',1,true),'Temporary context loss must retain the recorded path')
+ local retained=owner.path_points()
+ for index=1,2 do
+  assert(retained[index].identity.world==recorded[index].identity.world and retained[index].identity.epoch==recorded[index].identity.epoch and retained[index].identity.player==recorded[index].identity.player)
+  assert(retained[index].duration==recorded[index].duration and retained[index].transition==recorded[index].transition and retained[index].fov==recorded[index].fov)
+  for axis=1,3 do assert(retained[index].pos[axis]==recorded[index].pos[axis])end
+ end
+ assert(photo.pos==position and photo.view==view and photo.input==input and photo.locked==true and photo.lock_pose==lock_pose and photo.options.fov==88 and photo.options.roll==22,'An unknown context must not write a stale camera pose, input or lens')
+ assert(owner.hold()and photo.pos==position,'Ended playback must remain inert while discovery is unavailable')
+ broken=false;clock=2000
+ assert(owner.hold()and owner.state=='off'and photo.pos==position,'Reader recovery must not restart playback automatically')
+ assert(owner.place()and owner.path_prepare()and owner.commit()and owner.path_snapshot().count==2)
+ assert(photo.pos[1]==1 and photo.options.fov==50 and owner.path_snapshot().elapsed==0,'Explicit replay after discovery recovers must use retained points and a fresh timeline')
+ current.world='confirmed-other-mission'
+ position,view,input=photo.pos,photo.view,photo.input
+ assert(not owner.hold()and owner.state=='off'and owner.path_snapshot().count==0,'A confirmed different identity must still clear retired path points')
+ assert(photo.pos==position and photo.view==view and photo.input==input,'Confirmed scene retirement must happen before another camera write')
+end
+print('Cinema context recovery: nil/throwing reader ends playback without camera writes, retains numeric points, requires explicit fresh replay, and still clears confirmed scene replacements passed')

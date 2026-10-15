@@ -11,7 +11,7 @@ local commands={};local owned_bone='original';local order={};local pose_request=
 local poses={active=false,pending=false,status='fixture'}
 function poses.refresh()return false,'fixture',{}end
 function poses.release()if poses.active then poses.pending=true;pose_request=true end;return true end
-local freeze={start=function(v)rate=v or 0;return true end,hold=function()return true end,
+local freeze={start=function(v)rate=v or 0;return true end,hold=function()return true end,paused=function()return rate==0 end,
  release=function()assert(not poses.active and not poses.pending,'Cinema resumed time before restoring fixed pose');rate=1;order[#order+1]='resume';return true end,
  cleanup_pending=function()return hover_pending end,needs_input_capture=function()return captured and rate==0 end}
 local api=Core.new(nil,function()end);api.photo_standalone=true;api.is_open=function()return false end;api.close=function()return true end
@@ -61,6 +61,15 @@ local acquisition=acquire_count;local position={photo.pos[1],photo.pos[2],photo.
 for i=1,30 do photo.pos={500,500,500};keys[87]=true;tick();assert(not captured and photo.pos[1]==position[1]and photo.input.dt==0)end
 assert(acquire_count==acquisition and camera_acquires==1 and camera_lease,'Cinema gameplay branch reacquired capture or lost camera ownership')
 local badge=false;for _,command in ipairs(commands)do if command.text=='CINEMA CAMERA'then badge=true end end;assert(badge,'Cinema status must be visible')
+-- Expiration must survive a failed clock read or a clock moving backward.
+-- Use a separate UI clock so this cannot advance the recorded path timeline.
+local hint_time=100;local hint_clock_failure=false
+api.camera_input.now=function()if hint_clock_failure then error('UI clock unavailable')end;return hint_time end
+tick();hint_time=104;tick();assert(#commands==0,'The Cinema hint must expire after three real seconds')
+hint_clock_failure=true;tick();assert(#commands==0,'An expired Cinema hint reappeared when its real clock failed')
+hint_clock_failure=false;hint_time=0/0;tick();assert(#commands==0,'An invalid real clock resurrected the expired Cinema hint')
+hint_time=99;tick();assert(#commands==0,'A backward real clock resurrected the expired Cinema hint')
+hint_time=108;tick();assert(#commands==0,'Clock recovery must retain an expired Cinema hint')
 keys[87]=false;assert(h.set('hide_hud',false));assert(h.set('grid',2))
 keys[19]=true;tick();assert(#commands==0 and photo.options.hide_hud and photo.options.grid==1,'Cinema indicator, HUD and guides leaked into capture')
 keys[19]=false;tick();assert(snapshot_requests==1 and not captured and camera_lease,'Screenshot shortcut must work without an input lease')
@@ -76,8 +85,10 @@ context.gameplay_input=false;press(27);press(19);press(80)
 assert(cinema.state=='perform'and photo.active and not captured and snapshot_requests==1,'Native menu must retain static camera without recapturing gameplay')
 chat=true;context.gameplay_input=true;press(80);assert(not captured and cinema.state=='perform');chat=false
 focused=false;tick();assert(not captured and photo.active);focused=true
-assert(h.set('lock_camera',true));press(80);assert(h.get('lock_camera')==false and captured and cinema.state=='place'and photo.pos[1]==position[1]and rate==1,'Normal Photo shortcut must restore placement at the held pose')
+assert(h.set('lock_camera',true));press(80);assert(h.get('lock_camera')==false and captured and cinema.state=='place'and photo.pos[1]==position[1]and rate==0 and h.get('freeze_player'),'Normal Photo shortcut must restore placement at the held pose and refreeze a previously frozen scene')
 tick();assert(h.activate('cinema_begin'));tick();assert(cinema.state=='perform'and not captured)
+badge=false;for _,command in ipairs(commands)do if command.text=='CINEMA CAMERA'then badge=true end end
+assert(badge,'A new action shot must reset its own Cinema hint after the previous shot expired')
 effect_ok=false;context.player='respawned';tick()
 assert(not photo.active and cinema.state=='off'and camera_lease and ctrl.camera_owned()and camera_releases==0,'Failed Cinema render cleanup returned camera to ActionCam')
 effect_ok=true;tick();assert(not camera_lease and camera_releases==1,'ActionCam ownership did not restore after successful Cinema cleanup retry')
@@ -113,12 +124,17 @@ now=104;tick();local moving_position=photo.pos[1]
 assert(moving_position>10 and moving_position<20 and math.abs(photo.options.fov-math.deg(1.3))<1e-8 and cinema.path_snapshot().index==2,'Real wall time must advance the next smooth camera segment and its FOV')
 assert(not captured and acquire_count==path_input_count and camera_acquires==path_lease_count)
 press(80)
-assert(cinema.state=='place'and not cinema.path_playing and captured and photo.pos[1]==moving_position and acquire_count==path_input_count+1 and camera_acquires==path_lease_count,'The Photo Mode key must stop a moving path and recapture placement without reacquiring the camera lease')
+assert(cinema.state=='place'and not cinema.path_playing and captured and photo.pos[1]==moving_position and acquire_count==path_input_count+1 and camera_acquires==path_lease_count and rate==0 and h.get('freeze_player'),'The Photo Mode key must stop a moving path, recapture placement and restore Freeze without reacquiring the camera lease')
 now=120;tick();assert(photo.pos[1]==moving_position,'Stopped playback advanced after returning to placement')
 assert(h.activate('path_remove'));tick();assert(cinema.path_snapshot().count==2)
 assert(h.activate('path_clear'));tick()
 assert(cinema.path_snapshot().count==0 and controls.path_point.disabled and controls.path_play.disabled and controls.path_remove.disabled,'Clearing the runtime path must refresh its usable controls')
 assert(ctrl.stop()and not camera_lease and not captured and rate==1,'Ending the edited path session must restore gameplay/camera/input ownership')
+-- Returning from a shot begun with live action must not invent a Freeze policy.
+assert(h.set('freeze_player',false));press(80);photo.pos={7,8,9};photo.view={yaw=.1,pitch=.2};tick()
+assert(rate==1 and h.activate('cinema_begin'));tick();assert(cinema.state=='perform'and not captured and rate==1)
+press(80);assert(cinema.state=='place'and captured and rate==1 and not h.get('freeze_player'),'An unfrozen action shot must return to unfrozen placement')
+assert(ctrl.stop()and not camera_lease and not captured and rate==1)
 assert(ctrl.close());DBFMCM=nil
 print('Cinema Director lifecycle: paused pose/hover restoration, cursor retry, static gameplay, exclusive camera ownership, uncaptured screenshots, native-menu/chat/focus handoffs, reposition and respawn cleanup passed')
-print('Director camera paths: real registered point/segment controls, selected-field synchronization, paused restoration, avatar handoff, cut/curve/FOV playback, Photo-key stop and complete cleanup passed')
+print('Director camera paths: real registered point/segment controls, selected-field synchronization, paused restoration, avatar handoff, cut/curve/FOV playback, Photo-key stop/refreeze, unfrozen placement and complete cleanup passed')
