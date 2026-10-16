@@ -22,7 +22,7 @@ function M.native(sr,subject,data)
  end
  -- Cloth keeps its simulated shape while world time is stopped. Its separate
  -- mesh-placement nodes must follow the posed shoulder anchor as well as the
- -- skeleton. Capture only the verified cape rig; an unsupported garment
+ -- skeleton. Discover the owned cape rig from its live topology; an unsupported garment
  -- never prevents a body pose or authorizes guessed node-number writes.
  local cape_api=sr.Mesh and type(sr.Mesh.node)=='function'
  for _,name in ipairs({'resolve','valid','owned'})do cape_api=cape_api and type(subject[name])=='function'end
@@ -66,7 +66,7 @@ function M.native(sr,subject,data)
    checked(frame,true)
    assert(U.has_node(frame.root_handle,'cape1'),'Subject cape anchor unavailable')
    local anchor=U.node(frame.root_handle,'cape1')
-   assert(type(anchor)=='number'and anchor>=8 and anchor<=92,'Subject cape anchor unsupported')
+   assert(type(anchor)=='number'and anchor%1==0 and anchor>=1 and anchor<=U.num_scene_graph_items(frame.root_handle),'Subject cape anchor unsupported')
    local inverse=sr.Matrix4x4Box(X.inverse(U.world_pose(frame.root_handle,anchor)))
    local scene=subject.resolve();local records,seen={},{}
    assert(scene.local_owner and scene.groups and scene.groups.hide_player,'Cape subject lookup unavailable')
@@ -77,26 +77,44 @@ function M.native(sr,subject,data)
       assert(subject.valid(part)==true and subject.owned(part),'Cape source unavailable')
       assert(part.world_native==frame.world_native and part.owner_key==frame.owner_key,'Cape subject world or owner differs')
       local unit=part.handle
-      assert(U.num_scene_graph_items(unit)==50,'Unsupported cape skeleton')
+      local node_count=U.num_scene_graph_items(unit)
+      assert(type(node_count)=='number'and node_count%1==0 and node_count>=2 and node_count<=512,'Cape skeleton bounds changed')
       -- Armor variants rename their cape meshes and may externally link the
       -- cloth bones (no local parent). Identify the bounded named cape rig,
       -- then discover its separate placement nodes from actual Mesh handles.
       local cape_nodes,bones={},{}
-      for _,name in ipairs({'cape1','cape2','cape3'})do
-       assert(U.has_node(unit,name),'Unsupported cape bone mapping')
-       local node=U.node(unit,name)
-       assert(type(node)=='number'and node%1==0 and node>=2 and node<=50 and not bones[node],'Unsupported cape bone mapping')
-       cape_nodes[name]=node;bones[node]=true
+      assert(U.has_node(unit,'cape1'),'Cape anchor mapping unavailable')
+      for n=1,64 do local name='cape'..n
+       if U.has_node(unit,name)then
+        local node=U.node(unit,name)
+        assert(type(node)=='number'and node%1==0 and node>=1 and node<=node_count and not bones[node],'Unsupported cape bone mapping')
+        cape_nodes[name]=node;bones[node]=true
+       end
       end
-      local count=U.num_meshes(unit);assert(count==part.mesh_count and count>=1 and count<=32,'Cape mesh bounds changed')
-      local r={part=part,node_count=50,cape_nodes=cape_nodes,anchor=anchor,world=frame.world,meshes={},changed={}}
+      -- Mesh nodes already beneath a cloth bone inherit its movement. Never
+      -- apply the shoulder delta to them a second time. Walk only bounded,
+      -- validated local parents; external links terminate the walk.
+      local function follows_cloth(node)
+       local seen={}
+       for _=1,node_count do
+        if bones[node]then return true end
+        assert(not seen[node],'Cape hierarchy cycle');seen[node]=true
+        local parent=U.scene_graph_parent(unit,node)
+        if parent==nil or parent==0 then return false end
+        assert(type(parent)=='number'and parent%1==0 and parent>=1 and parent<=node_count and parent~=node,'Cape hierarchy changed')
+        node=parent
+       end
+       error('Cape hierarchy depth changed')
+      end
+      local count=U.num_meshes(unit);assert(count==part.mesh_count and count>=1 and count<=128,'Cape mesh bounds changed')
+      local r={part=part,node_count=node_count,cape_nodes=cape_nodes,anchor=anchor,world=frame.world,meshes={},changed={}}
       local root=sr.Matrix4x4Box(U.world_pose(unit,1));local nodes={}
       for index=1,count do
        assert(subject.valid(part,index)==true,'Cape mesh retired during capture')
        local handle=U.mesh(unit,index);local node=sr.Mesh.node(handle)
-       assert(type(node)=='number'and node%1==0 and node>=1 and node<=50,'Cape mesh node bounds changed')
+       assert(type(node)=='number'and node%1==0 and node>=1 and node<=node_count,'Cape mesh node bounds changed')
        local parent=U.scene_graph_parent(unit,node)
-       if node>1 and not bones[node]and not nodes[node]and type(parent)=='number'and parent%1==0 and parent>=1 and parent<=50 and parent~=node then
+       if node>1 and not follows_cloth(node)and not nodes[node]and type(parent)=='number'and parent%1==0 and parent>=1 and parent<=node_count and parent~=node then
         local pose=sr.Matrix4x4Box(U.world_pose(unit,node))
         if same_pose(pose:unbox(),root:unbox())then
          nodes[node]=true

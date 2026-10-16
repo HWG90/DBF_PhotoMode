@@ -35,7 +35,8 @@ local function fixture(options)
  body_values[1]=matrix({axis={0,0,1},angle=.67},{13,-9,4})
  body_values[8]=matrix({axis={1,0,0},angle=-.31},{.4,-.8,1.2})
  local anchor=assert(names.cape1);body_values[anchor]=matrix({axis={0,1,0},angle=.43},{.15,-.25,.7})
- for i=1,50 do cape_values[i]=identity()end
+ local cape_count=options.node_count or 50
+ for i=1,cape_count do cape_values[i]=identity()end
  local cape_names={cape1=35,cape2=36,cape3=37,g_shock_trooper_cape_simple=43,g_shock_trooper_cape=49,g_shock_trooper_cape_simple_partial=50}
  local placements={43,49,50};local cape_parents={[43]=42,[49]=42,[50]=42}
  if options.variant then
@@ -44,7 +45,11 @@ local function fixture(options)
   cape_names={cape1=21,cape2=22,cape3=24};placements={48,49,50}
   cape_parents={[23]=22,[48]=42,[49]=42,[50]=42}
  end
- if options.unsupported then cape_names.cape2=nil end
+ if options.unsupported then cape_names.cape1=nil end
+ if options.short_rig then cape_names.cape2=nil;cape_names.cape3=nil end
+ if options.high_bones then cape_names.cape1=61;cape_names.cape2=62;cape_names.cape3=63 end
+ if options.inherited_mesh then cape_parents[placements[1]]=cape_names.cape1 end
+ if options.cycle then cape_parents[42]=placements[1]end
  if options.duplicate_bone then cape_names.cape3=cape_names.cape2 end
  if options.bad_bone then cape_names.cape2=51 end
  local mesh_nodes={23,placements[1],placements[2],placements[3]};local meshes={{},{},{},{}}
@@ -64,10 +69,10 @@ local function fixture(options)
   return parent and parent>0 and multiply(values[i],world_pose(u,parent,(depth or 0)+1))or copy(values[i])
  end
  local U={};local mode='position_and_rotation'
- function U.num_scene_graph_items(u)return u==body and 107 or 50 end
+ function U.num_scene_graph_items(u)return u==body and 107 or cape_count end
  function U.scene_graph_parent(u,i)
   if u==cape and t.parent_changed==i then return 2 end
-  if u==cape and options.variant and(i==21 or i==22 or i==24)then return nil end
+  if u==cape and options.variant and(i==cape_names.cape1 or i==cape_names.cape2 or i==cape_names.cape3)then return nil end
   return u==body and parents[i]or(cape_parents[i]or(i==1 and 0 or 1))
  end
  function U.has_node(u,name)
@@ -188,7 +193,17 @@ do
  t.values[49]=identity();t.phase='update';assert(t.api.after_update());attached(t,reference)
  assert(t.reset()and not t.api.active and not t.api.pending);restored(t)
 end
-for _,options in ipairs({{unsupported=true},{duplicate_bone=true},{bad_bone=true},{missing_api=true},{no_resolve=true},{foreign_world=true},{foreign_owner=true}})do
+for _,options in ipairs({{node_count=64},{node_count=96,high_bones=true},{node_count=128,variant=true},{node_count=50,short_rig=true}})do
+ local t=fixture(options);local reference=relative_points(t)
+ assert(t.select(full_body)and t.cape_writes>0,'Topology-discovered cape did not follow')
+ attached(t,reference);assert(t.select('wave'));attached(t,reference);assert(t.reset());restored(t)
+end
+do
+ local t=fixture({inherited_mesh=true});assert(t.select(full_body))
+ for _,w in ipairs(t.writes)do assert(w.unit~=t.cape or w.node~=t.placements[1],'Already attached mesh received duplicate follow transform')end
+ assert(t.reset());restored(t)
+end
+for _,options in ipairs({{unsupported=true},{node_count=1},{node_count=513},{cycle=true},{duplicate_bone=true},{bad_bone=true},{missing_api=true},{no_resolve=true},{foreign_world=true},{foreign_owner=true}})do
  local t=fixture(options);assert(t.select(full_body)and t.api.active,'Unsupported cape disabled body poses')
  assert(t.cape_writes==0,'Unsupported cape received placement writes');assert(t.reset());restored(t)
 end
