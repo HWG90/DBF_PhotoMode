@@ -46,7 +46,7 @@ def rejected(core, count):
 def verify():
     preview_core, preview_shared, _ = build_preview.resources(None)
     check_registry(preview_core, 119)
-    core, shared, audit = build_release.resources(None)
+    core, shared, audit = build_release.owned_resources(None)
     ids, stock, shipped = check_registry(core, 121)
     assert len(shipped) == 44 and audit['registry_closed_over_bundled_libraries']
     assert len(core) == 45 and len(shared) == 45

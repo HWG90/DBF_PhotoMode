@@ -69,7 +69,7 @@ def promote_snapshots():
     else:path.write_bytes(json_bytes(manifest))
     return manifest
 
-def resources(output=None):
+def owned_resources(output=None):
     """Return source-owned frozen bytes; no dist or installed-game inputs."""
     manifest=json.loads((SNAPSHOTS/'manifest.json').read_text())
     assert manifest['version']==ASSET_VERSION,'Frozen shader snapshot identity changed'
@@ -113,7 +113,38 @@ def resources(output=None):
            'installation_performed':False,'release_runtime_live_verified':False}
     return core,shared,audit
 
+def resources(output=None):
+    """Package a closed shader set shared with the maintained HUD source."""
+    core,shared,audit=owned_resources(output)
+    helper=ROOT.parent/'DBF-HUD/tools/shared_shader_assets.py'
+    if not helper.is_file():
+        raise RuntimeError('Coexistence build requires sibling DBF-HUD source; refusing a partial shader registry')
+    module=load('shared_shader_assets',helper)
+    shaders,compatibility=module.shared_resources(core)
+    core=[r for r in core if r[1] not in (photo_assets.SHADER,photo_assets.GROUP)]+shaders
+    audit=dict(audit,shader_compatibility=compatibility,registry_ids=compatibility['registry_ids'],
+               shader_libraries_core=compatibility['shader_libraries'])
+    return core,shared,audit
+
+
 def checksums(files):return ''.join(sha(body)+'  '+name+'\n'for name,body in sorted(files.items())if name!='FILES-SHA256.txt').encode()
+
+def build_assets_only(output):
+    """Build Arsenal assets without packaging unrelated runtime development."""
+    output=output.resolve();output.mkdir(parents=True,exist_ok=True)
+    core,shared,audit=resources()
+    files=asset_files(core,shared,audit,'Assets/')
+    files['manifest.json']=json_bytes({'Version':1,'Guid':'3e25431a-27e8-4b7a-b355-3956c1caa8d8',
+        'Name':'War Journalist '+VERSION+' Assets - HUD coexistence',
+        'Description':'Source-built native assets with the complete HUD/Photo shader closure. Runtime supplied separately.',
+        'Options':[{'Name':'Complete Photo Mode assets','Include':['Assets']}]})
+    files['ASSET-MANIFEST.json']=json_bytes(audit)
+    files['INSTALL.txt']=b'Import into Arsenal with the matching DBF HUD payload, deploy and restart normally. This package contains native assets only. Keep your existing War Journalist runtime loader. The shared closure digest must match the HUD package.\n'
+    target=output/('War-Journalist-'+VERSION+'-Assets.zip')
+    target.write_bytes(zip_bytes(files))
+    (output/'ASSETS-BUILD-RECEIPT.json').write_bytes(json_bytes({'path':str(target),'sha256':sha(target.read_bytes()),'assets':audit,'deployment':'not installed'}))
+    print(target)
+    return target
 def zip_bytes(files):
     files=dict(files);files['FILES-SHA256.txt']=checksums(files);buffer=io.BytesIO()
     with zipfile.ZipFile(buffer,'w',zipfile.ZIP_DEFLATED)as z:
@@ -301,10 +332,12 @@ def build(output,camera_engine='legacy',input_recovery_candidate=False):
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--output',type=Path)
+    parser.add_argument('--assets-only',action='store_true',help='Build source-owned Arsenal assets without changing or packaging the runtime')
     parser.add_argument('--camera-engine',choices=('legacy','independent'),default='legacy',help='Independent is an opt-in review candidate; legacy remains the release default')
     parser.add_argument('--input-recovery-candidate',action='store_true',help='Explicitly allow the reviewed editor-input/recovery APIs in development packages under dist/review only')
     parser.add_argument('--promote-assets',action='store_true',help='Promote the explicitly approved retained compositor snapshots once')
     args=parser.parse_args()
     if args.promote_assets:promote_snapshots()
     output=args.output or(ROOT/'dist/review/input-recovery-20261015'if args.input_recovery_candidate else ROOT/'dist/review/independent-camera-20261015'if args.camera_engine=='independent'else ROOT/'dist/releases'/('War-Journalist-'+VERSION))
-    build(output,camera_engine=args.camera_engine,input_recovery_candidate=args.input_recovery_candidate)
+    if args.assets_only:build_assets_only(output)
+    else:build(output,camera_engine=args.camera_engine,input_recovery_candidate=args.input_recovery_candidate)

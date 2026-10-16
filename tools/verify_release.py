@@ -201,7 +201,7 @@ def _release_asset_closure(files, prefix, bsl, version, allow_legacy_registry=Fa
         assert files[path+'.stream'] == b'', 'Unexpected stream resources'
         parsed.append(photo_assets.read_archive(files[path], files[path+'.gpu_resources'], files[path+'.stream']))
     core, shared = parsed
-    assert Counter(row[1] for row in core) == {photo_assets.SHADER: 44, photo_assets.GROUP: 1}, 'Core must contain exactly 44 shader libraries and one registry'
+    assert Counter(row[1] for row in core) == {photo_assets.SHADER: len(core)-1, photo_assets.GROUP: 1}, 'Core must contain shader libraries and exactly one registry'
     shared_types = {photo_assets.MATERIAL: 44, photo_light_assets.UNIT: 1}
     if bsl:
         shared_types[lua_archive.LUA_TYPE] = 1
@@ -223,13 +223,22 @@ def _release_asset_closure(files, prefix, bsl, version, allow_legacy_registry=Fa
     expected_materials.update(photo_assets.hash64('mods/dbf_photo/materials/'+name) for name in extra_names)
     shaders = {row[0]: row for row in core if row[1] == photo_assets.SHADER}
     materials = {row[0]: row for row in shared if row[1] == photo_assets.MATERIAL}
+    owned_shader_ids = set(expected_shaders)
+    if set(shaders) != expected_shaders:
+        # Coexistence packages must match the exact source-built closure, not
+        # merely register arbitrary IDs from an installed archive.
+        import build_release
+        compatible, _, _ = build_release.resources()
+        compatible_shaders = {r[0]: r for r in compatible if r[1] == photo_assets.SHADER}
+        assert shaders == compatible_shaders, 'Shared shader closure differs from source'
+        expected_shaders = set(compatible_shaders)
     assert set(shaders) == expected_shaders and set(materials) == expected_materials, 'Shader/material identity closure differs'
     resolved = shaders[photo_assets.hash64('mods/dbf_photo/shaders/'+resolved_name)]
     assert hashlib.sha256(resolved[3]).hexdigest() == resolved_sha, 'Versioned compositor bytes changed'
     indexed = {row[:2]: row for row in core+shared}
     for row in decorations:
         assert indexed[row[:2]] == row, 'Existing decorative asset changed'
-    for name, _, cpu, gpu in shaders.values():
+    for name, _, cpu, gpu in (r for r in shaders.values() if r[0] in owned_shader_ids):
         assert cpu == struct.pack('<I', 4) and len(gpu) > 0xe4, 'Invalid shader-library payload'
         assert struct.unpack_from('<I', gpu, 0xe0)[0] == name >> 32, 'Shader variant identity mismatch'
         assert len(photo_assets._dxbc_windows(gpu)) == 2, 'Shader must contain its vertex and pixel programs'
@@ -247,7 +256,7 @@ def _release_asset_closure(files, prefix, bsl, version, allow_legacy_registry=Fa
         assert len(ids) == 319 and tuple(ids[:315]) == photo_assets.registry_ids(base), 'Unknown historical registry'
         assert set(ids[315:]) == {photo_assets.hash64('mods/dbf_photo/shaders/'+name) for name in extra_names}, 'Historical additions differ'
     else:
-        assert len(ids) == len(expected_ids) == 121 and set(ids) == expected_ids, 'Shader registry contains missing or unbundled registrations'
+        assert len(ids) == len(expected_ids) and set(ids) == expected_ids, 'Shader registry contains missing or unbundled registrations'
         assert tuple(ids[:len(stock)]) == stock, 'Native shader registration order changed'
     assert expected_shaders <= set(ids), 'Unregistered packaged shader'
     lua_rows = [row for row in shared if row[1] == lua_archive.LUA_TYPE]
@@ -258,7 +267,7 @@ def _release_asset_closure(files, prefix, bsl, version, allow_legacy_registry=Fa
         body = row[2]
         assert len(body) >= 8 and struct.unpack_from('<II', body) == (len(body)-8, 2), 'BSL startup envelope invalid'
         startup = body[8:].decode()
-    return {'shader_libraries': 44, 'materials': 44, 'registry_ids': len(ids), 'dedicated_lights': 1,
+    return {'shader_libraries': len(shaders), 'materials': 44, 'registry_ids': len(ids), 'dedicated_lights': 1,
             'unbundled_shader_registrations': len(dangling),
             'startup_resources': len(lua_rows), 'external_light_dependencies': [],
             'registry_sha256': hashlib.sha256(group[2]).hexdigest()}, startup
@@ -361,7 +370,7 @@ def verify_current(path, version, standalone=False, allow_legacy_registry=False,
     asset_manifest = json.loads(metadata['ASSET-MANIFEST.json'])
     if version in ('0.9.7', '0.9.8', '0.9.9', '0.9.10', '0.9.11', '1.0', '1.0.1'):
         assert asset_manifest['shader_asset_version'] == SHADER_RELEASES[version], 'Release must retain the frozen 0.9.6 shader assets'
-    for key, expected in (('version', version), ('shader_libraries_core', 44), ('materials_shared', 44), ('registry_resources_core', 1), ('registry_ids', audit['registry_ids'])):
+    for key, expected in (('version', version), ('shader_libraries_core', audit['shader_libraries']), ('materials_shared', 44), ('registry_resources_core', 1), ('registry_ids', audit['registry_ids'])):
         assert asset_manifest[key] == expected, 'Packaged asset manifest disagrees with resource closure: '+key
     assert asset_manifest['lighting_status'] == 'Not tested fully' and asset_manifest['photo_light']['external_dependencies'] == []
     docs = b'\n'.join(metadata.get(name, b'') for name in ('INSTALL.txt', 'KNOWN-ISSUES.md', 'RELEASE-NOTES.md')).decode()
