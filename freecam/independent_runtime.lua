@@ -134,6 +134,11 @@ local function refresh_camera()
  status(PHOTO.active and(PHOTO.cinema_state=='perform'and'cinema'or'photo')or'ready')
  return frame
 end
+DBF_PHOTO_LIGHTS.player_context=function()
+ local f=current_frame
+ if not runtime.ready or not f or f.world~=(target and target.world)then return end
+ return{world=f.world,position=f.player_position}
+end
 -- A closed, clean camera owns no scene handles. Only an opening request or a
 -- persistent time/bookmark/cleanup lease justifies discovery during gameplay.
 local function scene_needed()

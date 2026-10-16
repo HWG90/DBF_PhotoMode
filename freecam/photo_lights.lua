@@ -1,7 +1,7 @@
 -- Local photo lights use the bundled light-only boot unit. Never enumerate, edit,
 -- or destroy authored scene lights. All mutation belongs in the update phase.
 local M={resource='e07f49224f0a5759',resource_name='mods/dbf_photo/units/photo_light_v1',maximum=3,testing_status='Not tested fully'}
-M.defaults={kind='omni',enabled=true,intensity=3,color='#FFFFFF',range=8,cone=45,right=0,forward=1,up=0,follow_camera=false}
+M.defaults={kind='omni',enabled=true,intensity=3,color='#FFFFFF',range=8,cone=45,right=0,forward=1,up=0,follow_camera=false,follow_player=false}
 M.presets={{id='key_fill_rim',label='Key / Fill / Rim'},{id='portrait',label='Portrait'},{id='dramatic_side',label='Dramatic side'}}
 local function copy(value)local out={};for k,v in pairs(value or{})do out[k]=type(v)=='table'and copy(v)or v end;return out end
 local function finite(v)return type(v)=='number'and v==v and math.abs(v)<math.huge end
@@ -10,6 +10,9 @@ local function clean(values,base)
  if values~=nil and type(values)~='table'then return nil,'Invalid photo light settings'end
  local out=copy(base or M.defaults)
  for key,value in pairs(values or{})do if M.defaults[key]~=nil then out[key]=value end end
+ if out.follow_player==nil then out.follow_player=false end
+ if values and values.follow_player==true then out.follow_camera=false elseif values and values.follow_camera==true then out.follow_player=false end
+ if type(out.follow_player)~='boolean'then return nil,'Invalid player follow setting'end
  if out.kind~='omni'and out.kind~='spot'then return nil,'Choose a point or spot light'end
  if type(out.enabled)~='boolean'or type(out.follow_camera)~='boolean'then return nil,'Invalid light visibility'end
  if type(out.color)~='string'or not out.color:match('^#%x%x%x%x%x%x$')then return nil,'Use a six-digit light color'end
@@ -38,6 +41,10 @@ local function context(value)
  end
  local r,f,u=out.right,out.forward,out.up
  if (r[2]*f[3]-r[3]*f[2])*u[1]+(r[3]*f[1]-r[1]*f[3])*u[2]+(r[1]*f[2]-r[2]*f[1])*u[3]<.99 then return nil end
+ if value.player_origin~=nil then
+  if type(value.player_origin)~='table'then return nil end
+  out.player_origin={};for i=1,3 do if not finite(value.player_origin[i])then return nil end;out.player_origin[i]=value.player_origin[i]end
+ end
  return out
 end
 local function point(value)
@@ -102,6 +109,19 @@ function M.new(sr,log,reuse,handoff)
  -- The game reuses its main-world handle between ship and mission. The camera
  -- owner supplies its generation even while Photo Mode is closed. Retained
  -- definitions contain only scalar settings, numeric bases and a scene stamp.
+ local function player_position()
+  if not callable(self.player_context)then return end
+  local ok,value=pcall(self.player_context)
+  if ok and type(value)=='table'and value.world==world then return point(value.position)end
+ end
+ local function player_anchor(record)
+  local position=player_position();if not position then return end
+  local origin=record.anchor.player_origin
+  if origin and origin[1]==position[1]and origin[2]==position[2]and origin[3]==position[3]then return end
+  local out=copy(record.anchor);origin=origin or position
+  for i=1,3 do out.position[i]=out.position[i]+position[i]-origin[i]end
+  out.player_origin=position;return out
+ end
  local function observe_scene(candidate,camera)
   local current,epoch=candidate,camera and camera.scene_epoch
   if callable(self.scene_context)then
@@ -314,14 +334,17 @@ function M.new(sr,log,reuse,handoff)
     record.values=record.recover.values;record.anchor=record.recover.anchor
     local restored,reason=apply(record);if not restored then self.pending=true;return fail('Photo light placement restoration pending: '..tostring(reason))end
     record.recover=nil;record.error=nil;self.revision=self.revision+1
-   elseif record.values.follow_camera and frame then
-    local previous=record.anchor;record.anchor=copy(frame);local ok,err=apply(record)
+   elseif record.values.follow_player or(record.values.follow_camera and frame)then
+    local previous=record.anchor;local following=record.values.follow_player and player_anchor(record)or(not record.values.follow_player and copy(frame))
+    if following then
+    record.anchor=following;local ok,err=apply(record)
     if not ok then
      record.anchor=previous;local restored,reason=apply(record)
      if not restored then pcall(L.set_enabled,record.light,false)end
      record.error=tostring(err)..(restored and''or('; restoration pending: '..tostring(reason)));return fail(record.error)
     end
     record.error=nil
+    end
    end
   end
   if selected==0 and#records>0 then selected=1 end
@@ -351,6 +374,10 @@ function M.new(sr,log,reuse,handoff)
   if not frame then return fail('Photo lighting is waiting for camera placement')end
   if#records>=M.maximum then return fail('Three photo lights are already placed')end
   local o,err=clean(values);if not o then return fail(err)end
+  if o.follow_player then
+   anchor=copy(anchor);anchor.player_origin=anchor.player_origin or player_position()
+   if not anchor.player_origin then return fail('Player position unavailable')end
+  end
   if o.kind=='spot'and not caps.spot then return fail('Spot lights are unavailable in this engine')end
   local ran,unit=pcall(function()
    local b=anchor;local p={};for i=1,3 do p[i]=b.position[i]+b.right[i]*o.right+b.forward[i]*o.forward+b.up[i]*o.up end
@@ -436,7 +463,7 @@ function M.new(sr,log,reuse,handoff)
   for i,item in ipairs(layout)do
    local position={};for axis=1,3 do position[axis]=target[axis]+distance*(basis.right[axis]*item[1]+basis.forward[axis]*item[2]+basis.up[axis]*item[3])end
    local anchor,why=aimed(position,target,basis.up);if not anchor then return fail(why)end
-   setup.definitions[i]={anchor=anchor,values={kind='spot',enabled=true,intensity=item[4],color=item[5],range=math.max(8,distance*4),cone=55,right=0,forward=0,up=0,follow_camera=false}}
+   setup.definitions[i]={anchor=anchor,values={kind='spot',enabled=true,intensity=item[4],color=item[5],range=math.max(8,distance*4),cone=55,right=0,forward=0,up=0,follow_camera=false,follow_player=false}}
   end
   return self.import_setup(setup)
  end
@@ -452,6 +479,10 @@ function M.new(sr,log,reuse,handoff)
   if not record.caps.range and values and values.range~=nil then return fail('Light range is unavailable in this engine')end
   local previous,anchor=record.values,record.anchor;record.values=o
   if o.follow_camera and frame then record.anchor=copy(frame)end
+  if o.follow_player and not previous.follow_player then
+   local position=player_position();if not position then record.values=previous;return fail('Player position unavailable')end
+   record.anchor=copy(record.anchor);record.anchor.player_origin=position
+  elseif not o.follow_player then record.anchor=copy(record.anchor);record.anchor.player_origin=nil end
   local ok,err=apply(record)
   if not ok then
    record.values=previous;record.anchor=anchor
@@ -481,7 +512,7 @@ function M.new(sr,log,reuse,handoff)
   else anchor=context({position=position,forward=record.anchor.forward,right=record.anchor.right,up=record.anchor.up})end
   if not anchor then return fail(why or'Invalid photo light orientation')end
   local old_values,old_anchor=record.values,record.anchor
-  local values=copy(old_values);values.right=0;values.forward=0;values.up=0;values.follow_camera=false
+  local values=copy(old_values);values.right=0;values.forward=0;values.up=0;values.follow_camera=false;values.follow_player=false
   record.values=values;record.anchor=anchor
   local ok,reason=apply(record)
   if not ok then

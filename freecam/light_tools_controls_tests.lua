@@ -22,6 +22,8 @@ local function press(key)keys[key]=true;tick();keys[key]=false;tick()end
 tick();press(80);photo.light_context={world='world',position={0,0,0},right={1,0,0},forward={0,1,0},up={0,0,1}};tick()
 local handle=api.mods.dbf_freecam.handle;local controls=api.mods.dbf_freecam.controls
 assert(not controls.light_aim.disabled and not controls.light_apply_preset.disabled and not controls.light_setup_save.disabled)
+assert(controls.light_follow_player.label=='Follow Player'and not controls.light_follow_player.disabled)
+assert(handle.set('light_follow_player',true));assert(queued[#queued].action=='update'and queued[#queued].value.follow_player==true,'Follow Player did not queue a light update')
 assert(handle.activate('light_apply_preset'));local q=queued[#queued];assert(q.action=='preset'and q.value.name=='key_fill_rim'and q.value.target[2]==5)
 handle.set('light_preset',3);handle.activate('light_apply_preset');assert(queued[#queued].value.name=='dramatic_side')
 controller._remember_light_subject(.25,.25,4);handle.activate('light_aim');q=queued[#queued];assert(q.action=='aim'and math.abs(q.value.target[1]+32/9)<1e-7 and math.abs(q.value.target[3]-2)<1e-7,'Picked subject must retain its world-space target')

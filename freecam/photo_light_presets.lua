@@ -19,9 +19,9 @@ local function basis(b)
  return(r[2]*f[3]-r[3]*f[2])*u[1]+(r[3]*f[1]-r[1]*f[3])*u[2]+(r[1]*f[2]-r[2]*f[1])*u[3]>.99
 end
 local numbers={intensity={0,10000},range={.1,1000},cone={1,175},right={-100,100},forward={-100,100},up={-100,100}}
-local value_keys={'kind','enabled','intensity','color','range','cone','right','forward','up','follow_camera'}
+local value_keys={'kind','enabled','intensity','color','range','cone','right','forward','up','follow_camera','follow_player'}
 local function valid_values(v)
- if type(v)~='table'or(v.kind~='omni'and v.kind~='spot')or type(v.enabled)~='boolean'or type(v.follow_camera)~='boolean'or type(v.color)~='string'or not v.color:match('^#%x%x%x%x%x%x$')then return false end
+ if type(v)~='table'or(v.kind~='omni'and v.kind~='spot')or type(v.enabled)~='boolean'or type(v.follow_camera)~='boolean'or(v.follow_player~=nil and type(v.follow_player)~='boolean')or(v.follow_player and v.follow_camera)or type(v.color)~='string'or not v.color:match('^#%x%x%x%x%x%x$')then return false end
  for name,limits in pairs(numbers)do if not finite(v[name])or v[name]<limits[1]or v[name]>limits[2]then return false end end;return true
 end
 local function valid_setup(s,relative)
@@ -61,7 +61,7 @@ function M.encode(rows)
   assert(valid_setup(setup,true),'Invalid stored lighting setup')
   out[#out+1]=i..'.count='..#setup.definitions..'\n'..i..'.selected='..setup.selected..'\n'
   for j,d in ipairs(setup.definitions)do
-   for _,key in ipairs(value_keys)do local value=d.values[key]
+   for _,key in ipairs(value_keys)do local value=d.values[key];if key=='follow_player'and value==nil then value=false end
     if type(value)=='boolean'then value=value and'1'or'0'elseif type(value)=='number'then value=string.format('%.17g',value)end
     out[#out+1]=i..'.'..j..'.'..key..'='..value..'\n'
    end
@@ -91,7 +91,7 @@ function M.decode(data)
     local prefix,axis=field:match('^([pfru])([123])$')
     if prefix then local n=tonumber(value);if not finite(n)then return nil,'Invalid lighting coordinate'end;d.anchor[vectors[prefix]][tonumber(axis)]=n
     elseif numbers[field]then local n=tonumber(value);if not finite(n)then return nil,'Invalid light value'end;d.values[field]=n
-    elseif field=='enabled'or field=='follow_camera'then if value~='0'and value~='1'then return nil,'Invalid light toggle'end;d.values[field]=value=='1'
+    elseif field=='enabled'or field=='follow_camera'or field=='follow_player'then if value~='0'and value~='1'then return nil,'Invalid light toggle'end;d.values[field]=value=='1'
     elseif field=='kind'or field=='color'then d.values[field]=value
     else return nil,'Unknown lighting preset value'end
    end

@@ -4,7 +4,7 @@ M.defaults={fov=0,focal_preset=1,roll=0,roll_preset=1,saved_camera_radius=60,loc
  filter=1,filter_strength=25,exposure=0,saturation=100,contrast=100,bloom=true,
  shader=1,shader_opacity=10,shader_scale=1,shader_animate=true,scene_shader=1,scene_strength=100,fog_distance=25,fog_density=50,scene_depth_range=100,vignette=0,vignette_width=18,grain=0,grain_size=1.5,
  frame=1,grid=1,logo=1,logo_size=100,logo_x=90,logo_y=8,logo_opacity=85,logo_color='#FFFFFF',clean_view=false,hide_hud=true,hide_controls=false,
- light_selected=1,light_preset=1,light_setup_slot=1,light_kind=1,light_enabled=true,light_intensity=3,light_color='#FFFFFF',light_range=8,light_cone=45,light_right=0,light_forward=1,light_up=0,light_follow=false,
+ light_selected=1,light_preset=1,light_setup_slot=1,light_kind=1,light_enabled=true,light_intensity=3,light_color='#FFFFFF',light_range=8,light_cone=45,light_right=0,light_forward=1,light_up=0,light_follow=false,light_follow_player=false,
  hide_player=false,hide_armour=false,hide_weapons=false,subject_pose=1,director_slot=1,ai_behavior=1,path_point=1,path_duration=3,path_transition=1,
  show_legend=true,legend_open=true,legend_docked=true,legend_tab_y=75,legend_columns=2,legend_x=2,legend_y=2,legend_size=38}
 M.ai_modes={'normal','passive','dummy'}
@@ -141,7 +141,7 @@ function M.pages(reset,recenter,catalog,saved_actions)
  light_control({id='light_color',type='color',label='Light color',default=M.defaults.light_color}),
  light_control(slider('light_range','Range (m)',.1,1000,.01)),light_control(slider('light_cone','Spot cone (degrees)',1,175,1)),
  light_control(slider('light_right','Right offset (m)',-20,20,.01)),light_control(slider('light_forward','Forward offset (m)',-20,20,.01)),light_control(slider('light_up','Up offset (m)',-20,20,.01)),
- light_control(toggle('light_follow','Follow camera')),
+ light_control(toggle('light_follow','Follow camera')),light_control(toggle('light_follow_player','Follow Player')),
  light_action('light_place','Move to camera','light_place'),light_action('light_remove','Remove selected','light_remove'),light_action('light_clear','Remove all lights','light_clear'),
  choice('light_setup_slot','Saved lighting setup',{'Setup 1 — empty','Setup 2 — empty','Setup 3 — empty','Setup 4 — empty','Setup 5 — empty'}),
  light_action('light_setup_save','Save lighting setup','light_setup_save'),light_action('light_setup_recall','Recall lighting setup','light_setup_recall'),light_action('light_setup_clear','Clear saved setup','light_setup_clear'),
@@ -198,7 +198,7 @@ function M.pages(reset,recenter,catalog,saved_actions)
   {'Shader overlays','shader','shader_opacity','shader_scale','shader_animate','shader_status'},{'Finishing','vignette','vignette_width','grain','grain_size'}},
  lighting={{'Lights','light_add','light_selected','light_enabled','light_kind','light_status'},
   {'Appearance','light_intensity','light_color','light_range','light_cone'},
-  {'Placement','light_aim','light_place','light_follow','light_right','light_forward','light_up','light_drag_hint'},
+  {'Placement','light_aim','light_place','light_follow','light_follow_player','light_right','light_forward','light_up','light_drag_hint'},
   {'Subject presets','light_preset','light_apply_preset','light_preset_hint'},
   {'Saved setups','light_setup_slot','light_setup_recall','light_setup_save','light_setup_clear','light_setup_status'},
   {'Remove lights','light_remove','light_clear'}},

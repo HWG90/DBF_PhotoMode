@@ -47,3 +47,10 @@ local repo=rawget(_G,'DBF_PHOTO_REPO_ROOT')or'./';local path=repo..'dist/validat
 local disk=M.storage(path);assert(disk.save(rows));assert(disk.save({}));assert(next(assert(disk.load()))==nil)
 assert(os.remove(path));os.remove(path..'.tmp')
 print('Photo light presets: five persistent slots, subject-relative position/orientation, complete values, bounded strict codec, immutable readback and atomic save/replacement failure preservation passed')
+
+-- Old slots remain readable; new slots roundtrip player-follow mode.
+do
+ local old=bytes:gsub('1%.1%.follow_player=0\n','');assert(M.decode(old),'Older lighting slot rejected')
+ local following=assert(M.decode(bytes));following[1].definitions[1].values.follow_player=true
+ local encoded=M.encode(following);assert(M.decode(encoded)[1].definitions[1].values.follow_player,'Saved slot lost Follow Player')
+end

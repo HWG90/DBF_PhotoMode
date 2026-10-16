@@ -278,4 +278,27 @@ assert(real_handle.set('light_cone',75));assert(manager.flush(a,real_photo.light
 assert(manager.selected().cone==75 and manager.selected().kind=='spot')
 assert(real_controller.stop());assert(manager.flush(nil,nil));assert(real_controller.close());assert(manager.count()==0 and not owned)
 DBFMCM=previous_api
+-- Follow Player retains the authored placement and orientation; only the
+-- player's translation is applied, independently of free-camera movement.
+do
+ main=a;worlds={a,b};local follower=M.new(sr);local player={1,2,3}
+ follower.scene_context=function()return main,1 end
+ follower.player_context=function()return{world=main,position=player}end
+ assert(follower.tick(a,camera)and follower.create({right=2,forward=3,up=4}))
+ local lamp=units[next_id];local x,y,z=lamp.pos[1],lamp.pos[2],lamp.pos[3]
+ assert(follower.update({follow_player=true})and not follower.selected().follow_camera)
+ assert(lamp.pos[1]==x and lamp.pos[2]==y,'Enabling player follow snapped placement')
+ local unchanged=#writes;assert(follower.tick(a,moved));assert(#writes==unchanged,'Stationary player caused redundant native light writes')
+ player={11,22,33};assert(follower.tick(a,moved))
+ assert(lamp.pos[1]==x+10 and lamp.pos[2]==y+20 and lamp.pos[3]==z+30,'Player translation did not move the light rig')
+ local export=follower.export_setup();assert(export.definitions[1].anchor.forward[2]==1,'Free camera changed player rig orientation')
+ follower.player_context=function()return nil end;assert(follower.tick(a,camera));assert(lamp.pos[1]==x+10,'Missing player jumped light')
+ follower.player_context=function()return{world=main,position=player}end
+ assert(follower.release('photo mode exited'));player={21,32,43}
+ assert(follower.flush(a,camera));assert(follower.tick(a,camera));lamp=units[next_id]
+ assert(lamp.pos[1]==x+20 and lamp.pos[2]==y+30,'Reopening lost the player-relative rig')
+ assert(follower.update({follow_player=false}));player={31,42,53};assert(follower.tick(a,moved));assert(lamp.pos[1]==x+20,'Disabled player follow kept moving')
+ assert(follower.update({follow_player=true}));assert(follower.update({follow_camera=true})and not follower.selected().follow_player,'Follow modes conflict')
+ assert(follower.release('shutdown'))
+end
 print('Photo lights: owned point/spot units, linear color, placement, limits, selection, visibility, follow camera, exact cleanup/retry/retirement and capability gates passed')

@@ -515,7 +515,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
             if target~=nil and target~=false and math.abs((roll_value or handle.get('roll'))-target)>.01 then handle.set('roll_preset',1)end
         end
     end
-    local light_fields={light_enabled='enabled',light_intensity='intensity',light_color='color',light_range='range',light_cone='cone',light_right='right',light_forward='forward',light_up='up',light_follow='follow_camera'}
+    local light_fields={light_enabled='enabled',light_intensity='intensity',light_color='color',light_range='range',light_cone='cone',light_right='right',light_forward='forward',light_up='up',light_follow='follow_camera',light_follow_player='follow_player'}
     local function light_request(action,value)
         if not lights or not photo.active then return false end
         local ok,why=lights.queue(action,value)
