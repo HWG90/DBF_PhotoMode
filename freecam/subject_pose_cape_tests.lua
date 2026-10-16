@@ -131,7 +131,9 @@ local function fixture(options)
  local E={Unit=U,Mesh=Mesh,Matrix4x4=X,Vector3=V,
   Quaternion={axis_angle=function(axis,angle)return{axis=axis,angle=angle}end},
   Matrix4x4Box=function(v)local saved=copy(v);return{unbox=function()return copy(saved)end}end,
-  World={update_unit=function(w,u)assert(t.phase=='update'and w==world);t.updates=t.updates+1 end}}
+  World={update_unit=function(w,u)assert(t.phase=='update'and w==world);t.updates=t.updates+1
+   if u==cape then t.rendered_cape_anchor=world_pose(cape,cape_names.cape1)end
+  end}}
  local api=M.new(E,B,function()return t.paused end,nil,data)
  t.api=api;t.body=body;t.cape=cape;t.values=cape_values;t.original=original_cape;t.original_body=original_body
  t.mesh_nodes=mesh_nodes;t.placements=placements;t.meshes=meshes;t.anchor=anchor;t.body_values=body_values;t.world_pose=world_pose;t.part=part;t.frame=frame
@@ -192,6 +194,11 @@ do
  assert(t.select('wave'));attached(t,reference)
  t.values[49]=identity();t.phase='update';assert(t.api.after_update());attached(t,reference)
  assert(t.reset()and not t.api.active and not t.api.pending);restored(t)
+end
+do
+ local t=fixture();local original_anchor=t.world_pose(t.cape,35)
+ assert(t.select(full_body)and t.reset())
+ close(t.rendered_cape_anchor,original_anchor,'Frozen Reset evaluated cape before restoring its shoulder')
 end
 for _,options in ipairs({{node_count=64},{node_count=96,high_bones=true},{node_count=128,variant=true},{node_count=50,short_rig=true}})do
  local t=fixture(options);local reference=relative_points(t)

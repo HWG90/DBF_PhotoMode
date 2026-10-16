@@ -224,13 +224,16 @@ function M.native(sr,subject,data)
   apply_capes(lease)
  end
  function adapter.restore(lease)
-  local capes,why=pcall(restore_capes,lease)
+  -- Cloth externally references the body shoulder. Restore/evaluate that
+  -- owner first, then refresh cape placement and its cached render pose.
+  -- With frozen time there may be no subsequent physics step to repair it.
   local body,reason=pcall(function()
    checked(lease.frame,false)
    for i=8,92 do U.set_local_pose(lease.frame.root_handle,i,lease.original[i]:unbox())end
    U.set_animation_bone_mode(lease.frame.root_handle,lease.mode)
    sr.World.update_unit(lease.frame.world,lease.frame.root_handle)
   end)
+  local capes,why=pcall(restore_capes,lease)
   assert(capes,why);assert(body,reason)
  end
  function adapter.restore_retired(lease)restore_capes(lease)end
