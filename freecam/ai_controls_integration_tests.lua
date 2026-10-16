@@ -35,18 +35,18 @@ assert(photo.active and not controls.ai_behavior.disabled)
 assert(handle.set('ai_behavior',3)and ai.pending and writes==0,'Menu callback wrote enemy state')
 assert(flush()and ai.mode=='dummy'and ai.affected==1 and enemy.fields.detector.value==0 and enemy.fields.still.value==0x280,ai.status..' mode='..ai.mode..' affected='..ai.affected..' detector='..enemy.fields.detector.value..' movement='..enemy.fields.still.value)
 controller.tick(.1);assert(controls.ai_status.label:find('1 affected',1,true),'Affected count missing')
-authority=false;for i=1,4 do controller.tick(.1)end
+authority=false;for i=1,6 do controller.tick(.1)end
 assert(controls.ai_behavior.disabled and not controls.ai_reset.disabled,'Authority loss must disable behavior choices but retain cleanup Reset')
 local before=writes;assert(handle.activate('ai_reset')and handle.get('ai_behavior')==1 and writes==before)
 assert(not flush()and ai.count()>0 and writes==before,'Lost authority abandoned restoration')
 controller.tick(.1);assert(controls.ai_status.label:find('cleanup waiting',1,true),'Pending cleanup status hidden')
 authority=true;assert(flush()and ai.count()==0 and enemy.fields.detector.value==1 and enemy.fields.still.value==0x200)
-for i=1,4 do controller.tick(.1)end
+for i=1,6 do controller.tick(.1)end
 assert(handle.set('ai_behavior',3));assert(flush());before=writes
 assert(controller.stop()and handle.get('ai_behavior')==3 and writes==before,'Photo exit changed selected behavior or wrote from render')
 assert(flush()and ai.mode=='dummy'and enemy.fields.detector.value==0,'Photo exit stopped selected behavior')
 local next_enemy=clone(enemy);next_enemy.entity=2;next_enemy.identity='scene:enemy:2';next_enemy.fields.detector.value=1;next_enemy.fields.still.value=0x200;enemies[2]=next_enemy
-assert(flush()and ai.affected==2 and next_enemy.fields.detector.value==0 and next_enemy.fields.still.value==0x280,'New enemy escaped persistent behavior')
+assert(flush()and flush()and ai.affected==2 and next_enemy.fields.detector.value==0 and next_enemy.fields.still.value==0x280,'New enemy escaped persistent behavior')
 -- An MCM/private provider replacement is not a new game session.
 local previous_api=api;before=writes
 api=Core.new(nil,function()end);api.camera_input=previous_api.camera_input;api.is_open=function()return false end;api.close=function()return true end;DBFMCM=api
@@ -56,10 +56,10 @@ keys[80]=true;controller.tick(.016);keys[80]=false;controller.tick(.016);assert(
 assert(handle.set('ai_behavior',2));assert(flush()and ai.mode=='passive'and enemy.fields.detector.value==0 and enemy.fields.still.value==0x200,'Passive did not restore movement')
 before=writes;assert(handle.activate('ai_reset')and handle.get('ai_behavior')==1 and writes==before,'Reset must only queue restoration')
 assert(flush()and ai.mode=='normal'and ai.count()==0 and enemy.fields.detector.value==1 and next_enemy.fields.detector.value==1,'Reset did not restore normal detection')
-assert(handle.set('ai_behavior',3));assert(flush());solo=false;assert(flush()and ai.mode=='normal');for i=1,4 do controller.tick(.1)end
+assert(handle.set('ai_behavior',3));assert(flush());solo=false;assert(flush()and ai.mode=='normal');for i=1,6 do controller.tick(.1)end
 assert(mod.controls.ai_behavior.disabled and mod.controls.ai_reset.disabled and handle.get('ai_behavior')==1,'Multiplayer did not gray choices/reset UI to Normal after cleanup')
 assert(not pcall(handle.set,'ai_behavior',3),'Disabled multiplayer behavior remained writable through the handle')
-solo=true;for i=1,4 do controller.tick(.1)end;assert(not mod.controls.ai_behavior.disabled and handle.get('ai_behavior')==1,'Verified solo return silently restored the old choice')
+solo=true;for i=1,6 do controller.tick(.1)end;assert(not mod.controls.ai_behavior.disabled and handle.get('ai_behavior')==1,'Verified solo return silently restored the old choice')
 assert(handle.set('ai_behavior',3));assert(flush());fail_restore=true;before=writes
 assert(controller.close()==false and api.mods.dbf_freecam and writes==before,'Shutdown wrote directly or discarded pending enemy ownership')
 assert(handle.get('ai_behavior')==1 and not flush()and ai.count()>0)

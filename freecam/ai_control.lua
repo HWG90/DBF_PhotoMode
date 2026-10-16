@@ -1,10 +1,10 @@
 -- Director behavior suppression. Enemy brains, physics and damage still run.
-local M={modes={'normal','passive','dummy'},maximum=1024,interval=.25,hold_interval=.25,batch=16}
+local M={modes={'normal','passive','dummy'},maximum=1024,interval=.5,hold_interval=.05,batch=16}
 local bit=require('bit')
 local APPLY_FIELDS={'still','target','alert','detector','hostiles'}
 function M.new(backend,log)
  local self={mode='normal',status='Enemy behavior: Normal',available=false,pending=false,affected=0,solo_reset=0};local requested;local context;local held={};local detectors={};local cursor=0;local next_refresh=0;local round=0;local detector_round=0
- local next_hold,last_hold=0,nil
+ local last_hold;local hold_credit=0
  local held_dirty,detector_dirty=true,true
  local tracked,affected,errors,detector_count=0,0,0,0
  local function tally(h,sign)
@@ -17,7 +17,7 @@ function M.new(backend,log)
   ids={};for id in pairs(records)do ids[#ids+1]=id end;table.sort(ids);return ids
  end
  local function reset_records()
-  tracked,affected,errors,detector_count=0,0,0,0;held={};detectors={};held_ids={};detector_ids={};held_dirty=false;detector_dirty=false;round=0;detector_round=0
+  hold_credit=0;tracked,affected,errors,detector_count=0,0,0,0;held={};detectors={};held_ids={};detector_ids={};held_dirty=false;detector_dirty=false;round=0;detector_round=0
  end
  local function fail(why)self.status=tostring(why);return false,self.status end
  local function get_context(cleanup)
@@ -172,8 +172,15 @@ function M.new(backend,log)
   local now=backend.now();local urgent=self.pending
   if requested then self.mode=requested;requested=nil;self.pending=false end
   if self.mode=='normal'then return release_all()end
-  if not urgent and last_hold and now>=last_hold and now<next_hold then return true end
-  last_hold=now;next_hold=now+M.hold_interval
+  -- Accumulate one sweep per 50 ms, apportioned to the current population.
+  -- Never replay missed sweeps after a stall; at most one visit per live ID
+  -- is due in this callback. A fractional credit avoids small-population bias.
+  local elapsed=last_hold and math.max(0,now-last_hold)or 0
+  local backwards=last_hold and now<last_hold;last_hold=now
+  if M.hold_interval>0 then
+   hold_credit=math.min(tracked+.999999999,hold_credit+math.min(elapsed,M.hold_interval)*tracked/M.hold_interval)
+   if not urgent and not backwards and hold_credit<1 and now<next_refresh then return true end
+  end
   local current,why,policy=get_context()
   if not current then
    self.available=false
@@ -203,8 +210,10 @@ function M.new(backend,log)
    -- revalidates its scene, authority and component identity before a write.
   end
   held_ids=ordered(held,held_ids,held_dirty);held_dirty=false;local ids=held_ids
-  if#ids>0 then
-   for i=1,math.min(M.batch,#ids)do
+  local budget=math.min(#ids,(M.hold_interval<=0 or urgent or backwards)and M.batch or math.floor(hold_credit+1e-9))
+  hold_credit=math.max(0,hold_credit-budget)
+  if budget>0 then
+   for i=1,budget do
     local index=((round+i-1)%#ids)+1;local e=ids[index];local h=held[e];tally(h,-1);local r,err=observe(e)
     if not r then
      -- Unusable, untouched records must not crowd out new live enemies. The
@@ -216,7 +225,7 @@ function M.new(backend,log)
     end
     tally(held[e],1)
    end
-   round=(round+M.batch)%#ids
+   round=(round+budget)%#ids
   end
   -- Detector leases outlive borrowers, but not their actual owner's lifetime.
   -- Sweep a bounded slice so deaths/replacements cannot accumulate forever.
