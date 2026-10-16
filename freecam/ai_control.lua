@@ -1,10 +1,11 @@
 -- Director behavior suppression. Enemy brains, physics and damage still run.
-local M={modes={'normal','passive','dummy'},maximum=1024,interval=.05,batch=16}
+local M={modes={'normal','passive','dummy'},maximum=1024,interval=.05,hold_interval=.05,batch=16}
 local bit=require('bit')
 local APPLY_FIELDS={'still','target','alert','detector','hostiles'}
 local function count(t)local n=0;for _ in pairs(t)do n=n+1 end;return n end
 function M.new(backend,log)
  local self={mode='normal',status='Enemy behavior: Normal',available=false,pending=false,affected=0,solo_reset=0};local requested;local context;local held={};local detectors={};local cursor=0;local next_refresh=0;local round=0;local detector_round=0
+ local next_hold,last_hold=0,nil
  local held_dirty,detector_dirty=true,true
  local tracked,affected,errors=0,0,0
  local function tally(h,sign)
@@ -166,10 +167,9 @@ function M.new(backend,log)
  -- Keep discovery running while Photo Mode is closed; explicit Normal/release
  -- restores owned fields, and a retired scene never reuses old leases.
  function self.flush(active)
-  -- Discovery can be throttled; holding already discovered enemies cannot.
-  -- The game can share targets and clear movement flags between updates.
-  local now=backend.now();local discover=now>=next_refresh or self.pending
-  if discover then next_refresh=now+M.interval end
+  -- Use real time so a frozen world cannot stall suppression. Explicit mode
+  -- changes and scene transitions bypass the cadence; authority stays fresh.
+  local now=backend.now();local urgent=self.pending
   if requested then self.mode=requested;requested=nil;self.pending=false end
   if self.mode=='normal'then return release_all()end
   local current,why,policy=get_context()
@@ -182,8 +182,12 @@ function M.new(backend,log)
    return fail('Enemy behavior unavailable: '..tostring(why))
   end
   self.available=true
-  if context and current.identity~=context.identity then reset_records();cursor=0;discover=true;self.discovery_error=nil end
+  if not context or current.identity~=context.identity then reset_records();cursor=0;urgent=true;self.discovery_error=nil end
   context=current
+  if not urgent and last_hold and now>=last_hold and now<next_hold then return true end
+  last_hold=now;next_hold=now+M.hold_interval
+  local discover=urgent or now>=next_refresh
+  if discover then next_refresh=now+M.interval end
   local limited=false
   if discover then
    local ran,entities,new_cursor,scan_issue=pcall(backend.scan,context,cursor,256)

@@ -1,5 +1,7 @@
 local root=rawget(_G,'DBF_PHOTO_TEST_ROOT')or'freecam/'
 local C=dofile(root..'ai_control.lua');local B=dofile(root..'ai_backend.lua');local bit=require('bit')
+-- Ownership/cleanup fixtures below exercise every batch without a timer.
+C.hold_interval=0
 local function clone(t)local out={};for k,v in pairs(t)do out[k]=type(v)=='table'and clone(v)or v end;return out end
 local now=0;local authority=true;local solo=true;local unknown_session=false;local scene_read_error=false;local epoch='mission1';local writes={};local enemies={};local fail=false;local partial=false;local fail_entity;local fail_key
 local function enemy(e,detector,flags)
@@ -365,6 +367,24 @@ do
  assert(enumerations==0,'Stable AI update enumerated registries for status/capacity')
  assert(s.control.queue('passive'));for _=1,16 do assert(s.control.flush(false))end
  assert(s.control.affected==256 and s.control.release()and s.control.count()==0)
+
+ -- Production cadence uses wall time, never catches up in a burst, and
+ -- preserves immediate mode changes, authority loss and Reset.
+ C.hold_interval=.05
+ s=fixture(true);local paced=s.add(1);assert(s.control.queue('dummy')and s.control.flush(false))
+ local reads=s.observations;local scans=s.scans
+ paced.fields.target.value=77
+ for i=1,4 do s.time=i*.01;assert(s.control.flush(false))end
+ assert(s.observations==reads and paced.fields.target.value==77,'AI holding ignored its 50ms cadence')
+ s.time=.05;assert(s.control.flush(false)and paced.fields.target.value==4294967295)
+ assert(s.observations==reads+1,'Due AI holding did not run exactly once')
+ s.time=5;assert(s.control.flush(false)and s.observations==reads+2,'AI cadence caught up with a burst')
+ assert(s.control.queue('passive')and s.control.flush(false)and paced.fields.still.value==0x200,'Mode change waited for timer')
+ assert(s.control.queue('normal')and s.control.flush(false)and paced.fields.detector.value==1 and s.control.count()==0,'Reset waited for timer')
+ assert(s.control.queue('dummy')and s.control.flush(false))
+ s.context_error=true;assert(not s.control.flush(false),'Cadence bypassed fresh authority validation')
+ s.context_error=false;s.time=-1;assert(s.control.flush(false),'Backward wall clock blocked suppression')
+ assert(s.control.release());C.hold_interval=0
 
  -- Model the review helper's acknowledged-method migration. Authoritative
  -- maps/leases are shared; derived ID/status caches are rebuilt, never copied.
