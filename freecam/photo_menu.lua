@@ -3,7 +3,7 @@ local M={}
 local T={background={12,14,16},panel={19,21,23},header={25,27,29},border={62,66,69},border_hover={106,111,114},line={34,37,40},
  white={234,235,228},muted={154,159,159},gold={244,202,53},hover={29,31,33},selected={43,39,24},selected_hover={51,46,29},pressed={56,51,31},
  field={29,31,34},field_hover={39,42,45},enabled={176,205,176},disabled={105,111,113}}
-local function glyphs(value)local result={};for c in tostring(value):gmatch('[%z\1-\127\194-\244][\128-\191]*')do result[#result+1]=c end;return result end
+local function split_glyphs(value)local result={};for c in tostring(value):gmatch('[%z\1-\127\194-\244][\128-\191]*')do result[#result+1]=c end;return result end
 local function valid(v)return type(v)=='number'and v>0 and v<math.huge end
 local PANEL_WIDTH,PANEL_HEIGHT,HUD_MARGIN=760,440,180
 function M.new(view,actions,existing)
@@ -13,12 +13,41 @@ function M.new(view,actions,existing)
  local layout_initialized=existing~=nil;local layout_dirty=false;local opacity_dirty=false
  local opacity_control={id='menu_opacity',type='slider',min=10,max=100,step=1,fine_step=1,default=38}
  local slowmo_control={id='slowmo_speed',type='slider',label='Slow motion speed',min=.05,max=1,step=.05,fine_step=.01}
- local ai_control;local ai_status
+ local ai_control;local ai_status;local stored_layout
+ -- Cache pure text layout only. Dynamic control values, enabled states and hit
+ -- regions are still composed afresh. A hard entry/text bound also covers
+ -- continuously changing status labels without retaining their history.
+ local text_cache={};local text_cache_count=0;local text_cache_context
+ local function clear_text_cache()text_cache={};text_cache_count=0 end
+ local function cache_put(bucket,key,result,label)
+  if #label>1024 then return end
+  if text_cache_count>=1024 then clear_text_cache();return end
+  bucket[key]=result;text_cache_count=text_cache_count+1
+ end
+ local function cache_bucket(kind,size,width)
+  local cache=text_cache[kind];if not cache then cache={};text_cache[kind]=cache end
+  if size then local child=cache[size];if not child then child={};cache[size]=child end;cache=child end
+  if width then local child=cache[width];if not child then child={};cache[width]=child end;cache=child end
+  return cache
+ end
+ local function refresh_text_cache(w,h)
+  local changed=view.refresh_font and view.refresh_font()
+  local layout=stored_layout and stored_layout('tab_layout')
+  local old=text_cache_context
+  if changed==true or not old or old.measure~=view.measure or old.metrics~=view.text_metrics or old.refresh~=view.refresh_font or old.font~=view.font_key or old.metric~=view.metric_key or old.w~=w or old.h~=h or old.scale~=self.size_scale or old.layout~=layout then
+   clear_text_cache();text_cache_context={measure=view.measure,metrics=view.text_metrics,refresh=view.refresh_font,font=view.font_key,metric=view.metric_key,w=w,h=h,scale=self.size_scale,layout=layout}
+  end
+ end
+ local function glyphs(value)
+  local label=tostring(value);local cache=cache_bucket('glyphs');local result=cache[label]
+  if not result then result=split_glyphs(label);cache_put(cache,label,result,label)end
+  return result
+ end
  self.editing_value=nil;self.bound_key=nil;if legend and self.handle then legend.bind(self.handle)end
  local key_capture;local armed=false;local baseline={};local color_edit;local popup;local popup_close_on_release=false;local popup_scroll=0;local visible_count=1;local popup_count=1;local text_edit;local reset_regions={};local right_held
  local finish_number
  local function blur_number()if text_edit and text_edit.c.commit_on_blur==true then return finish_number()end;return true end
- local function stored_layout(key)
+ stored_layout=function(key)
   if not self.handle or type(self.handle.get)~='function'then return end
   local ok,value=pcall(self.handle.get,key);if ok and type(value)=='number'and value==value and math.abs(value)<math.huge then return value end
  end
@@ -109,14 +138,30 @@ function M.new(view,actions,existing)
   write_slider(c,drag.value,c.fine_step or c.step)
  end
  local function measure(label,size)
-  if view.measure then local ok,width=pcall(view.measure,label,size);if ok and type(width)=='number'and width>=0 and width<math.huge then return width end end
-  return #glyphs(label)*size*.62
+  local cache=cache_bucket('measure',size);local width=cache[label];if width~=nil then return width,true end
+  if view.measure then local ok,result=pcall(view.measure,label,size);if ok and type(result)=='number'and result>=0 and result<math.huge then cache_put(cache,label,result,label);return result,true end
+   return #glyphs(label)*size*.62,false
+  end
+  width=#glyphs(label)*size*.62;cache_put(cache,label,width,label);return width,true
  end
  local function fit(label,width,size)
-  label=tostring(label or ''):gsub('\n',' ');if measure(label,size)<=width then return label end
-  local visible='';if measure('...',size)>width then return visible end
-  for _,c in ipairs(glyphs(label))do if measure(visible..c..'...',size)>width then break end;visible=visible..c end
-  return visible..'...'
+  label=tostring(label or ''):gsub('\n',' ');local cache=cache_bucket('fit',size,width);local result=cache[label];if result~=nil then return result end
+  local measured,stable=measure(label,size)
+  if measured<=width then result=label else
+   local visible='';local dots,ready=measure('...',size);stable=stable and ready
+   if dots>width then result=visible else
+    for _,c in ipairs(glyphs(label))do local extent,ready=measure(visible..c..'...',size);stable=stable and ready;if extent>width then break end;visible=visible..c end
+    result=visible..'...'
+   end
+  end
+  if stable then cache_put(cache,label,result,label)end;return result
+ end
+ local function text_metrics(size,label)
+  local cache=cache_bucket('metrics',size);local result=cache[label];if result then return result[1],result[2],result[3]end
+  if view.text_metrics then local ok,m=pcall(view.text_metrics,size,label);if ok and type(m)=='table'and type(m.min_y)=='number'and type(m.max_y)=='number'and m.max_y>m.min_y and m.max_y-m.min_y<size*3 then
+   result={m.min_y,m.max_y,m.optical_y or 0};cache_put(cache,label,result,label);return result[1],result[2],result[3]
+  end end
+  return 0,size,0
  end
  local function selectable(c)return c and c.type~='text'and not c.disabled end
  local function reveal(index)
@@ -164,7 +209,7 @@ function M.new(view,actions,existing)
   local age=type(elapsed)=='number'and elapsed==elapsed and elapsed>=0 and elapsed or 3
   local alpha=math.max(0,math.min(1,3-age))
   if hidden or alpha==0 or not valid(w)or not valid(h)then view.draw({});return end
-  if view.refresh_font then view.refresh_font()end
+  refresh_text_cache(w,h)
   local scale=math.max(.75,math.min(w/1920,h/1080));local x,y=20*scale,h-48*scale
   view.draw({
    {type='rect',x=x-8*scale,y=y-10*scale,w=340*scale,h=38*scale,c=T.background,a=.68*alpha,layer=300,ui_role='cinema_indicator'},
@@ -178,7 +223,7 @@ function M.new(view,actions,existing)
   if focused~=last_focus then suspend_input();last_focus=focused end
   if self.prepare_light_gizmos then self.prepare_light_gizmos(w,h,focused,hidden)end
   if hidden or not valid(w)or not valid(h)or not self.pages or #self.pages==0 then finish_layout();if self.light_gizmos then self.light_gizmos.cancel()end;if legend then legend.clear()end;view.draw({});panel_bounds=nil;hits={};resize=nil;scroll_drag=nil;move_panel=nil;return end
-  if view.refresh_font then view.refresh_font()end
+  refresh_text_cache(w,h)
   local has_ai=type(actions.ai)=='function'and ai_control~=nil
   local footer_extra=(actions.slowmo or has_ai)and 36 or 0
   local commands={};hits={};reset_regions={};local base=math.max(.75,math.min(w/1920,h/1080));local maximum=math.min(w/(PANEL_WIDTH+48),h/(PANEL_HEIGHT+102+HUD_MARGIN+footer_extra));local minimum=math.min(maximum,math.max(.35,base*.65))
@@ -207,7 +252,7 @@ function M.new(view,actions,existing)
   end
   local function text(label,rx,ry,rw,rh,size,c,layer,modal,role)
    local font_size=size*s;local full=tostring(label or '');local shown=fit(full,rw-((role=='title'or role=='heading')and .65 or 0),font_size);local low,high,optical=0,font_size,0
-   if view.text_metrics then local ok,m=pcall(view.text_metrics,font_size,shown);if ok and type(m)=='table'and type(m.min_y)=='number'and type(m.max_y)=='number'and m.max_y>m.min_y and m.max_y-m.min_y<font_size*3 then low,high=m.min_y,m.max_y;optical=m.optical_y or 0 end end
+   low,high,optical=text_metrics(font_size,shown)
    local baseline_y=ry+(rh-(high-low))/2-low+optical;if rh>=high-low+2 then baseline_y=math.max(ry-low+1,math.min(ry+rh-high-1,baseline_y))end
    local command={type='text',text=shown,full_text=full,x=rx,y=baseline_y,size=font_size,c=c or T.white,a=1,layer=layer or 310,popup=modal or nil,
     text_bold=role=='title'or role=='heading',text_role=role or 'body',text_width=rw,text_bounds={x=rx,y=ry,w=rw,h=rh}}

@@ -1,5 +1,10 @@
 local root=DBF_PHOTO_TEST_ROOT or'freecam/'
-local Scene=dofile(root..'camera_scene.lua')
+local counted_lists=setmetatable({}, {__mode='k'})
+local scene_env=setmetatable({pairs=function(list)
+ local state=counted_lists[list];if state then state.unit_walks=(state.unit_walks or 0)+1 end
+ return pairs(list)
+end}, {__index=_G})
+local Scene=setfenv(assert(loadfile(root..'camera_scene.lua')),scene_env)()
 local function point(x,y,z)return{x or 0,y or 0,z or 0}end
 local function pose(p,f,r,u)return{p=p,f=f or{1,0,0},r=r or{0,-1,0},u=u or{0,0,1}}end
 local function fixture()
@@ -9,6 +14,7 @@ local function fixture()
   wp={0,0,1},lp={0,0,1},rendered=pose({0,0,1}),camera_pose=pose({0,0,1}),live={},calls=0,time=0,camera_data={}}
  S.live[player]=true;S.live[unit]=true
  local function genuine(u)
+  if S.poison_native then S.poison_touches=(S.poison_touches or 0)+1;error('Retired post-reader Unit access')end
   for _,entry in ipairs(S.units)do if entry==u then return true end end
   error('Native Unit call on a stale or invented handle')
  end
@@ -17,9 +23,9 @@ local function fixture()
   {__call=function(_,...)return{...}end})
  function sr.Application.main_world()if S.main_error then error('main unavailable')end;return S.world end
  function sr.Application.worlds()return S.worlds or{S.world}end
- function sr.World.units(w)assert(w==S.world);if S.units_error then error('units unavailable')end;return S.units end
+ function sr.World.units(w)assert(w==S.world);S.unit_reads=(S.unit_reads or 0)+1;if S.units_error then error('units unavailable')end;counted_lists[S.units]=S;return S.units end
  function sr.World.debug_camera_pose(w)assert(w==S.world);return S.rendered end
- function sr.Unit.alive(u)genuine(u);S.calls=S.calls+1;return S.live[u]end
+ function sr.Unit.alive(u)genuine(u);S.calls=S.calls+1;if S.alive_error then return nil end;return S.live[u]end
  function sr.Unit.num_cameras(u)genuine(u);S.counts=(S.counts or 0)+1;if S.count_error then return nil end;return u==S.unit and 1 or u==S.second and 1 or 0 end
  function sr.Unit.camera(u,i)genuine(u);assert(i==1);if S.camera_error then error('camera temporarily unreadable')end;return u==S.second and S.second_cam or S.cam end
  function sr.Camera.world_position(c)assert(c==S.cam or c==S.second_cam);return S.camera_data[c]and S.camera_data[c].wp or S.wp end
@@ -27,7 +33,9 @@ local function fixture()
  function sr.Camera.world_pose(c)return S.camera_data[c]and S.camera_data[c].pose or S.camera_pose end
  for name,key in pairs({translation='p',forward='f',right='r',up='u'})do sr.Matrix4x4[name]=function(m)return m[key]end end
  local function read()
+  if S.on_player_read then S.on_player_read()end
   if S.player_error then error('player temporarily unavailable')end
+  if S.player_nil then return nil end
   return{local_owner=S.local_owner~=false,identity=S.identity,root_handle=S.player,position=S.p,world=S.player_world or S.world}
  end
  S.scene=Scene.new(sr,read,function()end,function()if S.clock_error then error('clock unavailable')end;return S.time end);return S
@@ -194,8 +202,77 @@ do
  end
  assert(s.counts-initial_counts==60*5,
   'one unique camera must use narrow camera validation, never a full Unit camera scan during phase skew')
- assert(s.calls-initial_alive==60*5*4,
-  'phase proof must retain fresh player/camera lifetime checks without touching unrelated Units')
+ assert(s.calls-initial_alive==60*5*2,
+  'each validation must check its fresh player/camera once without touching unrelated Units')
  assert(s.scene.epoch==1,'phase-only movement must not retire or replace the current scene')
+end
+do
+ local s=fixture();local original=assert(s.scene.refresh())
+ local reads,walks,alive=s.unit_reads,s.unit_walks,s.calls
+ assert(s.scene.valid(original)==true)
+ assert(s.unit_reads-reads==1 and s.unit_walks-walks==1 and s.calls-alive==2,
+  'retained validation must obtain one fresh Unit list and find both genuine handles in one traversal')
+ local fresh=s.scene.current();assert(fresh~=original and fresh.position~=original.position)
+ s.wp={4,5,6};s.lp={4,5,6};s.camera_pose=pose(s.wp);s.rendered=s.camera_pose
+ assert(s.scene.valid(fresh)==true and s.unit_reads-reads==2)
+ assert(original.position[1]==0 and fresh.position[1]==0 and s.scene.current().position[1]==4,
+  'new numeric observations must never mutate externally retained snapshots')
+ local frame=s.scene.current();local p,f,r,u={8,9,10},{1,0,0},{0,-1,0},{0,0,1}
+ assert(s.scene.mark_written(frame,p,f,r,u));p[1]=999;f[1]=0;r[2]=0;u[3]=0
+ assert(s.scene.written.position[1]==8 and s.scene.written.forward[1]==1 and s.scene.written.right[2]==-1 and s.scene.written.up[3]==1,
+  'owned-write numeric state must remain isolated from caller mutations')
+ s.alive_error=true;reads=s.unit_reads
+ assert(s.scene.valid(frame)==nil and not s.scene.retired and s.unit_reads==reads+1,
+  'a new unreadable lifetime result cannot reuse a previous successful validation')
+ s.alive_error=false;s.units={s.player}
+ assert(s.scene.valid(frame)==false and s.scene.retired,
+  'removal between validations must be detected before any Unit call on the removed camera')
+end
+do
+ local s=fixture();s.player=s.unit;s.units={s.unit};local frame=assert(s.scene.refresh())
+ local reads,alive=s.unit_reads,s.calls
+ assert(s.scene.valid(frame)==true and s.unit_reads==reads+1 and s.calls==alive+1,
+  'a player-owned camera Unit needs only one alive read per invocation')
+ s.alive_error=true;alive=s.calls
+ assert(s.scene.valid(frame)==nil and s.calls==alive+1,'unreadable shared-handle life must not be sampled twice')
+end
+do
+ local s=fixture();local frame=assert(s.scene.refresh());local counts=s.counts
+ s.on_player_read=function()s.live[s.unit]=false end
+ assert(s.scene.valid(frame)==false and s.scene.retired and s.counts==counts,
+  'death during the player reader must be checked before any camera inventory API')
+ s=fixture();frame=assert(s.scene.refresh());counts=s.counts
+ s.on_player_read=function()s.live[s.player]=false end;s.player_error=true
+ assert(s.scene.valid(frame)==false and s.scene.retired and s.counts==counts,
+  'a failed player reader must not hide a present avatar that has died')
+end
+-- A reader may report the next avatar/world before the old Unit can safely be queried.
+do
+ for _,change in ipairs({'avatar','player_world','main_world','failed_reader_world'})do
+  local s=fixture();local frame=assert(s.scene.refresh())
+  s.on_player_read=function()
+   s.poison_native=true
+   if change=='avatar'then s.identity='local:replacement';s.player={}
+   elseif change=='player_world'then s.player_world={}
+   else s.world={};if change=='failed_reader_world'then s.player_error=true end end
+  end
+  assert(s.scene.valid(frame)~=true and not s.poison_touches,
+   'returned/replaced player or world must reject old post-reader Unit APIs: '..change)
+ end
+end
+do
+ for _,failure in ipairs({'throw_removed_camera','nil_removed_player','nil_unknown_inventory'})do
+  local s=fixture();local frame=assert(s.scene.refresh())
+  s.on_player_read=function()
+   s.poison_native=true
+   if failure=='throw_removed_camera'then s.player_error=true;s.units={s.player}
+   elseif failure=='nil_removed_player'then s.player_nil=true;s.units={s.unit}
+   else s.player_nil=true;s.units_error=true end
+  end
+  local valid=s.scene.valid(frame)
+  assert(not s.poison_touches,'failed reader must not query an absent/unproven post-reader Unit: '..failure)
+  if failure=='nil_unknown_inventory'then assert(valid==nil and not s.scene.retired)
+  else assert(valid==false and s.scene.retired)end
+ end
 end
 print('camera_scene_tests: rendered-camera identity, ambiguity, finite pose and retirement passed')

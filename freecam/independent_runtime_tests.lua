@@ -6,8 +6,14 @@ local root=rawget(_G,'DBF_PHOTO_TEST_ROOT')or'freecam/'
 local file=assert(io.open(root..'independent_runtime.lua','rb'));local template=file:read('*a');file:close()
 local features=[=[
 local state=G.TEST
-local DBF_FREECAM_LOOK={}
-local DBF_PHOTO_RUNTIME={}
+local DBF_FREECAM_LOOK={basis=function(photo,forward)
+ photo.view=photo.view or{yaw=0,pitch=0}
+ return{forward[1],forward[2],forward[3]},{0,-1,0}
+end}
+local DBF_PHOTO_RUNTIME={apply=function(cam,unit)
+ assert(cam==state.camera_handle and unit==state.camera_unit,'Retired camera reached lens output')
+ state.lens_writes=(state.lens_writes or 0)+1
+end}
 local DBF_PLAYER_FREEZE={}
 H.dbf_camera_ownership=state.ownership
 H.dbf_subject_backend={frame=function()return state.player end}
@@ -93,19 +99,22 @@ local animation_source='return{new=function()return function()end end}'
 local function replace(source,key,value)
  local count;source,count=source:gsub(key,function()return value end);assert(count==1,key);return source
 end
-local function assemble(scene_code)
+local function assemble(scene_code,motion_code)
  local value=replace(template,'__STUDIO_FEATURES__',features)
  value=replace(value,'__CAMERA_SCENE__',scene_code)
- value=replace(value,'__CAMERA_MOTION__',motion_source)
+ value=replace(value,'__CAMERA_MOTION__',motion_code or motion_source)
  return replace(value,'__ANIMATION_STATE__',animation_source)
 end
 local source=assemble(scene_source)
 local scene_file=assert(io.open(root..'camera_scene.lua','rb'));local actual_scene_source=scene_file:read('*a');scene_file:close()
 local actual_scene_runtime=assemble(actual_scene_source)
-local function fixture(late_render,actual_scene)
+local motion_file=assert(io.open(root..'camera_motion.lua','rb'));local actual_motion_source=motion_file:read('*a');motion_file:close()
+local actual_motion_runtime=assemble(actual_scene_source,actual_motion_source)
+local function fixture(late_render,actual_scene,actual_motion)
  local state={updates=0,renders=0,inputs=0,writes=0,refreshes=0,stops=0,flushes=0,cached=0,before=0,after=0,ragdolls=0,events={}}
  local world,unit,cam,player={},{},{},{}
  state.frame={world=world,unit=unit,cam=cam,player=player,player_identity='avatar-one',epoch=1}
+ state.camera_unit=unit;state.camera_handle=cam;state.camera_alive=true;state.retired_units={}
  state.player={world=world,root_handle=player,local_owner=true,identity='avatar-one',position={0,0,0}}
  local env=setmetatable({TEST=state},{__index=_G});env._G=env
  env.stingray={Vector3={},Matrix4x4={},Application={worlds=function()return{world}end}}
@@ -115,14 +124,24 @@ local function fixture(late_render,actual_scene)
   sr.Vector3=setmetatable({x=function(v)return v[1]end,y=function(v)return v[2]end,z=function(v)return v[3]end},{__call=function(_,...)return{...}end})
   local function pose(p)return{position=p,forward={1,0,0},right={0,-1,0},up={0,0,1}}end
   sr.Application.main_world=function()return world end
-  sr.World={units=function(w)assert(w==world);state.unit_scans=(state.unit_scans or 0)+1;return{unit,player}end,
-   debug_camera_pose=function(w)assert(w==world);return pose(state.rendered_position)end}
-  sr.Unit={alive=function(u)assert(u==unit or u==player);return true end,
-   num_cameras=function(u)return u==unit and 1 or 0 end,
-   camera=function(u,index)assert(u==unit and index==1);return cam end}
-  sr.Camera={world_position=function(c)assert(c==cam);return state.camera_position end,
-   local_position=function(c,u)assert(c==cam and u==unit);return state.camera_position end,
-   world_pose=function(c)assert(c==cam);return pose(state.camera_position)end}
+  sr.World={units=function(w)assert(w==world);state.unit_scans=(state.unit_scans or 0)+1;return{state.camera_unit,player}end,
+   debug_camera_pose=function(w)assert(w==world);return pose(state.rendered_position)end,
+   update_unit=function(w,u)assert(w==world and u==state.camera_unit and state.camera_alive,'Retired camera reached world update');state.world_updates=(state.world_updates or 0)+1 end}
+  sr.Unit={alive=function(u)
+    if u==player then return true end
+    if state.retired_units[u]then return false end
+    assert(u==state.camera_unit);return state.camera_alive
+   end,
+   num_cameras=function(u)return u==state.camera_unit and 1 or 0 end,
+   camera=function(u,index)assert(u==state.camera_unit and index==1);return state.camera_handle end}
+  sr.Camera={world_position=function(c)assert(c==state.camera_handle);return state.camera_position end,
+   local_position=function(c,u)assert(c==state.camera_handle and u==state.camera_unit);return state.camera_position end,
+   world_pose=function(c)assert(c==state.camera_handle);return pose(state.camera_position)end,
+   set_local_position=function(c,u,p)
+    assert(c==state.camera_handle and u==state.camera_unit and state.camera_alive,'Retired camera reached native position setter')
+    state.writes=state.writes+1;state.camera_position={unpack(p)}
+    state.events[#state.events+1]='camera write'
+   end}
   for _,name in ipairs({'translation','forward','right','up'})do
    local field=name=='translation'and'position'or name
    sr.Matrix4x4[name]=function(p)return p[field]end
@@ -134,6 +153,7 @@ local function fixture(late_render,actual_scene)
    state.camera_position={state.camera_position[1]+.25,0,1}
    state.player.position={state.camera_position[1],0,0}
   end
+  if state.on_game_update then local callback=state.on_game_update;state.on_game_update=nil;callback()end
   if state.game_error then error(state.game_error,0)end
   return'game-update',nil,...
  end
@@ -149,7 +169,8 @@ local function fixture(late_render,actual_scene)
   acquire=function()state.events[#state.events+1]='camera acquired';state.ownership.held=true;return true end,
   release=function()state.events[#state.events+1]='ownership released';state.ownership.held=false;return true end}
  env.shutdown=function(...)state.shutdowns=(state.shutdowns or 0)+1;return'shutdown',nil,... end
- local chunk=assert(loadstring(actual_scene and actual_scene_runtime or source,'owned-runtime-template'));setfenv(chunk,env);chunk()
+ local code=actual_motion and actual_motion_runtime or actual_scene and actual_scene_runtime or source
+ local chunk=assert(loadstring(code,'owned-runtime-template'));setfenv(chunk,env);chunk()
  return env,state,env.DBF_PHOTO_CAMERA_RUNTIME,game_render
 end
 local function packed(...)return{n=select('#',...),...}end
@@ -239,4 +260,50 @@ is.bookmark=true;idle.update(.016);assert((is.unit_scans or 0)>after_exit,'A ret
 local retiring,rs,ro=fixture();rs.warming=true;rs.stop_on_render=true
 retiring.render()
 assert(rs.refreshes==rs.refreshes_at_game_render and rs.ragdolls==0,'An owner stopped inside game render must not trigger post-render entry discovery or ragdoll work')
-print('Independent runtime: full-source compilation, transparent callbacks, idle no-writes, acquire/restore order, bounded transient gaps, moving first-press entry/reopen, camera replacement, retirement, late render, conflict/error cleanup, asynchronous MDL teardown and inert shutdown passed')
+-- Exercise the actual Scene AND Motion modules: the game's update can retire a
+-- camera after our pre-update proof. No output may use that snapshot before the
+-- next render revalidates it; retirement must discard, never restore, old data.
+local counted,cs,co=fixture(false,true,true)
+counted.update(.016);counted.render();cs.intent='enter';counted.render()
+assert(co.photo.active and cs.writes==1 and cs.lens_writes==1)
+local scans,positions,lenses,after=cs.unit_scans,cs.writes,cs.lens_writes,cs.after
+counted.update(.016)
+assert(cs.unit_scans==scans+1 and cs.after==after+1,'Active update keeps pre-update proof and input acknowledgement but skips duplicate post-update discovery')
+assert(cs.writes==positions and cs.lens_writes==lenses,'No position/lens output belongs between gameplay update and render')
+counted.render()
+assert(cs.unit_scans==scans+4 and cs.writes==positions+1 and cs.lens_writes==lenses+1,'Active frame retains four fresh inventories: pre-update, render, and both Motion lifetime checks')
+positions,lenses=cs.writes,cs.lens_writes
+local retired_unit=cs.camera_unit
+cs.on_game_update=function()
+ cs.retired_units[retired_unit]=true
+ cs.camera_unit={};cs.camera_handle={}
+ cs.frame={world=cs.frame.world,unit=cs.camera_unit,cam=cs.camera_handle,player=cs.frame.player,player_identity='avatar-one',epoch=2}
+end
+scans=cs.unit_scans
+counted.update(.016)
+assert(co.photo.active and cs.unit_scans==scans+1 and cs.writes==positions and cs.lens_writes==lenses,'Replacement during gameplay cannot trigger output from the now stale pre-update snapshot')
+counted.render()
+assert(not co.photo.active and not cs.ownership.held and cs.writes==positions and cs.lens_writes==lenses,'Render replacement must complete cleanup before any camera/lens output')
+assert(co.ready and co.epoch==2 and cs.cleared=='scene changed')
+cs.intent='enter';counted.render()
+assert(co.photo.active and cs.writes==positions+1 and cs.lens_writes==lenses+1,'A replacement may receive output only after a fresh explicit opening')
+positions,lenses=cs.writes,cs.lens_writes
+cs.on_game_update=function()cs.camera_alive=false end
+counted.update(.016)
+assert(co.photo.active and cs.writes==positions and cs.lens_writes==lenses)
+counted.render()
+assert(not co.photo.active and not cs.ownership.held and not co.ready and cs.writes==positions and cs.lens_writes==lenses,'Render retirement must discard old position/lens ownership without touching the retired camera')
+-- Closed persistent leases and pending entry still require post-update proof.
+local persistent,ps,po=fixture()
+ps.bookmark=true;local refreshes=ps.refreshes;persistent.update(.016)
+assert(ps.refreshes==refreshes+2,'Closed bookmark lifetime checks retain both update refreshes')
+ps.bookmark=false;ps.slowmo=true;refreshes=ps.refreshes;persistent.update(.016)
+assert(ps.refreshes==refreshes+2,'Closed slow-motion lifetime checks retain both update refreshes')
+ps.slowmo=false;ps.intent='enter';persistent.render();ps.warming=true
+refreshes=ps.refreshes;persistent.update(.016)
+assert(ps.refreshes==refreshes+2 and po.photo.active,'Pending entry keeps its post-update proof even if Photo is active')
+ps.warming=false;ps.cleanup_pending=true
+ps.frame={world=ps.frame.world,unit={},cam={},player=ps.frame.player,player_identity='avatar-one',epoch=2}
+refreshes=ps.refreshes;local pending_writes=ps.writes;persistent.update(.016)
+assert(ps.refreshes==refreshes+2 and po.photo.active and ps.ownership.held and ps.writes==pending_writes,'A pending effects/position cleanup retains post-update retries and forbids output')
+print('Independent runtime: full-source compilation, transparent callbacks, idle no-writes, acquire/restore order, bounded transient gaps, moving first-press entry/reopen, actual Scene/Motion four-proof active frames, update-time replacement/retirement, closed/pending proof retention, late render, conflict/error cleanup, asynchronous MDL teardown and inert shutdown passed')

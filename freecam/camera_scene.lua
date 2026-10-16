@@ -8,6 +8,7 @@ local function near(a,b,t)
  local x,y,z=a[1]-b[1],a[2]-b[2],a[3]-b[3];return x*x+y*y+z*z<=(t or .01)^2
 end
 local function same(a,b)return a~=nil and b~=nil and a==b end
+local function dot(a,b)return a[1]*b[1]+a[2]*b[2]+a[3]*b[3]end
 local function pose_near(a,b)
  return a and b and near(a.position,b.position,.025)and near(a.forward,b.forward,.01)
   and near(a.right,b.right,.01)and near(a.up,b.up,.01)
@@ -46,24 +47,26 @@ function M.new(sr,player_reader,log,clock)
   local time,source=now();entry.current.serial=serial;entry.current.time=time;entry.current.clock=source
   return entry
  end
+ local function recent_pose(pose,rendered,time,source)
+  if not pose then return false end
+  local recent=serial-pose.serial<=16
+  if pose.time~=nil then recent=source==pose.clock and time~=nil and time>=pose.time and time-pose.time<=.25 end
+  return recent and pose_near(pose,rendered)or false
+ end
  local function phase_match(entry,rendered)
   -- Two distinct observed transforms, never an accumulating trail. Repeated
   -- update/render probes of the same transform refresh it without evicting the
   -- preceding engine update. Stored values are numbers, not engine poses.
   local time,source=now()
-  for _,pose in pairs({entry.current,entry.previous})do
-   local recent=serial-pose.serial<=16
-   if pose.time~=nil then recent=source==pose.clock and time~=nil and time>=pose.time and time-pose.time<=.25 end
-   if recent and pose_near(pose,rendered)then return true end
-  end
-  return false
+  return recent_pose(entry.current,rendered,time,source)or recent_pose(entry.previous,rendered,time,source)
+ end
+ local function components(v)
+  if type(v)=='table'and finite(v[1])and finite(v[2])and finite(v[3])then return v[1],v[2],v[3]end
+  return V.x(v),V.y(v),V.z(v)
  end
  local function vector(v)
   if v==nil then return nil end
-  local ok,x,y,z=pcall(function()
-   if type(v)=='table'and finite(v[1])and finite(v[2])and finite(v[3])then return v[1],v[2],v[3]end
-   return V.x(v),V.y(v),V.z(v)
-  end)
+  local ok,x,y,z=pcall(components,v)
   if ok and finite(x)and finite(y)and finite(z)then return{x,y,z}end
  end
  local function read(fn,...)
@@ -75,11 +78,10 @@ function M.new(sr,player_reader,log,clock)
   local p=vector(read(B.translation,pose));local f=vector(read(B.forward,pose))
   local r=vector(read(B.right,pose));local u=vector(read(B.up,pose))
   if not(p and f and r and u)then return nil end
-  local function dot(a,b)return a[1]*b[1]+a[2]*b[2]+a[3]*b[3]end
-  for _,axis in ipairs({f,r,u})do if math.abs(dot(axis,axis)-1)>.02 then return nil end end
+  if math.abs(dot(f,f)-1)>.02 or math.abs(dot(r,r)-1)>.02 or math.abs(dot(u,u)-1)>.02 then return nil end
   if math.abs(dot(f,r))>.01 or math.abs(dot(f,u))>.01 or math.abs(dot(r,u))>.01 then return nil end
-  local cross={r[2]*f[3]-r[3]*f[2],r[3]*f[1]-r[1]*f[3],r[1]*f[2]-r[2]*f[1]}
-  if dot(cross,u)<.98 then return nil end
+  local handedness=(r[2]*f[3]-r[3]*f[2])*u[1]+(r[3]*f[1]-r[1]*f[3])*u[2]+(r[1]*f[2]-r[2]*f[1])*u[3]
+  if handedness<.98 then return nil end
   return{position=p,forward=f,right=r,up=u}
  end
  local function refused(why,retired)
@@ -97,14 +99,25 @@ function M.new(sr,player_reader,log,clock)
  local function contains(list,value)
   for _,item in pairs(list)do if same(item,value)then return item end end
  end
+ local function find_pair(list,a,b)
+  local first,second
+  for _,item in pairs(list)do
+   if same(item,a)then first=item end
+   if same(item,b)then second=item end
+   if first and second then break end
+  end
+  return first,second
+ end
  local function prior_retired(world,units)
   if not accepted or accepted.retired or not same(world,accepted.world)then return false end
   -- The verified player reader can itself disappear during death/respawn.
   -- Prove absence first; never ask Unit.alive about a cached, absent handle.
-  local player,unit=contains(units,accepted.player),contains(units,accepted.unit)
+  local player,unit=find_pair(units,accepted.player,accepted.unit)
   if not player or not unit then refused(not player and'Local player retired from the main world'or'Camera unit left the main world',true);return true end
-  if read(U.alive,player)==false or read(U.alive,unit)==false then refused('Player or camera unit retired',true);return true end
-  return false
+  local player_alive=read(U.alive,player)
+  local unit_alive=player_alive;if player~=unit then unit_alive=read(U.alive,unit)end
+  if player_alive==false or unit_alive==false then refused('Player or camera unit retired',true);return true end
+  return false,player,unit,player_alive,unit_alive
  end
  function self.refresh(force)
   serial=serial+1
@@ -220,22 +233,40 @@ function M.new(sr,player_reader,log,clock)
   end
   local units=read(W.units,world)
   if type(units)~='table'then clear_history();return unavailable('Main-world unit inventory unavailable')end
-  if prior_retired(world,units)then return false,self.reason end
-  local reader=type(player_reader)=='function'and player_reader or type(player_reader)=='table'and player_reader.frame
-  local player=read(reader)
-  if type(player)~='table'or player.local_owner~=true or player.identity==nil or player.root_handle==nil then
-   clear_history();return unavailable('Verified local player unavailable')
-  end
-  if not same(player.world,world)then return unavailable('Local player is not in the main world')end
-  if player.identity~=snapshot.player_identity or not same(player.root_handle,snapshot.player)then
-   return unavailable('Local player replaced',true)
-  end
-  local point=vector(player.position);if not point then return unavailable('Local player position unavailable')end
-  local player_unit,unit=contains(units,player.root_handle),contains(units,snapshot.unit)
+  local player_unit,unit=find_pair(units,snapshot.player,snapshot.unit)
   if not player_unit then return unavailable('Local player retired from the main world',true)end
   if not unit then return unavailable('Camera unit left the main world',true)end
-  local player_alive,unit_alive=read(U.alive,player_unit),read(U.alive,unit)
+  local reader=type(player_reader)=='function'and player_reader or type(player_reader)=='table'and player_reader.frame
+  local player=read(reader)
+  local current_world=read(A.main_world)
+  if not current_world then return unavailable('Main world unavailable after player read')end
+  if not same(current_world,world)then return unavailable('Main world replaced',true)end
+  local player_ready=type(player)=='table'and player.local_owner==true and player.identity~=nil and player.root_handle~=nil
+  if player_ready then
+   if not same(player.world,world)then return unavailable('Local player is not in the main world')end
+   if player.identity~=snapshot.player_identity or not same(player.root_handle,snapshot.player)then
+    return unavailable('Local player replaced',true)
+   end
+  else
+   -- A failed reader might have outlived a scene transition. Re-establish
+   -- genuine handles on this exceptional path before asking about their life.
+   local fresh_units=read(W.units,world)
+   if type(fresh_units)~='table'then clear_history();return unavailable('Main-world unit inventory unavailable after player read')end
+   player_unit,unit=find_pair(fresh_units,snapshot.player,snapshot.unit)
+   if not player_unit then return unavailable('Local player retired from the main world',true)end
+   if not unit then return unavailable('Camera unit left the main world',true)end
+  end
+  -- Read life after the protected player reader, before any camera API. A
+  -- failed reader must not conceal death, nor may its callback retire a Unit
+  -- after an earlier alive result was accepted for this invocation.
+  local player_alive=read(U.alive,player_unit)
+  local unit_alive=player_alive;if player_unit~=unit then unit_alive=read(U.alive,unit)end
   if player_alive==false or unit_alive==false then return unavailable('Player or camera unit retired',true)end
+  if not player_ready then
+   clear_history();return unavailable('Verified local player unavailable')
+  end
+  local point=vector(player.position);if not point then return unavailable('Local player position unavailable')end
+  -- Reuse only this invocation's genuine handles and post-reader life results.
   if player_alive~=true or unit_alive~=true then return unavailable('Player or camera lifetime unavailable')end
   local count=read(U.num_cameras,unit)
   if not finite(count)or count<0 or count%1~=0 or count>32 then clear_history();return unavailable('Camera inventory unreadable')end
@@ -301,7 +332,8 @@ function M.new(sr,player_reader,log,clock)
   if not verified or frame.epoch~=self.epoch or not identity(frame,verified)then return false,'Camera snapshot is not verified'end
   local p,f,r,u=vector(position),vector(forward),vector(right),vector(up)
   if not(p and f and r and u)then return false,'Written camera pose is invalid'end
-  written={epoch=self.epoch,position=copy(p),forward=copy(f),right=copy(r),up=copy(u),uses=0,
+  -- vector() already copied caller-owned values; do not copy those four arrays twice.
+  written={epoch=self.epoch,position=p,forward=f,right=r,up=u,uses=0,
    before={position=copy(verified.position),forward=copy(verified.forward),right=copy(verified.right),up=copy(verified.up)},
    rendered=verified.rendered}
   self.written=written

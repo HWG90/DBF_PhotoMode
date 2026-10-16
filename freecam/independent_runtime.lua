@@ -233,18 +233,24 @@ local function step(dt)
  flush_owned()
 end
 local previous_update=assert(rawget(G,'update'),'Game update callback unavailable')
+local function after_update()
+ H.dbf_input_after_update()
+ local owner=rawget(G,'DBF_PHOTO_MODE_OWNER')
+ if runtime.stopping or owner and owner.stopped then runtime.stop()
+ elseif scene_needed()then
+  -- Active camera output always refreshes immediately before render, then
+  -- validates again around callbacks that can retire the scene. Nothing writes
+  -- that camera here; avoid a duplicate full discovery between those phases.
+  if not PHOTO.active or closing_reason or DBF_FREECAM.entry_pending()then refresh_camera()end
+ else idle_camera()end
+end
 local owned_update=function(dt,...)
  local ok,why=pcall(step,dt)
  if not ok then cleanup_error('update',why)end
  local result=pack(pcall(previous_update,dt,...))
  if not result[1]then cleanup_error('game update',result[2]);error(result[2],0)end
  if not stopped then
-  local done,problem=pcall(function()
-   H.dbf_input_after_update()
-   local owner=rawget(G,'DBF_PHOTO_MODE_OWNER')
-   if runtime.stopping or owner and owner.stopped then runtime.stop()
-   elseif scene_needed()then refresh_camera()else idle_camera()end
-  end)
+  local done,problem=pcall(after_update)
   if not done then cleanup_error('after update',problem)end
  end
  return unpack(result,2,result.n)
