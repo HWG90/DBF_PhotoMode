@@ -1,16 +1,23 @@
 -- Director behavior suppression. Enemy brains, physics and damage still run.
 local M={modes={'normal','passive','dummy'},maximum=1024,interval=.05,batch=16}
 local bit=require('bit')
+local APPLY_FIELDS={'still','target','alert','detector','hostiles'}
 local function count(t)local n=0;for _ in pairs(t)do n=n+1 end;return n end
 function M.new(backend,log)
  local self={mode='normal',status='Enemy behavior: Normal',available=false,pending=false,affected=0,solo_reset=0};local requested;local context;local held={};local detectors={};local cursor=0;local next_refresh=0;local round=0;local detector_round=0
- local held_ids,detector_ids={},{};local held_dirty,detector_dirty=true,true;local displayed={}
+ local held_dirty,detector_dirty=true,true
+ local tracked,affected,errors=0,0,0
+ local function tally(h,sign)
+  if h then tracked=tracked+sign;if h.applied then affected=affected+sign end;if h.error then errors=errors+sign end end
+ end
+ local function replace(e,h)tally(held[e],-1);held[e]=h;tally(h,1);held_dirty=true end
+ local held_ids,detector_ids={},{};local displayed={}
  local function ordered(records,ids,dirty)
   if not dirty then return ids end
   ids={};for id in pairs(records)do ids[#ids+1]=id end;table.sort(ids);return ids
  end
  local function reset_records()
-  held={};detectors={};held_ids={};detector_ids={};held_dirty=false;detector_dirty=false;round=0;detector_round=0
+  tracked,affected,errors=0,0,0;held={};detectors={};held_ids={};detector_ids={};held_dirty=false;detector_dirty=false;round=0;detector_round=0
  end
  local function fail(why)self.status=tostring(why);return false,self.status end
  local function get_context(cleanup)
@@ -100,7 +107,7 @@ function M.new(backend,log)
   if context and current.identity~=context.identity then reset_records();context=nil;self.affected=0;self.status='Enemy scene retired';return true end
   context=current
   local pending_error
-  for e,h in pairs(held)do local ok,err=restore(e,h);if ok then held[e]=nil;held_dirty=true else pending_error=err end end
+  for e,h in pairs(held)do local ok,err=restore(e,h);if ok then replace(e,nil) else pending_error=err end end
   for key,lease in pairs(detectors)do local ok,err=restore_detector(lease);if ok then detectors[key]=nil;detector_dirty=true else pending_error=err end end
   if next(held)or next(detectors)then return fail('Enemy cleanup pending: '..tostring(pending_error))end
   reset_records();context=nil;self.affected=0;self.status=reason or'Enemy behavior: Normal';return true
@@ -113,9 +120,7 @@ function M.new(backend,log)
   requested=mode;self.pending=true;return true
  end
  local function apply(e,h,r)
-  local errors={};local function problem(why)errors[#errors+1]=tostring(why)end
-  local wanted={detector=0,hostiles=0,target=r.invalid,alert=0}
-  if self.mode=='dummy'then wanted.still=0x80 end
+  local problems;local function problem(why)if not problems then problems={}end;problems[#problems+1]=tostring(why)end
   if self.mode=='passive'and h.leases.still then
    local old=h.leases.still;local field=r.fields.still;local restored=true
    if old.owned and not field then restored=false;problem('Movement restoration waiting for its component')end
@@ -132,7 +137,7 @@ function M.new(backend,log)
   end
   -- Apply independent local fields first. A detector fault must not leave a
   -- verified live enemy moving toward its old target.
-  for _,key in ipairs({'still','target','alert','detector','hostiles'})do local value=wanted[key];local field=value~=nil and r.fields[key]
+  for _,key in ipairs(APPLY_FIELDS)do local value=0;if key=='target'then value=r.invalid elseif key=='still'then value=self.mode=='dummy'and 0x80 or nil end;local field=value~=nil and r.fields[key]
    if field then
     local persistent=key=='still'
     local current=key=='still'and bit.band(field.value,0x80)or field.value
@@ -155,7 +160,7 @@ function M.new(backend,log)
    end
   end
   if r.partial_issue then problem(r.partial_issue)end
-  return #errors==0,#errors>0 and table.concat(errors,'; ')or nil
+  return problems==nil,problems and table.concat(problems,'; ')or nil
  end
  -- The Director selection belongs to the session, not the menu lifetime.
  -- Keep discovery running while Photo Mode is closed; explicit Normal/release
@@ -181,14 +186,13 @@ function M.new(backend,log)
   context=current
   local limited=false
   if discover then
-   local tracked=count(held)
    local ran,entities,new_cursor,scan_issue=pcall(backend.scan,context,cursor,256)
    if not ran or type(entities)~='table'or type(new_cursor)~='number'or scan_issue~=nil then
     self.discovery_error=tostring(scan_issue or entities)
    else
     self.discovery_error=nil;cursor=new_cursor
     for _,e in ipairs(entities)do if not held[e]then
-     if tracked<M.maximum then held[e]={leases={}};held_dirty=true;tracked=tracked+1 else limited=true end
+     if tracked<M.maximum then replace(e,{leases={}}) else limited=true end
     end end
    end
    -- Enumeration failure delays new arrivals only. Every known enemy still
@@ -197,7 +201,7 @@ function M.new(backend,log)
   held_ids=ordered(held,held_ids,held_dirty);held_dirty=false;local ids=held_ids
   if#ids>0 then
    for i=1,math.min(M.batch,#ids)do
-    local index=((round+i-1)%#ids)+1;local e=ids[index];local h=held[e];local r,err=observe(e)
+    local index=((round+i-1)%#ids)+1;local e=ids[index];local h=held[e];tally(h,-1);local r,err=observe(e)
     if not r then
      -- Unusable, untouched records must not crowd out new live enemies. The
      -- rolling discovery scan can retry them without retaining a cleanup lease.
@@ -206,6 +210,7 @@ function M.new(backend,log)
      if h.identity~=r.identity then h={identity=r.identity,leases={}};held[e]=h end
      local ok,why=apply(e,h,r);h.error=not ok and why or nil;h.applied=ok
     end
+    tally(held[e],1)
    end
    round=(round+M.batch)%#ids
   end
@@ -221,8 +226,7 @@ function M.new(backend,log)
     detector_round=(detector_round+M.batch)%#detector_ids
    end
   end
-  self.affected=0;local errors=0
-  for _,h in pairs(held)do if h.applied then self.affected=self.affected+1 end;if h.error then errors=errors+1 end end
+  self.affected=affected
   if displayed.mode~=self.mode or displayed.affected~=self.affected or displayed.errors~=errors or displayed.limited~=limited or displayed.discovery~=self.discovery_error or displayed.text~=self.status then
    self.status=string.format('Enemy behavior: %s (%d affected%s%s%s)',self.mode=='dummy'and'Dummy'or'Passive',self.affected,errors>0 and(', '..errors..' unavailable')or'',limited and', tracking capacity reached'or'',self.discovery_error and', discovery retry pending'or'')
    displayed.mode,displayed.affected,displayed.errors,displayed.limited,displayed.discovery,displayed.text=self.mode,self.affected,errors,limited,self.discovery_error,self.status

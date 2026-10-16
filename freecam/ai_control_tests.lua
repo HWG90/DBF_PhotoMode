@@ -351,6 +351,21 @@ do
  s.context_error=true;assert(not s.control.flush(false));s.context_error=false;assert(s.control.flush(false)and s.control.status:find('Enemy behavior: Dummy',1,true),'Cached status retained an authority error after recovery')
  assert(s.control.release())
 
+ -- Stable suppression must not enumerate the complete tracked registry just
+ -- to count status/capacity. Only the bounded batch needs work each update.
+ s=fixture(true);for i=1,256 do s.add(i)end
+ assert(s.control.queue('dummy'));for _=1,16 do assert(s.control.flush(false))end
+ assert(s.control.affected==256)
+ local original_pairs=pairs;local enumerations=0;local registry
+ for i=1,80 do local name,value=debug.getupvalue(s.control.flush,i);if name=='held'then registry=value;break end end
+ assert(registry)
+ _G.pairs=function(t)if t==registry then enumerations=enumerations+1 end;return original_pairs(t)end
+ local ok,why=pcall(function()for _=1,32 do assert(s.control.flush(false));assert(s.control.affected==256)end end)
+ _G.pairs=original_pairs;assert(ok,why)
+ assert(enumerations==0,'Stable AI update enumerated registries for status/capacity')
+ assert(s.control.queue('passive'));for _=1,16 do assert(s.control.flush(false))end
+ assert(s.control.affected==256 and s.control.release()and s.control.count()==0)
+
  -- Model the review helper's acknowledged-method migration. Authoritative
  -- maps/leases are shared; derived ID/status caches are rebuilt, never copied.
  local function cell(fn,name)for i=1,80 do local n,v=debug.getupvalue(fn,i);if not n then break end;if n==name then return i,v end end end
