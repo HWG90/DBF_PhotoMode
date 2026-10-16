@@ -1,0 +1,43 @@
+{
+  "version": "1.1.0",
+  "github": {
+    "url": "https://github.com/HWG90/DBF_PhotoMode/releases/tag/v1.1.0",
+    "all_four_uploaded_digests_match": true
+  },
+  "nexus": {
+    "url": "https://www.nexusmods.com/helldivers2/mods/17248?tab=files",
+    "BSL": "published, safe to use, Manual download visible",
+    "MDL": "published, safe to use, Manual download visible",
+    "LLL": "not uploaded as requested",
+    "description_updated": true,
+    "existing_description_images_preserved": 7
+  },
+  "ayaka": {
+    "url": "https://ayakamods.com/mods/war-journalist-helldivers-2-photo-mode.4948/",
+    "update_url": "https://ayakamods.com/mods/war-journalist-helldivers-2-photo-mode.4948/update/7471/",
+    "version": "1.1.0",
+    "description_updated": true,
+    "existing_inline_images_preserved": 5,
+    "BSL_MDL_download_links_updated": true,
+    "distribution": "Retained external GitHub BSL download; MDL direct link and all-loader GitHub release link"
+  },
+  "discord": {
+    "url": "https://discord.com/channels/1260111500522295377/1559027203315073094",
+    "thread_title_updated": true,
+    "opening_post_updated": true,
+    "new_announcement_posted": true
+  },
+  "local_LLL": {
+    "installed_version": "1.1.0",
+    "module_audit": "12/12 pass",
+    "restart_required": true
+  },
+  "tests": {
+    "fixtures_passed": true,
+    "BSL_MDL_LLL_standalone_passed": true
+  },
+  "live_integrated_passive": "Not yet tested after restart; flag experiment only live confirmed",
+  "skills": [
+    "write-like-me (no search tool available; user-provided wording used)"
+  ]
+}
