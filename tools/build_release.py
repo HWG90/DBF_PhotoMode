@@ -131,6 +131,7 @@ def checksums(files):return ''.join(sha(body)+'  '+name+'\n'for name,body in sor
 
 def build_assets_only(output):
     """Build Arsenal assets without packaging unrelated runtime development."""
+    public_release=VERSION=='1.1.0' and not input_recovery_candidate
     output=output.resolve();output.mkdir(parents=True,exist_ok=True)
     core,shared,audit=resources()
     files=asset_files(core,shared,audit,'Assets/')
@@ -201,6 +202,7 @@ def build(output,camera_engine='independent',input_recovery_candidate=False):
         review_roots.extend(parent for parent in ROOT.resolve().parents if parent.name=='review'and parent.parent.name=='dist')
         if not any(output.resolve().is_relative_to(folder)for folder in review_roots):
             raise ValueError('Input recovery candidates must stay inside dist/review')
+    public_release=VERSION=='1.1.0' and not input_recovery_candidate
     output=output.resolve();output.mkdir(parents=True,exist_ok=True)
     photo=load('release_photo_build',ROOT/'freecam/build.py')
     independent=load('release_independent_camera',ROOT/'freecam/independent_build.py')
@@ -221,7 +223,7 @@ def build(output,camera_engine='independent',input_recovery_candidate=False):
     core,shared,audit=resources(output)
     provenance={'version':VERSION,'runtime_sha256':sha(generated),'source_modules_sha256':{name:sha((ROOT/'freecam'/name).read_bytes())for name in ACTIVE_MODULES},
                 'asset_audit':audit,'native_capture_library':photo.capture_library_name(),'hoverpack_native_hook_withdrawn':True,'deployment':'not installed','publication_performed':False}
-    provenance.update(camera_engine='independent',candidate_only=True,
+    provenance.update(camera_engine='independent',candidate_only=not public_release,
         independent_builder_sha256=sha((ROOT/'freecam/independent_build.py').read_bytes()))
     provenance['source_modules_sha256'].update({name:sha((ROOT/'freecam'/name).read_bytes())for name in independent.MODULES})
     if input_recovery_candidate:
@@ -255,6 +257,7 @@ def build(output,camera_engine='independent',input_recovery_candidate=False):
             'The 1.0.1 filenames identify the retained package schema, not a new stable release.\n'
             'Provenance: candidate_profile=input-recovery; candidate_only=true.\n'
         ).encode()
+    if public_release:candidate_readme=None
     candidate_docs=(ROOT/'docs/INDEPENDENT-CAMERA.md').read_bytes()
     recovery_docs=(ROOT/'docs/INPUT-RECOVERY.md').read_bytes()if input_recovery_candidate else None
     def payload(folder):
@@ -317,7 +320,7 @@ def build(output,camera_engine='independent',input_recovery_candidate=False):
              'artifacts':{p.name:{'sha256':sha(p.read_bytes()),'bytes':p.stat().st_size}for p in paths},
              'nested_assets':{'name':asset_name,'sha256':sha(asset_body),'bytes':len(asset_body),'distribution':'Embedded inside LLL only; standalone file is local helper only'},'mdl_assets':'GameData directly included by outer Arsenal manifest; no nested archives','all_assets_bundled_per_loader':True,
              'source_snapshots_only':True,'game_process_accessed':False,'deployment':'not installed','publication_performed':False}
-    receipt.update(camera_engine='independent',candidate_only=True)
+    receipt.update(camera_engine='independent',candidate_only=not public_release)
     if input_recovery_candidate:receipt.update(camera_engine=camera_engine,candidate_only=True,candidate_profile='input-recovery')
     (output/'RELEASE-BUILD-RECEIPT.json').write_bytes(json_bytes(receipt));(output/'SHA256SUMS.txt').write_text(''.join(sha(p.read_bytes())+'  '+p.name+'\n'for p in paths))
     print(json.dumps({'output':str(output),**receipt},indent=2));return paths
