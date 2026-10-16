@@ -2,12 +2,11 @@
 local M={modes={'normal','passive','dummy'},maximum=1024,interval=.05,hold_interval=.05,batch=16}
 local bit=require('bit')
 local APPLY_FIELDS={'still','target','alert','detector','hostiles'}
-local function count(t)local n=0;for _ in pairs(t)do n=n+1 end;return n end
 function M.new(backend,log)
  local self={mode='normal',status='Enemy behavior: Normal',available=false,pending=false,affected=0,solo_reset=0};local requested;local context;local held={};local detectors={};local cursor=0;local next_refresh=0;local round=0;local detector_round=0
  local next_hold,last_hold=0,nil
  local held_dirty,detector_dirty=true,true
- local tracked,affected,errors=0,0,0
+ local tracked,affected,errors,detector_count=0,0,0,0
  local function tally(h,sign)
   if h then tracked=tracked+sign;if h.applied then affected=affected+sign end;if h.error then errors=errors+sign end end
  end
@@ -18,7 +17,7 @@ function M.new(backend,log)
   ids={};for id in pairs(records)do ids[#ids+1]=id end;table.sort(ids);return ids
  end
  local function reset_records()
-  tracked,affected,errors=0,0,0;held={};detectors={};held_ids={};detector_ids={};held_dirty=false;detector_dirty=false;round=0;detector_round=0
+  tracked,affected,errors,detector_count=0,0,0,0;held={};detectors={};held_ids={};detector_ids={};held_dirty=false;detector_dirty=false;round=0;detector_round=0
  end
  local function fail(why)self.status=tostring(why);return false,self.status end
  local function get_context(cleanup)
@@ -109,7 +108,7 @@ function M.new(backend,log)
   context=current
   local pending_error
   for e,h in pairs(held)do local ok,err=restore(e,h);if ok then replace(e,nil) else pending_error=err end end
-  for key,lease in pairs(detectors)do local ok,err=restore_detector(lease);if ok then detectors[key]=nil;detector_dirty=true else pending_error=err end end
+  for key,lease in pairs(detectors)do local ok,err=restore_detector(lease);if ok then detectors[key]=nil;detector_count=detector_count-1;detector_dirty=true else pending_error=err end end
   if next(held)or next(detectors)then return fail('Enemy cleanup pending: '..tostring(pending_error))end
   reset_records();context=nil;self.affected=0;self.status=reason or'Enemy behavior: Normal';return true
  end
@@ -147,7 +146,7 @@ function M.new(backend,log)
      local owner,identity=field.owner or e,field.owner_identity or r.identity
      local token=identity..':'..tostring(field.token)
      lease=detectors[token]
-     if not lease then lease={entity=owner,identity=identity,token=field.token,baseline=current,applied=value,owned=false};detectors[token]=lease;detector_dirty=true end
+     if not lease then lease={entity=owner,identity=identity,token=field.token,baseline=current,applied=value,owned=false};detectors[token]=lease;detector_count=detector_count+1;detector_dirty=true end
     end
     if persistent and(not lease or lease.token~=field.token)then lease={token=field.token,baseline=current,applied=value,owned=false};h.leases[key]=lease end
     local full=key=='still'and bit.bor(field.value,0x80)%4294967296 or value
@@ -168,10 +167,13 @@ function M.new(backend,log)
  -- restores owned fields, and a retired scene never reuses old leases.
  function self.flush(active)
   -- Use real time so a frozen world cannot stall suppression. Explicit mode
-  -- changes and scene transitions bypass the cadence; authority stays fresh.
+  -- changes bypass the cadence. Skipped ticks do no native reads or writes;
+  -- each due batch and every native write still revalidate scene/authority.
   local now=backend.now();local urgent=self.pending
   if requested then self.mode=requested;requested=nil;self.pending=false end
   if self.mode=='normal'then return release_all()end
+  if not urgent and last_hold and now>=last_hold and now<next_hold then return true end
+  last_hold=now;next_hold=now+M.hold_interval
   local current,why,policy=get_context()
   if not current then
    self.available=false
@@ -184,8 +186,6 @@ function M.new(backend,log)
   self.available=true
   if not context or current.identity~=context.identity then reset_records();cursor=0;urgent=true;self.discovery_error=nil end
   context=current
-  if not urgent and last_hold and now>=last_hold and now<next_hold then return true end
-  last_hold=now;next_hold=now+M.hold_interval
   local discover=urgent or now>=next_refresh
   if discover then next_refresh=now+M.interval end
   local limited=false
@@ -225,7 +225,7 @@ function M.new(backend,log)
    if#detector_ids>0 then
     for i=1,math.min(M.batch,#detector_ids)do
      local key=detector_ids[((detector_round+i-1)%#detector_ids)+1]
-     local r,why=detector_record(detectors[key]);if not r and why=='retired'then detectors[key]=nil;detector_dirty=true end
+     local r,why=detector_record(detectors[key]);if not r and why=='retired'then detectors[key]=nil;detector_count=detector_count-1;detector_dirty=true end
     end
     detector_round=(detector_round+M.batch)%#detector_ids
    end
@@ -237,7 +237,7 @@ function M.new(backend,log)
   end
   return true
  end
- function self.count()return count(held)+count(detectors)end
+ function self.count()return tracked+detector_count end
  self.close=self.release;self.clear=self.release
  return self
 end

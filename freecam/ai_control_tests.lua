@@ -361,8 +361,11 @@ do
  local original_pairs=pairs;local enumerations=0;local registry
  for i=1,80 do local name,value=debug.getupvalue(s.control.flush,i);if name=='held'then registry=value;break end end
  assert(registry)
- _G.pairs=function(t)if t==registry then enumerations=enumerations+1 end;return original_pairs(t)end
- local ok,why=pcall(function()for _=1,32 do assert(s.control.flush(false));assert(s.control.affected==256)end end)
+ local detector_registry
+ for i=1,80 do local name,value=debug.getupvalue(s.control.flush,i);if name=='detectors'then detector_registry=value;break end end
+ assert(detector_registry and s.control.count()==512)
+ _G.pairs=function(t)if t==registry or t==detector_registry then enumerations=enumerations+1 end;return original_pairs(t)end
+ local ok,why=pcall(function()for _=1,32 do assert(s.control.flush(false));assert(s.control.affected==256);for _=1,8 do assert(s.control.count()==512)end end end)
  _G.pairs=original_pairs;assert(ok,why)
  assert(enumerations==0,'Stable AI update enumerated registries for status/capacity')
  assert(s.control.queue('passive'));for _=1,16 do assert(s.control.flush(false))end
@@ -372,17 +375,18 @@ do
  -- preserves immediate mode changes, authority loss and Reset.
  C.hold_interval=.05
  s=fixture(true);local paced=s.add(1);assert(s.control.queue('dummy')and s.control.flush(false))
- local reads=s.observations;local scans=s.scans
+ local reads=s.observations;local base_context=s.backend.context;local contexts=0
+ s.backend.context=function(...)contexts=contexts+1;return base_context(...)end
  paced.fields.target.value=77
  for i=1,4 do s.time=i*.01;assert(s.control.flush(false))end
- assert(s.observations==reads and paced.fields.target.value==77,'AI holding ignored its 50ms cadence')
+ assert(s.observations==reads and contexts==0 and paced.fields.target.value==77,'Skipped AI ticks performed native work')
  s.time=.05;assert(s.control.flush(false)and paced.fields.target.value==4294967295)
  assert(s.observations==reads+1,'Due AI holding did not run exactly once')
  s.time=5;assert(s.control.flush(false)and s.observations==reads+2,'AI cadence caught up with a burst')
  assert(s.control.queue('passive')and s.control.flush(false)and paced.fields.still.value==0x200,'Mode change waited for timer')
  assert(s.control.queue('normal')and s.control.flush(false)and paced.fields.detector.value==1 and s.control.count()==0,'Reset waited for timer')
  assert(s.control.queue('dummy')and s.control.flush(false))
- s.context_error=true;assert(not s.control.flush(false),'Cadence bypassed fresh authority validation')
+ s.context_error=true;s.time=5.1;assert(not s.control.flush(false),'Due AI batch bypassed fresh authority validation')
  s.context_error=false;s.time=-1;assert(s.control.flush(false),'Backward wall clock blocked suppression')
  assert(s.control.release());C.hold_interval=0
 
@@ -394,6 +398,9 @@ do
    local ti=assert(cell(target,name));local si,value=cell(source,name);assert(si);debug.setupvalue(target,ti,value)
   end
   for _,name in ipairs({'held_dirty','detector_dirty'})do local index=cell(target,name);if index then debug.setupvalue(target,index,true)end end
+  local _,records=cell(target,'held');local _,leases=cell(target,'detectors')
+  local n,a,e,d=0,0,0,0;for _,h in pairs(records)do n=n+1;if h.applied then a=a+1 end;if h.error then e=e+1 end end;for _ in pairs(leases)do d=d+1 end
+  for name,value in pairs({tracked=n,affected=a,errors=e,detector_count=d})do local index=cell(target,name);if index then debug.setupvalue(target,index,value)end end
  end
  local function migrate(ai,b)
   local old={};for k,v in pairs(ai)do if type(v)=='function'then old[k]=v end end
