@@ -1,5 +1,5 @@
 -- Director behavior suppression. Enemy brains, physics and damage still run.
-local M={modes={'normal','passive','dummy'},maximum=1024,interval=2,hold_interval=2,batch=16}
+local M={modes={'normal','passive','dummy'},maximum=1024,interval=.25,hold_interval=.25,batch=16}
 local bit=require('bit')
 local APPLY_FIELDS={'still','target','alert','detector','hostiles'}
 function M.new(backend,log)
