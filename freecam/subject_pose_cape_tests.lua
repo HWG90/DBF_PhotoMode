@@ -150,7 +150,7 @@ local full_body
 for _,entry in ipairs(data.catalog)do if data.poses[entry.id].full_body then full_body=entry.id;break end end
 assert(full_body,'Actual catalog contains no full-body pose for the cape trial')
 local function restored(t)
- for i=1,50 do close(t.values[i],t.original[i],'Original cape placement was not restored')end
+ for i,original in pairs(t.original)do close(t.values[i],original,'Original cape placement was not restored')end
  if t.root_live then for i=1,107 do close(t.body_values[i],t.original_body[i],'Original body pose was not restored')end end
 end
 local function relative_points(t)
