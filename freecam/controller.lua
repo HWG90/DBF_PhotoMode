@@ -390,7 +390,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         elseif ready and not caps[selected]then status='Selected pose is unavailable for this subject'end
         controls.subject_pose_status.label=status or'Subject poses unavailable'
     end
-    local ai_requested=1;local ai_sync=false;local ai_elapsed=1;local ai_available=false;local ai_reason='Enemy behavior backend unavailable'
+    local ai_requested=1;local ai_sync=false;local ai_elapsed=2;local ai_available=false;local ai_reason='Enemy behavior backend unavailable'
     function self._set_ai_value(value)
         if not(handle and controls.ai_behavior)then return end
         local control=controls.ai_behavior;local disabled=control.disabled
@@ -425,7 +425,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
             if self._ai_solo_reset>0 and ai.mode=='normal'then ai_requested=1;self._set_ai_value(1)end
         end
         ai_elapsed=ai_elapsed+math.max(.001,math.min(.1,tonumber(dt)or 0))
-        if ai and ai_elapsed>=1 then
+        if ai and ai_elapsed>=2 then
             ai_elapsed=0;local called,ready,why=pcall(ai.ready)
             ai_available=called and ready==true;ai_reason=called and why or tostring(ready)
         end
@@ -843,7 +843,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         end
         photo.active,photo.pos=true,nil;controls_hidden=false
         if self._cinema then self._cinema.place()end
-        if subject then subject_change()end;director_elapsed=.5;ai_elapsed=1
+        if subject then subject_change()end;director_elapsed=.5;ai_elapsed=2
         if saved_camera then saved_camera.restore(handle.get('saved_camera_radius'),handle)end
         focus_edge=input.down(handle.get('focus_key'));hide_edge=input.down(handle.get('hide_controls_key'));lock_edge=input.down(handle.get('lock_camera_key'));screenshot_edge=input.down(handle.get('screenshot_key'))
         if freeze and handle.get('freeze_player') and (not input.pause_allowed or input.pause_allowed()) then local ok,why=self._request_time_change(0);if why then log(why)end;if ok==false then self.stop();return false,why end end
