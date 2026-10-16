@@ -23,7 +23,7 @@ and MCM Lua fixes accompany the local development installation. The Photo fix
 also recognizes older Epic frontends, while the updated Epic frontend handles
 release failures and replaced providers explicitly.
 
-Both legacy and independent-camera packages are review candidates based on
+Owned-camera packages are review candidates based on
 1.0.1. They are not public releases. Offline tests reproduce the invalid restore
 state and exercise both editor opening orders, pending cleanup and the recovery
 shortcut. Actual gameplay confirmation with Epic LUT and Photo Mode together is

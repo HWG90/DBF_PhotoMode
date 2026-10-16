@@ -32,7 +32,7 @@ local effects={fov=.9,parameters={},release=function()effect_releases=effect_rel
 local camera_compat={held=false};camera_compat.acquire=function()camera_acquires=camera_acquires+1;camera_lease=true;camera_compat.held=true;return true end
 camera_compat.release=function()
   if not camera_lease then return true end
-  assert(not captured and not poses.active and not poses.pending and rate>0 and effect_ok,'ActionCam resumed before Photo cleanup')
+  assert(not captured and not poses.active and not poses.pending and rate>0 and effect_ok,'Camera ownership released before Photo cleanup')
   camera_releases=camera_releases+1;camera_lease=false;camera_compat.held=false;return true
  end
 DBFMCM=api;DBF_PHOTO_STANDALONE_API=nil
@@ -54,7 +54,7 @@ hover_pending=false;fail_release=true;tick();assert(captured and cinema.state=='
 fail_release=false;tick()
 assert(cinema.state=='perform'and photo.active and not captured and ctrl.camera_owned()and rate==1 and owned_bone=='original')
 assert(h.get('freeze_player')==false,'Pause checkbox must reflect resumed Cinema gameplay')
-assert(camera_lease and camera_releases==0,'Releasing gameplay input returned camera ownership to ActionCam')
+assert(camera_lease and camera_releases==0,'Releasing gameplay input released the Photo camera lease')
 assert(effect_releases==effect_baseline,'Beginning gameplay must retain render effects and lens ownership')
 assert(order[#order]=='input'and order[#order-1]=='resume')
 local acquisition=acquire_count;local position={photo.pos[1],photo.pos[2],photo.pos[3]}
@@ -74,7 +74,7 @@ keys[87]=false;assert(h.set('hide_hud',false));assert(h.set('grid',2))
 keys[19]=true;tick();assert(#commands==0 and photo.options.hide_hud and photo.options.grid==1,'Cinema indicator, HUD and guides leaked into capture')
 keys[19]=false;tick();assert(snapshot_requests==1 and not captured and camera_lease,'Screenshot shortcut must work without an input lease')
 assert(photo.options.hide_hud==false and photo.options.grid==2,'Screenshot policy did not restore the saved scene options')
--- Native menu readers retain the shot and ActionCam camera lease without taking gameplay input.
+-- Native menu readers retain the shot and Photo camera lease without taking gameplay input.
 native_open=true;local input_before,lease_before=acquire_count,camera_acquires;tick();press(19);press(80)
 assert(cinema.state=='perform'and photo.active and not captured and acquire_count==input_before and camera_acquires==lease_before and camera_lease and snapshot_requests==1,'Native-menu input ownership must not recapture Photo or release the static camera lease')
 assert(not ctrl.reposition_camera(),'Direct reposition must refuse while the native menu owns input')
@@ -90,8 +90,8 @@ tick();assert(h.activate('cinema_begin'));tick();assert(cinema.state=='perform'a
 badge=false;for _,command in ipairs(commands)do if command.text=='CINEMA CAMERA'then badge=true end end
 assert(badge,'A new action shot must reset its own Cinema hint after the previous shot expired')
 effect_ok=false;context.player='respawned';tick()
-assert(not photo.active and cinema.state=='off'and camera_lease and ctrl.camera_owned()and camera_releases==0,'Failed Cinema render cleanup returned camera to ActionCam')
-effect_ok=true;tick();assert(not camera_lease and camera_releases==1,'ActionCam ownership did not restore after successful Cinema cleanup retry')
+assert(not photo.active and cinema.state=='off'and camera_lease and ctrl.camera_owned()and camera_releases==0,'Failed Cinema render cleanup released the Photo camera lease')
+effect_ok=true;tick();assert(not camera_lease and camera_releases==1,'Photo camera ownership did not release after successful Cinema cleanup retry')
 -- Exercise the registered Director controls through real Core callbacks. New
 -- point storage is runtime-only; editing one selected segment must not modify
 -- another segment when synchronizing the duration/transition fields.

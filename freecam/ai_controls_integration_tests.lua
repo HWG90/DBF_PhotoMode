@@ -75,6 +75,8 @@ assert(status:find('unavailable',1,true));assert(controller.close());DBFMCM=nil
 -- Generated wiring keeps writes on the update hook and records source provenance.
 local repo=rawget(_G,'DBF_PHOTO_REPO_ROOT')or''
 local file=assert(io.open(repo..'freecam/build.py','rb'));local source=file:read('*a');file:close()
-assert(source:find('pcall(H.dbf_ai.flush,PHOTO.active)',1,true)and source:find("('__AI_CONTROL__','ai_control.lua')",1,true))
-assert(source:find('if cleared==false then return false,why end',1,true),'Shutdown ignored pending restore')
+assert(source:find("('__AI_CONTROL__','ai_control.lua')",1,true),'AI source module was not embedded')
+file=assert(io.open(repo..'freecam/independent_runtime.lua','rb'));source=file:read('*a');file:close()
+assert(source:find('H.dbf_ai.flush(PHOTO.active)',1,true),'Owned update omitted AI work')
+assert(source:find('H.dbf_ai.flush(false)',1,true),'Shutdown updates omitted queued AI restoration')
 print('Enemy behavior integration: three supported modes, startup Normal, queued writes, authority gates, affected count, Photo exit persistence, new enemies, Reset and shutdown retry passed')

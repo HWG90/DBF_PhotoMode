@@ -13,24 +13,21 @@ def package(output,version=None,payload_factory=None):
     specification=importlib.util.spec_from_file_location('photo_build',ROOT/'freecam/build.py')
     build=importlib.util.module_from_spec(specification);specification.loader.exec_module(build)
     files=(payload_factory or build.payload_files)(output);version=version or(ROOT/'VERSION').read_text().strip()
-    source=files['src/actioncam.lua'].decode()
+    source=files['src/camera_runtime.lua'].decode()
     # MDL teardown cannot remove camera wrappers safely. Keep those wrappers
     # inert after owned cleanup, without calling another provider's shutdown.
-    independent="DBF_PHOTO_CAMERA_ENGINE','independent'"in source
+    assert "DBF_PHOTO_CAMERA_ENGINE','independent'"in source,'Owned camera runtime identity missing'
     # The owned runtime must keep draining asynchronous teardown after MDL
     # marks its outer owner stopped. Its step handles that lifecycle itself.
-    signatures=('local function bindings_step()',)if independent else('local function bindings_step()','local function step(dt)')
+    signatures=('local function bindings_step()',)
     for signature in signatures:
         assert source.count(signature)==1,'Camera lifecycle source contract changed'
         source=source.replace(signature,signature+"\n  local owner=rawget(_G,'DBF_PHOTO_MODE_OWNER');if owner and owner.stopped then return end",1)
-    if independent:
-        source+="\nreturn {stop=runtime.stop}\n"
-    else:
-        source+="\nreturn {stop=function()local ok,why=DBF_FREECAM.close();if ok==false then return false,why end;drop_all('shutdown');return true end}\n"
-    files['src/actioncam.lua']=source.encode()
+    source+="\nreturn {stop=runtime.stop}\n"
+    files['src/camera_runtime.lua']=source.encode()
     bootstrap=(ROOT/'freecam/mdl.lua').read_text().replace('__VERSION__',version).encode()
     files['mod.lua']=bootstrap
-    files['INSTALL.txt']=(ROOT/'freecam/README.md').read_bytes()+b'\nMDL ALTERNATIVE - INSTALL BOTH INCLUDED PARTS\nRequires MDL API 2 (2.0.8 source contract). Copy dbf_freecam into %LOCALAPPDATA%/MDL/Helldivers2/Mods. Install the included GameData assets as described above, then enable War Journalist in MDL. All assets are included in this ZIP; no HUD, MCM or ActionCam download is required. Choose one Photo Mode package and restart normally. Screenshots are saved in dbf_freecam/Screenshots. MCM is optional.\n'
+    files['INSTALL.txt']=(ROOT/'freecam/README.md').read_bytes()+b'\nMDL ALTERNATIVE - INSTALL BOTH INCLUDED PARTS\nRequires MDL API 2 (2.0.8 source contract). Copy dbf_freecam into %LOCALAPPDATA%/MDL/Helldivers2/Mods. Install the included GameData assets as described above, then enable War Journalist in MDL. All assets and the owned camera runtime are included in this ZIP; no separate camera mod, HUD or MCM download is required. Choose one Photo Mode package and restart normally. Screenshots are saved in dbf_freecam/Screenshots. MCM is optional.\n'
     files['manifest.json']=(json.dumps({'id':'dbf_freecam','name':'War Journalist','version':version,'author':'Goose','loader':'MDL','api':2,'restart_required':True},indent=2)+'\n').encode()
     for filename in ('README.md','KNOWN-ISSUES.md'):
         path=ROOT/filename if filename=='README.md' else ROOT/'docs'/filename
@@ -40,7 +37,7 @@ def package(output,version=None,payload_factory=None):
     for name,body in files.items():
         if name.endswith('.lua'):build.compile_lua(body,'WarJournalist-MDL-'+name)
     import sys;sys.path.insert(0,str(ROOT/'tools'));import photo_assets
-    dof_enabled=b'local DBF_PHOTO_DOF_FACTORY='in files['src/actioncam.lua']
+    dof_enabled=b'local DBF_PHOTO_DOF_FACTORY='in files['src/camera_runtime.lua']
     if dof_enabled:
         import dof_assets
         core_resources,shared_resources,audit=dof_assets.resources(output)

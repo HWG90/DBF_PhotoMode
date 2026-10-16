@@ -28,7 +28,7 @@ Keep them coming!
 - **Correct frozen ragdolls:** an observed ragdoll pose stays still at exact zero time, resumes normally and yields to Subject poses. This reproduction and handoff were verified in game.
 - **Input and recovery fixes:** gameplay look returns after menu handoffs, native settings suspend the Photo camera, chat ignores the Photo shortcut, held ADS remains intact, and double-click focus uses buffered click timing. Camera cursor confinement is retained.
 - **Complete subject hiding:** owned equipment attachments, including the Maxigun feed belt, hide and restore with the subject. Curated Helldivers logos and Super Earth insignia remain included.
-- **Supported ActionCam coexistence:** ActionCam 2.3.1 and 2.4 retain their gameplay camera/profiles; War Journalist owns its camera only during Photo Mode and Cinema shots. Unknown camera hooks are refused safely.
+- **Owned camera controller:** Photo Mode uses its own scene discovery, motion and cleanup. Starting it does not inspect or wrap another camera mod's private functions.
 - **Radeon compatibility repair:** the package contains the game's 77 native shader registrations and its 44 shipped Photo Mode shaders. Radeon testers reported stable Alt-Tab, fullscreen, bloom and DoF changes with this repair.
 
 ## Install
@@ -46,7 +46,7 @@ The MDL package contains no nested archives.
 LLL: install `dbf_freecam` in LLL's Mods folder, deploy the asset ZIP bundled
 inside that same download, and restart.
 Use one Photo Mode runtime at a time. Preserve settings, presets and screenshots.
-Supported ActionCam 2.3.1 and 2.4 can remain enabled. War Journalist holds exclusive camera ownership through placement and Cinema performance, then hands it back after cleanup. Unsupported camera versions are refused safely.
+Photo Mode uses its own camera controller. Other camera mods are not inspected, reconfigured or paused by a private adapter.
 See [installation and controls](freecam/README.md) for manual installation.
 
 ## Controls
@@ -76,8 +76,9 @@ source-independent package startup checks. Tests do not establish live GPU behav
 
 ## Credits
 
-Camera foundation: [ActionCam](https://www.nexusmods.com/helldivers2/mods/16752)
-by HuedPurple. Native UI/font reader: CowboyBingus (0BSD). Selected reader
+Earlier releases used [ActionCam](https://www.nexusmods.com/helldivers2/mods/16752)
+by HuedPurple as a camera foundation. The current controller is maintained here.
+Native UI/font reader: CowboyBingus (0BSD). Selected reader
 work: Link (MIT). Bundled licenses and vendor provenance identify their scope.
 Helldivers 2/Arrowhead artwork belongs to its respective owners; individual
 logo sources and authors are recorded under `freecam/assets/logos`.

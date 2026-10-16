@@ -11,16 +11,6 @@ def capture_library_name():
     if not re.fullmatch(r'PhotoCapture(?:64|_[0-9a-f]{12,64})\.dll',name):raise ValueError('Invalid owned screenshot library name')
     return name
 
-def actioncam_compat_source(verify_foundation=True):
-    signatures=json.loads((ROOT/'vendor/actioncam-signatures.json').read_text(encoding='utf-8'))
-    if verify_foundation:
-        assert signatures['source_sha256']==hashlib.sha256((ROOT/'vendor/actioncam-2.3.1.lua').read_bytes()).hexdigest(),'Supported ActionCam source changed; regenerate and verify its compatibility contracts'
-    supported=signatures.get('supported',{signatures['runtime_version']:signatures})
-    encoded='{supported={'
-    encoded+=','.join('['+json.dumps(version)+']={closures={'+','.join('['+json.dumps(name)+']='+json.dumps(value)for name,value in record['closures'].items())+'}}'for version,record in supported.items())+'}}'
-    return (ROOT/'actioncam_compat.lua').read_text(encoding='utf-8').replace('__ACTIONCAM_SIGNATURES__',encoded)
-
-
 def studio_source(dof_candidate=False,scene_candidate=False,native_candidate=False,combined_scene_candidate=False,camera_lifecycle=''):
     """Expand owned Photo studio features without reading or patching a camera controller."""
     if combined_scene_candidate and not dof_candidate:raise ValueError('Combined compositor requires DoF factory')
@@ -35,7 +25,7 @@ end)()
 local DBF_SIMULATION_BACKEND=(function()
 __SIMULATION_BACKEND__
 end)().new(sr)
-H.dbf_actioncam_compat=assert(rawget(_G,'DBF_PHOTO_ACTIONCAM_COMPAT'),'Photo camera compatibility owner unavailable')
+H.dbf_camera_ownership=assert(rawget(_G,'DBF_PHOTO_CAMERA_OWNERSHIP'),'Photo camera ownership service unavailable')
 do
  local backend=(function()
 __HOVER_PAUSE_BACKEND__
@@ -243,8 +233,8 @@ local DBF_FREECAM=(function()
 __CONTROLLER__
 end)().new(PHOTO,CFG,function()
  if CFG.ensure_scene then local ready,why,retry=CFG.ensure_scene();if not ready then return false,why,retry end end
- return target~=nil and anchor~=nil and not SPEC.active and H.dbf_actioncam_compat.available
-end,log,DBF_PLAYER_FREEZE,DBF_PHOTO_OPTIONS,DBF_PHOTO_RUNTIME,DBF_PHOTO_MENU,DBF_PHOTO_COMPOSITION,DBF_SAVED_CAMERA,DBF_SCREENSHOTS,DBF_FOCUS_SAMPLER,DBF_PHOTO_LIGHTS,H.dbf_subject,H.dbf_director,nil,function()return H.dbf_input_epoch end,H.dbf_ai,H.dbf_poses,H.dbf_actioncam_compat,H.dbf_cinema)
+ return target~=nil and anchor~=nil and not SPEC.active and H.dbf_camera_ownership.available
+end,log,DBF_PLAYER_FREEZE,DBF_PHOTO_OPTIONS,DBF_PHOTO_RUNTIME,DBF_PHOTO_MENU,DBF_PHOTO_COMPOSITION,DBF_SAVED_CAMERA,DBF_SCREENSHOTS,DBF_FOCUS_SAMPLER,DBF_PHOTO_LIGHTS,H.dbf_subject,H.dbf_director,nil,function()return H.dbf_input_epoch end,H.dbf_ai,H.dbf_poses,H.dbf_camera_ownership,H.dbf_cinema)
 H.dbf_input_recovery=(function()
 __INPUT_RECOVERY__
 end)().new({window=sr.Window,log=log,
@@ -267,8 +257,6 @@ DBF_FREECAM.input_recovery=H.dbf_input_recovery
 H.dbf_recovery_key=DBF_FREECAM.recovery_key
 rawset(_G,'DBF_PHOTO_EDITOR_INPUT',DBF_FREECAM.editor_bridge)
 rawset(_G,'DBF_PHOTO_INPUT_RECOVERY',H.dbf_input_recovery)
-H.dbf_actioncam_compat.set_priority(DBF_FREECAM.actioncam_priority)
-H.dbf_actioncam_compat.set_input_blocked(DBF_FREECAM.actioncam_input_blocked)
 PHOTO.dbf_stop=DBF_FREECAM.stop
 PHOTO.dbf_clear_saved=DBF_SAVED_CAMERA.clear
 DBF_PHOTO_LIGHTS.update_from_photo=function()
@@ -340,95 +328,15 @@ end)()
     return hook
 
 
-def patch(source,dof_candidate=False,scene_candidate=False,native_candidate=False,combined_scene_candidate=False):
-    if combined_scene_candidate and not dof_candidate:raise ValueError('Combined compositor requires DoF factory')
-    if combined_scene_candidate and scene_candidate:raise ValueError('Combined compositor replaces the separate scene pass')
-    def replace(old,new):
-        nonlocal source
-        if source.count(old)!=1: raise ValueError('ActionCam source contract changed: '+old[:70])
-        source=source.replace(old,new)
-    replace('local function bindings_step()', 'local function legacy_bindings_step()')
-    # Routine statistics must not format and flush a diagnostic line each second.
-    # Event/error logs still use the original immediate writer.
-    source,count=re.subn(r'(CFG\.LOG_EVERY\s*=\s*)1\.0\b',r'\g<1>30.0',source,count=1)
-    if count!=1: raise ValueError('ActionCam diagnostic interval contract changed')
-    # A living ragdoll/respawn Unit can temporarily have no animation graph.
-    # pcall cannot catch the native copier's null dereference. Guard all Photo
-    # readers privately, retaining the original vendor source and SDK namespace.
-    animation_guard=(ROOT/'animation_state.lua').read_text(encoding='utf-8')
-    declaration='local H = {}   -- helper functions used by apply() (kept in one table: Lua allows max 60 outside variables per function)'
-    replace(declaration,declaration+'\nH.dbf_animation_get_state=(function()\n'+animation_guard+'\nend)().new(sr)')
-    if source.count('pcall(sr.Unit.animation_get_state,')!=7:
-        raise ValueError('ActionCam animation reader contract changed')
-    source=source.replace('pcall(sr.Unit.animation_get_state,','pcall(H.dbf_animation_get_state,')
-    # Freecam keys belong to MCM; profile/restart bindings continue using MBM.
-    source=re.sub(r'^  \{id = \'actioncam\.photo_[^\n]+\n','',source,flags=re.M)
-    hook=studio_source(dof_candidate,scene_candidate,native_candidate,combined_scene_candidate)
-    replace('-- One frame of Photo Mode: fly the detached camera and place it.',hook+'\n-- One frame of Photo Mode: fly the detached camera and place it.')
-    replace("  if PHOTO_REF and PHOTO_REF.active then", "  if PHOTO_REF and PHOTO_REF.dbf_clear_saved and (reason=='death'or reason=='world gone'or reason=='restart'or reason=='shutdown')then PHOTO_REF.dbf_clear_saved(reason)end\n  if PHOTO_REF and PHOTO_REF.dbf_stop then PHOTO_REF.dbf_stop() end\n  if PHOTO_REF and PHOTO_REF.active then")
-    replace('PHOTO.pos = last_written and {last_written[1], last_written[2], last_written[3]} or {cx, cy, cz}', 'PHOTO.pos = {cx, cy, cz}')
-    replace('function PHOTO.apply(cam, unit, pose, cx, cy, cz)', 'function PHOTO.apply(cam, unit, pose, cx, cy, cz)\n  if DBF_FREECAM.camera_suspended()then PHOTO.input={sequence=PHOTO.sample_sequence or 0,mouse_x=0,mouse_y=0,wheel=0,dt=0}end\n  local cinema_ok,cinema_why=H.dbf_cinema.hold();if not cinema_ok then DBF_FREECAM.stop();log(cinema_why);return end\n  local held,why=DBF_PLAYER_FREEZE.hold();if held==false then DBF_FREECAM.stop();if why then log(why)end;return end')
-    replace("      log('photo mode: off (Helldiver down)')", "      DBF_SAVED_CAMERA.clear('death')\n      DBF_FREECAM.stop()\n      log('photo mode: off (Helldiver down)')")
-    replace('  local fx, fy, fz = xyz(M.forward(pose))\n  local rx, ry, rz = xyz(M.right(pose))\n  local I = PHOTO.input', """  local initial={xyz(M.forward(pose))}
-  local I = PHOTO.input
-  local forward,right=DBF_FREECAM_LOOK.basis(PHOTO,initial,I)
-  local fx,fy,fz=unpack(forward)
-  local rx,ry,rz=unpack(right)
-  DBF_PHOTO_RUNTIME.apply(cam,unit,target.world,forward,right,PHOTO.options or DBF_PHOTO_OPTIONS.defaults,I.dt)""")
-    replace('  if hp then\n    local dx, dy, dz = p[1]', "  if hp and PHOTO.cinema_state~='perform' then\n    local dx, dy, dz = p[1]")
-    replace('local spd = CFG.PHOTO_SPEED * (I.fast and CFG.PHOTO_FAST or 1) * last_dt',
-            'local norm=math.max(1,math.sqrt(mf*mf+mr*mr+mu*mu))\n  local spd = CFG.PHOTO_SPEED * math.max(0,math.min(I.dt or last_dt,0.1)) / norm')
-    replace("      log('error ' .. failures .. ': ' .. tostring(err))", "      DBF_FREECAM.stop()\n      log('error ' .. failures .. ': ' .. tostring(err))")
-    # Keep camera/Helldiver discovery; remove all normal gameplay camera writes.
-    first=source.index('local function apply()')
-    last=source.index('---------------------------------------------------------------- render hook',first)
-    source=source[:first]+"""local function apply()
-  if not target then return end
-  if not world_alive(target.world) then drop_all('world gone');return end
-  if not try(sr.Unit.alive,target.unit) then drop_all('camera unit gone');return end
-  if anchor and not try(sr.Unit.alive,anchor.unit) then H.anchor_gone() end
-  local cam,unit=target.cam,target.unit
-  local lp=try(sr.Camera.local_position,cam,unit)
-  local pose=try(sr.Camera.world_pose,cam)
-  if not lp or not pose then return end
-  local cx,cy,cz=xyz(lp)
-  if PHOTO.active then return PHOTO.apply(cam,unit,pose,cx,cy,cz) end
-  -- Identity can still converge while photo mode is inactive; no camera adjustment.
-  H.id_sample(target.world,cx,cy,cz,pose)
-end
-
-"""+source[last:]
-    replace('  pcall(bindings_step)', '  -- Photo input is sampled in render, independently of simulation time.')
-    replace('  if previous_update then return previous_update(dt, ...) end', '  H.dbf_input_before_update()\n  if previous_update then return H.dbf_input_after_update(previous_update(dt, ...)) end\n  return H.dbf_input_after_update()')
-    replace('    counts.render = counts.render + 1', '    bindings_step()\n    counts.render = counts.render + 1')
-    replace('    pcall(H.flicker_watch)\n    return previous(...)', '    pcall(DBF_PHOTO_LIGHTS.cache_camera)\n    pcall(H.flicker_watch)\n    return H.dbf_ragdoll_after_render(previous(...))')
-    replace("  if type(previous) ~= 'function' then return end\n  render_hooked = true",
-            "  if type(previous) ~= 'function' then return end\n  previous=DBF_PHOTO_PROFILE.camera_factory.after_render(previous,function()return PHOTO.active end,log)\n  render_hooked = true")
-    replace('  pcall(options_step)', '  -- Freecam owns the sole MCM registration; ActionCam options are disabled.\n  pcall(DBF_PHOTO_LIGHTS.update_from_photo)\n  pcall(H.dbf_subject.flush,last_dt)\n  pcall(H.dbf_pose_flush,last_dt)\n  if H.dbf_ai then pcall(H.dbf_ai.flush,PHOTO.active)end')
-    source=source.replace("CFG.LOG_NAME   = 'ActionCam.log'", "CFG.LOG_NAME   = 'Freecam.log'")
-    source=source.replace("'ActionCam_previous.log'", "'Freecam_previous.log'")
-    source=source.replace('CFG.EXTRACT_RESEARCH      = true', 'CFG.EXTRACT_RESEARCH      = false')
-    source=source.replace("'ActionCam v' .. CFG.VERSION .. ' started:", "'Freecam camera foundation started:")
-    source+='''\nupdate=DBF_PHOTO_PROFILE.camera_factory.around_update(update,function()return PHOTO.active end,log)
-update=H.dbf_actioncam_compat.wrap_update(update,function(why)
- if PHOTO.active or H.dbf_actioncam_compat.held then DBF_FREECAM.stop()end
-end)
-local dbf_previous_shutdown=rawget(_G,'shutdown')
-shutdown=function(...)
-  local cleared,why=DBF_FREECAM.close()
-  if cleared==false then return false,why end
-  drop_all('shutdown')
-  if dbf_previous_shutdown then return dbf_previous_shutdown(...) end
-end
-'''
-    if native_candidate:
-        source="rawset(_G,'DBF_PHOTO_NATIVE_LENS_CANDIDATE',true)\n"+source
-    return source
-
-def payload_files(output,compatibility_source=None):
+def payload_files(output,ownership_source=None):
     """Complete public runtime payload shared by BSL and the MDL adapter."""
-    files={'src/actioncam.lua':(output/'ActionCam-Freecam.lua').read_bytes(),
-        'src/actioncam_compat.lua':(actioncam_compat_source()if compatibility_source is None else compatibility_source).encode(),
+    if ownership_source is None:
+        import importlib.util
+        spec=importlib.util.spec_from_file_location('photo_owned_camera_build',ROOT/'independent_build.py')
+        owned=importlib.util.module_from_spec(spec);spec.loader.exec_module(owned)
+        ownership_source=owned.ownership_source()
+    files={'src/camera_runtime.lua':(output/'WarJournalist-runtime.lua').read_bytes(),
+        'src/camera_ownership.lua':ownership_source.encode(),
         'src/standalone.lua':(ROOT/'standalone.lua').read_bytes(),
         'src/photo_input_capture.lua':(ROOT/'photo_input_capture.lua').read_bytes(),
         'PROVENANCE.json':(output/'PROVENANCE.json').read_bytes()}
@@ -471,7 +379,7 @@ def compile_lua(body,name):
 def package_bsl(output,version=None,dof_candidate=False):
     version=version or(ROOT.parent/'VERSION').read_text().strip()
     files=payload_files(output)
-    if (b'local DBF_PHOTO_DOF_FACTORY='in files['src/actioncam.lua'])!=bool(dof_candidate):
+    if (b'local DBF_PHOTO_DOF_FACTORY='in files['src/camera_runtime.lua'])!=bool(dof_candidate):
         raise ValueError('Runtime DoF path and packaged asset selection differ')
     for name,body in files.items():
         if name.endswith('.lua'):compile_lua(body,name)
@@ -536,48 +444,31 @@ def package_bsl(output,version=None,dof_candidate=False):
     print(target)
     return target
 
-def build(archive,output,dof_candidate=False):
-    if archive:
-        original=archive.read_bytes();resources=lua_archive.read(original)
-        name=lua_archive.hash_name('mods/actioncam/actioncam')
-        kind,body=resources[name]
-        if kind!=lua_archive.LUA_TYPE or body[4:8]!=b'\x02\0\0\0': raise ValueError('Expected Lua source resource')
-        source=body[8:].decode('utf-8').rstrip('\0');origin=archive.name;origin_hash=hashlib.sha256(original).hexdigest()
-    else:
-        body=(ROOT/'vendor/actioncam-2.3.1.lua').read_bytes()
-        identity=json.loads((ROOT/'vendor/PROVENANCE.json').read_text())
-        if hashlib.sha256(body).hexdigest()!=identity['actioncam_source_sha256']:raise ValueError('Vendored camera identity mismatch')
-        source=body.decode('utf-8');origin='ActionCam 2.3.1 (vendored source)';origin_hash=identity['actioncam_archive_sha256']
-    result=patch(source,dof_candidate=dof_candidate).encode('utf-8')
-    # Compile the complete generated runtime before producing installable bytes.
-    import ctypes
-    lua=ctypes.CDLL(os.environ.get('HD2_LUA51_DLL',r'C:\Program Files (x86)\Steam\steamapps\common\Helldivers 2\bin\lua51.dll'))
-    lua.luaL_newstate.restype=ctypes.c_void_p
-    lua.luaL_loadbuffer.argtypes=[ctypes.c_void_p,ctypes.c_char_p,ctypes.c_size_t,ctypes.c_char_p]
-    lua.lua_tolstring.argtypes=[ctypes.c_void_p,ctypes.c_int,ctypes.c_void_p];lua.lua_tolstring.restype=ctypes.c_char_p
-    lua.lua_close.argtypes=[ctypes.c_void_p]
-    state=lua.luaL_newstate()
-    try:
-        if lua.luaL_loadbuffer(state,result,len(result),b'freecam-generated'):
-            raise ValueError(lua.lua_tolstring(state,-1,None).decode())
-    finally:lua.lua_close(state)
+def build(output,dof_candidate=False):
+    """Build the owned camera runtime and self-contained BSL package."""
+    import importlib.util
+    spec=importlib.util.spec_from_file_location('photo_owned_camera_build',ROOT/'independent_build.py')
+    owned=importlib.util.module_from_spec(spec);spec.loader.exec_module(owned)
+    result=owned.generate(dof_candidate=dof_candidate).encode('utf-8')
+    compile_lua(result,'WarJournalist-owned-camera')
     output.mkdir(parents=True,exist_ok=True)
-    (output/'ActionCam-Freecam.lua').write_bytes(result)
-    modules=[ROOT/name for name in ['photo_options.lua','lens.lua','composition.lua','postfx.lua','photo_runtime.lua','photo_lights.lua','hud.lua','render_profile.lua','camera_profile.lua','chat_context.lua','saved_camera.lua','photo_menu.lua','control_legend.lua','cinema_camera.lua']]
-    if dof_candidate:modules.extend([ROOT/'depth_resource.lua',ROOT/'dof_overlay.lua',ROOT/'shader_template_guard.lua'])
-    (output/'PROVENANCE.json').write_text(json.dumps({'source_archive':origin,'source_sha256':origin_hash,
-        'dof_candidate_preview':bool(dof_candidate),
-        'photo_modules_sha256':{p.name:hashlib.sha256(p.read_bytes()).hexdigest()for p in modules},
-        'simulation_sha256':hashlib.sha256((ROOT/'simulation.lua').read_bytes()).hexdigest(),
-        'simulation_backend_sha256':hashlib.sha256((ROOT/'simulation_backend.lua').read_bytes()).hexdigest(),
-        'look_sha256':hashlib.sha256((ROOT/'look.lua').read_bytes()).hexdigest(),
-        'controller_sha256':hashlib.sha256((ROOT/'controller.lua').read_bytes()).hexdigest(),'deployment':'not installed','live_validation':False},indent=2)+'\n')
+    (output/'WarJournalist-runtime.lua').write_bytes(result)
+    modules={p.name:hashlib.sha256(p.read_bytes()).hexdigest()
+             for p in sorted(ROOT.glob('*.lua'))
+             if not p.name.endswith('_tests.lua')}
+    (output/'PROVENANCE.json').write_text(json.dumps({
+        'version':(ROOT.parent/'VERSION').read_text().strip(),'camera_engine':'independent',
+        'runtime_sha256':hashlib.sha256(result).hexdigest(),'source_modules_sha256':modules,
+        'independent_builder_sha256':hashlib.sha256((ROOT/'independent_build.py').read_bytes()).hexdigest(),
+        'dof_candidate_preview':bool(dof_candidate),'deployment':'not installed','live_validation':False,
+    },indent=2)+'\n')
     (output/'INSTALL.txt').write_text((ROOT/'README.md').read_text())
     return package_bsl(output,(ROOT.parent/'VERSION').read_text().strip(),dof_candidate=dof_candidate)
 
+
 if __name__=='__main__':
-    version=(ROOT.parent/'VERSION').read_text().strip()
-    parser=argparse.ArgumentParser();parser.add_argument('--actioncam',type=Path,help='Optional explicit camera foundation override; defaults to owned vendored source');parser.add_argument('--output',type=Path,default=ROOT.parent/'dist/releases'/('photo-'+version))
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--output',type=Path,default=ROOT.parent/'dist/review/owned-camera-build')
     parser.add_argument('--dof-candidate',action='store_true',help='Include the explicit DoF fallback preview; final shader quality remains under review')
     args=parser.parse_args()
-    build(args.actioncam,args.output,dof_candidate=args.dof_candidate)
+    build(args.output,dof_candidate=args.dof_candidate)

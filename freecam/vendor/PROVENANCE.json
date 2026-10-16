@@ -1,8 +1,5 @@
 {
-  "source": "War Journalist 0.5 released embedded private service",
-  "actioncam_credit": "ActionCam 2.3.1 by HuedPurple",
-  "actioncam_archive_sha256": "b6653309c569ee79971d7fc510f9173343d3028175d4a890ad791e55892e273f",
-  "actioncam_source_sha256": "e0d36e63aeac8be815398df5494a3d9759594c8dacfd53b04e9ff1fa4df416ce",
+  "source": "War Journalist retained standalone UI, input, memory and capture services; camera runtime is independently owned",
   "runtime_sha256": {
     "PhotoCapture64.dll": "be5cc8c9930fa4de342d3afb3ce8be184c4f1208dcab1f7fcab67991ea1a6bd7",
     "mcm_input_eed2e92830f3.dll": "d1f84d7a48e49f1927bdad9785d135746f918259e84a38f44aa9f4afae38c6c3",

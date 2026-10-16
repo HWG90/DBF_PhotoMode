@@ -9,7 +9,7 @@ local state=G.TEST
 local DBF_FREECAM_LOOK={}
 local DBF_PHOTO_RUNTIME={}
 local DBF_PLAYER_FREEZE={}
-H.dbf_actioncam_compat=state.compat
+H.dbf_camera_ownership=state.ownership
 H.dbf_subject_backend={frame=function()return state.player end}
 local DBF_PHOTO_LIGHTS={update_from_photo=function()state.flushes=state.flushes+1 end,cache_camera=function()state.cached=state.cached+1 end}
 local DBF_SAVED_CAMERA={clear=function(reason)state.cleared=reason end}
@@ -35,7 +35,7 @@ function DBF_FREECAM.stop()
  PHOTO.active=false;PHOTO.pos=nil
  state.warming=nil
  state.events[#state.events+1]='effects restored'
- return H.dbf_actioncam_compat.release()
+ return H.dbf_camera_ownership.release()
 end
 function DBF_FREECAM.close()return DBF_FREECAM.stop()end
 function DBF_FREECAM.camera_suspended()return state.menu_open end
@@ -49,7 +49,7 @@ local function bindings_step()
   if CFG.ensure_scene then CFG.ensure_scene()end
   if not target or not anchor or SPEC.active then state.warming=true;return end
   state.warming=nil
-  assert(H.dbf_actioncam_compat.acquire())
+  assert(H.dbf_camera_ownership.acquire())
   PHOTO.active=true;PHOTO.cinema_state='place';state.intent=nil
  elseif state.intent=='exit'then
   assert(DBF_FREECAM.stop());state.intent=nil
@@ -73,7 +73,7 @@ return{new=function(sr,photo,look,runtime,freeze,cinema,config)
  local state=G.TEST;local written,written_frame
  return{apply=function(frame,suspended)
   assert(frame.world==state.frame.world and frame.unit==state.frame.unit and frame.cam==state.frame.cam,'Retired camera reached movement')
-  assert(state.compat.held,'Camera writes require ownership')
+  assert(state.ownership.held,'Camera writes require ownership')
   state.writes=state.writes+1;state.suspended=suspended
   photo.pos=photo.pos or{1,2,3};written=true;written_frame=frame
   state.events[#state.events+1]='camera write'
@@ -145,13 +145,9 @@ local function fixture(late_render,actual_scene)
   return'game-render',nil,...
  end
  if not late_render then env.render=game_render end
- state.compat={available=true,held=false,count=0,
-  acquire=function()state.events[#state.events+1]='camera acquired';state.compat.held=true;return true end,
-  release=function()state.events[#state.events+1]='compatibility released';state.compat.held=false;return true end,
-  wrap_update=function(previous,on_conflict)return function(...)
-   if state.conflict then on_conflict('camera provider changed')end
-   return previous(...)
-  end end}
+ state.ownership={available=true,held=false,count=0,
+  acquire=function()state.events[#state.events+1]='camera acquired';state.ownership.held=true;return true end,
+  release=function()state.events[#state.events+1]='ownership released';state.ownership.held=false;return true end}
  env.shutdown=function(...)state.shutdowns=(state.shutdowns or 0)+1;return'shutdown',nil,... end
  local chunk=assert(loadstring(actual_scene and actual_scene_runtime or source,'owned-runtime-template'));setfenv(chunk,env);chunk()
  return env,state,env.DBF_PHOTO_CAMERA_RUNTIME,game_render
@@ -167,27 +163,27 @@ assert(result.n==4 and result[1]=='game-render'and result[3]=='frame'and result[
 assert(s.writes==0 and s.inputs==1 and s.refreshes==0,'Idle controller must not discover or write a gameplay camera')
 local ready_frame=s.frame
 s.frame=nil;s.intent='enter';env.render()
-assert(not owner.ready and not owner.photo.active and not s.compat.held and s.warming,'A cached idle camera cannot authorize entry during a read gap')
+assert(not owner.ready and not owner.photo.active and not s.ownership.held and s.warming,'A cached idle camera cannot authorize entry during a read gap')
 s.frame=ready_frame
 s.intent='enter';env.render()
-assert(owner.photo.active and s.compat.held and s.writes==1 and s.events[1]=='camera acquired')
-s.menu_open=true;env.render();assert(s.suspended and owner.photo.active and s.compat.held)
+assert(owner.photo.active and s.ownership.held and s.writes==1 and s.events[1]=='camera acquired')
+s.menu_open=true;env.render();assert(s.suspended and owner.photo.active and s.ownership.held)
 local old_frame=s.frame;local inputs,writes=s.inputs,s.writes
 s.frame=nil;s.retired=false;env.render()
-assert(owner.photo.active and s.compat.held and s.inputs==inputs and s.writes==writes,'Transient scene reads must not steal input or write stale camera handles')
+assert(owner.photo.active and s.ownership.held and s.inputs==inputs and s.writes==writes,'Transient scene reads must not steal input or write stale camera handles')
 s.frame=old_frame;env.render();assert(s.writes==writes+1 and owner.ready)
 s.intent='exit';env.render()
-assert(not owner.photo.active and not s.compat.held)
+assert(not owner.photo.active and not s.ownership.held)
 local order=table.concat(s.events,'|')
-assert(order:find('effects restored|position restored|compatibility released',1,true),'Position/effects restoration must precede ActionCam resume')
+assert(order:find('effects restored|position restored|ownership released',1,true),'Position/effects restoration must precede local camera lease release')
 s.intent='enter';env.render();s.cleanup_pending=true
 s.frame={world=old_frame.world,unit={},cam={},player=old_frame.player,player_identity='avatar-one',epoch=2}
 writes=s.writes;env.render()
-assert(s.writes==writes and s.compat.held and not owner.ready,'A replacement camera must wait for old effects cleanup')
-s.cleanup_pending=false;env.render();assert(not owner.photo.active and not s.compat.held and owner.ready and owner.epoch==2)
+assert(s.writes==writes and s.ownership.held and not owner.ready,'A replacement camera must wait for old effects cleanup')
+s.cleanup_pending=false;env.render();assert(not owner.photo.active and not s.ownership.held and owner.ready and owner.epoch==2)
 assert(s.cleared=='scene changed')
 s.intent='enter';env.render();s.frame=nil;s.retired=true;env.render()
-assert(not owner.photo.active and not s.compat.held and s.cleared=='scene retired')
+assert(not owner.photo.active and not s.ownership.held and s.cleared=='scene retired')
 assert(owner.stop());local flushes,refreshes,inputs,writes,ragdolls=s.flushes,s.refreshes,s.inputs,s.writes,s.ragdolls
 env.update(0);env.render()
 assert(s.flushes==flushes and s.refreshes==refreshes and s.inputs==inputs and s.writes==writes and s.ragdolls==ragdolls,'Stopped hooks must keep game callbacks without camera/native work')
@@ -196,10 +192,10 @@ local late,ls,lo,game_render=fixture(true)
 assert(late.render==nil);late.render=game_render;late.update(0);ls.intent='enter';late.render()
 assert(lo.photo.active and ls.writes==1,'Render installed after startup must be hooked without restarting')
 ls.conflict=true;late.update(.016)
-assert(not lo.photo.active and not ls.compat.held,'Provider conflicts must cancel the photo lease')
+assert(lo.photo.active and ls.ownership.held,'Unrelated provider state must not influence the local Photo camera lease')
 ls.conflict=false;ls.intent='enter';late.render();ls.game_error='original engine update failure'
 local ok,why=pcall(late.update,.016)
-assert(not ok and why=='original engine update failure'and not ls.compat.held,'Game errors must propagate after owned camera cleanup')
+assert(not ok and why=='original engine update failure'and not ls.ownership.held,'Game errors must propagate after owned camera cleanup')
 ls.game_error=nil
 result=packed(late.shutdown('bye',nil))
 assert(result.n==4 and result[1]=='shutdown'and result[3]=='bye'and result[4]==nil and ls.shutdowns==1)
@@ -207,15 +203,15 @@ local gap,gs,go=fixture()
 gap.update(.016);gs.intent='enter';gap.render();gs.frame=nil
 local entered_inputs,entered_writes=gs.inputs,gs.writes
 for i=1,8 do gap.render()end
-assert(not go.photo.active and not gs.compat.held and gs.inputs==entered_inputs and gs.writes==entered_writes,'Persistent scene refusal must start cleanup instead of indefinitely trapping input/time')
+assert(not go.photo.active and not gs.ownership.held and gs.inputs==entered_inputs and gs.writes==entered_writes,'Persistent scene refusal must start cleanup instead of indefinitely trapping input/time')
 local disabled,ds,do_=fixture()
 disabled.update(.016);ds.intent='enter';disabled.render()
 ds.cleanup_pending=true;ds.async_cleanup=true
 disabled.DBF_PHOTO_MODE_OWNER={stopped=true}
-assert(do_.stop()==false and do_.stopping and ds.compat.held)
+assert(do_.stop()==false and do_.stopping and ds.ownership.held)
 local writes_before,inputs_before,ragdolls_before=ds.writes,ds.inputs,ds.ragdolls
 disabled.render();disabled.update(.016)
-assert(ds.pose_flushes>0 and ds.restore_acknowledged and not ds.compat.held and do_.state=='stopped','MDL stopped owner must still service and acknowledge asynchronous teardown')
+assert(ds.pose_flushes>0 and ds.restore_acknowledged and not ds.ownership.held and do_.state=='stopped','MDL stopped owner must still service and acknowledge asynchronous teardown')
 assert(ds.writes==writes_before and ds.inputs==inputs_before and ds.ragdolls==ragdolls_before,'Pending teardown cannot sample input, write a camera or run active ragdoll capture')
 local flushes_before=ds.pose_flushes;disabled.update(.016);assert(ds.pose_flushes==flushes_before,'Acknowledged teardown leaves retained callbacks inert')
 local moving,ms,mo=fixture(false,true)
@@ -224,7 +220,7 @@ for frame=1,6 do
  moving.update(.016)
  if frame==3 then ms.intent='enter'end
  moving.render()
- if frame>=4 then assert(mo.photo.active and ms.compat.held,'The first toggle while moving must use the actual Scene rendered-pose identity rather than reject a one-update pose lag')end
+ if frame>=4 then assert(mo.photo.active and ms.ownership.held,'The first toggle while moving must use the actual Scene rendered-pose identity rather than reject a one-update pose lag')end
 end
 assert(not ms.rejected and ms.writes>=3,'Continuous movement must not consume the opening toggle as unavailable')
 ms.intent='exit';moving.update(.016);moving.render();assert(not mo.photo.active)
@@ -235,7 +231,7 @@ local idle,is,io_=fixture(false,true)
 for frame=1,600 do is.moving=true;idle.update(.016);idle.render()end
 assert(not io_.photo.active and (is.unit_scans or 0)==0 and is.writes==0,'600 moving gameplay frames with Photo closed must perform zero camera Unit inventory scans')
 is.intent='enter';idle.render();if not io_.photo.active then idle.update(.016);idle.render()end
-assert(io_.photo.active and is.compat.held,'A cold idle camera must open from one retained request')
+assert(io_.photo.active and is.ownership.held,'A cold idle camera must open from one retained request')
 is.intent='exit';idle.render();idle.update(.016);local after_exit=is.unit_scans or 0
 for frame=1,600 do idle.update(.016);idle.render()end
 assert((is.unit_scans or 0)==after_exit,'Normal gameplay after exit must stop enumerating camera Units')

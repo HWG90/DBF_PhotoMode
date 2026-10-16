@@ -295,7 +295,7 @@ print('Idle controller: 1000 clean renders and 1000 post-exit renders perform ze
 -- Keep one opening edge, but acquire no input/pause ownership before proof.
 f=fixture();f.scene_ready=false;f.scene_retry=true;f.press(80)
 assert(f.controller._scene_start_pending and not f.photo.active and f.leases==0 and f.mode==0)
-assert(f.controller.scene_required()and f.controller.camera_owned()and f.controller.actioncam_priority())
+assert(f.controller.scene_required()and f.controller.camera_owned())
 for _=1,3 do f.tick()end
 assert(f.leases==0,'Scene warming captured input before camera proof')
 f.scene_ready=true;f.tick()

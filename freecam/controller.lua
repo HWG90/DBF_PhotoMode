@@ -1,6 +1,6 @@
--- ActionCam photomode adapter. Camera placement stays owned by ActionCam.
+-- Photo menu, input and session lifecycle for the owned camera controller.
 local M={}
-function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,catalog,saved_camera,screenshots,focus_sampler,lights,subject,director,unused_input_release,update_epoch,ai,poses,camera_compat,cinema)
+function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,catalog,saved_camera,screenshots,focus_sampler,lights,subject,director,unused_input_release,update_epoch,ai,poses,camera_ownership,cinema)
     local roll_value;local self={};local api,handle,provider;local held=true;local retry=0;local controls={};local resume_after;local suppress_escape;local panel;local menu_focus=false;local controls_hidden=false;local recovery_menu=false;local focus_edge=false;local hide_edge=false;local slow_edge=false;local lock_edge=false;local escape_edge=false;local screenshot_edge=false
     local subject_pair;local subject_held;local subject_request;local subject_ready=false;local autofocus_write=false;local focus_deadline=0;local focus_elapsed=0;local focus_status='Manual focus';local focus_mode_seen;local menu_startup_reset=false
     local lighting_write=false;local lighting_revision=-1
@@ -8,13 +8,13 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
     local clear_subject_click,game_chat_active,bindings
     self._input_tick=0
     self._cinema=cinema
-    function self.camera_owned()return photo.active or self._scene_start_pending~=nil or self._cinema_begin_pending~=nil or self._pose_stop_pending~=nil or camera_compat and camera_compat.held==true or false end
+    function self.camera_owned()return photo.active or self._scene_start_pending~=nil or self._cinema_begin_pending~=nil or self._pose_stop_pending~=nil or camera_ownership and camera_ownership.held==true or false end
     function self.cinema_performing()return self._cinema and self._cinema.state=='perform' or false end
     function self.scene_required()
         return photo.active==true or self.slowmo_active==true or provider~=nil or recovery_menu or not self._idle_stopped or
             self._scene_start_pending~=nil or self._pending_start~=nil or self._freeze_action_pending~=nil or self._pose_stop_pending~=nil or
             self._pose_time_pending~=nil or self._cinema_begin_pending~=nil or self.cinema_performing() or
-            camera_compat and camera_compat.held==true or
+            camera_ownership and camera_ownership.held==true or
             saved_camera and type(saved_camera.has_saved)=='function'and saved_camera.has_saved()==true or false
     end
     function self._cinema_error(why)
@@ -209,17 +209,6 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         end
         held=true;self.slowmo_active=false
         return self.stop()
-    end
-    function self.actioncam_priority()
-        if photo.active or self._scene_start_pending or self._pending_start or self._pose_stop_pending then return true end
-        if not api or not handle or not api.camera_input then return false end
-        return api.camera_input.down(handle.get('toggle_key'))==true
-    end
-    function self.actioncam_input_blocked()
-        if not api or not api.camera_input then return false end
-        if self._native_menu_state()or self._external_menu_open()then return true end
-        if not api.camera_input.focused()then return true end
-        return game_chat_active()
     end
     self._poses=poses;self._pose_available=false;self._pose_caps={}
     function self._request_time_change(rate)
@@ -783,7 +772,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         end
         if self._panel_close_pending then return false,self._panel_close_pending end
         if restored==false then return false,reason end
-        if camera_compat then local ok,why=camera_compat.release();if ok==false then return false,why end end
+        if camera_ownership then local ok,why=camera_ownership.release();if ok==false then return false,why end end
         if restored==true then self._idle_stopped=true end
         return restored,reason
     end
@@ -840,8 +829,8 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
     end
     function self._start_camera()
         self._idle_stopped=false
-        if camera_compat then
-            local ok,why=camera_compat.acquire()
+        if camera_ownership then
+            local ok,why=camera_ownership.acquire()
             if ok==false then self.stop();return false,why end
         end
         local input=api.camera_input

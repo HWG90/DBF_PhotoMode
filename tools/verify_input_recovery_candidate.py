@@ -34,8 +34,11 @@ def verify_packages(paths, standalone=False, source_root=None):
         assert provenance.get('version') == '1.0.1', 'Unexpected candidate package schema'
         assert provenance.get('candidate_only') is True and provenance.get('candidate_profile') == 'input-recovery', 'Not an input recovery development candidate'
         engine = provenance.get('camera_engine')
-        assert engine in ('legacy', 'independent'), 'Candidate camera engine missing'
-        code = payload['src/actioncam.lua'].decode()
+        assert engine == 'independent', 'Input recovery requires the owned camera engine'
+        assert 'src/camera_ownership.lua' in payload, 'Local camera lease missing'
+        assert not any('actioncam' in name.lower() for name in payload), 'Removed third-party camera payload included'
+        code = payload['src/camera_runtime.lua'].decode()
+        assert 'actioncam' not in code.lower(), 'Third-party camera integration included'
         assert "rawset(_G,'DBF_PHOTO_INPUT_RECOVERY_CANDIDATE',true)" in code, 'Candidate runtime marker missing'
         for feature in ('DBF_PHOTO_EDITOR_INPUT', 'DBF_PHOTO_INPUT_RECOVERY', 'H.dbf_input_recovery'):
             assert feature in code, 'Input recovery API/hook missing: '+feature
@@ -47,15 +50,13 @@ def verify_packages(paths, standalone=False, source_root=None):
             assert not relative.is_absolute() and '..' not in relative.parts, 'Invalid source provenance path'
             source = source_root/'freecam'/relative
             assert source.is_file() and sha(source.read_bytes()) == digest, 'Reviewed source hash mismatch: '+name
-        if engine == 'independent':
-            assert "DBF_PHOTO_CAMERA_ENGINE','independent'" in code and 'local function legacy_bindings_step()' not in code
-            for required in ('independent_runtime.lua', 'camera_scene.lua', 'camera_motion.lua', 'camera_ownership.lua', 'camera_lens.lua'):
-                assert required in modules, 'Independent camera provenance missing: '+required
-            if loader == 'MDL':
-                assert code.endswith('\nreturn {stop=runtime.stop}\n'), 'Owned MDL stop contract missing'
-                assert 'local function step(dt)\n  local owner=rawget' not in code, 'MDL blocks pending owned-runtime cleanup updates'
-        else:
-            assert "DBF_PHOTO_CAMERA_ENGINE','independent'" not in code, 'Camera engine provenance disagrees with runtime'
+        assert "DBF_PHOTO_CAMERA_ENGINE','independent'" in code
+        assert 'H.dbf_camera_ownership' in code and 'DBF_PHOTO_CAMERA_OWNERSHIP' in code
+        for required in ('independent_runtime.lua', 'camera_scene.lua', 'camera_motion.lua', 'camera_ownership.lua', 'camera_lens.lua'):
+            assert required in modules, 'Independent camera provenance missing: '+required
+        if loader == 'MDL':
+            assert code.endswith('\nreturn {stop=runtime.stop}\n'), 'Owned MDL stop contract missing'
+            assert 'local function step(dt)\n  local owner=rawget' not in code, 'MDL blocks pending owned-runtime cleanup updates'
         # This exception is explicit and applies only after candidate identity,
         # recovery disclosure, API markers and reviewed source hashes pass.
         # Default verify_release callers still reject both unreleased APIs.

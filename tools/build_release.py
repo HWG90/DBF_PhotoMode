@@ -25,7 +25,7 @@ APPROVED_GPU='f5960f63e1247ac40af4bb37ccbd59ac26c9168aad9eb40936c082c9ddf40194'
 CINEMATIC_GPU='0ee49d87cc1250ab5582934fba8f925d33bf63cb2555651f1974a52dfa55c9b7'
 BASE_REVIEW_SHA='be8b821b545a8146d8c340aa552a3c6dc02b70c39376d3e8bc9e054391ebc866'
 BASE_REVIEW=ROOT/'dist/releases/photo-scene-depth-review/War-Journalist-Scene-Depth-Candidate-Assets.zip'
-ACTIVE_MODULES=('actioncam_compat.lua','animation_state.lua','chat_context.lua','look.lua','simulation.lua','simulation_backend.lua',
+ACTIVE_MODULES=('animation_state.lua','chat_context.lua','look.lua','simulation.lua','simulation_backend.lua',
     'photo_options.lua','lens.lua','composition.lua','postfx.lua','photo_runtime.lua','hud.lua','render_profile.lua',
     'camera_profile.lua','photo_menu.lua','control_legend.lua','screenshot.lua','screenshot_backend.lua',
     'depth_resource.lua','focus_sampler.lua','photo_lights.lua','photo_light_gizmos.lua','photo_light_presets.lua','subject_backend.lua','subject.lua','subject_poses.lua','ragdoll_pause.lua','director.lua','ai_backend.lua','ai_control.lua',
@@ -193,10 +193,8 @@ def public_docs(files,prefix=''):
         files[prefix+'gallery/'+ARTWORK_VERSION+'/'+path.name]=path.read_bytes()
     return files
 
-def build(output,camera_engine='legacy',input_recovery_candidate=False):
-    if camera_engine not in ('legacy','independent'):raise ValueError('Unknown camera engine')
-    if camera_engine=='independent'and output.resolve().is_relative_to((ROOT/'dist/releases').resolve()):
-        raise ValueError('Independent camera candidates must stay outside dist/releases')
+def build(output,camera_engine='independent',input_recovery_candidate=False):
+    if camera_engine!='independent':raise ValueError('Only the owned independent camera engine is supported')
     if input_recovery_candidate:
         if VERSION!='1.0.1':raise ValueError('Input recovery candidate retains the reviewed 1.0.1 package schema')
         review_roots=[(ROOT/'dist/review').resolve()]
@@ -204,14 +202,9 @@ def build(output,camera_engine='legacy',input_recovery_candidate=False):
         if not any(output.resolve().is_relative_to(folder)for folder in review_roots):
             raise ValueError('Input recovery candidates must stay inside dist/review')
     output=output.resolve();output.mkdir(parents=True,exist_ok=True)
-    photo=load('release_photo_build',ROOT/'freecam/build.py');independent=None
-    if camera_engine=='legacy':
-        foundation=(ROOT/'freecam/vendor/actioncam-2.3.1.lua').read_bytes()
-        vendor=json.loads((ROOT/'freecam/vendor/PROVENANCE.json').read_text());assert sha(foundation)==vendor['actioncam_source_sha256']
-        generated=photo.patch(foundation.decode(),dof_candidate=True,native_candidate=True,combined_scene_candidate=True).encode()
-    else:
-        independent=load('release_independent_camera',ROOT/'freecam/independent_build.py')
-        generated=independent.generate(dof_candidate=True,native_candidate=True,combined_scene_candidate=True,builder=photo).encode()
+    photo=load('release_photo_build',ROOT/'freecam/build.py')
+    independent=load('release_independent_camera',ROOT/'freecam/independent_build.py')
+    generated=independent.generate(dof_candidate=True,native_candidate=True,combined_scene_candidate=True,builder=photo).encode()
     if input_recovery_candidate:
         generated=b"rawset(_G,'DBF_PHOTO_INPUT_RECOVERY_CANDIDATE',true)\n"+generated
     photo.compile_lua(generated,'WarJournalist-'+VERSION)
@@ -224,19 +217,18 @@ def build(output,camera_engine='legacy',input_recovery_candidate=False):
         else:
             assert b'DBF_PHOTO_EDITOR_INPUT'not in generated and b'self.editor_bridge'not in generated and b'DBF_PHOTO_INPUT_RECOVERY'not in generated,'Unreleased external-editor bridge/recovery must stay outside the 1.0 package; use --input-recovery-candidate for review'
         assert b'H.dbf_ragdoll_pause'in generated and b'Ragdoll pose held'in generated,'Verified ragdoll pose guard missing'
-    (output/'ActionCam-Freecam.lua').write_bytes(generated)
+    (output/'WarJournalist-runtime.lua').write_bytes(generated)
     core,shared,audit=resources(output)
     provenance={'version':VERSION,'runtime_sha256':sha(generated),'source_modules_sha256':{name:sha((ROOT/'freecam'/name).read_bytes())for name in ACTIVE_MODULES},
                 'asset_audit':audit,'native_capture_library':photo.capture_library_name(),'hoverpack_native_hook_withdrawn':True,'deployment':'not installed','publication_performed':False}
-    if independent:
-        provenance.update(camera_engine='independent',candidate_only=True,
-            independent_builder_sha256=sha((ROOT/'freecam/independent_build.py').read_bytes()))
-        provenance['source_modules_sha256'].update({name:sha((ROOT/'freecam'/name).read_bytes())for name in independent.MODULES})
+    provenance.update(camera_engine='independent',candidate_only=True,
+        independent_builder_sha256=sha((ROOT/'freecam/independent_build.py').read_bytes()))
+    provenance['source_modules_sha256'].update({name:sha((ROOT/'freecam'/name).read_bytes())for name in independent.MODULES})
     if input_recovery_candidate:
         provenance.update(camera_engine=camera_engine,candidate_only=True,candidate_profile='input-recovery')
     (output/'PROVENANCE.json').write_bytes(json_bytes(provenance))
     original_payload=photo.payload_files
-    compatibility_source=independent.ownership_source(photo)if independent else None
+    ownership_source=independent.ownership_source(photo)
     candidate_readme=(
         'INDEPENDENT CAMERA DEVELOPMENT CANDIDATE - NOT A STABLE RELEASE\n\n'
         'This candidate replaces the camera engine only. It has not been proven in the live game.\n'
@@ -248,7 +240,7 @@ def build(output,camera_engine='legacy',input_recovery_candidate=False):
         'runtime if the candidate fails. Use only one Photo Mode runtime; do not mix runtime versions.\n'
         'The 1.0.1 filenames identify the retained package schema, not a new stable release.\n'
         'Provenance: camera_engine=independent; candidate_only=true.\n'
-    ).encode()if independent else None
+    ).encode()
     if input_recovery_candidate:
         candidate_readme=(
             'INPUT RECOVERY DEVELOPMENT CANDIDATE - NOT A STABLE RELEASE\n\n'
@@ -263,10 +255,10 @@ def build(output,camera_engine='legacy',input_recovery_candidate=False):
             'The 1.0.1 filenames identify the retained package schema, not a new stable release.\n'
             'Provenance: candidate_profile=input-recovery; candidate_only=true.\n'
         ).encode()
-    candidate_docs=(ROOT/'docs/INDEPENDENT-CAMERA.md').read_bytes()if independent else None
+    candidate_docs=(ROOT/'docs/INDEPENDENT-CAMERA.md').read_bytes()
     recovery_docs=(ROOT/'docs/INPUT-RECOVERY.md').read_bytes()if input_recovery_candidate else None
     def payload(folder):
-        files=original_payload(folder,compatibility_source=compatibility_source)if independent else original_payload(folder)
+        files=original_payload(folder,ownership_source=ownership_source)
         if candidate_readme:files['CANDIDATE-README.txt']=candidate_readme
         if candidate_docs:files['INDEPENDENT-CAMERA.md']=candidate_docs
         if recovery_docs:files['INPUT-RECOVERY.md']=recovery_docs
@@ -281,7 +273,7 @@ def build(output,camera_engine='legacy',input_recovery_candidate=False):
         bsl=photo.package_bsl(output,version=VERSION,dof_candidate=True)
         mdl=load('release_mdl',ROOT/'tools/build_mdl.py').package(output,version=VERSION,payload_factory=payload)
     finally:dof_assets.resources=previous_resources
-    # The legacy BSL packager copies a limited document list. Complete its
+    # The BSL packager copies a limited document list. Complete its
     # public documentation and image links without changing embedded runtime.
     with zipfile.ZipFile(bsl)as z:bsl_files={name:z.read(name)for name in z.namelist()if name!='FILES-SHA256.txt'}
     if candidate_readme:
@@ -325,7 +317,7 @@ def build(output,camera_engine='legacy',input_recovery_candidate=False):
              'artifacts':{p.name:{'sha256':sha(p.read_bytes()),'bytes':p.stat().st_size}for p in paths},
              'nested_assets':{'name':asset_name,'sha256':sha(asset_body),'bytes':len(asset_body),'distribution':'Embedded inside LLL only; standalone file is local helper only'},'mdl_assets':'GameData directly included by outer Arsenal manifest; no nested archives','all_assets_bundled_per_loader':True,
              'source_snapshots_only':True,'game_process_accessed':False,'deployment':'not installed','publication_performed':False}
-    if independent:receipt.update(camera_engine='independent',candidate_only=True)
+    receipt.update(camera_engine='independent',candidate_only=True)
     if input_recovery_candidate:receipt.update(camera_engine=camera_engine,candidate_only=True,candidate_profile='input-recovery')
     (output/'RELEASE-BUILD-RECEIPT.json').write_bytes(json_bytes(receipt));(output/'SHA256SUMS.txt').write_text(''.join(sha(p.read_bytes())+'  '+p.name+'\n'for p in paths))
     print(json.dumps({'output':str(output),**receipt},indent=2));return paths
@@ -333,11 +325,11 @@ def build(output,camera_engine='legacy',input_recovery_candidate=False):
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--output',type=Path)
     parser.add_argument('--assets-only',action='store_true',help='Build source-owned Arsenal assets without changing or packaging the runtime')
-    parser.add_argument('--camera-engine',choices=('legacy','independent'),default='legacy',help='Independent is an opt-in review candidate; legacy remains the release default')
+    parser.add_argument('--camera-engine',choices=('independent',),default='independent',help='Owned independent camera engine (the sole supported build path)')
     parser.add_argument('--input-recovery-candidate',action='store_true',help='Explicitly allow the reviewed editor-input/recovery APIs in development packages under dist/review only')
     parser.add_argument('--promote-assets',action='store_true',help='Promote the explicitly approved retained compositor snapshots once')
     args=parser.parse_args()
     if args.promote_assets:promote_snapshots()
-    output=args.output or(ROOT/'dist/review/input-recovery-20261015'if args.input_recovery_candidate else ROOT/'dist/review/independent-camera-20261015'if args.camera_engine=='independent'else ROOT/'dist/releases'/('War-Journalist-'+VERSION))
+    output=args.output or(ROOT/'dist/review/input-recovery-20261015'if args.input_recovery_candidate else ROOT/'dist/review/owned-camera-build')
     if args.assets_only:build_assets_only(output)
     else:build(output,camera_engine=args.camera_engine,input_recovery_candidate=args.input_recovery_candidate)

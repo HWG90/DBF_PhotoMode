@@ -1,5 +1,4 @@
--- War Journalist's owned camera runtime. No ActionCam gameplay controller,
--- animation classifier, profile registry or camera-foundation patching.
+-- War Journalist's owned camera runtime and scene lifecycle.
 local G=_G
 local sr=assert(rawget(G,'stingray'),'Photo camera engine unavailable')
 local V,M=assert(sr.Vector3),assert(sr.Matrix4x4)
@@ -71,12 +70,12 @@ local function same_frame(a,b)
   and a.player==b.player and a.player_identity==b.player_identity and a.epoch==b.epoch
 end
 -- Position restoration belongs to the same transaction as effects/time/input.
--- It must complete before the compatibility owner lets ActionCam resume.
-local compat_release=H.dbf_actioncam_compat.release
-H.dbf_actioncam_compat.release=function(...)
+-- It must complete before the controller relinquishes its own local lease.
+local camera_release=H.dbf_camera_ownership.release
+H.dbf_camera_ownership.release=function(...)
  local ok,why=motion.release(scene)
  if ok==false then return false,why end
- return compat_release(...)
+ return camera_release(...)
 end
 local function clear_context()
  target,anchor,current_frame=nil,nil,nil
@@ -138,7 +137,7 @@ end
 -- A closed, clean camera owns no scene handles. Only an opening request or a
 -- persistent time/bookmark/cleanup lease justifies discovery during gameplay.
 local function scene_needed()
- return PHOTO.active or closing_reason~=nil or motion.pending==true or H.dbf_actioncam_compat.held==true
+ return PHOTO.active or closing_reason~=nil or motion.pending==true or H.dbf_camera_ownership.held==true
   or type(DBF_FREECAM.scene_required)=='function'and DBF_FREECAM.scene_required()==true
 end
 local function idle_camera()
@@ -180,7 +179,7 @@ local function render_photo()
   end
  else unreadable_renders=0 end
  local was_active=PHOTO.active
- if frame or not PHOTO.active and not H.dbf_actioncam_compat.held then bindings_step()end
+ if frame or not PHOTO.active and not H.dbf_camera_ownership.held then bindings_step()end
  if not was_active and PHOTO.active then frame=current_frame end
  if PHOTO.active and frame then
   local ok,why=motion.apply(frame,DBF_FREECAM.camera_suspended())
@@ -251,7 +250,7 @@ local owned_update=function(dt,...)
  return unpack(result,2,result.n)
 end
 owned_update=DBF_PHOTO_PROFILE.camera_factory.around_update(owned_update,function()return PHOTO.active end,log)
-rawset(G,'update',H.dbf_actioncam_compat.wrap_update(owned_update,function(why)cleanup_error('ownership',why)end))
+rawset(G,'update',owned_update)
 local previous_shutdown=rawget(G,'shutdown')
 rawset(G,'shutdown',function(...)
  runtime.stopping=true

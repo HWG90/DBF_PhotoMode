@@ -67,15 +67,14 @@ def main():
     out = args.output.resolve()
     out.mkdir(parents=True, exist_ok=False)
     build = load('preview_photo_build', ROOT / 'freecam/build.py')
-    foundation = (ROOT / 'freecam/vendor/actioncam-2.3.1.lua').read_bytes()
-    vendor = json.loads((ROOT / 'freecam/vendor/PROVENANCE.json').read_text())
-    assert hashlib.sha256(foundation).hexdigest() == vendor['actioncam_source_sha256']
-    generated = build.patch(foundation.decode(), dof_candidate=True, scene_candidate=True).encode()
+    owned = load('preview_owned_camera', ROOT / 'freecam/independent_build.py')
+    generated = owned.generate(dof_candidate=True, scene_candidate=True, builder=build).encode()
     build.compile_lua(generated, 'photo-0.7-preview')
-    (out / 'ActionCam-Freecam.lua').write_bytes(generated)
+    (out / 'WarJournalist-runtime.lua').write_bytes(generated)
     provenance = {'version': (ROOT / 'VERSION').read_text().strip(), 'runtime_sha256': hashlib.sha256(generated).hexdigest(),
         'source_modules_sha256': {p.name: hashlib.sha256(p.read_bytes()).hexdigest()
             for p in sorted((ROOT / 'freecam').glob('*.lua')) if not p.name.endswith('_tests.lua')},
+        'camera_engine': 'independent',
         'dof_candidate_preview': True, 'scene_candidate_preview': True, 'deployment': 'not installed'}
     (out / 'PROVENANCE.json').write_text(json.dumps(provenance, indent=2) + '\n')
     dof_assets.resources = resources

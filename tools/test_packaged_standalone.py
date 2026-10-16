@@ -145,7 +145,7 @@ stingray={Vector3=v3,Vector2=vec,Vector4=vec,Color=function(...)return {...}end,
  Gui={resolution=function()return 1920,1080 end,rect=primitive,text=primitive,triangle=primitive,
  destroy_rect=function()end,destroy_text=function()end,destroy_triangle=function()end,
  text_extents=function(_,text,_,size)return vec(0,0),vec(#text*size*.62,size)end}}
-assert(DBFMCM==nil and package.loaded['mods/actioncam/actioncam']==nil)
+assert(DBFMCM==nil)
 local logs,cleanup={},{}
 local function log(message)logs[#logs+1]=tostring(message)end
 '''

@@ -1,4 +1,4 @@
-"""Generate an opt-in owned camera runtime; never patch a vendor camera source."""
+"""Generate the owned Photo camera runtime and its local lifetime lease."""
 import importlib.util
 from pathlib import Path
 
@@ -14,15 +14,8 @@ def studio_builder():
 
 
 def ownership_source(builder=None):
-    """Retain the loader-facing .new API; legacy signatures are fallback only."""
-    builder = builder or studio_builder()
-    gateway = (ROOT/'camera_ownership.lua').read_text(encoding='utf-8')
-    # This reads the exact-signature catalogue and compatibility adapter, not
-    # ActionCam's controller source. The gateway constructs it only if needed.
-    legacy = builder.actioncam_compat_source(verify_foundation=False)
-    return ('local legacy_factory=(function()\n'+legacy+'\nend)()\n'
-            'local gateway=(function()\n'+gateway+'\nend)()\n'
-            'return {new=function(G,log)return gateway.new(G,log,legacy_factory)end}\n')
+    """The loader-facing lease has no external camera discovery or adapters."""
+    return (ROOT/'camera_ownership.lua').read_text(encoding='utf-8')
 
 
 def generate(dof_candidate=False,scene_candidate=False,native_candidate=False,

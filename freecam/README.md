@@ -22,17 +22,11 @@ Mode runtimes; keep only one Photo Mode runtime.
 Preserve saved settings, camera presets and Screenshots when upgrading.
 Replace an older separate Photo asset package with the matching bundled assets.
 
-ACTIONCAM COMPATIBILITY
-Supported ActionCam 2.3.1 and 2.4 can remain enabled. Their normal
-gameplay camera, First Person, settings and profiles remain owned by ActionCam.
-War Journalist takes exclusive camera ownership while Photo Mode is active,
-then restores the gameplay camera after photo effects, time and input cleanup.
-ActionCam's independent Photo Mode bindings yield to War Journalist; its
-restart/profile shortcuts resume outside Photo Mode. The War Journalist toggle
-has priority if another ActionCam shortcut shares the same physical key.
-Both startup orders are supported. Unrecognized ActionCam versions/hooks are
-left untouched and Photo Mode refuses unsafe camera ownership. Disable that
-unsupported ActionCam and restart normally before using Photo Mode.
+CAMERA OWNERSHIP
+Photo Mode uses its own scene discovery, motion and cleanup. It does not inspect
+or replace another camera mod's private functions, bindings or profile state.
+Its local camera lease does not wait for a third-party version or readiness check.
+Only one Photo Mode runtime should be installed at a time.
 
 CINEMA CAMERA AND CAMERA PATHS
 Director > Begin action shot keeps the placed camera static and returns gameplay
@@ -107,7 +101,8 @@ MDL/LLL PNGs: dbf_freecam/Screenshots. The Pause shortcut uses the addon capture
 not Windows Print Screen. Ship UI may remain visible in some captures.
 
 See RELEASE-NOTES.md and KNOWN-ISSUES.md for features and validation limits.
-Camera foundation: ActionCam 2.3.1 by HuedPurple.
+Historical camera foundation in earlier releases: ActionCam by HuedPurple.
+The current camera controller is maintained in this repository.
 Bingus native UI/font reader: CowboyBingus (0BSD license included).
 Selected native reader work: Link (MIT license included). Link's addon is not
 required. Artwork remains property of its respective owners; original logo
