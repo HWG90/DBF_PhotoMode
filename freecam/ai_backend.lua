@@ -1,6 +1,6 @@
 -- Enemy component layouts adapted from Link's MIT hd2_enemy/hd2_addresses/
 -- hd2_net libraries. Copyright (c) 2026 Link; see vendor/LICENSE-Link.txt.
--- This backend changes behavior fields only: no clock, pose, velocity, stun,
+-- This backend changes behavior fields and the solo player no-aggro bit only: no clock, pose, velocity, stun,
 -- spawn, despawn, physics API, or game-function invocation.
 local M={game_stamp=0x6ab3b43f,exe_stamp=0x6ab382e4}
 M.layout={WORLD=0x346bf98,DIRECTOR=0x3326d10,AI=0x33266c8,BEHAVIOR=0x3326740,DETECTOR=0x3326548,ALERT=0x3326528,
@@ -161,6 +161,46 @@ function M.new(sr,memory)
   local visible=copied_pointer(methods,0,vt+0xc8)
   if alive~=memory.exe+0x2bd890 or visible~=memory.exe+0x2c3990 then return end
   return ref
+ end
+ -- Solo Passive owns one player flag, rather than touching every enemy.
+ -- Build 6AB3B43F detector candidate and existing-target paths reject bit 25.
+ -- Live solo testing confirmed no aggro; this does not disable AI simulation.
+ function self.passive_update(ctx,lease,restore)
+  assert(valid_context(ctx),'Passive scene or authority changed')
+  assert(read(memory.game+0x8873a0,6)=='\x48\xa9\x00\x00\x00\x06' and
+   read(memory.game+0x885975,5)=='\x48\x0f\xba\xe0\x19','Passive detector fingerprint changed')
+  local mask=0x2000000
+  local function row(e)
+   local ref=unit(ctx,e);if not ref then return end
+   local mgr=ptr(memory.game+0x3326430);if not mgr then return end
+   local index=map(mgr+0x18,e);if index==nil then return end
+   local list,rows=ptr(mgr+0x30),ptr(mgr+0x38);if not(list and rows)then return end
+   local d=ptr(list+index*8);if not d then return end
+   local bytes=read(d+8,16);if word(bytes,0)~=e or bytes:byte(13)%2~=1 then return end
+   return {entity=e,ref=ref,manager=mgr,descriptor=d,generation=bytes:sub(1,8),at=rows+index*8,identity=ctx.identity}
+  end
+  local function matches(a,b)return a and a.identity==b.identity and a.ref==b.ref and a.manager==b.manager and a.descriptor==b.descriptor and a.generation==b.generation end
+  local function clear()
+   if lease.entity then
+    local r=lease.identity==ctx.identity and row(lease.entity)
+    if matches(r,lease)and lease.owned then
+     assert(valid_context(ctx),'Passive cleanup context changed');local fresh=row(lease.entity);assert(matches(fresh,lease),'Passive cleanup owner changed')
+     local value=u32(fresh.at);if bit.band(value,mask)~=0 then memory.write(fresh.at,le(bit.band(value,bit.bnot(mask))%4294967296,4));assert(bit.band(u32(fresh.at),mask)==0,'Passive cleanup readback failed')end
+    end
+   end
+   for k in pairs(lease)do lease[k]=nil end
+  end
+  if restore then clear();return true end
+  local player=ptr(memory.game+0x3326468);local handle=player and u32(player+0x3a8)
+  local index=handle and map(ctx.world+0xf22ec8,handle);local entity=index and u32(ctx.world+L.WORLD_RECORDS+index*24+8)
+  local current=entity and row(entity)
+  if lease.entity and(not current or lease.entity~=entity or not matches(current,lease))then clear()end
+  assert(current,'Passive player unavailable')
+  if not lease.entity then for k,v in pairs(current)do lease[k]=v end;lease.owned=false end
+  assert(valid_context(ctx),'Passive authority changed');local fresh=row(entity);assert(matches(fresh,lease),'Passive player changed')
+  local value=u32(fresh.at)
+  if bit.band(value,mask)==0 then lease.owned=true;memory.write(fresh.at,le(bit.bor(value,mask)%4294967296,4));assert(bit.band(u32(fresh.at),mask)~=0,'Passive apply readback failed')end
+  return true
  end
  local function identity(ctx,e,ref)return ctx.identity..':'..e..':'..ref end
  -- Movement ownership belongs to this Unit/AI row. A retired borrowed

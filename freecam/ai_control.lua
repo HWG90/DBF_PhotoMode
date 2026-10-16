@@ -5,6 +5,7 @@ local APPLY_FIELDS={'still','target','alert','detector','hostiles'}
 function M.new(backend,log)
  local self={mode='normal',status='Enemy behavior: Normal',available=false,pending=false,affected=0,solo_reset=0};local requested;local context;local held={};local detectors={};local cursor=0;local next_refresh=0;local round=0;local detector_round=0
  local last_hold;local hold_credit=0
+ local passive_lease={};local passive_due=0
  local held_dirty,detector_dirty=true,true
  local tracked,affected,errors,detector_count=0,0,0,0
  local function tally(h,sign)
@@ -101,6 +102,12 @@ function M.new(backend,log)
   return true
  end
  local function release_all(reason)
+  if passive_lease.entity then
+   local ctx,why=get_context(true);if not ctx then return fail('Passive cleanup waiting: '..tostring(why))end
+   if ctx.identity~=passive_lease.identity then passive_lease={} else
+    local ok,err=pcall(backend.passive_update,ctx,passive_lease,true);if not ok then return fail('Passive cleanup pending: '..tostring(err))end
+   end
+  end
   if next(held)==nil and next(detectors)==nil then context=nil;self.affected=0;self.status=reason or'Enemy behavior: Normal';return true end
   local current,why=get_context(true)
   if not current then return fail('Enemy cleanup waiting for authority: '..tostring(why))end
@@ -172,6 +179,26 @@ function M.new(backend,log)
   local now=backend.now();local urgent=self.pending
   if requested then self.mode=requested;requested=nil;self.pending=false end
   if self.mode=='normal'then return release_all()end
+  if type(backend.passive_update)=='function' then
+   if self.mode~='passive'and passive_lease.entity then if not release_all()then return false end end
+   if self.mode=='passive'then
+    if not urgent and now<passive_due then return true end;passive_due=now+1
+    -- Switching from Dummy restores its owned movement/detector fields first.
+    if next(held)or next(detectors)then if not release_all()then return false end end
+    local ctx,why,policy=get_context()
+    if not ctx then
+     self.available=false
+     if policy=='not_solo'or policy=='unknown_session'then self.mode='normal';self.solo_reset=self.solo_reset+1;return release_all('Passive reset to Normal: '..tostring(why))end
+     return fail('Passive unavailable: '..tostring(why))
+    end
+    self.available=true
+    if passive_lease.identity and passive_lease.identity~=ctx.identity then passive_lease={}end
+    local ok,err=pcall(backend.passive_update,ctx,passive_lease,false)
+    self.affected=0;self.budget_limited=false
+    if not ok then return fail('Passive unavailable: '..tostring(err))end
+    self.status='Enemy behavior: Passive (player no aggro)';return true
+   end
+  end
   -- Accumulate one sweep per 50 ms, apportioned to the current population.
   -- Never replay missed sweeps after a stall; at most one visit per live ID
   -- is due in this callback. A fractional credit avoids small-population bias.
