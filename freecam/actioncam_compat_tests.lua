@@ -54,6 +54,30 @@ assert(up(original.wrapper,'previous_update')==original_game_update,'Game update
 local gated_step=up(original.wrapper,'step');local gated_apply=up(original.hook,'apply');local gated_bind=up(original.step,'bindings_step')
 assert(gated_step~=original.step and gated_apply~=original.apply and gated_bind~=original.bind)
 assert(bridge.refresh()and up(original.wrapper,'step')==gated_step,'Attachment must be idempotent')
+-- A temporary foreign callback must block entry only while it owns the cell.
+-- Restoring every exact owned gate must recover readiness without a reload or
+-- a new callback root; the previous failure reason cannot remain latched.
+do
+ local env,bridge,_,_,load=fixture();local original=load();original.hook()
+ assert(bridge.refresh())
+ local cells={{original.wrapper,'step'},{original.hook,'apply'},{original.step,'bindings_step'}}
+ local gates={}
+ for index,cell in ipairs(cells)do gates[index]=up(cell[1],cell[2])end
+ local filtered=up(original.bind,'PHOTO_BINDS')
+ for index,cell in ipairs(cells)do
+  local foreign=function()return 'temporary owner'end
+  put(cell[1],cell[2],foreign)
+  local ok,why=bridge.refresh()
+  assert(not ok and not bridge.available and why:find('ownership changed'),'A foreign callback must block camera entry')
+  assert(not bridge.refresh()and up(cell[1],cell[2])==foreign,'An unresolved conflict must remain blocked and untouched')
+  put(cell[1],cell[2],gates[index])
+  assert(bridge.refresh()and bridge.available and bridge.reason==nil and not bridge.held,
+   'Restored owned gates must clear stale readiness failure with unchanged callback roots')
+  for check,other in ipairs(cells)do assert(up(other[1],other[2])==gates[check],'Readiness recovery must not replace callbacks')end
+  assert(up(original.bind,'PHOTO_BINDS')==filtered,'Readiness recovery must preserve binding identity')
+ end
+ assert(bridge.acquire()and bridge.release()and bridge.dispose(),'Recovered readiness must permit a normal camera handoff')
+end
 -- Normal ActionCam gameplay FOV behavior still runs while Photo is inactive.
 prime_fov(original,camera);env.render('idle');assert(e.fov==1 and math.abs(camera.fov-1)<1e-9 and e.render==1)
 gated_bind();assert(e.registered['actioncam.restart']and e.registered['actioncam.profile_1'])

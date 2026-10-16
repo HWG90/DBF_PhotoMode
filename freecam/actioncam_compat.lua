@@ -152,7 +152,9 @@ function M.new(G,log)
      return status(false,'ActionCam ownership changed; Photo Mode must release its camera')
     end
    end
-   return self.available,self.reason
+   -- The roots can stay unchanged while another owner temporarily replaces a
+   -- gate. Once every exact gate is restored, clear the earlier conflict.
+   return status(true)
   end
   local queue,deferred,seen,found,helpers={},{},{},{},{};local index=1;local inspected=0
   local function enqueue(fn,name)
