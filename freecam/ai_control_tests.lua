@@ -292,7 +292,7 @@ do
    s.records[e]={entity=e,identity='perf:'..e,invalid=4294967295,fields=fields};s.ids[#s.ids+1]=e;return s.records[e]
   end
   local function read(e)return s.records[e]and clone(s.records[e])or nil,'retired'end
-  local b={now=function()return s.time end,context=function()if s.context_error then return nil,'authority temporarily unavailable'end;return{identity='perf',solo=true,player_count=1}end,
+  local b={cost_now=function()return 0 end,now=function()return s.time end,context=function()if s.context_error then return nil,'authority temporarily unavailable'end;return{identity='perf',solo=true,player_count=1}end,
    scan=function()return s.ids,0 end,
    observe=function(_,e)s.observations=s.observations+1;s.visits[e]=(s.visits[e]or 0)+1;return read(e)end,
    observe_restore=function(_,e)s.restore_observations=s.restore_observations+1;return read(e)end,
@@ -414,6 +414,19 @@ do
   assert(timed.observations-before<=population,'A long stall replayed missed enforcement cycles')
   assert(timed.control.queue('normal')and timed.control.flush(false)and timed.control.count()==0)
  end end
+ C.hold_interval=0;C.interval=.05
+
+ -- Expensive native observations yield after a small amount of measured
+ -- work; the round-robin cursor advances and Reset bypasses the budget.
+ C.hold_interval=.05;C.interval=.5
+ s=fixture(true);for i=1,64 do s.add(i)end;local cost=0
+ s.backend.cost_now=function()return cost end
+ local observe_cost=s.backend.observe
+ s.backend.observe=function(...)cost=cost+.0003;return observe_cost(...)end
+ assert(s.control.queue('dummy')and s.control.flush(false)and s.observations==2 and s.control.budget_limited,'AI ignored its per-frame time budget')
+ for i=1,40 do s.time=i*.016;local before=s.observations;assert(s.control.flush(false));assert(s.observations-before<=2,'Deferred AI work caused a catch-up burst')end
+ for e=1,64 do assert(s.visits[e],'Time budget starved an enemy')end
+ assert(s.control.queue('normal')and s.control.flush(false)and s.control.count()==0,'Budget delayed Reset')
  C.hold_interval=0;C.interval=.05
 
  -- Model the review helper's acknowledged-method migration. Authoritative

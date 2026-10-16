@@ -16,14 +16,16 @@ function M.new(sr,memory)
  if not memory then
   local ffi=require('ffi');pcall(ffi.cdef,[[void* AIB_GetModuleHandleA(const char*) __asm__("GetModuleHandleA");void* AIB_GetCurrentProcess(void) __asm__("GetCurrentProcess");
    int AIB_ReadProcessMemory(void*,const void*,void*,size_t,size_t*) __asm__("ReadProcessMemory");int AIB_WriteProcessMemory(void*,void*,const void*,size_t,size_t*) __asm__("WriteProcessMemory");
-   unsigned long long AIB_GetTickCount64(void) __asm__("GetTickCount64");]])
+   unsigned long long AIB_GetTickCount64(void) __asm__("GetTickCount64");int AIB_QueryPerformanceCounter(int64_t*) __asm__("QueryPerformanceCounter");int AIB_QueryPerformanceFrequency(int64_t*) __asm__("QueryPerformanceFrequency");]])
   local K=ffi.load('kernel32');local process=K.AIB_GetCurrentProcess()
+  local counter=ffi.new('int64_t[1]');assert(K.AIB_QueryPerformanceFrequency(counter)~=0,'AI performance clock unavailable');local frequency=tonumber(counter[0])
   local buffer=ffi.new('uint8_t[4096]');local got=ffi.new('size_t[1]')
   memory={game=tonumber(ffi.cast('uintptr_t',K.AIB_GetModuleHandleA('game.dll'))),exe=tonumber(ffi.cast('uintptr_t',K.AIB_GetModuleHandleA(nil)))}
   function memory.read(at,size)assert(K.AIB_ReadProcessMemory(process,ffi.cast('void*',at),buffer,size,got)~=0 and tonumber(got[0])==size,'AI memory unavailable');return ffi.string(buffer,size)end
   function memory.write(at,data)local got=ffi.new('size_t[1]');assert(K.AIB_WriteProcessMemory(process,ffi.cast('void*',at),data,#data,got)~=0 and tonumber(got[0])==#data,'AI write unavailable')end
   function memory.scene(world)return address(memory.read(tonumber(ffi.cast('uintptr_t',world)),8),0)end
   function memory.now()return tonumber(K.AIB_GetTickCount64())/1000 end
+  function memory.cost_now()assert(K.AIB_QueryPerformanceCounter(counter)~=0,'AI performance clock unavailable');return tonumber(counter[0])/frequency end
  end
  local L=M.layout;local self={};local function read(at,size)
   assert(type(at)=='number'and at>=65536 and at<2^47 and size>0 and size<=4096,'AI read bounds changed')
@@ -76,6 +78,7 @@ function M.new(sr,memory)
   return ptr(memory.game+L[label])
  end
  function self.now()return memory.now()end
+ function self.cost_now()return memory.cost_now and memory.cost_now()end
  -- Read the current mission record, rather than classifying nearby enemies.
  -- The current-build GameStart serializer and faction-specific native callers
  -- use GameState+AE288 -> record+F8 (2 Bugs, 3 Cyborg, 4 Illuminate).

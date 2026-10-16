@@ -1,5 +1,5 @@
 -- Director behavior suppression. Enemy brains, physics and damage still run.
-local M={modes={'normal','passive','dummy'},maximum=1024,interval=.5,hold_interval=.05,batch=16}
+local M={modes={'normal','passive','dummy'},maximum=1024,interval=.5,hold_interval=.05,batch=16,work_budget=.0005}
 local bit=require('bit')
 local APPLY_FIELDS={'still','target','alert','detector','hostiles'}
 function M.new(backend,log)
@@ -211,7 +211,11 @@ function M.new(backend,log)
   end
   held_ids=ordered(held,held_ids,held_dirty);held_dirty=false;local ids=held_ids
   local budget=math.min(#ids,(M.hold_interval<=0 or urgent or backwards)and M.batch or math.floor(hold_credit+1e-9))
-  hold_credit=math.max(0,hold_credit-budget)
+  local clock=backend.cost_now;local clock_ok,start
+  if type(clock)=='function'then clock_ok,start=pcall(clock)end
+  local timed=clock_ok and type(start)=='number'and start==start and math.abs(start)<math.huge
+  if not timed then budget=math.min(budget,M.batch)end
+  local processed=0;self.budget_limited=false
   if budget>0 then
    for i=1,budget do
     local index=((round+i-1)%#ids)+1;local e=ids[index];local h=held[e];tally(h,-1);local r,err=observe(e)
@@ -223,10 +227,15 @@ function M.new(backend,log)
      if h.identity~=r.identity then h={identity=r.identity,leases={}};held[e]=h end
      local ok,why=apply(e,h,r);h.error=not ok and why or nil;h.applied=ok
     end
-    tally(held[e],1)
+    tally(held[e],1);processed=processed+1
+    if timed then
+     local ok,finish=pcall(clock)
+     if not ok or type(finish)~='number'or finish~=finish or finish<start or finish-start>=M.work_budget then self.budget_limited=i<budget;break end
+    end
    end
-   round=(round+budget)%#ids
+   round=(round+processed)%#ids
   end
+  hold_credit=math.max(0,hold_credit-processed)
   -- Detector leases outlive borrowers, but not their actual owner's lifetime.
   -- Sweep a bounded slice so deaths/replacements cannot accumulate forever.
   if discover then
@@ -240,8 +249,10 @@ function M.new(backend,log)
    end
   end
   self.affected=affected
-  if displayed.mode~=self.mode or displayed.affected~=self.affected or displayed.errors~=errors or displayed.limited~=limited or displayed.discovery~=self.discovery_error or displayed.text~=self.status then
+  if displayed.budget~=self.budget_limited or displayed.mode~=self.mode or displayed.affected~=self.affected or displayed.errors~=errors or displayed.limited~=limited or displayed.discovery~=self.discovery_error or displayed.text~=self.status then
    self.status=string.format('Enemy behavior: %s (%d affected%s%s%s)',self.mode=='dummy'and'Dummy'or'Passive',self.affected,errors>0 and(', '..errors..' unavailable')or'',limited and', tracking capacity reached'or'',self.discovery_error and', discovery retry pending'or'')
+   if self.budget_limited then self.status=self.status..' - workload limited'end
+   displayed.budget=self.budget_limited
    displayed.mode,displayed.affected,displayed.errors,displayed.limited,displayed.discovery,displayed.text=self.mode,self.affected,errors,limited,self.discovery_error,self.status
   end
   return true
