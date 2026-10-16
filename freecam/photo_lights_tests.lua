@@ -1,6 +1,6 @@
 local root=rawget(_G,'DBF_PHOTO_TEST_ROOT')or'freecam/'
 local M=dofile(root..'photo_lights.lua')
-local a,b={},{};local worlds={a,b};local main=a;local resource=true;local next_id=0;local units={};local destroyed={};local writes={};local fail_destroy=false;local fail_component=false;local light_node=2;local light_parent=1;local fail_intensity_once=false
+local a,b={},{};local worlds={a,b};local main=a;local resource=true;local next_id=0;local units={};local destroyed={};local writes={};local fail_destroy=false;local fail_component=false;local light_node=2;local light_parent=1;local fail_intensity_once=false;local fail_position_once=false
 local function vector(...)return{...}end
 local temp_count=10;local restored_scopes=0;local fail_marker=false
 local V=setmetatable({x=function(v)return v[1]end,y=function(v)return v[2]end,z=function(v)return v[3]end},{__call=function(_,...)return vector(...)end})
@@ -18,7 +18,7 @@ function sr.World.update_unit(world,unit)assert(world==unit.world);writes[#write
 function sr.Unit.alive(unit)return unit.alive end
 function sr.Unit.num_lights(unit)return 1 end
 function sr.Unit.light(unit,index)assert(index==1);if fail_component then error('component missing')end;return unit.light end
-function sr.Unit.set_local_position(unit,node,p)assert(node==1);unit.pos=p end
+function sr.Unit.set_local_position(unit,node,p)if fail_position_once then fail_position_once=false;error('Position update refused')end;assert(node==1);unit.pos=p end
 function sr.Unit.set_local_rotation(unit,node,q)assert(node==1);unit.rot=q end
 function sr.Unit.scene_graph_parent(unit,node)assert(unit.light.node==node);return light_parent end
 function sr.Light.node(light)return light.node end
@@ -117,7 +117,7 @@ assert(not manager.update({kind='spot',color='#FF0000',intensity=9,follow_camera
 assert(manager.selected().intensity==6 and not manager.selected().follow_camera)
 assert(restored_unit.light.type=='omni'and restored_unit.light.color[2]==1 and restored_unit.light.intensity==6 and restored_unit.light.enabled,'Failed update left partial native properties')
 assert(restored_unit.pos[1]==10 and restored_unit.pos[2]==21,'Failed edit retained a changed camera anchor')
-assert(manager.update({follow_camera=true}));fail_intensity_once=true
+assert(manager.update({follow_camera=true}));fail_position_once=true
 assert(not manager.tick(a,moved_again));assert(restored_unit.pos[1]==101 and restored_unit.pos[2]==200,'Failed follow tick retained partial placement')
 assert(manager.tick(a,moved_again));assert(restored_unit.pos[1]==200 and restored_unit.pos[2]==301,'Follow movement did not recover after failure')
 -- Deleting an earlier light retains selection of the same owned light.
@@ -289,7 +289,7 @@ do
  assert(follower.update({follow_player=true})and not follower.selected().follow_camera)
  assert(lamp.pos[1]==x and lamp.pos[2]==y,'Enabling player follow snapped placement')
  local unchanged=#writes;assert(follower.tick(a,moved));assert(#writes==unchanged,'Stationary player caused redundant native light writes')
- player={11,22,33};assert(follower.tick(a,moved))
+ player={11,22,33};local appearance_writes=#writes;assert(follower.tick(a,moved));assert(#writes==appearance_writes+1 and writes[#writes][1]=='update','Player follow reapplied light appearance')
  assert(lamp.pos[1]==x+10 and lamp.pos[2]==y+20 and lamp.pos[3]==z+30,'Player translation did not move the light rig')
  local export=follower.export_setup();assert(export.definitions[1].anchor.forward[2]==1,'Free camera changed player rig orientation')
  follower.player_context=function()return nil end;assert(follower.tick(a,camera));assert(lamp.pos[1]==x+10,'Missing player jumped light')
@@ -300,5 +300,26 @@ do
  assert(follower.update({follow_player=false}));player={31,42,53};assert(follower.tick(a,moved));assert(lamp.pos[1]==x+20,'Disabled player follow kept moving')
  assert(follower.update({follow_player=true}));assert(follower.update({follow_camera=true})and not follower.selected().follow_player,'Follow modes conflict')
  assert(follower.release('shutdown'))
+end
+-- The UI's Follow Player switch owns the complete rig, including new lights.
+do
+ main=a;worlds={a,b};local rig=M.new(sr);local player={0,0,0}
+ rig.scene_context=function()return main,1 end;rig.player_context=function()return{world=main,position=player}end
+ assert(rig.tick(a,camera)and rig.create({right=-2})and rig.create({right=2})and rig.select(1))
+ assert(rig.queue('set_follow_player',true)and rig.flush(a,camera)and rig.follow_player)
+ local _,selection=rig.selected();assert(selection==1,'Rig toggle changed selected light')
+ assert(rig.create({up=2})and rig.selected().follow_player,'New rig member did not inherit player follow')
+ local positions={};for _,marker in ipairs(rig.markers())do positions[marker.id]=marker.position end
+ local appearance=#writes;player={5,6,7};assert(rig.tick(a,moved));assert(#writes==appearance+3,'Rig movement reset appearance properties')
+ for _,marker in ipairs(rig.markers())do local p=positions[marker.id];assert(marker.position[1]==p[1]+5 and marker.position[2]==p[2]+6 and marker.position[3]==p[3]+7,'A rig member failed to follow')end
+ assert(not rig.update({follow_camera=true}),'Camera follow conflicted with the player rig')
+ assert(rig.set_follow_player(false)and not rig.follow_player)
+ for i=1,3 do assert(rig.select(i)and not rig.selected().follow_player)end
+ local intensity=sr.Light.set_intensity;local calls=0
+ sr.Light.set_intensity=function(...)calls=calls+1;if calls==2 then error('second member refused')end;return intensity(...)end
+ assert(not rig.set_follow_player(true)and not rig.follow_player,'Partial rig toggle reported success')
+ sr.Light.set_intensity=intensity
+ for i=1,3 do assert(rig.select(i)and not rig.selected().follow_player,'Partial rig toggle was not rolled back')end
+ assert(rig.release('shutdown'))
 end
 print('Photo lights: owned point/spot units, linear color, placement, limits, selection, visibility, follow camera, exact cleanup/retry/retirement and capability gates passed')

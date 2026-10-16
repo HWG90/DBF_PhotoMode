@@ -101,7 +101,7 @@ function M.new(sr,log,reuse,handoff)
   else assert(reuse.count()==0,'Photo light refresh requires an empty idle manager')end
  else assert(handoff==nil,'Photo light handoff requires its existing manager')end
  local saved=reuse and callable(reuse.saved_setup)and reuse.saved_setup()or nil
- local self=reuse or{};self.status=M.testing_status..' - Photo lighting is waiting for a camera';self.available=false;self.revision=reuse and(self.revision or 0)+1 or 0;self.pending=false
+ local self=reuse or{};self.follow_player=self.follow_player==true;self.status=M.testing_status..' - Photo lighting is waiting for a camera';self.available=false;self.revision=reuse and(self.revision or 0)+1 or 0;self.pending=false
  local records=handoff and handoff.records or{};local selected=handoff and handoff.selected or 0;local world=handoff and handoff.world;local frame=handoff and context(handoff.frame);local serial=handoff and handoff.serial or 0;local queue={}
  local scene_epoch=handoff and handoff.scene_epoch;local scene_key=world and tostring(world);local scene_verified=false;local restoring=false;local spawn;local replacement;local finish_replacement
  if scene_epoch~=nil then for _,record in ipairs(records)do record.scene_epoch=scene_epoch end end
@@ -184,7 +184,7 @@ function M.new(sr,log,reuse,handoff)
    range=callable(L.set_falloff_start)and callable(L.set_falloff_end),follow_camera=true,color=true}
   self.available=true;return true,nil,caps
  end
- local function apply(record)
+ local function apply(record,movement)
   local alive,why=owned_live(record);if alive~=true then return false,'Photo light is '..tostring(why)end
   local same,light=pcall(U.light,record.unit,1)
   if not same or not light then return false,'Photo light component unavailable'end
@@ -198,13 +198,15 @@ function M.new(sr,log,reuse,handoff)
    local known,parent=pcall(U.scene_graph_parent,record.unit,node)
    if not known or parent~=1 then return false,'Photo light transform hierarchy unsupported'end
   end
+  if record.node~=node then movement=nil end
   record.node=node
   local o,b=record.values,record.anchor;local position={}
   for i=1,3 do position[i]=b.position[i]+b.right[i]*o.right+b.forward[i]*o.forward+b.up[i]*o.up end
   local ran,err=pcall(function()
-   L.set_enabled(light,false)
+   if not movement then L.set_enabled(light,false)end
    U.set_local_position(record.unit,1,sr.Vector3(unpack(position)))
-   U.set_local_rotation(record.unit,1,sr.Quaternion.look(sr.Vector3(unpack(b.forward)),sr.Vector3(unpack(b.up))))
+   if movement~='position'then U.set_local_rotation(record.unit,1,sr.Quaternion.look(sr.Vector3(unpack(b.forward)),sr.Vector3(unpack(b.up))))end
+   if not movement then
    -- Light setters write the light's scene graph node. A root-attached light
    -- already has the intended world transform; zeroing it would move the unit
    -- to the world origin. Only neutralize a verified direct child on this copy.
@@ -228,7 +230,9 @@ function M.new(sr,log,reuse,handoff)
     if callable(L.set_spot_angle_start)then L.set_spot_angle_start(light,0)end
     L.set_spot_angle_end(light,math.rad(o.cone))
    end
-   L.set_enabled(light,o.enabled);W.update_unit(record.world,record.unit)
+   L.set_enabled(light,o.enabled)
+   end
+   W.update_unit(record.world,record.unit)
   end)
   return ran,not ran and tostring(err)or nil
  end
@@ -337,7 +341,7 @@ function M.new(sr,log,reuse,handoff)
    elseif record.values.follow_player or(record.values.follow_camera and frame)then
     local previous=record.anchor;local following=record.values.follow_player and player_anchor(record)or(not record.values.follow_player and copy(frame))
     if following then
-    record.anchor=following;local ok,err=apply(record)
+    record.anchor=following;local ok,err=apply(record,record.values.follow_player and'position'or'pose')
     if not ok then
      record.anchor=previous;local restored,reason=apply(record)
      if not restored then pcall(L.set_enabled,record.light,false)end
@@ -374,6 +378,7 @@ function M.new(sr,log,reuse,handoff)
   if not frame then return fail('Photo lighting is waiting for camera placement')end
   if#records>=M.maximum then return fail('Three photo lights are already placed')end
   local o,err=clean(values);if not o then return fail(err)end
+  if self.follow_player then o.follow_player=true;o.follow_camera=false end
   if o.follow_player then
    anchor=copy(anchor);anchor.player_origin=anchor.player_origin or player_position()
    if not anchor.player_origin then return fail('Player position unavailable')end
@@ -473,6 +478,7 @@ function M.new(sr,log,reuse,handoff)
  end
  function self.update(values)
   if replacement then return fail('Photo light setup is still restoring')end
+  if self.follow_player and values and values.follow_camera==true then return fail('Turn off Follow Player before following the camera')end
   local record=records[selected];if not record then return fail('Add a photo light first')end
   local o,why=clean(values,record.values);if not o then return fail(why)end
   if o.kind=='spot'and not record.caps.spot then return fail('Spot lights are unavailable in this engine')end
@@ -493,6 +499,29 @@ function M.new(sr,log,reuse,handoff)
   end
   record.error=nil;self.revision=self.revision+1;status('Photo light '..selected..' updated');return true
  end
+ -- A rig-wide switch. Preserve selection and restore every previous numeric
+ -- placement if any member refuses its update; no partial rig mode is accepted.
+ function self.set_follow_player(enabled)
+  if type(enabled)~='boolean'then return fail('Invalid player follow setting')end
+  if replacement then return fail('Photo light setup is still restoring')end
+  local previous=selected;local backups={}
+  for i,record in ipairs(records)do backups[i]={values=copy(record.values),anchor=copy(record.anchor)}end
+  for i,record in ipairs(records)do
+   selected=i;local ok,why=self.update({follow_player=enabled})
+   if not ok then
+    local recovery
+    for j,snapshot in ipairs(backups)do
+     local item=records[j];item.values=snapshot.values;item.anchor=snapshot.anchor
+     local restored,reason=apply(item)
+     if not restored then item.recover=snapshot;self.pending=true;recovery=reason end
+    end
+    selected=previous;self.revision=self.revision+1
+    return fail('Light rig follow update failed: '..tostring(why)..(recovery and('; restoration pending: '..tostring(recovery))or''))
+   end
+  end
+  selected=previous;self.follow_player=enabled;self.revision=self.revision+1
+  status(enabled and'All photo lights follow the player'or'Player following disabled for all photo lights');return true
+ end
  function self.place_at_camera()
   if replacement then return fail('Photo light setup is still restoring')end
   local record=records[selected];if not record then return fail('Add a photo light first')end
@@ -512,7 +541,8 @@ function M.new(sr,log,reuse,handoff)
   else anchor=context({position=position,forward=record.anchor.forward,right=record.anchor.right,up=record.anchor.up})end
   if not anchor then return fail(why or'Invalid photo light orientation')end
   local old_values,old_anchor=record.values,record.anchor
-  local values=copy(old_values);values.right=0;values.forward=0;values.up=0;values.follow_camera=false;values.follow_player=false
+  local values=copy(old_values);values.right=0;values.forward=0;values.up=0;values.follow_camera=false;values.follow_player=self.follow_player
+  if values.follow_player then anchor.player_origin=player_position();if not anchor.player_origin then return fail('Player position unavailable')end end
   record.values=values;record.anchor=anchor
   local ok,reason=apply(record)
   if not ok then
@@ -539,7 +569,7 @@ function M.new(sr,log,reuse,handoff)
  -- the real game update callback. Repeated slider edits merge without growing
  -- an unbounded action queue, and an exit discards outstanding creates/edits.
  function self.queue(action,values)
-  local allowed={create=true,update=true,select=true,place_at_camera=true,remove=true,release=true,move=true,aim=true,preset=true,import_setup=true}
+  local allowed={set_follow_player=true,create=true,update=true,select=true,place_at_camera=true,remove=true,release=true,move=true,aim=true,preset=true,import_setup=true}
   if not allowed[action]then return fail('Unknown photo light action')end
   if(action=='create'or action=='update')and values~=nil and type(values)~='table'then return fail('Invalid photo light settings')end
   if(action=='move'or action=='aim'or action=='preset'or action=='import_setup')and type(values)~='table'then return fail('Invalid photo light placement request')end

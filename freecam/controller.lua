@@ -589,6 +589,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         if lighting_write or not lights or not photo.active then return end
         if id=='light_selected'then light_request('select',value)
         elseif id=='light_kind'then light_request('update',{kind=value==2 and'spot'or'omni'})
+        elseif id=='light_follow_player'then light_request('set_follow_player',value)
         elseif light_fields[id]then light_request('update',{[light_fields[id]]=value})end
     end
     local function refresh_lights()
@@ -603,6 +604,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         controls.light_selected.choices={};for i=1,math.max(1,count)do controls.light_selected.choices[i]='Light '..i end
         for id in pairs(light_fields)do if controls[id]then controls[id].disabled=not selected end end
         controls.light_kind.disabled=not selected
+        if controls.light_follow then controls.light_follow.disabled=not selected or lights.follow_player==true end
         controls.light_kind.choices=caps.spot and{'Point','Spot'}or{'Point'}
         controls.light_range.disabled=not(selected and caps.range)
         controls.light_cone.disabled=not(selected and caps.spot and values.kind=='spot')
