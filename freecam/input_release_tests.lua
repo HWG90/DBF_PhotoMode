@@ -15,7 +15,7 @@ local function lifecycle(hover)
  local input={down=function(k)return keys[k]or false end,focused=function()return focused end,
   chat_active=function()return chat end,pause_allowed=function()return true end,
   acquire=function()
-   order[#order+1]='acquire';if hover then assert(hover.ready and epoch>0,'Hover capture needs real neutral engine progress')end
+   order[#order+1]='acquire';if hover and values.freeze_player then assert(hover.ready and epoch>0,'Hover capture needs real neutral engine progress')end
    acquired=acquired+1;captured=true;return{}
   end,
   release=function()
@@ -39,7 +39,7 @@ local function lifecycle(hover)
   end,hold=function()return true end}
  if hover then
   function freeze.prepare()
-   order[#order+1]='prepare';if hover.fail_prepare then return false,'Hover input unsupported'end
+   order[#order+1]='prepare';if hover.fail_prepare then if hover.partial_prepare then owned=true end;return false,'Hover input unsupported'end
    assert(not restore_epoch);owned=true;return true
   end
   function freeze.input_release_required()return owned end
@@ -104,7 +104,7 @@ do
  local owned,pending=s.owned();assert(owned and pending)
  s.menu(false);s.tick(true);assert(not s.owned()and s.c.close());DBFMCM=nil
 end
-for _,kind in ipairs({'toggle','escape','chat','focus','scene','disabled','provider','input-provider','close','timeout','unsupported'})do
+for _,kind in ipairs({'toggle','escape','chat','focus','scene','disabled','provider','input-provider','close','timeout'})do
  local hover={ready=false,fail_prepare=kind=='unsupported'};local s=lifecycle(hover);s.press(80)
  if kind=='toggle'then s.tick();s.press(80)
  elseif kind=='escape'then s.press(27)
@@ -119,6 +119,18 @@ for _,kind in ipairs({'toggle','escape','chat','focus','scene','disabled','provi
  local a,_,p,n=s.counts();assert(not s.c.entry_pending()and not s.photo.active and s.rate()==1 and a==0 and p==0 and n==0,'Unsafe hover cancellation captured, paused or released inputs: '..kind)
  assert(s.gameplay.ads==1 and s.gameplay.move==1 and s.gameplay.jump==1)
  s.focus(true);s.tick(true);assert(not s.owned());s.c.close();DBFMCM=nil
+end
+-- Unsupported hover pause may open an unfrozen camera only after cleanup.
+do
+ local s=lifecycle({ready=false,fail_prepare=true});s.press(80)
+ local a,_,p,n=s.counts();assert(s.photo.active and a==1 and p==0 and n==0 and s.rate()==1,'Pause refusal blocked safe camera-only entry')
+ assert(s.logs[#s.logs]=='freecam: on');assert(s.gameplay.ads==1 and s.gameplay.jump==1)
+ assert(s.c.stop()and s.c.close());DBFMCM=nil
+end
+do
+ local s=lifecycle({ready=false,fail_prepare=true,partial_prepare=true});s.press(80)
+ local a,_,p=s.counts();assert(not s.photo.active and a==0 and p==0 and s.owned(),'Partial hover cleanup allowed camera-only fallback')
+ s.tick(true);assert(not s.owned()and s.c.close());DBFMCM=nil
 end
 do
  local hover={ready=true};local s=lifecycle(hover);s.press(80);s.tick(true)

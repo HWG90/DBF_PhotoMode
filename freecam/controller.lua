@@ -899,7 +899,18 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         -- needs an unpaused engine update to qualify its data-only pause guard.
         local restored,problem=self._request_time_change(self._resume_time_rate());if restored==false then return false,problem end
         local prepared,reason=freeze.prepare()
-        if prepared~=true then self.stop();return false,reason end
+        if prepared~=true then
+            -- A pause-reader/input refusal must not disable the independent
+            -- camera. Resume and acknowledge all owned cleanup first; never
+            -- open over a pending hover override or force an unsafe zero step.
+            local stopped,cleanup=self.stop()
+            if stopped==false then return false,cleanup or reason end
+            if freeze.cleanup_pending and freeze.cleanup_pending()then return false,reason end
+            local changed,problem=handle.set('freeze_player',false)
+            if changed==false then return false,problem or reason end
+            log('Freeze Action unavailable; opening Photo Mode unfrozen: '..tostring(reason))
+            return self._start_camera()
+        end
         local needs_update=freeze.input_release_required and freeze.input_release_required()
         if not needs_update then return self._start_camera()end
         local before=self._input_epoch();if before==nil then self.stop();return false,'Gameplay update proof is unavailable'end
