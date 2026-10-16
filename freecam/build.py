@@ -188,8 +188,12 @@ H.dbf_input_epoch=0
 -- Photo time policy are required before the deferred entry may acquire input.
 H.dbf_input_after_update=function(...)
  if H.dbf_poses then H.dbf_poses.after_update()end
- if target and world_alive(target.world)then
-  local delta=try(sr.World.delta_time,target.world)
+ -- A closed idle camera deliberately drops target. Deferred hover cleanup
+ -- still needs real completed updates; otherwise its owned zero stays applied.
+ local update_world=target and target.world
+ if H.dbf_hover_pause and H.dbf_hover_pause.pending and(not update_world or not world_alive(update_world))then update_world=try(sr.Application.main_world)end
+ if update_world and world_alive(update_world)then
+  local delta=try(sr.World.delta_time,update_world)
   if type(delta)=='number'and delta>=0 and delta<math.huge then
    if DBF_PLAYER_FREEZE.rate()>0 and delta>0 and not PHOTO.active then H.dbf_input_epoch=H.dbf_input_epoch+1 end
    if H.dbf_hover_pause_backend then H.dbf_hover_pause_backend.after_update(delta)end

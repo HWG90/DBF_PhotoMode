@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = (
     'camera_scene_tests.lua', 'camera_motion_tests.lua', 'camera_ownership_tests.lua', 'camera_lens_tests.lua', 'independent_runtime_tests.lua',
     'camera_controls_tests.lua',
-    'cinema_camera_tests.lua', 'cinema_controls_tests.lua', 'cinema_hint_tests.lua', 'tests.lua', 'look_tests.lua', 'simulation_tests.lua', 'ragdoll_pause_tests.lua', 'simulation_controls_tests.lua', 'hover_pause_tests.lua', 'hover_pause_backend_tests.lua', 'hover_pause_integration_tests.lua', 'input_release_tests.lua', 'studio_tests.lua',
+    'cinema_camera_tests.lua', 'cinema_controls_tests.lua', 'cinema_hint_tests.lua', 'tests.lua', 'look_tests.lua', 'simulation_tests.lua', 'ragdoll_pause_tests.lua', 'simulation_controls_tests.lua', 'hover_pause_tests.lua', 'hover_pause_backend_tests.lua', 'hover_pause_integration_tests.lua', 'hover_cleanup_clock_tests.lua', 'input_release_tests.lua', 'studio_tests.lua',
     'menu_tests.lua', 'photo_menu_cache_tests.lua', 'tab_layout_schema_tests.lua', 'tab_layout_tests.lua', 'resize_menu_tests.lua', 'photo_menu_interaction_tests.lua', 'slider_scrub_tests.lua', 'control_legend_tests.lua', 'cursor_confinement_tests.lua', 'input_recovery_tests.lua', 'cross_editor_input_tests.lua', 'standalone_ownership_tests.lua',
     'numeric_menu_tests.lua', 'numeric_blur_tests.lua', 'panel_lifecycle_tests.lua', 'input_lease_recovery_tests.lua', 'controller_input_recovery_tests.lua', 'close_cleanup_tests.lua', 'photo_runtime_lifecycle_tests.lua', 'menu_reopen_tests.lua', 'postfx_tests.lua',
     'native_lens_tests.lua', 'animation_state_tests.lua', 'chat_context_tests.lua', 'subject_tests.lua','subject_poses_tests.lua','subject_pose_cape_tests.lua','subject_poses_controls_tests.lua', 'subject_backend_tests.lua', 'director_tests.lua', 'director_controls_tests.lua', 'ai_backend_tests.lua', 'ai_control_tests.lua', 'ai_controls_integration_tests.lua', 'focus_sampler_tests.lua', 'autofocus_controls_tests.lua', 'photo_lights_tests.lua','photo_light_presets_tests.lua','photo_light_gizmos_tests.lua','light_tools_controls_tests.lua', 'crest_runtime_tests.lua', 'saved_camera_tests.lua', 'shader_runtime_tests.lua', 'screenshot_tests.lua',
@@ -62,7 +62,7 @@ def main():
         for name in args.fixture or FIXTURES:
             path = ROOT/'freecam'/name
             source = path.read_bytes()
-            if name=='independent_runtime_tests.lua':
+            if name in ('independent_runtime_tests.lua','hover_cleanup_clock_tests.lua'):
                 from freecam.independent_build import generate
                 generated=generate(dof_candidate=True,native_candidate=True,combined_scene_candidate=True)
                 source=('local INDEPENDENT_RUNTIME_SOURCE='+lua_string(generated)+'\n').encode()+source
