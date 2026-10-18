@@ -110,3 +110,22 @@ do
  assert(s.motion.apply(swapped)==false and s.writes==1,'world/camera swap cannot reuse a position lease')
 end
 print('camera_motion_tests: zero-time movement, render/input cadence, holds and owned cleanup passed')
+
+-- Optional smoothing owns only numeric targets; menu handoff cancels inertia.
+do
+ local s=fixture();s.photo.options.camera_smoothing=true;s.photo.input.mouse_x=100
+ assert(s.motion.apply(s.frame));assert(s.current[1]>10 and s.current[1]<11,'Smooth translation must ease toward its target')
+ local yaw=s.photo.view.yaw;local target=s.photo.view.target_yaw
+ assert(yaw~=target,'Smooth rotation must ease toward its target')
+ local x=s.current[1];assert(s.motion.apply(s.frame)and s.current[1]==x and s.photo.view.yaw==yaw,'Render repeats must not advance smoothing')
+ s.photo.input={sequence=2,dt=.1,mouse_x=0,mouse_y=0};assert(s.motion.apply(s.frame,true))
+ assert(s.current[1]==x and s.photo.view.yaw==yaw,'Suspension must cancel smoothing without camera drift')
+ s.photo.input.sequence=3;assert(s.motion.apply(s.frame))
+ assert(s.current[1]==x and s.photo.view.yaw==yaw,'Closing a menu must not replay old smoothing targets')
+ s.photo.options.camera_smoothing=false;s.photo.input={sequence=4,dt=.1,forward=true}
+ local before=copy(s.current);assert(s.motion.apply(s.frame))
+ local dx,dy,dz=s.current[1]-before[1],s.current[2]-before[2],s.current[3]-before[3]
+ assert(close(math.sqrt(dx*dx+dy*dy+dz*dz),1),'Disabled smoothing must retain immediate movement')
+ assert(s.motion.release())
+end
+print('Optional smoothing: eased motion, sample deduplication, handoff cancellation and immediate opt-out passed')

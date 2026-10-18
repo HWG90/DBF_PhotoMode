@@ -360,3 +360,16 @@ assert(f.controller._toggle_slow_motion()and f.controller.slowmo_active and f.ra
 f.scene_ready=true;f.press(80);assert(not f.photo.active and f.controller.slowmo_active and f.rate==.2)
 f.press(220);assert(f.rate==1 and not f.controller.slowmo_active);f.close()
 print('Cold standalone slow motion: delayed scene proof changes time without Photo/native lease; second-key cancellation, timeout, disabled Photo and active/off behavior preserved')
+
+-- Editor loans hide the menu and consume mouse input; return is menu-first.
+do
+ local f=fixture();f.press(80);f.press(9)
+ assert(f.photo.active)
+ local before=f.suspends or 0
+ assert(f.controller.editor_bridge.acquire('Epic LUT'))
+ assert((f.suspends or 0)>before and f.controller.camera_suspended(),'Editor handoff must hide and suspend Photo')
+ f.dx=100;f.tick();assert(not f.photo.input.mouse_x,'Editor mouse movement entered Photo')
+ assert(f.controller.editor_bridge.release('Epic LUT'));f.dx=0;f.tick()
+ assert(f.mode==1,'Closing Epic LUT must return to Photo menu, not camera movement')
+ f.close()
+end

@@ -60,6 +60,8 @@ assert(order[#order]=='input'and order[#order-1]=='resume')
 local acquisition=acquire_count;local position={photo.pos[1],photo.pos[2],photo.pos[3]}
 for i=1,30 do photo.pos={500,500,500};keys[87]=true;tick();assert(not captured and photo.pos[1]==position[1]and photo.input.dt==0)end
 assert(acquire_count==acquisition and camera_acquires==1 and camera_lease,'Cinema gameplay branch reacquired capture or lost camera ownership')
+assert(#commands==0,'Cinema notification must be off by default')
+assert(h.set('cinema_notification',true));tick()
 local badge=false;for _,command in ipairs(commands)do if command.text=='CINEMA CAMERA'then badge=true end end;assert(badge,'Cinema status must be visible')
 -- Expiration must survive a failed clock read or a clock moving backward.
 -- Use a separate UI clock so this cannot advance the recorded path timeline.

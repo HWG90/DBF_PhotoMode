@@ -321,6 +321,15 @@ function M.new(sr,memory)
    parts[ref]={identity=table.concat({world_native,ref,unit},':'),ref=ref,handle=handle,native=unit,mesh_count=n,meshes=meshes,mesh_objects=objects,world_native=world_native,
     owner_key=owner_key(local_player),attachment_path=paths[ref],chain_link=chain_links[ref]}
   end
+  -- Reuse the already bounded, ownership-verified attachment inventory. Cape
+  -- rig discovery adds no world scan or new polling path.
+  groups.hide_cape={}
+  if type(sr.Unit.has_node)=='function'then
+   for _,ref in ipairs(groups.hide_player)do
+    local part=parts[ref]
+    if ref~=root and sr.Unit.has_node(part.handle,'cape1')then groups.hide_cape[#groups.hide_cape+1]=ref end
+   end
+  end
   for group,items in pairs(groups)do local out,seen={},{};for _,ref in ipairs(items)do if not seen[ref]then out[#out+1]=parts[ref];seen[ref]=true end end;groups[group]=out end
   return{local_owner=true,identity=identity,groups=groups}
  end

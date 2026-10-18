@@ -96,13 +96,16 @@ function M.new(sr,photo,look,runtime,freeze,cinema,config,log)
   local performing=cinema and cinema.state=='perform'
   local locked=photo.locked==true
   if not locked then held=nil end
-  local blocked=suspended==true or locked or performing
-  local sample={sequence=numbered and sequence or consumed or 0,mouse_x=0,mouse_y=0,sensitivity=input.sensitivity}
+  local blocked=suspended==true or input.suspended==true or locked or performing
+  local smoothing=photo.options and photo.options.camera_smoothing==true and not blocked
+  local sample={smoothing=smoothing,dt=fresh and input.dt or 0,sequence=numbered and sequence or consumed or 0,mouse_x=0,mouse_y=0,sensitivity=input.sensitivity}
   if fresh and not blocked then sample.mouse_x=input.mouse_x or 0;sample.mouse_y=input.mouse_y or 0 end
   -- A suspended sample is consumed, so closing a menu cannot replay its mouse.
+  if blocked and photo.view then photo.view.target_yaw=nil;photo.view.target_pitch=nil end
   local f,r=look.basis(photo,frame.forward,sample)
   if not(point(f)and point(r))then return false,'Camera look basis unavailable'end
   local dt=finite(input.dt)and math.max(0,math.min(.1,input.dt))or 0
+  if blocked or not smoothing then lease.target=nil end
   if locked then
    if not held then held={position=copy(photo.pos),forward=copy(f),right=copy(r)}end
    photo.pos=copy(held.position);f,r=held.forward,held.right
@@ -115,13 +118,18 @@ function M.new(sr,photo,look,runtime,freeze,cinema,config,log)
    local speed=finite(config.PHOTO_SPEED)and math.max(0,config.PHOTO_SPEED)or 5
    local boost=input.fast and(finite(config.PHOTO_FAST)and math.max(0,config.PHOTO_FAST)or 1)or 1
    local step=speed*boost*dt/norm
-   for axis=1,3 do photo.pos[axis]=photo.pos[axis]+direction[axis]*step end
+   local target=smoothing and(lease.target or copy(photo.pos))or photo.pos
+   for axis=1,3 do target[axis]=target[axis]+direction[axis]*step end
+   if smoothing then
+    lease.target=target;local alpha=1-math.exp(-dt/.15)
+    for axis=1,3 do photo.pos[axis]=photo.pos[axis]+(target[axis]-photo.pos[axis])*alpha end
+   end
   end
   if not performing then
    local radius=finite(config.PHOTO_MAX_RANGE)and math.max(0,config.PHOTO_MAX_RANGE)or 500
    local p,h=photo.pos,frame.player_position;local x,y,z=p[1]-h[1],p[2]-h[2],p[3]-h[3]
    local distance=math.sqrt(x*x+y*y+z*z)
-   if distance>radius and distance>0 then local k=radius/distance;p[1],p[2],p[3]=h[1]+x*k,h[2]+y*k,h[3]+z*k end
+   if distance>radius and distance>0 then local k=radius/distance;p[1],p[2],p[3]=h[1]+x*k,h[2]+y*k,h[3]+z*k;lease.target=nil end
   end
   if not point(photo.pos)then return false,'Photo camera position is invalid'end
   -- Record the attempted write before calling the engine: even a partial setter

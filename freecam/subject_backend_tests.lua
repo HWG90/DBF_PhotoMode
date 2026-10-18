@@ -56,7 +56,12 @@ function sr.Unit.set_mesh_visibility(handle,index,visible)
  assert(ptr(slots+(handle.ref%4194304)*8)==handle.native,'Fixture received stale native handle')
  local object=ptr(ptr(handle.native+0xd0)+(index-1)*16);writes[#writes+1]={ref=handle.ref,index=index,visible=visible};put(object+0xdc,visible and'\255'or'\0')
 end
+function sr.Unit.has_node(handle,name)return name=='cape1'and(handle==pack or handle==hero)end
 local backend=factory.new(sr,memory);local context=backend.resolve()
+assert(#context.groups.hide_cape==1 and context.groups.hide_cape[1].ref==pack.ref,'Cape group must contain only owned cape attachments, never the body')
+local cape_subject=core.new(backend);assert(cape_subject.apply({hide_cape=true})and cape_subject.count()==1)
+assert(memory.read(pack_objects[1]+0xdc,1)=='\0'and memory.read(hero_objects[1]+0xdc,1)=='\255','Hide cape touched the body')
+assert(cape_subject.release()and memory.read(pack_objects[1]+0xdc,1)=='\255','Cape visibility did not restore')
 assert(#context.groups.hide_player==6 and#context.groups.hide_armour==1 and#context.groups.hide_weapons==3,'Exact local backpack/weapon/armour/attachment groups are incomplete')
 for _,part in ipairs(context.groups.hide_player)do assert(part.ref~=foreign.ref,'Unrelated scene Unit entered player group')end
 local subject=core.new(backend);assert(subject.apply({hide_player=true})and subject.count()==6)

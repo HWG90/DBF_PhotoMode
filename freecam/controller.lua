@@ -137,7 +137,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
     function self.native_menu_blocked()return self._native_menu_state()end
     function self._external_menu_open()return api.is_open()or self._native_menu_blocked==true or self._native_menu_yield~=nil end
     function self.camera_suspended()
-        return not photo.active or not api or not provider or self._native_menu_yield~=nil or self._native_menu_state()or api.is_open()or not api.camera_input.focused()
+        return not photo.active or self.editor_owner~=nil or not api or not provider or self._native_menu_yield~=nil or self._native_menu_state()or api.is_open()or not api.camera_input.focused()
     end
     function self._release_input()
         if not provider then return true end
@@ -147,7 +147,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
     end
     function self._recover_input(reason)
         self._idle_stopped=false
-        clear_subject_click();photo.input={sequence=photo.sample_sequence or 0,mouse_x=0,mouse_y=0,wheel=0,dt=0}
+        clear_subject_click();photo.input={sequence=photo.sample_sequence or 0,mouse_x=0,mouse_y=0,wheel=0,dt=0,suspended=true}
         if panel and panel.suspend then panel.suspend()end
         -- Hover's zero-time guard must resume through the normal stop path
         -- before its input lease can be relinquished. Other paused scenes can
@@ -191,7 +191,11 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
     end
     function editor_bridge.release(owner)
         if self.editor_owner and self.editor_owner~=owner then return false,'Photo input belongs to another editor'end
-        if self.editor_owner==owner then self.editor_owner=nil end
+        if self.editor_owner==owner then
+            self.editor_owner=nil
+            if photo.active and not self.cinema_performing()then menu_focus=true end
+            photo.input={}
+        end
         return true
     end
     function self.recovery_key()return handle and handle.get('recover_input_key')or 121 end
@@ -450,7 +454,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         end
     end
     local director_elapsed=.5;local director_available=false;local director_reason='Director is waiting for a verified player'
-    local subject_fields={'hide_player','hide_armour','hide_weapons'}
+    local subject_fields={'hide_player','hide_armour','hide_weapons','hide_cape'}
     local function subject_change()
         if not subject or not photo.active or not handle then return end
         local values={};for _,id in ipairs(subject_fields)do values[id]=handle.get(id)==true end
@@ -1151,7 +1155,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
             if self._native_menu_blocked then
                 clear_subject_click();if panel.suspend then panel.suspend()end
                 local ok,why=self._release_input();if ok==false and why then log(tostring(why))end
-                escape_edge=key_down(27);photo.input={sequence=photo.sample_sequence or 0,mouse_x=0,mouse_y=0,wheel=0,dt=0};return
+                escape_edge=key_down(27);photo.input={sequence=photo.sample_sequence or 0,mouse_x=0,mouse_y=0,wheel=0,dt=0,suspended=true};return
             end
             if not api.camera_input.focused()then
                 if panel.suspend then panel.suspend()end
@@ -1208,7 +1212,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
             if panel and panel.suspend then panel.suspend()end
             focus_edge=key_down(handle.get('focus_key'));hide_edge=key_down(handle.get('hide_controls_key'));lock_edge=key_down(handle.get('lock_camera_key'));escape_edge=key_down(27)
             suppress_escape=true
-            photo.input={sequence=photo.sample_sequence or 0,mouse_x=0,mouse_y=0,wheel=0,dt=0}
+            photo.input={sequence=photo.sample_sequence or 0,mouse_x=0,mouse_y=0,wheel=0,dt=0,suspended=true}
             if freeze and freeze.needs_input_capture and freeze.needs_input_capture()then
                 self.slowmo_active=false;self.stop();log('Photo pause ended before native menu input handoff');return
             end
@@ -1266,7 +1270,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
                     age=(self._cinema_hint_elapsed or 0)+step
                 end
                 self._cinema_hint_elapsed=age
-                panel.draw_cinema(w,h,label,capturing or not api.camera_input.focused()or not self._cinema.gameplay_input_ready()or handle.get('hide_controls')==true,age)
+                panel.draw_cinema(w,h,label,capturing or not api.camera_input.focused()or not self._cinema.gameplay_input_ready()or handle.get('hide_controls')==true or handle.get('cinema_notification')~=true,age)
             end
             if capturing then local _,status=screenshots.tick();if status and panel then panel.notice=status end end
             return -- Avatar receives input; keep the independent render/camera lease.
@@ -1333,7 +1337,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
             if panel then panel.close()end
             suppress_escape=true
             if provider then local ok,why=self._release_input();if not ok then log(tostring(why));return end end
-            photo.input={sequence=photo.sample_sequence or 0,mouse_x=0,mouse_y=0,wheel=0,dt=0}
+            photo.input={sequence=photo.sample_sequence or 0,mouse_x=0,mouse_y=0,wheel=0,dt=0,suspended=true}
             return
         end
         if not api.camera_input.focused()then
@@ -1341,7 +1345,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
             if screenshots then screenshots.cancel()end
             if panel and panel.suspend then panel.suspend()end
             if provider then local ok,why=self._release_input();if ok==false and why then log(tostring(why))end end
-            photo.input={sequence=photo.sample_sequence or 0,mouse_x=0,mouse_y=0,wheel=0,dt=0}
+            photo.input={sequence=photo.sample_sequence or 0,mouse_x=0,mouse_y=0,wheel=0,dt=0,suspended=true}
             return -- Focus loss releases input, never the solo simulation pause.
         end
         if not provider then
@@ -1384,7 +1388,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
             panel.draw(w,h,menu_focus,controls_hidden or capturing,{focus=label(handle.get('focus_key')),hide=label(handle.get('hide_controls_key')),slowmo=label(handle.get('slowmo_key'))})
             if capturing then
                 provider.sample(bindings())
-                photo.input={sequence=photo.sample_sequence or 0,mouse_x=0,mouse_y=0,wheel=0,dt=0}
+                photo.input={sequence=photo.sample_sequence or 0,mouse_x=0,mouse_y=0,wheel=0,dt=0,suspended=true}
                 local _,status=screenshots.tick();if status then panel.notice=status end;return
             end
             if menu_focus then
@@ -1403,10 +1407,10 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
                     end
                 end
                 escape_edge=escape
-                photo.input={sequence=photo.sample_sequence or 0,mouse_x=0,mouse_y=0,wheel=0,dt=0};return
+                photo.input={sequence=photo.sample_sequence or 0,mouse_x=0,mouse_y=0,wheel=0,dt=0,suspended=true};return
             end
         end
-        if capturing then screenshots.tick();photo.input={sequence=photo.sample_sequence or 0,mouse_x=0,mouse_y=0,wheel=0,dt=0};return end
+        if capturing then screenshots.tick();photo.input={sequence=photo.sample_sequence or 0,mouse_x=0,mouse_y=0,wheel=0,dt=0,suspended=true};return end
         local sample,problem=provider.sample(bindings())
         if not sample then
             self._recover_input(problem);return
@@ -1417,7 +1421,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
                 -- Yield the actual key to native UI without abandoning this
                 -- Photo camera. Stack observation, not Escape, proves it open.
                 self._native_menu_yield={elapsed=0,seen=false};suppress_escape=true
-                photo.input={sequence=photo.sample_sequence or 0,mouse_x=0,mouse_y=0,wheel=0,dt=0}
+                photo.input={sequence=photo.sample_sequence or 0,mouse_x=0,mouse_y=0,wheel=0,dt=0,suspended=true}
                 if freeze and freeze.needs_input_capture and freeze.needs_input_capture()then
                     self.slowmo_active=false;self.stop();log('Photo pause ended before native Escape input handoff');return
                 end

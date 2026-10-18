@@ -1,11 +1,11 @@
 -- Stored photo controls; existing movement and toggle ids remain stable.
 local M={}
-M.defaults={fov=0,focal_preset=1,roll=0,roll_preset=1,saved_camera_radius=60,lock_camera=false,dof=false,dof_mode=1,dof_quality=1,dof_strength=4,bokeh_shape=1,focus_mode=1,focus_distance=5,aperture=5.6,
+M.defaults={fov=0,focal_preset=1,roll=0,roll_preset=1,saved_camera_radius=60,lock_camera=false,camera_smoothing=false,cinema_notification=false,dof=false,dof_mode=1,dof_quality=1,dof_strength=4,bokeh_shape=1,focus_mode=1,focus_distance=5,aperture=5.6,
  filter=1,filter_strength=25,exposure=0,saturation=100,contrast=100,bloom=true,
  shader=1,shader_opacity=10,shader_scale=1,shader_animate=true,scene_shader=1,scene_strength=100,fog_distance=25,fog_density=50,scene_depth_range=100,vignette=0,vignette_width=18,grain=0,grain_size=1.5,
  frame=1,grid=1,logo=1,logo_size=100,logo_x=90,logo_y=8,logo_opacity=85,logo_color='#FFFFFF',clean_view=false,hide_hud=true,hide_controls=false,
  light_selected=1,light_preset=1,light_setup_slot=1,light_kind=1,light_enabled=true,light_intensity=3,light_color='#FFFFFF',light_range=8,light_cone=45,light_right=0,light_forward=1,light_up=0,light_follow=false,light_follow_player=false,
- hide_player=false,hide_armour=false,hide_weapons=false,subject_pose=1,director_slot=1,ai_behavior=1,path_point=1,path_duration=3,path_transition=1,
+ hide_player=false,hide_armour=false,hide_weapons=false,hide_cape=false,subject_pose=1,director_slot=1,ai_behavior=1,path_point=1,path_duration=3,path_transition=1,
  show_legend=true,legend_open=true,legend_docked=true,legend_tab_y=75,legend_columns=2,legend_x=2,legend_y=2,legend_size=38}
 M.ai_modes={'normal','passive','dummy'}
 M.subject_poses={'salute','wave','taunt'}
@@ -81,7 +81,7 @@ function M.pages(reset,recenter,catalog,saved_actions)
  end
  local camera_controls={
  {id='screenshot',type='button',label='Screenshot',button_label='Take screenshot',disabled=not(saved_actions and saved_actions.screenshot),on_activate=saved_actions and saved_actions.screenshot or function()end},
- toggle('lock_camera','Lock camera movement'),
+ toggle('lock_camera','Lock camera movement'),toggle('camera_smoothing','Camera smoothing'),
  {id='save_camera',type='button',label='Save camera position',button_label='Save',disabled=not(saved_actions and saved_actions.save),on_activate=saved_actions and saved_actions.save or function()end},
  {id='clear_saved_camera',type='button',label='Clear saved camera position',button_label='Clear',disabled=not(saved_actions and saved_actions.clear),on_activate=saved_actions and saved_actions.clear or function()end},
  {id='recenter',type='button',label='Return to player',button_label='Return',on_activate=recenter},
@@ -163,6 +163,7 @@ function M.pages(reset,recenter,catalog,saved_actions)
  director_action('cinema_reposition','Reposition cinema camera','cinema_reposition'),
  director_action('cinema_end','Return to gameplay camera','cinema_end'),
  {id='cinema_status',type='text',label='Place a camera, then begin an action shot'},
+ toggle('cinema_notification','Show Cinema camera notification'),
  {id='cinema_hint',type='text',label='The camera stays placed while you move and fight. Your Photo Mode key returns to placement; Screenshot still works.'},
  path_control(choice('path_point','Recorded camera point',{'No recorded points'})),
  director_action('path_add','Add camera point','path_add'),director_action('path_remove','Remove selected point','path_remove'),
@@ -180,13 +181,13 @@ function M.pages(reset,recenter,catalog,saved_actions)
  director_action('subject_pose_play','Apply pose','subject_pose_play'),director_action('subject_pose_stop','Reset pose','subject_pose_stop'),
  {id='subject_pose_status',type='text',label='Subject poses are waiting for a verified local player'},
  {id='subject_pose_hint',type='text',label='Pause entire action to hold a fixed pose. Choosing a pose applies it; Reset restores the original pose.'},
- subject_control('hide_player','Hide entire player'),subject_control('hide_armour','Hide armour and helmet'),subject_control('hide_weapons','Hide carried weapons'),
+ subject_control('hide_player','Hide entire player'),subject_control('hide_armour','Hide armour and helmet'),subject_control('hide_weapons','Hide carried weapons'),subject_control('hide_cape','Hide cape'),
  {id='subject_status',type='text',label='Subject controls are waiting for a verified player'},
  {id='subject_hint',type='text',label='Visibility is restored when Photo Mode closes.'}}}}
  -- Group existing rows without introducing stored settings or collapsible UI.
  -- Keep the original row objects so live gates and callbacks retain ownership.
  local sections={
- camera_tools={{'Camera tools','screenshot','lock_camera','recenter'},{'Movement','speed','look_sensitivity','wheel_step','roll_speed','freeze_player','slowmo_speed'},
+ camera_tools={{'Camera tools','screenshot','lock_camera','recenter'},{'Movement','speed','look_sensitivity','wheel_step','roll_speed','camera_smoothing','freeze_player','slowmo_speed'},
   {'Saved camera','save_camera','clear_saved_camera','saved_camera_radius','saved_camera_status'},
   {'Enemy behavior','ai_behavior','ai_reset','ai_status','ai_hint','ai_limits'},{'Reset','reset_photo'}},
  lens={{'Lens','fov','focal_preset','focal_length_status'},
@@ -206,11 +207,11 @@ function M.pages(reset,recenter,catalog,saved_actions)
   {'Logo','logo','logo_size','logo_color','logo_opacity','logo_x','logo_y'},
   {'Controls legend','show_legend','legend_open','legend_docked','legend_tab_y','legend_columns','legend_size','legend_x','legend_y'},
   {'Menu layout','tab_layout','menu_x','menu_y','menu_scale','menu_opacity'}},
- director={{'Action shots','cinema_begin','cinema_reposition','cinema_end','cinema_status','cinema_hint'},
+ director={{'Action shots','cinema_begin','cinema_reposition','cinema_end','cinema_status','cinema_notification','cinema_hint'},
   {'Camera path','path_point','path_add','path_remove','path_duration','path_transition','path_play','path_clear','path_status','path_hint'},
   {'Saved shots','director_slot','director_recall','director_save','director_clear','director_status','director_hint'}},
  subject={{'Pose','subject_pose','subject_pose_play','subject_pose_stop','subject_pose_status','subject_pose_hint'},
-  {'Visibility','hide_player','hide_armour','hide_weapons','subject_status','subject_hint'}}}
+  {'Visibility','hide_player','hide_armour','hide_weapons','hide_cape','subject_status','subject_hint'}}}
  for _,page in ipairs(definition)do
   local indexed,ordered,used={},{},{}
   for _,control in ipairs(page.controls)do indexed[control.id]=control end
