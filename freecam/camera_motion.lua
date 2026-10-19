@@ -97,8 +97,11 @@ function M.new(sr,photo,look,runtime,freeze,cinema,config,log)
   local locked=photo.locked==true
   if not locked then held=nil end
   local blocked=suspended==true or input.suspended==true or locked or performing
-  local smoothing=photo.options and photo.options.camera_smoothing==true and not blocked
-  local sample={smoothing=smoothing,dt=fresh and input.dt or 0,sequence=numbered and sequence or consumed or 0,mouse_x=0,mouse_y=0,sensitivity=input.sensitivity}
+  local strength=photo.options and photo.options.smoothing_strength
+  strength=finite(strength)and math.max(0,math.min(100,strength))or 50
+  local smoothing_time=.003*strength
+  local smoothing=photo.options and photo.options.camera_smoothing==true and strength>0 and not blocked
+  local sample={smoothing=smoothing,smoothing_time=smoothing_time,dt=fresh and input.dt or 0,sequence=numbered and sequence or consumed or 0,mouse_x=0,mouse_y=0,sensitivity=input.sensitivity}
   if fresh and not blocked then sample.mouse_x=input.mouse_x or 0;sample.mouse_y=input.mouse_y or 0 end
   -- A suspended sample is consumed, so closing a menu cannot replay its mouse.
   if blocked and photo.view then photo.view.target_yaw=nil;photo.view.target_pitch=nil end
@@ -121,10 +124,40 @@ function M.new(sr,photo,look,runtime,freeze,cinema,config,log)
    local target=smoothing and(lease.target or copy(photo.pos))or photo.pos
    for axis=1,3 do target[axis]=target[axis]+direction[axis]*step end
    if smoothing then
-    lease.target=target;local alpha=1-math.exp(-dt/.15)
+    lease.target=target;local alpha=1-math.exp(-dt/smoothing_time)
     for axis=1,3 do photo.pos[axis]=photo.pos[axis]+(target[axis]-photo.pos[axis])*alpha end
    end
   end
+  if performing and photo.handycam==true then
+   local ready=cinema and cinema.gameplay_input_ready and cinema.gameplay_input_ready()
+   if ready then
+    if not lease.head then
+     assert(type(sr.Unit.has_node)=='function'and sr.Unit.has_node(frame.player,'head'),'Handycam head attachment unavailable')
+     lease.head=sr.Unit.node(frame.player,'head')
+     local count=sr.Unit.num_scene_graph_items(frame.player)
+     assert(type(lease.head)=='number'and lease.head%1==0 and lease.head>=1 and lease.head<=count,'Handycam head node invalid')
+    end
+    local p=assert(vector(sr.Unit.world_position(frame.player,lease.head)),'Handycam head position unavailable')
+    local yaw=math.atan2(frame.forward[2],frame.forward[1])
+    local pitch=math.asin(math.max(-1,math.min(1,frame.forward[3])))
+    local now=cinema.wall_time();assert(finite(now),'Handycam real-time clock unavailable')
+    local previous=lease.handycam
+    local elapsed=previous and math.max(0,math.min(.1,now-previous.time))or 0
+    local smooth=photo.options and photo.options.camera_smoothing==true and strength>0 and previous
+    if smooth then
+     local alpha=1-math.exp(-elapsed/smoothing_time)
+     for i=1,3 do p[i]=previous.position[i]+(p[i]-previous.position[i])*alpha end
+     yaw=previous.yaw+((yaw-previous.yaw+math.pi)%(2*math.pi)-math.pi)*alpha
+     pitch=previous.pitch+(pitch-previous.pitch)*alpha
+    end
+    lease.handycam={position=p,yaw=yaw,pitch=pitch,time=now}
+   end
+   local view=lease.handycam
+   if not view then return false,'Handycam awaits gameplay focus'end
+   photo.pos=copy(view.position);photo.view={yaw=view.yaw,pitch=view.pitch,sequence=consumed or 0}
+   local cy,sy,cp,sp=math.cos(view.yaw),math.sin(view.yaw),math.cos(view.pitch),math.sin(view.pitch)
+   f,r={cy*cp,sy*cp,sp},{sy,-cy,0}
+  else lease.handycam=nil;lease.head=nil end
   if not performing then
    local radius=finite(config.PHOTO_MAX_RANGE)and math.max(0,config.PHOTO_MAX_RANGE)or 500
    local p,h=photo.pos,frame.player_position;local x,y,z=p[1]-h[1],p[2]-h[2],p[3]-h[3]

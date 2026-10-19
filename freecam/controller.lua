@@ -7,6 +7,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
     self._idle_stopped=false
     local clear_subject_click,game_chat_active,bindings
     self._input_tick=0
+    self._subject=subject
     self._cinema=cinema
     function self.camera_owned()return photo.active or self._scene_start_pending~=nil or self._cinema_begin_pending~=nil or self._pose_stop_pending~=nil or camera_ownership and camera_ownership.held==true or false end
     function self.cinema_performing()return self._cinema and self._cinema.state=='perform' or false end
@@ -26,6 +27,8 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
     function self.begin_action_shot(path)
         if not self._cinema or not photo.active or self._cinema_begin_pending then return false,'Place the camera first'end
         if screenshots and screenshots.active()then return false,'Wait for the screenshot to finish'end
+        local handycam=not path and handle.get('action_camera_mode')==2
+        if handycam and not(subject and subject.available and subject.capabilities.hide_player)then return false,'Handycam needs verified player visibility controls'end
         if roll_value and handle then handle.set('roll',roll_value);roll_value=nil end
         local ok,why
         if path then ok,why=self._cinema.path_prepare()
@@ -33,7 +36,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         if not ok then self._cinema_error(why);return false,why end
         self._cinema_restore_freeze=self._freeze_action_state()
         self._cinema_hint_start=nil;self._cinema_hint_elapsed=0
-        self._cinema_last_error=nil;self._cinema_begin_pending={};photo.input={};clear_subject_click()
+        self._cinema_last_error=nil;self._cinema_begin_pending={handycam=handycam};photo.input={};clear_subject_click()
         return true
     end
     local path_sync=false;local path_count=-1
@@ -107,9 +110,13 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         local token,why=api.camera_input.acquire(bindings())
         if not token then self._cinema_error(why);return false,why end
         provider=api.camera_input
+        local handycam_pose=photo.handycam==true and{position=photo.pos,view=photo.view}or nil
         local ok,reason=self._cinema.reposition()
         if not ok then self.stop();return false,reason end
-        controls_hidden=false;menu_focus=false
+        local was_handycam=handycam_pose~=nil
+        if handycam_pose then photo.pos=handycam_pose.position;photo.view=handycam_pose.view end
+        if self._end_handycam then self._end_handycam()end
+        controls_hidden=false;menu_focus=was_handycam
         if controls.lock_camera then handle.set('lock_camera',false)end
         focus_edge=provider.down(handle.get('focus_key'));hide_edge=provider.down(handle.get('hide_controls_key'))
         screenshot_edge=provider.down(handle.get('screenshot_key'));escape_edge=provider.down(27)
@@ -461,6 +468,10 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         local called,ok,why=pcall(subject.queue,values)
         if not called or ok==false then log('Photo subject: '..tostring(called and why or ok))end
     end
+    function self._end_handycam()
+        photo.handycam=false
+        if self._handycam_hidden then self._handycam_hidden=nil;subject_change()end
+    end
     local function director_action(action)
         if not director or not handle then return false end
         local called,ok,why=pcall(director[action],handle.get('director_slot'),handle)
@@ -721,6 +732,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         end
     end
     function self.stop(preserve_resume)
+        photo.handycam=false;self._handycam_hidden=nil
         self._idle_stopped=false
         self._scene_start_pending=nil
         self._cinema_restore_freeze=nil;self._cinema_hint_start=nil;self._cinema_hint_elapsed=0
@@ -1240,9 +1252,18 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
             photo.input={}
             if self._pose_time_pending or self._poses and(self._poses.active or self._poses.pending)then return end
             if freeze and freeze.cleanup_pending and freeze.cleanup_pending()then return end
+            local pending=self._cinema_begin_pending
+            if pending.handycam then
+                if not pending.visibility then
+                    local ok,why=self._subject.queue({hide_player=true})
+                    if ok==false then self.stop();self._cinema_error(why);return end
+                    pending.visibility=true;self._handycam_hidden=true;return
+                end
+                if self._subject.pending then return end
+            end
             if panel then local called,closed,reason=pcall(panel.close);if not called or closed==false then self._cinema_error(called and reason or closed);return end end
             if provider then local released,reason=provider.release();if not released then self._cinema_error(reason);return end;provider=nil end
-            local accepted,reason=self._cinema.commit();self._cinema_begin_pending=nil
+            local accepted,reason=self._cinema.commit();photo.handycam=accepted and pending.handycam==true;self._cinema_begin_pending=nil
             if not accepted then self.stop();self._cinema_error(reason);return end
             -- Gameplay is running again. Show the actual state when placement
             -- returns, so the user can pause with one click instead of cycling it.

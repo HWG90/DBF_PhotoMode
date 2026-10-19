@@ -17,7 +17,7 @@ function M.basis(photo,initial,input)
         pitch=math.max(math.rad(-89),math.min(math.rad(89),pitch-dy*scale))
         if smoothing then
             local dt=tonumber(input.dt)or 0;dt=dt==dt and math.max(0,math.min(.1,dt))or 0
-            local alpha=1-math.exp(-dt/.15)
+            local alpha=1-math.exp(-dt/(input.smoothing_time or .15))
             v.target_yaw,v.target_pitch=yaw,pitch
             local arc=(yaw-v.yaw+math.pi)%(2*math.pi)-math.pi
             v.yaw=(v.yaw+arc*alpha)%(2*math.pi);v.pitch=v.pitch+(pitch-v.pitch)*alpha

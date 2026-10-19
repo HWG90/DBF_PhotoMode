@@ -40,6 +40,7 @@ end
 function M.new(photo,context,clock)
  local self={state='off',status='Place a camera, then begin an action shot',path_playing=false};local shot,candidate
  local points,playback={},nil;local candidate_path;clock=clock or realtime
+ function self.wall_time()return clock()end
  local function current()
   local ok,value=pcall(context)
   if not ok or type(value)~='table'or not token(value.world)or not token(value.epoch)or not token(value.player)then return nil,'Cinema player or scene unavailable'end

@@ -39,6 +39,7 @@ local function fixture()
   return true
  end}
  local config={PHOTO_SPEED=10,PHOTO_MAX_RANGE=500};local motion=Motion.new(sr,photo,Look,runtime,freeze,cinema,config,function()end)
+ s.sr=sr
  s.frame,s.photo,s.scene,s.motion,s.cinema,s.config=frame,photo,scene,motion,cinema,config;return s
 end
 do
@@ -129,3 +130,27 @@ do
  assert(s.motion.release())
 end
 print('Optional smoothing: eased motion, sample deduplication, handoff cancellation and immediate opt-out passed')
+
+do
+ local weak,strong=fixture(),fixture()
+ for _,s in ipairs({weak,strong})do s.photo.options.camera_smoothing=true end
+ weak.photo.options.smoothing_strength=10;strong.photo.options.smoothing_strength=100
+ assert(weak.motion.apply(weak.frame)and strong.motion.apply(strong.frame))
+ assert(weak.current[1]>strong.current[1],'Strength slider must change damping')
+end
+do
+ local s=fixture();s.cinema.state='perform';s.photo.handycam=true
+ local head={12,4,3};local ready=true;local time=10
+ s.cinema.wall_time=function()return time end
+ s.cinema.gameplay_input_ready=function()return ready end
+ s.sr.Unit={has_node=function(p,name)return p==s.frame.player and name=='head'end,
+  node=function()return 66 end,num_scene_graph_items=function()return 107 end,
+  world_position=function(p,node)assert(p==s.frame.player and node==66);return copy(head)end}
+ assert(s.motion.apply(s.frame,true));assert(s.current[1]==12 and s.current[2]==4 and s.current[3]==3,'Handycam must use the live head attachment')
+ head={13,5,3};time=10.1;assert(s.motion.apply(s.frame,true));assert(s.current[1]==13,'Handycam must track movement while gameplay owns input')
+ ready=false;head={40,40,40};time=11;assert(s.motion.apply(s.frame,true));assert(s.current[1]==13,'Native menus must hold the last handycam frame')
+ ready=true;s.photo.options.camera_smoothing=true;s.photo.options.smoothing_strength=100
+ head={14,5,3};time=11.1;assert(s.motion.apply(s.frame,true));assert(s.current[1]>13 and s.current[1]<14,'Handycam must obey smoothing strength')
+ s.valid=false;local writes=s.writes;assert(not s.motion.apply(s.frame,true)and s.writes==writes,'Retired owners cannot update the head camera')
+ assert(s.motion.release())
+end

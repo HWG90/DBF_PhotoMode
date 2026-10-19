@@ -36,7 +36,12 @@ camera_compat.release=function()
   camera_releases=camera_releases+1;camera_lease=false;camera_compat.held=false;return true
  end
 DBFMCM=api;DBF_PHOTO_STANDALONE_API=nil
-local ctrl=Controller.new(photo,{},function()return true end,function()end,freeze,Options,effects,Menu,nil,nil,screenshots,nil,nil,nil,nil,nil,nil,nil,poses,camera_compat,cinema)
+local visibility={available=true,capabilities={hide_player=true},pending=false,status='fixture'}
+function visibility.count()return 0 end
+function visibility.refresh()return true,'fixture',visibility.capabilities end
+function visibility.queue(values)visibility.pending=true;visibility.request=values;return true end
+function visibility.release()visibility.pending=false;visibility.request=nil;return true end
+local ctrl=Controller.new(photo,{},function()return true end,function()end,freeze,Options,effects,Menu,nil,nil,screenshots,nil,nil,visibility,nil,nil,nil,nil,poses,camera_compat,cinema)
 local function tick()ctrl.tick(.016)end
 local function press(key)keys[key]=true;tick();keys[key]=false;tick()end
 tick();local h=api.mods.dbf_freecam.handle;local controls={}
@@ -137,6 +142,20 @@ assert(h.set('freeze_player',false));press(80);photo.pos={7,8,9};photo.view={yaw
 assert(rate==1 and h.activate('cinema_begin'));tick();assert(cinema.state=='perform'and not captured and rate==1)
 press(80);assert(cinema.state=='place'and captured and rate==1 and not h.get('freeze_player'),'An unfrozen action shot must return to unfrozen placement')
 assert(ctrl.stop()and not camera_lease and not captured and rate==1)
+-- Handycam waits for update-owned visibility before gameplay input is released.
+assert(h.set('action_camera_mode',2));press(80);photo.pos={1,2,3};photo.view={yaw=.1,pitch=.2};tick()
+assert(h.activate('cinema_begin'));tick()
+assert(visibility.pending and visibility.request.hide_player and captured and cinema.state=='place','Handycam handed input back before visibility was queued')
+tick();assert(captured and cinema.state=='place','Handycam ignored pending update-time visibility')
+visibility.pending=false;tick();assert(photo.handycam and cinema.state=='perform'and not captured,'Handycam did not hand gameplay input back after visibility completed')
+-- Direct reposition preserves the most recently rendered numeric head frame.
+photo.pos={20,30,40};photo.view={yaw=.4,pitch=.3}
+assert(ctrl.reposition_camera())
+assert(not photo.handycam and cinema.state=='place'and captured and photo.pos[1]==20,'Leaving handycam lost the final head-camera composition')
+assert(visibility.pending and visibility.request.hide_player==false,'Leaving handycam did not restore user visibility choices')
+assert(ctrl.stop()and not photo.handycam and not camera_lease)
+print('Handycam lifecycle: update-time visibility gate, gameplay handoff, composition and visibility restoration passed')
 assert(ctrl.close());DBFMCM=nil
 print('Cinema Director lifecycle: paused pose/hover restoration, cursor retry, static gameplay, exclusive camera ownership, uncaptured screenshots, native-menu/chat/focus handoffs, reposition and respawn cleanup passed')
 print('Director camera paths: real registered point/segment controls, selected-field synchronization, paused restoration, avatar handoff, cut/curve/FOV playback, Photo-key stop/refreeze, unfrozen placement and complete cleanup passed')
+
