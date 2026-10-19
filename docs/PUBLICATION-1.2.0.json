@@ -1,0 +1,50 @@
+{
+  "version": "1.2.0",
+  "source_commit": "77a6948",
+  "github": {
+    "url": "https://github.com/HWG90/DBF_PhotoMode/releases/tag/v1.2.0",
+    "all_four_uploaded_digests_match": true
+  },
+  "nexus": {
+    "url": "https://www.nexusmods.com/helldivers2/mods/17248?tab=files",
+    "BSL": "1.2.0 published; Manual download visible",
+    "MDL": "1.2.0 uploaded; virus scanning in progress at final check",
+    "description_updated": true,
+    "existing_images_retained": true,
+    "LLL": "not uploaded per existing distribution"
+  },
+  "ayaka": {
+    "url": "https://ayakamods.com/mods/war-journalist-helldivers-2-photo-mode.4948/",
+    "update_url": "https://ayakamods.com/mods/war-journalist-helldivers-2-photo-mode.4948/update/7767/",
+    "version": "1.2.0",
+    "description_updated": true,
+    "existing_images_retained": true,
+    "BSL_MDL_download_links_updated": true
+  },
+  "discord": {
+    "url": "https://discord.com/channels/1260111500522295377/1559027203315073094",
+    "thread_title_updated": true,
+    "new_announcement_posted": true
+  },
+  "local_LLL": {
+    "installed_version": "1.2.0",
+    "module_audit": "12/12 pass",
+    "restart_required": true
+  },
+  "tests": {
+    "fixtures_passed": 76,
+    "BSL_MDL_LLL_standalone_passed": true,
+    "native_input_tests_passed": true
+  },
+  "live_visibility": {
+    "worst_before_ms": 22.02,
+    "worst_after_ms": 1.59,
+    "user_confirmed_hitches_reduced": true
+  },
+  "visual_limits": "Final handycam/zoom feel and lighting transitions need wider cross-loader testing. No universal FPS promise.",
+  "screenshots": "Browser screenshot attempts timed out; publication verified through visible page DOM.",
+  "skills": [
+    "write-like-me: tool unavailable; user-provided style/examples used",
+    "computer-use: browser UI publishing"
+  ]
+}
