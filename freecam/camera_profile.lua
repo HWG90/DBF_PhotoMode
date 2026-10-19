@@ -188,16 +188,21 @@ pcall(ffi.cdef,[[void *NST_GetCurrentProcess(void) __asm__("GetCurrentProcess");
 local kernel=ffi.load('kernel32');local process=kernel.NST_GetCurrentProcess();local base=tonumber(ffi.cast('uintptr_t',kernel.NST_GetModuleHandleA(nil)))
 local address_type=ffi.typeof('uintptr_t');local bytes_type=ffi.typeof('uint8_t[?]');local size_type=ffi.typeof('size_t[1]');local u32_type=ffi.typeof('uint32_t[1]');local u64_type=ffi.typeof('uint64_t[1]');local float_type=ffi.typeof('float[1]');local variant=ffi.new('uint8_t[24]')
 local function now()return tonumber(kernel.NST_GetTickCount64())/1000 end
+local read_buffer=ffi.new(bytes_type,65536);local read_count=ffi.new(size_type);local numeric_buffer=ffi.new('uint64_t[1]');local numeric_count=ffi.new(size_type);local round_buffer=ffi.new(float_type)
 local function read(address,size)
  assert(address>=65536 and address<2^47 and size>0 and size<=65536,'Trial read bounds')
- local data=ffi.new(bytes_type,size);local got=ffi.new(size_type)
+ local data=read_buffer;local got=read_count
  assert(kernel.NST_ReadProcessMemory(process,ffi.cast('void*',address),data,size,got)~=0 and tonumber(got[0])==size,'Trial read failed');return ffi.string(data,size)
 end
-local function number(address,ctype,size)local v=ffi.new(ctype);ffi.copy(v,read(address,size),size);return tonumber(v[0])end
+local function number(address,ctype,size)
+ assert(address>=65536 and address<2^47 and(size==4 or size==8),'Trial numeric read bounds')
+ assert(kernel.NST_ReadProcessMemory(process,ffi.cast('void*',address),numeric_buffer,size,numeric_count)~=0 and tonumber(numeric_count[0])==size,'Trial numeric read failed')
+ return tonumber(ffi.cast(ctype==u64_type and 'uint64_t*'or ctype==float_type and 'float*'or 'uint32_t*',numeric_buffer)[0])
+end
 local function ptr(address)return number(address,u64_type,8)end
 local function u32(address)return number(address,u32_type,4)end
 local function float(address)return number(address,float_type,4)end
-local function rounded(value)local v=ffi.new(float_type,value);return tonumber(v[0])end
+local function rounded(value)round_buffer[0]=value;return tonumber(round_buffer[0])end
 local setter_type=ffi.typeof('void(__fastcall *)(void*,uint32_t,uint32_t,const void*)')
 local prefix='\x40\x53\x55\x41\x55\x41\x57\x48\x83\xec\x58\x48\x8b\x81\xe8\x00\x00\x00\x4c\x8b\xf9\x44\x8b\xea\x49\x8b\xe9\x4a\x8b\x0c\xe8\x41'
 local keys={distance=0xf617a000,region=0x1ed5746a,start=0xf2cba64d,finish=0x594c123a,near_scale=0xd8108f78,far_scale=0xb18edf0c,near_max=0xa7990477,far_max=0xf07fc12e,

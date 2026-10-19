@@ -147,6 +147,25 @@ function M.new(sr,preview_only,diagnostic_log,shared_fonts)
         if gui then font_state.guis[gui]=nil end
         preview_guis={};ids={};gui,world=nil,nil;metric_ready=false;reset_metrics()
     end
+    -- Retained primitives compare scalar fields directly: no per-frame serialization.
+    local fields={'type','text','x','y','w','h','size','a','layer','font_resource','font_material','preview_material','preview_role','text_bold'}
+    local function same_command(old,c)
+        if type(old)~='table' or old.font_key~=(c.type=='text'and self.font_key or nil)then return false end
+        for _,key in ipairs(fields)do if old[key]~=c[key]then return false end end
+        for i=1,3 do if old.color[i]~=c.c[i]then return false end end
+        for _,key in ipairs({'points','preview_uv'})do
+            local a,b=old[key],c[key]
+            if (a==nil)~=(b==nil)then return false end
+            if a then if #a~=#b then return false end;for i=1,#a do if a[i]~=b[i]then return false end end end
+        end
+        return true
+    end
+    local function command_signature(c)
+        local result={color={c.c[1],c.c[2],c.c[3]},font_key=c.type=='text'and self.font_key or nil}
+        for _,key in ipairs(fields)do result[key]=c[key]end
+        for _,key in ipairs({'points','preview_uv'})do if c[key]then local copy={};for i,v in ipairs(c[key])do copy[i]=v end;result[key]=copy end end
+        return result
+    end
     function self.draw(commands)
         if not drawable()then return false end
         if preview_view then
@@ -188,7 +207,8 @@ function M.new(sr,preview_only,diagnostic_log,shared_fonts)
         for index,c in ipairs(commands)do
             -- Sidebar command counts must not change unrelated content depth.
             local z=(c.layer or 100)+(c.type=='text' and 1 or 0)
-            signatures[index]=table.concat({c.type,c.text or '',c.x or 0,c.y or 0,c.w or 0,c.h or 0,c.size or 0,c.a,c.c[1],c.c[2],c.c[3],z,c.font_resource or '',c.font_material or '',c.type=='text' and self.font_key or '',c.preview_material or '',c.preview_uv and table.concat(c.preview_uv,',') or '',c.preview_role or '',tostring(c.text_bold),c.type=='triangle' and triangle_points(c) and table.concat(c.points,',') or ''},'|')
+            local old=old_ids[index]
+            signatures[index]=old and same_command(old.signature,c)and old.signature or command_signature(c)
         end
         -- Destroy all stale IDs before allocations: engines may reuse IDs immediately.
         for index,old in ipairs(old_ids)do

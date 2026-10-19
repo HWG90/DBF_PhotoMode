@@ -7,11 +7,12 @@ function M.new(sr,verify)
   pcall(ffi.cdef,[[void *FDR_GetCurrentProcess(void) __asm__("GetCurrentProcess");void *FDR_GetModuleHandleA(const char *) __asm__("GetModuleHandleA");int FDR_ReadProcessMemory(void *,const void *,void *,size_t,size_t *) __asm__("ReadProcessMemory");]])
   local kernel=ffi.load('kernel32');local process=kernel.FDR_GetCurrentProcess()
   local base=tonumber(ffi.cast('uintptr_t',kernel.FDR_GetModuleHandleA(nil)))
-  local function bytes(address,size)
+  local buffers={small=ffi.new('uint8_t[32]'),bulk=ffi.new('uint8_t[131072]')};local read_count=ffi.new("size_t[1]")
+  local function bytes(address,size,bulk)
    assert(address>=65536 and address<2^47 and size>0 and size<=131072,'Depth target read bounds invalid')
-   local data=ffi.new('uint8_t[?]',size);local got=ffi.new('size_t[1]')
+   local data=buffers[(bulk or size>32)and 'bulk'or 'small'];local got=read_count
    assert(kernel.FDR_ReadProcessMemory(process,ffi.cast('void *',address),data,size,got)~=0 and tonumber(got[0])==size,'Depth target read failed')
-   return ffi.string(data,size)
+   return (bulk or size>32)and data or ffi.string(data,size)
   end
   local function ptr(address)local v=ffi.new('uint64_t[1]');ffi.copy(v,bytes(address,8),8);return tonumber(v[0])end
   local function u32(address)local v=ffi.new('uint32_t[1]');ffi.copy(v,bytes(address,4),4);return tonumber(v[0])end
@@ -21,26 +22,26 @@ function M.new(sr,verify)
    assert(bytes(base+0x417cd0,16)=='\x48\x89\x5c\x24\x10\x57\x48\x83\xec\x40\x45\x33\xc0\x48\x8b\xd9','Renderer resource code changed')
    local renderer=ptr(ptr(base+0x23621a8)+0x338);local map=renderer+0x1600
    local count=u32(map);assert(count>0 and count<=4096,'Depth target registry invalid')
-   local records=bytes(ptr(map+8),count*32);local found
+   local records=bytes(ptr(map+8),count*32,true);local found
    local integer=ffi.new('uint32_t[1]');local pointer=ffi.new('uint64_t[1]')
    for i=0,count-1 do local at=i*32
-    ffi.copy(integer,records:sub(at+25,at+28),4);local occupied=tonumber(integer[0])~=4294967294
-    ffi.copy(integer,records:sub(at+1,at+4),4)
+    ffi.copy(integer,records+at+24,4);local occupied=tonumber(integer[0])~=4294967294
+    ffi.copy(integer,records+at,4)
     if occupied and tonumber(integer[0])==0x9b8038e0 then
-     assert(not found,'Depth target ambiguous');ffi.copy(pointer,records:sub(at+9,at+16),8);found=tonumber(pointer[0])
+     assert(not found,'Depth target ambiguous');ffi.copy(pointer,records+at+8,8);found=tonumber(pointer[0])
     end
    end
    assert(found and found>=65536 and found<2^47,'Existing depth target unavailable')
    local backend=ptr(renderer+0x1168);if backend<65536 then backend=ptr(renderer+0x1138)end
    local cache=ptr(backend+0x468)+u32(backend+0x478)*40
    local textures=u32(cache);assert(textures>0 and textures<=4096,'Depth texture cache invalid')
-   local entries=bytes(ptr(cache+8),textures*24);local backing
+   local entries=bytes(ptr(cache+8),textures*24,true);local backing
    for i=0,textures-1 do local at=i*24
-    ffi.copy(integer,entries:sub(at+17,at+20),4)
+    ffi.copy(integer,entries+at+16,4)
     if tonumber(integer[0])~=4294967294 then
-     ffi.copy(pointer,entries:sub(at+1,at+8),8)
+     ffi.copy(pointer,entries+at,8)
      if tonumber(pointer[0])==found then
-      assert(not backing,'Depth texture backing ambiguous');ffi.copy(pointer,entries:sub(at+9,at+16),8);backing=tonumber(pointer[0])
+      assert(not backing,'Depth texture backing ambiguous');ffi.copy(pointer,entries+at+8,8);backing=tonumber(pointer[0])
      end
     end
    end

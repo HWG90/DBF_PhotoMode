@@ -44,10 +44,13 @@ end)()
 local Motion=(function()
 __CAMERA_MOTION__
 end)()
-scene=Scene.new(sr,function()
- if not H.dbf_subject_backend then return nil,'Verified local player unavailable'end
- return H.dbf_subject_backend.frame()
-end,log)
+scene=Scene.new(sr,{
+ frame=function()
+  if not H.dbf_subject_backend then return nil,'Verified local player unavailable'end
+  return H.dbf_subject_backend.frame()
+ end,
+ unit_lifetime=H.dbf_subject_backend and H.dbf_subject_backend.unit_lifetime
+},log)
 CFG.scene=scene
 local motion=Motion.new(sr,PHOTO,DBF_FREECAM_LOOK,DBF_PHOTO_RUNTIME,DBF_PLAYER_FREEZE,H.dbf_cinema,CFG,log)
 local runtime={engine='independent',api=1,ready=false,state='waiting',epoch=0,photo=PHOTO}

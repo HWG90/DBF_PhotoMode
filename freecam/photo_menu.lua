@@ -9,6 +9,7 @@ local PANEL_WIDTH,PANEL_HEIGHT,HUD_MARGIN=760,440,180
 function M.new(view,actions,existing)
  local legend=M.legend_factory and M.legend_factory.new(view)
  local self=existing or{page=1,scroll=0,selection=1,size_scale=1};local nav_held={};local nav_time={};local nav_ready=false;local last_focus
+ local retained_commands;local retained_state={};local layout_retry=false
  local rows={};local selected_hit;local hits={};local held=false;local drag;local resize;local scroll_drag;local move_panel;local geometry;local panel_bounds;local pointer_x,pointer_y;local pressed_key;local reveal_index;local row_scroll_max=0
  local layout_initialized=existing~=nil;local layout_dirty=false;local opacity_dirty=false
  local opacity_control={id='menu_opacity',type='slider',min=10,max=100,step=1,fine_step=1,default=38}
@@ -78,9 +79,9 @@ function M.new(view,actions,existing)
   self.panel_x=stored_layout('menu_x');self.panel_y=stored_layout('menu_y');self.size_scale=stored_layout('menu_scale');layout_dirty=false;return true
  end
  local function finish_layout()if layout_dirty then layout_dirty=false;self.persist_layout()end;finish_opacity()end
- function self.close()blur_number();finish_layout();if self.light_gizmos then self.light_gizmos.cancel()end;if legend then legend.clear()end;view.release();panel_bounds=nil;hits={};drag=nil;resize=nil;scroll_drag=nil;move_panel=nil;key_capture=nil;text_edit=nil;color_edit=nil;popup=nil;popup_close_on_release=false;self.bound_key=nil;self.editing_value=nil;self.notice=nil;nav_ready=false;held=false;right_held=nil;pointer_x,pointer_y=nil,nil;pressed_key=nil;reveal_index=nil end
+ function self.close()retained_commands=nil;blur_number();finish_layout();if self.light_gizmos then self.light_gizmos.cancel()end;if legend then legend.clear()end;view.release();panel_bounds=nil;hits={};drag=nil;resize=nil;scroll_drag=nil;move_panel=nil;key_capture=nil;text_edit=nil;color_edit=nil;popup=nil;popup_close_on_release=false;self.bound_key=nil;self.editing_value=nil;self.notice=nil;nav_ready=false;held=false;right_held=nil;pointer_x,pointer_y=nil,nil;pressed_key=nil;reveal_index=nil end
  local function suspend_input()blur_number();finish_layout();if self.light_gizmos then self.light_gizmos.cancel()end;if legend then legend.clear()end;nav_ready=false;held=false;right_held=nil;drag=nil;resize=nil;scroll_drag=nil;move_panel=nil;pressed_key=nil;pointer_x,pointer_y=nil,nil end
- function self.suspend()suspend_input();panel_bounds=nil;view.draw({})end
+ function self.suspend()retained_commands=nil;suspend_input();panel_bounds=nil;view.draw({})end
  function self.bind(handle,pages)
   if self.handle~=handle then blur_number();finish_opacity();text_edit=nil;self.editing_value=nil end;self.handle=handle;self.pages=pages;if legend then legend.bind(handle)end
   ai_control=nil;ai_status=nil
@@ -140,7 +141,7 @@ function M.new(view,actions,existing)
  local function measure(label,size)
   local cache=cache_bucket('measure',size);local width=cache[label];if width~=nil then return width,true end
   if view.measure then local ok,result=pcall(view.measure,label,size);if ok and type(result)=='number'and result>=0 and result<math.huge then cache_put(cache,label,result,label);return result,true end
-   return #glyphs(label)*size*.62,false
+   layout_retry=true;return #glyphs(label)*size*.62,false
   end
   width=#glyphs(label)*size*.62;cache_put(cache,label,width,label);return width,true
  end
@@ -161,7 +162,7 @@ function M.new(view,actions,existing)
   if view.text_metrics then local ok,m=pcall(view.text_metrics,size,label);if ok and type(m)=='table'and type(m.min_y)=='number'and type(m.max_y)=='number'and m.max_y>m.min_y and m.max_y-m.min_y<size*3 then
    result={m.min_y,m.max_y,m.optical_y or 0};cache_put(cache,label,result,label);return result[1],result[2],result[3]
   end end
-  return 0,size,0
+  if view.text_metrics then layout_retry=true end;return 0,size,0
  end
  local function selectable(c)return c and c.type~='text'and not c.disabled end
  local function reveal(index)
@@ -222,8 +223,30 @@ function M.new(view,actions,existing)
   -- retained GUI/font planes; explicit focus loss still clears via suspend().
   if focused~=last_focus then suspend_input();last_focus=focused end
   if self.prepare_light_gizmos then self.prepare_light_gizmos(w,h,focused,hidden)end
-  if hidden or not valid(w)or not valid(h)or not self.pages or #self.pages==0 then finish_layout();if self.light_gizmos then self.light_gizmos.cancel()end;if legend then legend.clear()end;view.draw({});panel_bounds=nil;hits={};resize=nil;scroll_drag=nil;move_panel=nil;return end
+  if hidden or not valid(w)or not valid(h)or not self.pages or #self.pages==0 then retained_commands=nil;finish_layout();if self.light_gizmos then self.light_gizmos.cancel()end;if legend then legend.clear()end;view.draw({});panel_bounds=nil;hits={};resize=nil;scroll_drag=nil;move_panel=nil;return end
   refresh_text_cache(w,h)
+  -- Recompose only when input, settings, availability or layout changes.
+  -- Retained GUI submission and font/resource lifetime checks still run.
+  local changed=retained_commands==nil;local slot=0
+  local function watch(v)slot=slot+1;if retained_state[slot]~=v then changed=true;retained_state[slot]=v end end
+  watch(w);watch(h);watch(focused);watch(text_cache_context);watch(keys.focus);watch(keys.hide)
+  watch(pointer_x);watch(pointer_y);watch(held);watch(pressed_key);watch(reveal_index)
+  for key,v in pairs(self)do if type(v)~='function'and type(v)~='table'then watch(key);watch(v)end end
+  for _,page in ipairs(self.pages)do
+   watch(page);watch(page.name)
+   for _,c in ipairs(page.controls or{})do
+    watch(c);watch(c.label);watch(c.disabled);watch(c.button_label);if c.choices then watch(#c.choices);for _,choice in ipairs(c.choices)do watch(choice)end else watch(false)end
+    if c.id then local ok,v=pcall(self.handle.get,c.id);watch(ok);watch(v)end
+   end
+  end
+  for _,name in ipairs({'freeze_state','slowmo_state'})do if actions[name]then local ok,a,b=pcall(actions[name]);watch(ok);watch(a);watch(b)end end
+  if actions.ai then local ok,v=pcall(actions.ai);watch(ok);if type(v)=='table'then watch(v.available);watch(v.status)end end
+  if actions.faction then local ok,v=pcall(actions.faction);watch(ok);if type(v)=='table'then watch(v.name);watch(v.material)end end
+  if retained_state.count~=slot then changed=true;retained_state.count=slot end
+  local interactive=drag or resize or scroll_drag or move_panel or popup or key_capture or text_edit or color_edit or held
+  local page=self.pages[self.page];local dynamic=page and(page.id=='lighting'or page.name=='Lighting')
+  if retained_commands and not changed and not interactive and not dynamic then view.draw(retained_commands);return end
+  layout_retry=false
   local has_ai=type(actions.ai)=='function'and ai_control~=nil
   local footer_extra=(actions.slowmo or has_ai)and 36 or 0
   local commands={};hits={};reset_regions={};local base=math.max(.75,math.min(w/1920,h/1080));local maximum=math.min(w/(PANEL_WIDTH+48),h/(PANEL_HEIGHT+102+HUD_MARGIN+footer_extra));local minimum=math.min(maximum,math.max(.35,base*.65))
@@ -510,6 +533,7 @@ function M.new(view,actions,existing)
   end
   if legend then legend.draw(commands,w,h,focused,false,{x=x,y=bottom,w=width,h=top-bottom,scale=s})end
   if self.light_gizmos then self.light_gizmos.draw(commands,self.scene_pointer_blocked,self.scene_input_blocked())end
+  retained_commands=not layout_retry and commands or nil
   view.draw(commands)
  end
  local function activate(b)

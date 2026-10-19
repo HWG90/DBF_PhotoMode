@@ -90,3 +90,8 @@ if baseline_path then
  print(string.format('MENU_CACHE_AB baseline_kib=%.3f candidate_kib=%.3f baseline_measure=%d candidate_measure=%d baseline_metrics=%d candidate_metrics=%d baseline_cpu=%.6f candidate_cpu=%.6f',a.allocated_kib,b.allocated_kib,a.measure_calls,b.measure_calls,a.metric_calls,b.metric_calls,a.cpu_seconds,b.cpu_seconds))
 end
 print('Photo menu cache: fresh control state, bounded warm layout, callback/font/generation/size/layout invalidation, transient retries and UTF-8 command parity passed')
+
+-- Recreated equivalent choice arrays must not invalidate retained composition.
+local retained=fixture(Menu);retained.draw();retained.draw();local commands=retained.commands
+for _=1,20 do retained.controls[2].choices={'Native camera','Shader preview'};retained.draw();assert(retained.commands==commands,'Equivalent choice arrays forced panel rebuild')end
+retained.controls[2].choices[1]='Changed native choice';retained.draw();assert(retained.commands~=commands,'Changed choice label did not invalidate panel')

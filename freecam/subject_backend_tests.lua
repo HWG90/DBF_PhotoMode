@@ -316,3 +316,10 @@ do
  assert(not backend.unchanged(c),'Outfit changes must invalidate visibility topology');put(clothes,original)
  assert(backend.unchanged(c))
 end
+
+do
+ assert(backend.unit_lifetime(weapon,world)==weapon.native,'Lifetime proof must resolve the genuine registry owner')
+ local generation=memory.read(generations+3,1);put(generations+3,'\2')
+ assert(backend.unit_lifetime(weapon,world)==false,'Recycled generation must refuse the old handle');put(generations+3,generation)
+ pointer(weapon.native+0x18,world.native+4096);assert(backend.unit_lifetime(weapon,world)==false,'Cross-world Unit must refuse');pointer(weapon.native+0x18,world.native)
+end

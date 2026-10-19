@@ -141,5 +141,13 @@ do
  paint_native(true,false);assert(created==2 and destroyed==1)
  paint_native(true,true);assert(destroyed==2,'Hide/screenshot frame must still release native view')
  paint_native(true,false);live_panel.close();assert(created==3 and destroyed==3,'Photo exit must release native view')
+ local command={type='rect',x=1,y=2,w=3,h=4,a=1,c={10,20,30},layer=300}
+ retained.draw({command});local stable=next_id
+ for _=1,100 do retained.draw({command})end
+ assert(next_id==stable,'Unchanged commands must retain primitive IDs')
+ command.c[1]=11;retained.draw({command});assert(next_id==stable+1 and retired[stable],'In-place color edits must invalidate the copied signature')
+ command.x=7;retained.draw({command});assert(next_id==stable+2,'Geometry edits must update the retained primitive')
+ retained.release()
+
 end
 print('Retained photo view: Tab preserves GUI and stable IDs; suspend/hide/exit releases; mirrored grip colors and native hazard triangles passed')

@@ -10,7 +10,7 @@
     "core.lua": "c008876010ae194e61aea0fa7441a25af607f4b6a80fcf5aa0941aab091b88a6",
     "font.lua": "83f7e1fd6076f6f86bc86bdb8ae302bfc2b0e5902ceae1a2041420b3b722dcc0",
     "store.lua": "3bc9a632382be9591a6119c576d9c0b2f33bd0fef9db8103de00c0cff87f4382",
-    "view.lua": "3f2e45fdaa2981529e3bb8bf62a6ede71637d081b3c53d0f8ae2f27cf6aa6f2a",
+    "view.lua": "de76609174c99bca4715c8c4af75be209096536d166b215eda1e4673f8aa82bb",
     "PhotoCapture_f37e408d89cd.dll": "f37e408d89cd8c8fd222039ab13e4614e887cdd2c552050c632ccb223bc70b53",
     "PhotoCapture_455c13a828a8.dll": "455c13a828a8229d9da887d797e394ba3901024a4811c7e50f1f4736a8a6f564",
     "PhotoCapture_7da458d8a23d.dll": "7da458d8a23d5a94039d33007957c62acce5b45ea4183bdd02e8731d19ff6a62",
@@ -82,6 +82,10 @@
       "baseline_sha256": "478dc3655b4f9bc995bb2bc77132ed3a63a45c8e4f1e59d48a0849f15ca5d0be",
       "sha256": "b59086c327227d1606ae7e686816f30cd3de16c9256ea42dd8fb37b06626a36a",
       "change": "Expose capture ownership/readiness; report sampling and focus loss without premature release; retain and retry incomplete cleanup; restore Photo-owned native-menu Window state before capturing the next baseline. External input owners remain authoritative."
+    },
+    "view.lua": {
+      "sha256": "de76609174c99bca4715c8c4af75be209096536d166b215eda1e4673f8aa82bb",
+      "change": "Compare retained primitive scalar snapshots without per-frame signature strings; preserve fresh GUI lifetime, font atlas binding and dynamic uniforms."
     }
   },
   "capture_library": "PhotoCapture_7da458d8a23d.dll",

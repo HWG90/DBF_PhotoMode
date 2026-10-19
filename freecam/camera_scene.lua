@@ -1,6 +1,8 @@
 -- Discover only a rendered main-world camera and the verified local player.
--- All Unit calls use handles from this refresh's World.units enumeration.
+-- Discovery uses genuine World.units handles. Retained handles require a fresh
+-- generation/world proof when available, or a new inventory lookup otherwise.
 local M={}
+local function lifetime_token(v)return type(v)=='number'and v==v and v>0 and v<2^53 and v%1==0 end
 local function finite(v)return type(v)=='number'and v==v and math.abs(v)<1e8 end
 local function copy(v)return{v[1],v[2],v[3]}end
 local function near(a,b,t)
@@ -212,6 +214,12 @@ function M.new(sr,player_reader,log,clock)
    written=nil;self.written=nil
   end
   candidate.epoch=self.epoch
+  local lifetime=type(player_reader)=='table'and player_reader.unit_lifetime
+  if type(lifetime)=='function'then
+   local p,c=read(lifetime,candidate.player,world),read(lifetime,candidate.unit,world)
+   if not(lifetime_token(p)and lifetime_token(c))then return refused('Discovered Unit lifetime proof unavailable')end
+   candidate.player_lifetime,candidate.unit_lifetime=p,c
+  end
   accepted=candidate;verified=candidate;self.retired=false;self.reason=nil
   return candidate
  end
@@ -231,11 +239,16 @@ function M.new(sr,player_reader,log,clock)
    if type(worlds)~='table'then clear_history();return unavailable('World inventory unavailable')end
    if not contains(worlds,world)then return unavailable('Main world retired',true)end
   end
-  local units=read(W.units,world)
-  if type(units)~='table'then clear_history();return unavailable('Main-world unit inventory unavailable')end
-  local player_unit,unit=find_pair(units,snapshot.player,snapshot.unit)
-  if not player_unit then return unavailable('Local player retired from the main world',true)end
-  if not unit then return unavailable('Camera unit left the main world',true)end
+  local lifetime=type(player_reader)=='table'and player_reader.unit_lifetime
+  local optimized=type(lifetime)=='function'and snapshot.player_lifetime~=nil and snapshot.unit_lifetime~=nil
+  local player_unit,unit=snapshot.player,snapshot.unit
+  if not optimized then
+   local units=read(W.units,world)
+   if type(units)~='table'then clear_history();return unavailable('Main-world unit inventory unavailable')end
+   player_unit,unit=find_pair(units,snapshot.player,snapshot.unit)
+   if not player_unit then return unavailable('Local player retired from the main world',true)end
+   if not unit then return unavailable('Camera unit left the main world',true)end
+  end
   local reader=type(player_reader)=='function'and player_reader or type(player_reader)=='table'and player_reader.frame
   local player=read(reader)
   local current_world=read(A.main_world)
@@ -247,7 +260,15 @@ function M.new(sr,player_reader,log,clock)
    if player.identity~=snapshot.player_identity or not same(player.root_handle,snapshot.player)then
     return unavailable('Local player replaced',true)
    end
-  else
+  end
+  if optimized then
+   -- Revalidate after the protected player reader: it can itself retire or
+   -- replace Units. No world-sized temporary table is needed for this proof.
+   local p,c=read(lifetime,player_unit,world),read(lifetime,unit,world)
+   if p==false or c==false then return unavailable('Player or camera Unit retired',true)end
+   if not(lifetime_token(p)and lifetime_token(c))then return unavailable('Unit lifetime proof unavailable')end
+   if p~=snapshot.player_lifetime or c~=snapshot.unit_lifetime then return unavailable('Player or camera Unit replaced',true)end
+  elseif not player_ready then
    -- A failed reader might have outlived a scene transition. Re-establish
    -- genuine handles on this exceptional path before asking about their life.
    local fresh_units=read(W.units,world)
@@ -309,6 +330,7 @@ function M.new(sr,player_reader,log,clock)
    return nil,self.reason,true -- Discovery may now find a different rendered camera.
   end
   local fresh={world=world,unit=unit,cam=current_cam,player=player_unit,player_identity=player.identity,
+   player_lifetime=snapshot.player_lifetime,unit_lifetime=snapshot.unit_lifetime,
    player_position=point,position=wp,forward=pose.forward,right=pose.right,up=pose.up,rendered=rendered,epoch=self.epoch,scene=self}
   accepted=fresh;verified=fresh;self.reason=nil;self.retired=false
   if rendered_match then scope(world,player);observation(unit,current_cam,pose)end

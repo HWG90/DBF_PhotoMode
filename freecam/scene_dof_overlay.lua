@@ -15,17 +15,18 @@ local function native_color_guard(sr)
  pcall(ffi.cdef,[[void *FSC_GetCurrentProcess(void) __asm__("GetCurrentProcess");void *FSC_GetModuleHandleA(const char *) __asm__("GetModuleHandleA");int FSC_ReadProcessMemory(void *,const void *,void *,size_t,size_t *) __asm__("ReadProcessMemory");]])
  local kernel=ffi.load('kernel32');local process=kernel.FSC_GetCurrentProcess()
  local base=tonumber(ffi.cast('uintptr_t',kernel.FSC_GetModuleHandleA(nil)))
- local function read(address,size)
+ local buffers={small=ffi.new('uint8_t[36]'),bulk=ffi.new('uint8_t[131072]')};local count_read=ffi.new('size_t[1]');local integer=ffi.new('uint32_t[1]');local address_value=ffi.new('uint64_t[1]')
+ local function read(address,size,bulk)
   assert(address>=65536 and address<2^47 and size>0 and size<=4096*32,'Combined color target read bounds invalid')
-  local buffer=ffi.new('uint8_t[?]',size);local count=ffi.new('size_t[1]')
+  local buffer=buffers[(bulk or size>36)and 'bulk'or 'small'];local count=count_read
   assert(kernel.FSC_ReadProcessMemory(process,ffi.cast('void *',address),buffer,size,count)~=0 and tonumber(count[0])==size,'Combined color target read failed')
-  return ffi.string(buffer,size)
+  return (bulk or size>36)and buffer or ffi.string(buffer,size)
  end
  local function u32(data,offset)
-  local value=ffi.new('uint32_t[1]');ffi.copy(value,data:sub(offset+1,offset+4),4);return tonumber(value[0])
+  ffi.copy(integer,type(data)=='string'and data:sub(offset+1,offset+4)or data+offset,4);return tonumber(integer[0])
  end
  local function pointer(data,offset)
-  local value=ffi.new('uint64_t[1]');ffi.copy(value,data:sub(offset+1,offset+8),8);return tonumber(value[0])
+  ffi.copy(address_value,type(data)=='string'and data:sub(offset+1,offset+8)or data+offset,8);return tonumber(address_value[0])
  end
  local function ptr(address)return pointer(read(address,8),0)end
  return function()
@@ -35,8 +36,8 @@ local function native_color_guard(sr)
   local renderer=ptr(ptr(base+0x23621a8)+0x338);local map=renderer+0x1600
   local count=u32(read(map,4),0);local active=u32(read(map+0x18,4),0);local buckets=u32(read(map+0x1c,4),0)
   assert(count>0 and count<=4096 and active>0 and active<=count and buckets>0 and buckets<=count,'Combined color target registry invalid')
-  local records=read(ptr(map+8),count*32);local found,back_buffer
-  for offset=0,#records-32,32 do
+  local records=read(ptr(map+8),count*32,true);local found,back_buffer
+  for offset=0,count*32-32,32 do
    if u32(records,offset+24)~=4294967294 then
     local hash=u32(records,offset)
     if hash==M.color_target_hash then assert(not found,'Combined color target ambiguous');found=pointer(records,offset+8)
@@ -49,8 +50,8 @@ local function native_color_guard(sr)
   local backend=ptr(renderer+0x1168);if backend<65536 then backend=ptr(renderer+0x1138)end
   local cache=ptr(backend+0x468)+u32(read(backend+0x478,4),0)*40
   local textures=u32(read(cache,4),0);assert(textures>0 and textures<=4096,'Combined color texture cache invalid')
-  local entries=read(ptr(cache+8),textures*24);local backing,back_buffer_backing
-  for at=0,#entries-24,24 do
+  local entries=read(ptr(cache+8),textures*24,true);local backing,back_buffer_backing
+  for at=0,textures*24-24,24 do
    if u32(entries,at+16)~=4294967294 then
     local key=pointer(entries,at)
     if key==found then assert(not backing,'Resolved color backing ambiguous');backing=pointer(entries,at+8)
@@ -75,9 +76,9 @@ local function native_color_guard(sr)
   assert(read(base+0x3fa262,7)=='\x4c\x8b\x35\x4f\x60\x61\x01','Renderer settings schema binding changed')
   local settings=ptr(base+0x1a102b8);local setting_count=u32(read(settings,4),0)
   assert(setting_count>0 and setting_count<=4096,'Renderer settings schema count invalid')
-  local setting_records=read(ptr(settings+8),setting_count*24)
+  local setting_records=read(ptr(settings+8),setting_count*24,true)
   local hdr_type,white_type
-  for at=0,#setting_records-24,24 do
+  for at=0,setting_count*24-24,24 do
    local key=u32(setting_records,at+16)
    if key==0xbf7ef641 then assert(not hdr_type,'HDR setting schema ambiguous');hdr_type=u32(setting_records,at)
    elseif key==0x3f5fea89 then assert(not white_type,'UI white setting schema ambiguous');white_type=u32(setting_records,at)end

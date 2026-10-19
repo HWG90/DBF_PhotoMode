@@ -105,6 +105,18 @@ function M.new(sr,memory)
   return{players=players,player=player,game_ref=game_ref,entities=entities,avatar=word(at+8),root=word(at+12)}
  end
  local function owner_key(value)return table.concat({value.players,value.player,value.game_ref,value.avatar,value.root},':')end
+ -- Numeric proof for a previously discovered genuine SDK handle. Never
+ -- constructs a handle or invokes a Unit API before registry/world validation.
+ function self.unit_lifetime(handle,world)
+  local ok,value=pcall(function()
+   local unit=native(memory.handle_ref(handle))
+   if ptr(unit+0x18)~=memory.world_address(world)then return false end
+   return unit
+  end)
+  if ok then return value end
+  if tostring(value):find('Subject Unit generation retired',1,true)then return false end
+  return nil,tostring(value)
+ end
  function self.owned(part)
   local ok,result=pcall(function()
    if owner_key(owner())~=part.owner_key or not self.valid(part)then return false end

@@ -7,7 +7,7 @@ end}, {__index=_G})
 local Scene=setfenv(assert(loadfile(root..'camera_scene.lua')),scene_env)()
 local function point(x,y,z)return{x or 0,y or 0,z or 0}end
 local function pose(p,f,r,u)return{p=p,f=f or{1,0,0},r=r or{0,-1,0},u=u or{0,0,1}}end
-local function fixture()
+local function fixture(optimized)
  local world={name='main'}
  local player={name='player'};local unit={name='camera'};local cam={name='camera-instance'}
  local S={world=world,units={player,unit},player=player,unit=unit,cam=cam,identity='local:1',p={2,3,4},
@@ -38,7 +38,13 @@ local function fixture()
   if S.player_nil then return nil end
   return{local_owner=S.local_owner~=false,identity=S.identity,root_handle=S.player,position=S.p,world=S.player_world or S.world}
  end
- S.scene=Scene.new(sr,read,function()end,function()if S.clock_error then error('clock unavailable')end;return S.time end);return S
+ local reader=read
+ if optimized then reader={frame=read,unit_lifetime=function(handle,w)
+  if S.proof_unknown then return nil end
+  for _,u in ipairs(S.units)do if u==handle and w==S.world then return handle==S.player and 0x1af12340000 or(S.proof_replaced and 0x1af34560000 or 0x1af23450000)end end
+  return false
+ end}end
+ S.scene=Scene.new(sr,reader,function()end,function()if S.clock_error then error('clock unavailable')end;return S.time end);return S
 end
 do
  local s=fixture();local frame=assert(s.scene.refresh())
@@ -276,3 +282,14 @@ do
  end
 end
 print('camera_scene_tests: rendered-camera identity, ambiguity, finite pose and retirement passed')
+
+do
+ local s=fixture(true);local frame=assert(s.scene.refresh());local scans=s.unit_reads
+ for i=1,100 do assert(s.scene.valid(frame));assert(s.scene.refresh())end
+ assert(s.unit_reads==scans,'Stable camera validation must not enumerate world Units')
+ s.proof_unknown=true;local calls=s.calls;assert(s.scene.valid(frame)==nil and s.calls==calls,'Unknown lifetime must refuse before native Unit calls')
+ s.proof_unknown=false;s.proof_replaced=true;assert(s.scene.valid(frame)==false and s.calls==calls,'Replaced native Unit must retire before dereferencing cached handles')
+ s=fixture(true);frame=assert(s.scene.refresh());calls=s.calls
+ s.on_player_read=function()s.units={s.player};s.poison_native=true end
+ assert(s.scene.valid(frame)==false and not s.poison_touches and s.calls==calls,'Post-reader retirement must be checked before Unit APIs')
+end
