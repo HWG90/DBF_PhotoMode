@@ -28,7 +28,9 @@
   },
   "discord": {
     "url": "https://discord.com/channels/1260111500522295377/1559027203315073094",
-    "status": "pending user opening thread: new tab creation CDP focus timeout; invalid blank tab rejected by browser security policy"
+    "status": "Existing starter post and thread title updated and verified in visible DOM",
+    "thread_title": "\ud83e\udebfWar Journalist 1.2.1 \u2014 Handycam & Photo Mode",
+    "existing_attachments_retained": true
   },
   "local_LLL": {
     "installed_version": "1.2.1",
