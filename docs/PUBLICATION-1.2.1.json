@@ -1,0 +1,50 @@
+{
+  "version": "1.2.1",
+  "source_commit": "02c72a3",
+  "github": {
+    "url": "https://github.com/HWG90/DBF_PhotoMode/releases/tag/v1.2.1",
+    "all_four_uploaded_digests_match": true
+  },
+  "nexus": {
+    "url": "https://www.nexusmods.com/helldivers2/mods/17248?tab=files",
+    "BSL": {
+      "file_id": 69496,
+      "status": "Manual download publicly visible"
+    },
+    "MDL": {
+      "file_id": 69497,
+      "status": "Manual download publicly visible"
+    },
+    "description_updated": true,
+    "existing_images_retained": true
+  },
+  "ayaka": {
+    "url": "https://ayakamods.com/mods/war-journalist-helldivers-2-photo-mode.4948/",
+    "update_url": "https://ayakamods.com/mods/war-journalist-helldivers-2-photo-mode.4948/update/7836/",
+    "version": "1.2.1",
+    "description_updated": true,
+    "download_links_updated": true,
+    "existing_images_retained": true
+  },
+  "discord": {
+    "url": "https://discord.com/channels/1260111500522295377/1559027203315073094",
+    "status": "pending user opening thread: new tab creation CDP focus timeout; invalid blank tab rejected by browser security policy"
+  },
+  "local_LLL": {
+    "installed_version": "1.2.1",
+    "module_audit": "12/12 pass",
+    "full_package_bytes_installed": true
+  },
+  "tests": {
+    "fixtures_passed": 76,
+    "BSL_MDL_LLL_standalone_passed": true
+  },
+  "live": {
+    "periodic_legend_hitch": "User confirmed Fixed with legend re-enabled",
+    "font_regression": "Optimization reverted; user confirmed restored text",
+    "limits": "Occasional random spikes remain; live acceptance on LLL"
+  },
+  "skills": [
+    "write-like-me: app tool unavailable; user release examples used"
+  ]
+}
