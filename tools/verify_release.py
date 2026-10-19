@@ -14,7 +14,7 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 PREFIX = 'dbf_freecam/'
-SHADER_RELEASES = {'0.9.5': '0.9.5', '0.9.6': '0.9.6', '0.9.7': '0.9.6', '0.9.8': '0.9.6', '0.9.9': '0.9.6', '0.9.10': '0.9.6', '0.9.11': '0.9.6', '1.0': '0.9.6', '1.0.1': '0.9.6', '1.1.0': '0.9.6'}
+SHADER_RELEASES = {'0.9.5': '0.9.5', '0.9.6': '0.9.6', '0.9.7': '0.9.6', '0.9.8': '0.9.6', '0.9.9': '0.9.6', '0.9.10': '0.9.6', '0.9.11': '0.9.6', '1.0': '0.9.6', '1.0.1': '0.9.6', '1.1.0': '0.9.6', '1.2.0': '0.9.6'}
 
 
 
@@ -228,7 +228,7 @@ def verify_current(path, version, standalone=False, allow_legacy_registry=False,
             assert 'DBF_PHOTO_EDITOR_INPUT' not in code and 'self.editor_bridge' not in code and 'DBF_PHOTO_INPUT_RECOVERY' not in code, 'Unreleased external-editor bridge/recovery included; use the dedicated development candidate verifier'
         for module in ('ragdoll_pause.lua', 'cinema_camera.lua', 'assets/faction_art.lua'):
             assert re.fullmatch('[0-9a-f]{64}', provenance['source_modules_sha256'].get(module, '')), '1.0 source provenance missing: '+module
-    if version=='1.1.0':
+    if version in ('1.1.0','1.2.0'):
         assert provenance.get('candidate_only') is False and provenance.get('camera_engine')=='independent', 'Public camera release identity missing'
         assert 'CANDIDATE-README.txt' not in runtime, 'Development warning in public runtime'
         for feature in ('function self.passive_update(', 'player no aggro', 'passive_due=now+1', 'function self.set_follow_player('):

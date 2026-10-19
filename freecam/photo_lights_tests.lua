@@ -323,3 +323,16 @@ do
  assert(rig.release('shutdown'))
 end
 print('Photo lights: owned point/spot units, linear color, placement, limits, selection, visibility, follow camera, exact cleanup/retry/retirement and capability gates passed')
+
+do
+ local lights=M.new(sr);main=a;resource=true
+ local placed={position={10,20,30},forward={0,1,0},right={1,0,0},up={0,0,1}}
+ assert(lights.flush(a,placed)and lights.create({enabled=true,follow_camera=true,forward=2}))
+ local id=next_id;local unit=units[id]
+ for _,phase in ipairs({'placed action shot','handycam'})do
+  local moving={position={30,40,50},forward={1,0,0},right={0,-1,0},up={0,0,1}}
+  assert(lights.flush(a,moving))
+  assert(unit.light.enabled and unit.pos[1]==32 and unit.pos[2]==40 and unit.pos[3]==50,phase..' must retain camera-follow light visibility and offset')
+ end
+ assert(lights.release('shutdown'))
+end

@@ -270,7 +270,14 @@ DBF_PHOTO_LIGHTS.update_from_photo=function()
 end
 DBF_PHOTO_LIGHTS.cache_camera=function()
  if not PHOTO.active or not target or not world_alive(target.world)then PHOTO.light_context=nil;return end
- local pose=try(sr.Camera.world_pose,target.cam);if not pose then PHOTO.light_context=nil;return end
+ local pose=try(sr.Camera.world_pose,target.cam)
+ if not pose then
+  -- A transient pose read during an action-shot handoff must not destroy lights.
+  -- Retain only the last numeric anchor for this exact live world/scene epoch.
+  local prior=PHOTO.light_context
+  if not prior or prior.world~=target.world or prior.scene_epoch~=WORLD.epoch then PHOTO.light_context=nil end
+  return
+ end
  PHOTO.light_context={world=target.world,scene_epoch=WORLD.epoch,position={xyz(M.translation(pose))},forward={xyz(M.forward(pose))},right={xyz(M.right(pose))},up={xyz(M.up(pose))}}
 end
 local function bindings_step()

@@ -154,3 +154,47 @@ do
  s.valid=false;local writes=s.writes;assert(not s.motion.apply(s.frame,true)and s.writes==writes,'Retired owners cannot update the head camera')
  assert(s.motion.release())
 end
+
+do
+ local s=fixture();s.cinema.state='perform';s.photo.handycam=true
+ local t=1;s.cinema.wall_time=function()return t end;s.cinema.gameplay_input_ready=function()return true end
+ s.sr.Unit={has_node=function()return true end,node=function()return 1 end,num_scene_graph_items=function()return 1 end,world_position=function()return {12,4,3}end}
+ s.photo.options.handycam_intensity=100;assert(s.motion.apply(s.frame));t=1.05;assert(s.motion.apply(s.frame))
+ assert(math.abs(s.photo.view.yaw)>0,'Handycam must add handheld sway')
+ local yaw=s.photo.view.yaw;assert(s.motion.apply(s.frame));assert(s.photo.view.yaw==yaw,'Repeated renders cannot advance shake')
+ assert(s.photo.options.roll==0,'Shake must not mutate the saved roll')
+ s.photo.options.handycam_intensity=0;t=1.1;assert(s.motion.apply(s.frame));assert(s.photo.view.yaw==0,'Zero intensity must disable synthetic shake')
+end
+
+-- Head animation ticks and renders need not have the same cadence.
+do
+ local s=fixture();s.cinema.state='perform';s.photo.handycam=true
+ local t,x=1,12;s.cinema.wall_time=function()return t end;s.cinema.gameplay_input_ready=function()return true end
+ s.sr.Unit={has_node=function()return true end,node=function()return 1 end,num_scene_graph_items=function()return 1 end,world_position=function()return{x,4,3}end}
+ s.photo.options.handycam_intensity=100;assert(s.motion.apply(s.frame))
+ local yaw=0
+ for i=1,120 do
+  t=1+i/120;if i%2==0 then x=x+4/60 end
+  assert(s.motion.apply(s.frame))
+  local angle=s.photo.view.yaw
+  assert(math.abs(angle-yaw)<math.rad(.3),'Alternating animation ticks must not step shake intensity')
+  yaw=angle;assert(s.motion.apply(s.frame));assert(s.photo.view.yaw==yaw,'Duplicate render time must hold shake')
+ end
+end
+
+-- Reading back our own rendered orientation must not re-ingest synthetic sway.
+do
+ local s=fixture();s.cinema.state='perform';s.photo.handycam=true
+ local t=1;s.cinema.wall_time=function()return t end;s.cinema.gameplay_input_ready=function()return true end
+ s.sr.Unit={has_node=function()return true end,node=function()return 1 end,num_scene_graph_items=function()return 1 end,world_position=function()return{12,4,3}end}
+ s.photo.options.handycam_intensity=100
+ local clean={math.cos(.5),math.sin(.5),0}
+ for i=1,120 do
+  t=1+i/120
+  if i%2==1 then s.frame.forward=copy(clean)else s.frame.forward=copy(s.forward)end
+  assert(s.motion.apply(s.frame))
+  assert(math.abs(s.photo.view.yaw-.5)<math.rad(.5),'Owned render echo must not accumulate sway or alternate aiming direction')
+ end
+ s.frame.forward={math.cos(1),math.sin(1),0};t=t+.01;assert(s.motion.apply(s.frame))
+ assert(math.abs(s.photo.view.yaw-1)<math.rad(.5),'Fresh gameplay rotation must remain responsive')
+end

@@ -107,6 +107,14 @@ function M.new(photo,context,clock)
   end
   shot=copy(list[#list]);halt_path();self.status='Camera path complete — final camera held; gameplay controls active';return true
  end
+ function self.zoom(wheel)
+  if self.state~='perform'or not shot or playback or photo.handycam~=true or not finite(wheel)then return false end
+  -- Windows wheel units are 120 per detent. Bound extreme queued input.
+  local now=clock();if not finite(now)then return false end
+  shot.zoom_target=math.max(15,math.min(110,(shot.zoom_target or shot.fov)-math.max(-1200,math.min(1200,wheel))/120*3))
+  shot.zoom_time=shot.zoom_time or now
+  return true,shot.zoom_target
+ end
  function self.hold()
   if self.state~='perform'then return true end
   if not photo.active or not shot then
@@ -125,6 +133,17 @@ function M.new(photo,context,clock)
    halt_path();candidate,shot=nil,nil;points={};state('off');return false,'Cinema ended: player or scene changed'
   end
   local advanced,why=path_frame();if not advanced then halt_path();candidate,shot=nil,nil;state('off');return false,why end
+  if shot.zoom_target then
+   local now=clock()
+   if finite(now)then
+    local elapsed=math.max(0,math.min(.1,now-(shot.zoom_time or now)))
+    -- Multiple holds may run in one frame. A shared wall-clock timestamp keeps
+    -- easing frame-rate independent and prevents repeated advancement.
+    shot.zoom_time=math.max(shot.zoom_time or now,now)
+    shot.fov=shot.fov+(shot.zoom_target-shot.fov)*(1-math.exp(-elapsed/.12))
+    if math.abs(shot.zoom_target-shot.fov)<.001 then shot.fov=shot.zoom_target;shot.zoom_target=nil;shot.zoom_time=nil end
+   end
+  end
   photo.pos={shot.pos[1],shot.pos[2],shot.pos[3]}
   photo.view={yaw=shot.yaw,pitch=shot.pitch,sequence=photo.sample_sequence or 0}
   photo.input={sequence=photo.sample_sequence or 0,mouse_x=0,mouse_y=0,wheel=0,dt=0}

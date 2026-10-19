@@ -137,3 +137,21 @@ for _,unavailable in ipairs({'nil','throw'})do
  assert(photo.pos==position and photo.view==view and photo.input==input,'Confirmed scene retirement must happen before another camera write')
 end
 print('Cinema context recovery: nil/throwing reader ends playback without camera writes, retains numeric points, requires explicit fresh replay, and still clears confirmed scene replacements passed')
+
+do
+ local p={active=true,pos={1,2,3},view={yaw=0,pitch=0},options={fov=60,roll=0},handycam=true}
+ local now=10
+ local c=Cinema.new(p,function()return{world='w',epoch=1,player='p'}end,function()return now end)
+ assert(c.place()and c.prepare(nil)and c.commit())
+ assert(c.zoom(120)and c.hold()and p.options.fov==60,'Wheel input sets a target without snapping')
+ now=10.05;assert(c.hold()and p.options.fov<60 and p.options.fov>57,'Zoom must ease toward its target')
+ local fov=p.options.fov;assert(c.hold()and p.options.fov==fov,'Repeated holds cannot double-advance zoom')
+ assert(c.zoom(-240));now=10.1;assert(c.hold()and p.options.fov>fov,'Reversing wheel must smoothly reverse zoom')
+ local function settle()for i=1,40 do now=now+.1;assert(c.hold())end end
+ settle();assert(p.options.fov==63,'Wheel targets accumulate while easing')
+ for i=1,20 do c.zoom(1200)end;settle();assert(p.options.fov==15)
+ for i=1,20 do c.zoom(-1200)end;settle();assert(p.options.fov==110)
+ assert(not c.zoom(0/0));p.handycam=false;assert(not c.zoom(120))
+ c.stop();p.handycam=true;assert(not c.zoom(120))
+ assert(c.place()and c.prepare(nil)and c.commit());now=now+1;assert(c.hold()and p.options.fov==110,'New shots must not inherit old zoom targets')
+end

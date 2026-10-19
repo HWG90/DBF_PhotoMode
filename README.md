@@ -1,6 +1,6 @@
 ![War Journalist](docs/artwork/war-journalist-0.9.7-cover.png)
 
-# War Journalist 1.1.0
+# War Journalist 1.2.0
 
 A Helldivers 2 Photo Mode: free camera, a movable photo studio menu,
 Native and shader depth of field, autofocus, color grading, scene effects,
@@ -9,11 +9,19 @@ photo lighting, Cinema action shots, camera paths, solo enemy behavior,
 
 [Download on Nexus](https://www.nexusmods.com/helldivers2/mods/17248?tab=files) ·
 [GitHub downloads](https://github.com/HWG90/DBF_PhotoMode/releases) ·
-[1.1.0 release notes](docs/RELEASE-1.1.0.md)
+[1.2.0 release notes](docs/RELEASE-1.2.0.md)
 
 **A huge thank-you to everyone sharing their photos, testing builds, and reporting bugs.**
 Seeing the shots you are making with War Journalist has been the best part of building it.
 Keep them coming!
+
+## New in 1.2.0
+
+First-person handycam with adjustable handheld shake, optional camera smoothing,
+smooth mouse-wheel zoom and hidden gameplay HUD. Subject visibility work now
+stays idle when equipment is unchanged, reducing the measured half-second hitch.
+Camera-follow lights remain available in action shots. Subject also has Hide cape.
+See the release notes for testing limits and upgrade instructions.
 
 ## What's included
 

@@ -131,7 +131,6 @@ def checksums(files):return ''.join(sha(body)+'  '+name+'\n'for name,body in sor
 
 def build_assets_only(output):
     """Build Arsenal assets without packaging unrelated runtime development."""
-    public_release=VERSION=='1.1.0' and not input_recovery_candidate
     output=output.resolve();output.mkdir(parents=True,exist_ok=True)
     core,shared,audit=resources()
     files=asset_files(core,shared,audit,'Assets/')
@@ -202,7 +201,7 @@ def build(output,camera_engine='independent',input_recovery_candidate=False):
         review_roots.extend(parent for parent in ROOT.resolve().parents if parent.name=='review'and parent.parent.name=='dist')
         if not any(output.resolve().is_relative_to(folder)for folder in review_roots):
             raise ValueError('Input recovery candidates must stay inside dist/review')
-    public_release=VERSION=='1.1.0' and not input_recovery_candidate
+    public_release=VERSION in ('1.1.0','1.2.0') and not input_recovery_candidate
     output=output.resolve();output.mkdir(parents=True,exist_ok=True)
     photo=load('release_photo_build',ROOT/'freecam/build.py')
     independent=load('release_independent_camera',ROOT/'freecam/independent_build.py')

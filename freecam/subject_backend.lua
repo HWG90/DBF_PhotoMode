@@ -161,6 +161,42 @@ function M.new(sr,memory)
   return descriptor==link.descriptor and word(descriptor+20)%2==1 and word(descriptor+8)==link.owner_entity and word(descriptor+12)==link.owner_ref
    and word(row)==link.ref and word(row+4)==link.target_entity
  end
+ -- Equipment has no supported change notification in this adapter. A bounded
+ -- half-second topology check replaces repeated world discovery and mesh masks.
+ -- Every cached native address is generation-checked before dereferencing it.
+ local function topology(parts)
+  local player=owner();local key={owner_key(player)}
+  local world=assert(sr.Application.main_world(),'Subject world unavailable')
+  key[#key+1]=tostring(memory.world_address(world))
+  local avatars=ptr(game+0x3326d20);local ai=assert(lookup(avatars,248,player.avatar,word(avatars+0x6c)),'Local avatar renderer unavailable')
+  key[#key+1]=read(avatars+5532272+ai*440+220,120)
+  local equipment=carried(player);local entities={};for entity in pairs(equipment)do entities[#entities+1]=entity end;table.sort(entities)
+  local manager,count=chain_manager();key[#key+1]=tostring(manager or 0);key[#key+1]=tostring(count or 0)
+  for _,entity in ipairs(entities)do
+   local item=equipment[entity];key[#key+1]=table.concat({entity,item.ref,tostring(item.weapon)},':')
+   if manager then
+    local index=lookup(manager,0x18,entity,count)
+    if index~=nil then
+     local descriptor=ptr(ptr(manager+0x30)+index*8);local row=ptr(manager+0x38)+index*0x9c
+     key[#key+1]=tostring(descriptor);key[#key+1]=read(descriptor+8,16);key[#key+1]=read(row,8)
+    end
+   end
+  end
+  local refs={};for ref in pairs(parts)do refs[#refs+1]=ref end;table.sort(refs)
+  for _,ref in ipairs(refs)do
+   local part=parts[ref];local unit=native(ref)
+   assert(unit==part.native and ptr(unit+0x18)==part.world_native,'Subject Unit owner changed')
+   local count=word(unit+0xc8);assert(count<=512,'Subject mesh count changed')
+   local meshes=ptr(unit+0xd0)
+   key[#key+1]=tostring(ref);key[#key+1]=read(unit+0x1d0,24)
+   key[#key+1]=tostring(count);key[#key+1]=tostring(meshes)
+   for mesh=1,count do key[#key+1]=read(meshes+(mesh-1)*16,8)end
+  end
+  return table.concat(key,'|')
+ end
+ function self.unchanged(context)
+  return type(context)=='table'and context._parts~=nil and context._topology==topology(context._parts)
+ end
  function self.frame()
   local local_player=owner();local ref=local_player.root;local world=sr.Application.main_world();assert(world,'Local player world unavailable')
   local world_native=memory.world_address(world);local unit=native(ref);assert(ptr(unit+0x18)==world_native,'Local player world changed')
@@ -331,7 +367,7 @@ function M.new(sr,memory)
    end
   end
   for group,items in pairs(groups)do local out,seen={},{};for _,ref in ipairs(items)do if not seen[ref]then out[#out+1]=parts[ref];seen[ref]=true end end;groups[group]=out end
-  return{local_owner=true,identity=identity,groups=groups}
+  return{local_owner=true,identity=identity,groups=groups,_parts=parts,_topology=topology(parts)}
  end
  return self
 end

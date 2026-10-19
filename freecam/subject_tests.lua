@@ -43,3 +43,18 @@ context.groups.hide_player={helmet,cape};for i=1,6 do assert(subject.flush(.1))e
 assert(masks['barrel:8'][1]==255 and subject.count()==0,'Detached equipment did not regain its original visibility')
 assert(subject.queue(nil)and subject.flush(.016));context.groups.hide_player={helmet,cape};masks['helmet:2']={255,0};masks['cape:3']={255}
 print('Subject visibility: local-only proof, overlapping groups, original invisible rows, write coalescing, foreign/retired ownership, handoff and retry cleanup passed')
+
+do
+ local resolves,reads=0,0;local revision=1
+ local part={identity='stable',mesh_count=1};local mask=255
+ local b={resolve=function()resolves=resolves+1;return{local_owner=true,identity='p',groups={hide_player={part}},revision=revision}end,
+  unchanged=function(c)return c.revision==revision end,valid=function()return true end,
+  read=function()reads=reads+1;return mask end,write=function(_,_,visible)mask=visible and 255 or 0 end}
+ local s=module.new(b);assert(s.queue({hide_player=true})and s.flush(.016))
+ local before_resolves,before_reads=resolves,reads
+ for i=1,100 do s.refresh(.1);assert(s.flush(.1))end
+ assert(resolves==before_resolves and reads==before_reads,'Unchanged hidden subjects must stay idle without discovery or mesh reads')
+ revision=2;for i=1,6 do assert(s.flush(.1))end
+ assert(resolves>before_resolves,'Topology changes must refresh visibility')
+ assert(s.release()and mask==255,'Cached visibility must retain owned restoration')
+end

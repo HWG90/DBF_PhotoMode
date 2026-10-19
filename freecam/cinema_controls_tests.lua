@@ -148,6 +148,7 @@ assert(h.activate('cinema_begin'));tick()
 assert(visibility.pending and visibility.request.hide_player and captured and cinema.state=='place','Handycam handed input back before visibility was queued')
 tick();assert(captured and cinema.state=='place','Handycam ignored pending update-time visibility')
 visibility.pending=false;tick();assert(photo.handycam and cinema.state=='perform'and not captured,'Handycam did not hand gameplay input back after visibility completed')
+assert(photo.options.hide_hud==true,'Handycam must suppress gameplay HUD without modifying saved settings')
 -- Direct reposition preserves the most recently rendered numeric head frame.
 photo.pos={20,30,40};photo.view={yaw=.4,pitch=.3}
 assert(ctrl.reposition_camera())

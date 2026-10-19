@@ -4,7 +4,7 @@ local M={}
 function M.new(backend,log,reuse)
  if reuse then assert(type(reuse)=='table'and type(reuse.count)=='function'and reuse.count()==0 and not reuse.pending,'Subject refresh requires restored, idle ownership')end
  local self=reuse or{};self.status='Subject controls are waiting for a verified player';self.capabilities={};self.pending=false;self.available=false
- local owned={};local identity;local queued;local desired;local refresh_elapsed=.5;local hold_elapsed=0
+ local owned={};local last_context;local identity;local queued;local desired;local refresh_elapsed=.5;local hold_elapsed=0
  log=log or function()end
  local function restore(record)
   local valid,why=backend.valid(record.part,record.mesh)
@@ -25,7 +25,7 @@ function M.new(backend,log,reuse)
   end
   owned=failed
   if next(failed)then self.status='Subject restoration pending: '..reason;return false,reason end
-  identity=nil;return true
+  identity=nil;last_context=nil;return true
  end
  function self.ready()
   self.capabilities={}
@@ -50,12 +50,17 @@ function M.new(backend,log,reuse)
    end
    self.capabilities[name]=available and total>0
   end
-  self.status='Subject visibility ready';return true,self.status,self.capabilities,context
+  last_context=context;self.status='Subject visibility ready';return true,self.status,self.capabilities,context
+ end
+ local function unchanged()
+  if not last_context or not backend or type(backend.unchanged)~='function'then return false end
+  local ok,value=pcall(backend.unchanged,last_context);return ok and value==true
  end
  function self.refresh(dt)
   refresh_elapsed=refresh_elapsed+math.max(.001,math.min(.1,tonumber(dt)or 0))
   if refresh_elapsed<.5 then return self.available,self.status,self.capabilities end
   refresh_elapsed=0
+  if unchanged()then return self.available,self.status,self.capabilities end
   local called,ready,why,caps=pcall(self.ready)
   self.available=called and ready==true
   if not called then self.status='Subject controls unavailable: '..tostring(ready);self.capabilities={}
@@ -115,7 +120,7 @@ function M.new(backend,log,reuse)
    -- Capability polling must not reset the update-time attachment refresh.
    -- A new mesh can appear even when every original mesh was already hidden.
    hold_elapsed=hold_elapsed+math.max(.001,math.min(.1,tonumber(dt)or 0))
-   if hold_elapsed>=.5 then hold_elapsed=0;local request=desired;local ok,why=self.apply(request);desired=request;return ok,why end
+   if hold_elapsed>=.5 then hold_elapsed=0;if unchanged()then return true end;local request=desired;local ok,why=self.apply(request);desired=request;return ok,why end
   end
   return true
  end

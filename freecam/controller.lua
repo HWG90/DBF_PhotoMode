@@ -469,6 +469,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         if not called or ok==false then log('Photo subject: '..tostring(called and why or ok))end
     end
     function self._end_handycam()
+        if api and api.camera_input and api.camera_input.gameplay_wheel then api.camera_input.gameplay_wheel(false)end
         photo.handycam=false
         if self._handycam_hidden then self._handycam_hidden=nil;subject_change()end
     end
@@ -732,6 +733,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         end
     end
     function self.stop(preserve_resume)
+        if api and api.camera_input and api.camera_input.gameplay_wheel then api.camera_input.gameplay_wheel(false)end
         photo.handycam=false;self._handycam_hidden=nil
         self._idle_stopped=false
         self._scene_start_pending=nil
@@ -1275,7 +1277,13 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
             if capturing and(not api.camera_input.focused()or not self._cinema.gameplay_input_ready()or api.is_open()or game_chat_active())then screenshots.cancel();capturing=false end
             if options then
                 photo.options=options.read(handle);photo.options.hide_controls=true
+                if photo.handycam then photo.options.hide_hud=true end
                 if capturing then photo.options.hide_hud=true;photo.options.grid=1 end
+            end
+            if api and api.camera_input and api.camera_input.gameplay_wheel then
+                local allowed=photo.handycam==true and not capturing and api.camera_input.focused()and self._cinema.gameplay_input_ready()and not api.is_open()and not game_chat_active()and not self._external_menu_open()
+                local wheel=api.camera_input.gameplay_wheel(allowed)
+                if allowed and type(wheel)=='number'and wheel~=0 then self._cinema.zoom(wheel)end
             end
             local ok,why=self._cinema.hold();if not ok then self.stop();self._cinema_error(why);return end
             if panel and panel.draw_cinema then

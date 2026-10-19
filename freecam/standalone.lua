@@ -203,6 +203,8 @@ function M.input(host,sr,available,parent)
  function input.focused()return hwnd~=nil end;function input.window()return hwnd end
  local capture=host.require('src/photo_input_capture.lua').new(sr.Window,ownership.restore_parent,not(native_clip_ok and native_clip)and M.cursor_clip(user,ffi,input)or nil)
  function input.now()return tonumber(native.mcm_seconds())end
+ pcall(ffi.cdef,'int mcm_gameplay_wheel(int);')
+ function input.gameplay_wheel(enabled)return tonumber(native.mcm_gameplay_wheel(enabled and 1 or 0))end
  function input.wheel()return tonumber(native.mcm_wheel())end
  function input.look()return tonumber(native.mcm_mouse_x()),tonumber(native.mcm_mouse_y())end
  function input.double_click_limits(w,h)

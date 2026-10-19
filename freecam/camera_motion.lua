@@ -138,9 +138,14 @@ function M.new(sr,photo,look,runtime,freeze,cinema,config,log)
      assert(type(lease.head)=='number'and lease.head%1==0 and lease.head>=1 and lease.head<=count,'Handycam head node invalid')
     end
     local p=assert(vector(sr.Unit.world_position(frame.player,lease.head)),'Handycam head position unavailable')
-    local yaw=math.atan2(frame.forward[2],frame.forward[1])
-    local pitch=math.asin(math.max(-1,math.min(1,frame.forward[3])))
+    -- The scene reader can observe our last render before gameplay publishes
+    -- its next camera pose. That is output, not a fresh aiming sample.
+    local prior=lease.handycam
+    local echo=prior and prior.output_forward and near(frame.forward,prior.output_forward)
+    local yaw=echo and prior.yaw or math.atan2(frame.forward[2],frame.forward[1])
+    local pitch=echo and prior.pitch or math.asin(math.max(-1,math.min(1,frame.forward[3])))
     local now=cinema.wall_time();assert(finite(now),'Handycam real-time clock unavailable')
+    local head=copy(p)
     local previous=lease.handycam
     local elapsed=previous and math.max(0,math.min(.1,now-previous.time))or 0
     local smooth=photo.options and photo.options.camera_smoothing==true and strength>0 and previous
@@ -150,13 +155,34 @@ function M.new(sr,photo,look,runtime,freeze,cinema,config,log)
      yaw=previous.yaw+((yaw-previous.yaw+math.pi)%(2*math.pi)-math.pi)*alpha
      pitch=previous.pitch+(pitch-previous.pitch)*alpha
     end
-    lease.handycam={position=p,yaw=yaw,pitch=pitch,time=now}
+    -- Keep the clean tracking pose separate: shake never feeds back into tracking.
+    local intensity=photo.options and photo.options.handycam_intensity or 50
+    intensity=finite(intensity)and math.max(0,math.min(100,intensity))*.01 or .5
+    local speed=0
+    if previous and elapsed>0 then
+     local origin=previous.head or previous.position
+     local dx,dy,dz=head[1]-origin[1],head[2]-origin[2],head[3]-origin[3]
+     speed=math.min(8,math.sqrt(dx*dx+dy*dy+dz*dz)/elapsed)
+    end
+    -- Animation/head samples can repeat between simulation updates. Filter
+    -- their measured speed so repeated/spiked samples cannot step shake gain
+    -- or frequency on alternating render frames. Never feed sway into tracking.
+    local filtered_speed=previous and previous.speed or 0
+    if elapsed>0 then filtered_speed=filtered_speed+(speed-filtered_speed)*(1-math.exp(-elapsed/.18))end
+    local energy=intensity*(.2+filtered_speed*.1)
+    local phase=(previous and previous.phase or 0)+elapsed*(2.5+filtered_speed*.65)
+    local shake=energy*(math.sin(phase*2.13)+.35*math.sin(phase*5.71))
+    lease.handycam={position=p,yaw=yaw,pitch=pitch,time=now,head=head,phase=phase,energy=energy,speed=filtered_speed,
+     sway_yaw=math.rad(1.4)*shake,sway_pitch=math.rad(1.8)*energy*math.sin(phase*2.87),
+     sway_roll=1.8*energy*math.sin(phase*1.73)}
    end
    local view=lease.handycam
    if not view then return false,'Handycam awaits gameplay focus'end
-   photo.pos=copy(view.position);photo.view={yaw=view.yaw,pitch=view.pitch,sequence=consumed or 0}
-   local cy,sy,cp,sp=math.cos(view.yaw),math.sin(view.yaw),math.cos(view.pitch),math.sin(view.pitch)
+   local yaw,pitch=view.yaw+(view.sway_yaw or 0),view.pitch+(view.sway_pitch or 0)
+   photo.pos=copy(view.position);photo.view={yaw=yaw,pitch=pitch,sequence=consumed or 0}
+   local cy,sy,cp,sp=math.cos(yaw),math.sin(yaw),math.cos(pitch),math.sin(pitch)
    f,r={cy*cp,sy*cp,sp},{sy,-cy,0}
+   view.output_forward=copy(f)
   else lease.handycam=nil;lease.head=nil end
   if not performing then
    local radius=finite(config.PHOTO_MAX_RANGE)and math.max(0,config.PHOTO_MAX_RANGE)or 500
@@ -170,13 +196,20 @@ function M.new(sr,photo,look,runtime,freeze,cinema,config,log)
   lease.written=copy(photo.pos)
   local moved,move_why=safe(sr.Camera.set_local_position,frame.cam,frame.unit,sr.Vector3(unpack(photo.pos)))
   if not moved then self.pending=true;return false,move_why end
-  local ok,result=pcall(runtime.apply,frame.cam,frame.unit,frame.world,f,r,photo.options or{},dt)
+  local render_options=photo.options or{}
+  if performing and photo.handycam and lease.handycam and lease.handycam.sway_roll~=0 then
+   local adjusted=lease.render_options or{};lease.render_options=adjusted
+   for k in pairs(adjusted)do adjusted[k]=nil end
+   for k,v in pairs(render_options)do adjusted[k]=v end
+   adjusted.roll=(render_options.roll or 0)+(lease.handycam.sway_roll or 0);render_options=adjusted
+  end
+  local ok,result=pcall(runtime.apply,frame.cam,frame.unit,frame.world,f,r,render_options,dt)
   if not ok then self.pending=true;return false,tostring(result)end
   local updated,update_why=safe(sr.World.update_unit,frame.world,frame.unit)
   if not updated then self.pending=true;return false,update_why end
   if type(scene.mark_written)=='function'then
    local u={r[2]*f[3]-r[3]*f[2],r[3]*f[1]-r[1]*f[3],r[1]*f[2]-r[2]*f[1]}
-   local roll=photo.options and photo.options.roll or 0;roll=finite(roll)and math.rad(roll)or 0
+   local roll=render_options.roll or 0;roll=finite(roll)and math.rad(roll)or 0
    local c,s=math.cos(roll),math.sin(roll);local rr,uu={},{}
    for i=1,3 do rr[i]=r[i]*c-u[i]*s;uu[i]=u[i]*c+r[i]*s end
    local marked,mark_why=safe(scene.mark_written,frame,photo.pos,f,rr,uu)

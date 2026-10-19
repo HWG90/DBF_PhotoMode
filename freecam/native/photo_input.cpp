@@ -42,6 +42,7 @@ extern "C" __declspec(dllexport) int mcm_load_menu_cursor(const char *path) {
     return 1;
 }
 static volatile LONG wheel;
+static volatile LONG observe_wheel;
 static volatile LONG look_x, look_y;
 static volatile LONG keys[256];
 static volatile LONG buttons[5];
@@ -235,6 +236,7 @@ static USHORT mouse_flags(UINT msg, WPARAM wp) {
 static LRESULT CALLBACK guarded_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     int capture = hwnd==owner && GetForegroundWindow()==owner ? (int)InterlockedCompareExchange(&captured,0,0) : 0;
     if (msg==WM_KILLFOCUS || (msg==WM_ACTIVATEAPP && !wp)) {
+        InterlockedExchange(&observe_wheel,0);InterlockedExchange(&wheel,0);
         capture_mode(0,true);
         InterlockedExchange(&look_x,0);InterlockedExchange(&look_y,0);
         for (int i=0;i<256;++i) { InterlockedExchange(&keys[i],0); InterlockedExchange(&previous_raw[i],0); InterlockedExchange(&previous_legacy[i],0); }
@@ -257,7 +259,7 @@ static LRESULT CALLBACK guarded_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) 
                 POINT point;
                 if (capture==1 && GetCursorPos(&point) && ScreenToClient(hwnd,&point))
                     click_events(raw.data.mouse.usButtonFlags,capture,point.x,point.y,event_seconds(),(DWORD)GetMessageTime(),1);
-                if (capture && (raw.data.mouse.usButtonFlags & RI_MOUSE_WHEEL))
+                if ((capture || InterlockedCompareExchange(&observe_wheel,0,0)) && (raw.data.mouse.usButtonFlags & RI_MOUSE_WHEEL))
                     InterlockedExchangeAdd(&wheel,(SHORT)raw.data.mouse.usButtonData);
                 if (capture == 3 && !(raw.data.mouse.usFlags & MOUSE_MOVE_ABSOLUTE)) {
                     InterlockedExchangeAdd(&look_x,raw.data.mouse.lLastX);
@@ -357,6 +359,7 @@ extern "C" __declspec(dllexport) int mcm_captured(void) {
     return owner && GetForegroundWindow()==owner ? (int)InterlockedCompareExchange(&captured,0,0) : 0;
 }
 extern "C" __declspec(dllexport) void mcm_release(void) {
+    InterlockedExchange(&observe_wheel,0);
     capture_mode(0,true);camera_clip(0);InterlockedExchange(&wheel,0);
     InterlockedExchange(&look_x,0);InterlockedExchange(&look_y,0);
     /* Keep an inert callback until held menu keys/buttons have released.
@@ -370,3 +373,15 @@ extern "C" __declspec(dllexport) int mcm_mouse_x(void) { return (int)Interlocked
 extern "C" __declspec(dllexport) int mcm_mouse_y(void) { return (int)InterlockedExchange(&look_y,0); }
 
 extern "C" __declspec(dllexport) double mcm_seconds(void) { LARGE_INTEGER now,frequency;QueryPerformanceCounter(&now);QueryPerformanceFrequency(&frequency);return (double)now.QuadPart/(double)frequency.QuadPart; }
+
+/* Observe the existing raw-input stream without consuming gameplay messages.
+ * Transitions discard queued wheel input, so menu scrolling cannot become zoom. */
+static int gameplay_wheel_observe(LONG desired) {
+    LONG prior=InterlockedExchange(&observe_wheel,desired);
+    LONG delta=InterlockedExchange(&wheel,0);
+    return desired && prior==desired ? (int)delta : 0;
+}
+
+extern "C" __declspec(dllexport) int mcm_gameplay_wheel(int enabled) {
+    return gameplay_wheel_observe(enabled && owner && GetForegroundWindow()==owner ? 1 : 0);
+}

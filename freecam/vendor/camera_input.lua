@@ -93,6 +93,9 @@ function M.new(native,capture,input,available)
         local elapsed;if input.now then local now=input.now();elapsed=last_time and math.max(0,math.min(.1,now-last_time))or 0;last_time=now end
         return {x=x,y=y,click=input.down(1),wheel=input.wheel(),dt=elapsed,click_events=input.click_events and input.click_events()or nil}
     end
+    if type(input.gameplay_wheel)=='function'then
+        function self.gameplay_wheel(enabled)return input.gameplay_wheel(enabled)end
+    end
     function self.down(key) input.poll();return input.down(key) end
     function self.focused() input.poll();return input.focused() end
     -- This clock belongs to native input, independently of simulation speed or

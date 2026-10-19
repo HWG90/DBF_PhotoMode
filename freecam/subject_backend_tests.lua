@@ -306,3 +306,13 @@ pointer(game+0x3326b88,0);put(game+0x8c567f,'\0')
 assert(not feed_part()and backend.resolve().local_owner,'Absent optional chain manager disabled normal subject controls')
 put(game+0x8c567f,'\x41\x89\x5f\x04')
 print('Subject TwoPointChain backend: independent feed meshes, local equipment proof, manager compaction, relationship replacement, actual Unit handles, retired generations/worlds, original-mask restoration and exact layout guards passed')
+
+do
+ local c=backend.resolve();assert(backend.unchanged(c),'Fresh subject topology must be stable')
+ local old=word(weapon.native+0xc8);u32(weapon.native+0xc8,old+1)
+ assert(not backend.unchanged(c),'Mesh additions must invalidate visibility topology')
+ u32(weapon.native+0xc8,old);assert(backend.unchanged(c))
+ local original=memory.read(clothes,4);u32(clothes,0xffffffff)
+ assert(not backend.unchanged(c),'Outfit changes must invalidate visibility topology');put(clothes,original)
+ assert(backend.unchanged(c))
+end

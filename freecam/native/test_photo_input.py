@@ -15,6 +15,13 @@ HARNESS = r'''
 #include "__SOURCE__"
 int main(void) {
     assert(mcm_escape_passthrough()==1);
+    InterlockedExchange(&wheel,120);assert(gameplay_wheel_observe(1)==0);
+    InterlockedExchange(&wheel,240);assert(gameplay_wheel_observe(1)==240);
+    assert(gameplay_wheel_observe(1)==0);
+    InterlockedExchange(&wheel,120);assert(gameplay_wheel_observe(0)==0);
+    InterlockedExchange(&wheel,120);assert(gameplay_wheel_observe(1)==0);
+    mcm_release();assert(!observe_wheel && !wheel);
+
     volatile LONG *paths[2]={previous_raw,previous_legacy};
     for (int path=0;path<2;++path) {
         volatile LONG *prior=paths[path];
