@@ -1,0 +1,104 @@
+{
+  "dependency": "MinHook",
+  "version": "1.3.4",
+  "upstream_repository": "https://github.com/TsudaKageyu/minhook",
+  "release_url": "https://github.com/TsudaKageyu/minhook/releases/tag/v1.3.4",
+  "tag": "v1.3.4",
+  "commit": "c3fcafdc10146beb5919319d0683e44e3c30d537",
+  "commit_url": "https://github.com/TsudaKageyu/minhook/commit/c3fcafdc10146beb5919319d0683e44e3c30d537",
+  "upstream_tree_url": "https://api.github.com/repos/TsudaKageyu/minhook/git/trees/c3fcafdc10146beb5919319d0683e44e3c30d537?recursive=1",
+  "scope": "Minimal untouched official sources for a static Windows x64 build.",
+  "compile_sources": [
+    "src/buffer.c",
+    "src/hook.c",
+    "src/trampoline.c",
+    "src/hde/hde64.c"
+  ],
+  "license_file": "LICENSE.txt",
+  "license": "BSD-2-Clause",
+  "copyright_holders": [
+    "2009-2017 Tsuda Kageyu",
+    "2008-2009 Vyacheslav Patkov (Hacker Disassembler Engine)"
+  ],
+  "upstream_files_modified": false,
+  "verification": "Downloaded bytes match the official pinned commit Git blob SHA-1 and byte count; SHA-256 is recorded per file.",
+  "files": [
+    {
+      "path": "LICENSE.txt",
+      "bytes": 4365,
+      "sha256": "d5c2224982b0b95a16b098a561335fa93f3eaf4d0aa964b7843edb986df78dc8",
+      "git_blob_sha1": "74dea27229c05b53b095aa22b9ee7ee9f549e414",
+      "upstream_url": "https://raw.githubusercontent.com/TsudaKageyu/minhook/c3fcafdc10146beb5919319d0683e44e3c30d537/LICENSE.txt"
+    },
+    {
+      "path": "include/MinHook.h",
+      "bytes": 7530,
+      "sha256": "62dff05e63155c6bf8135c36a0d79dedbdcaaede9da26fe38daf0bea34323e38",
+      "git_blob_sha1": "492d83f8d6245f576a703cd6a0bd358cd3aa2d9c",
+      "upstream_url": "https://raw.githubusercontent.com/TsudaKageyu/minhook/c3fcafdc10146beb5919319d0683e44e3c30d537/include/MinHook.h"
+    },
+    {
+      "path": "src/buffer.c",
+      "bytes": 9814,
+      "sha256": "0ab484d7870c3a8e7a3a1ee61e2070072cf445ed85b619d4c4207fed34356d99",
+      "git_blob_sha1": "55412b0f301ba9a5b3520343bd1313bb56592899",
+      "upstream_url": "https://raw.githubusercontent.com/TsudaKageyu/minhook/c3fcafdc10146beb5919319d0683e44e3c30d537/src/buffer.c"
+    },
+    {
+      "path": "src/buffer.h",
+      "bytes": 1820,
+      "sha256": "9769702bd625249e59a19ede05c84365fcc7707e1fa0e5df08df42227cee13e3",
+      "git_blob_sha1": "204d551bffb7f11760bc1e474aa835e55f4cbb00",
+      "upstream_url": "https://raw.githubusercontent.com/TsudaKageyu/minhook/c3fcafdc10146beb5919319d0683e44e3c30d537/src/buffer.h"
+    },
+    {
+      "path": "src/hook.c",
+      "bytes": 26626,
+      "sha256": "edcce4c81985d7dd5b73feae96d6498c8f749b1bca4c3d2d9926ea9a17a84755",
+      "git_blob_sha1": "68a006a768c884372a34ee34043e20db079deba6",
+      "upstream_url": "https://raw.githubusercontent.com/TsudaKageyu/minhook/c3fcafdc10146beb5919319d0683e44e3c30d537/src/hook.c"
+    },
+    {
+      "path": "src/trampoline.c",
+      "bytes": 10718,
+      "sha256": "f13a169f803ff5a8e45c58ce668b4377a9878c0fc4452369b8a1325065186b2b",
+      "git_blob_sha1": "d4d6f99d9fb23d980b12eb0ba4f722e5f8377d87",
+      "upstream_url": "https://raw.githubusercontent.com/TsudaKageyu/minhook/c3fcafdc10146beb5919319d0683e44e3c30d537/src/trampoline.c"
+    },
+    {
+      "path": "src/trampoline.h",
+      "bytes": 3759,
+      "sha256": "53ed9934492320617a27bfd952ffe7f5b7a4a1d09963d4512447082fe7b727b4",
+      "git_blob_sha1": "bdffdac0a7bc838b52dd35733c943a9d5c7bc7b5",
+      "upstream_url": "https://raw.githubusercontent.com/TsudaKageyu/minhook/c3fcafdc10146beb5919319d0683e44e3c30d537/src/trampoline.h"
+    },
+    {
+      "path": "src/hde/hde64.c",
+      "bytes": 9507,
+      "sha256": "824eafa315322e6da105a7ce4ec1fc0e0adeee0106d32152fbb0b59e709bd15c",
+      "git_blob_sha1": "ce773b1e25f95b312a4c05f3acf053d87ec6d20c",
+      "upstream_url": "https://raw.githubusercontent.com/TsudaKageyu/minhook/c3fcafdc10146beb5919319d0683e44e3c30d537/src/hde/hde64.c"
+    },
+    {
+      "path": "src/hde/hde64.h",
+      "bytes": 2602,
+      "sha256": "e99aa4997bda14b534c614c3d8cb78a72c4aca91a1212c8b03ec605d1d75e36e",
+      "git_blob_sha1": "ecbf4df958ac24646c0ba645ee4ba8340e8a74c8",
+      "upstream_url": "https://raw.githubusercontent.com/TsudaKageyu/minhook/c3fcafdc10146beb5919319d0683e44e3c30d537/src/hde/hde64.h"
+    },
+    {
+      "path": "src/hde/pstdint.h",
+      "bytes": 1662,
+      "sha256": "604d1cdf45c5a95bc9cf1bbf39ca05ef83013541101d34971c5cd7577e3d5247",
+      "git_blob_sha1": "84d82a012311a72f5dfb1fc88554f7820fbdf216",
+      "upstream_url": "https://raw.githubusercontent.com/TsudaKageyu/minhook/c3fcafdc10146beb5919319d0683e44e3c30d537/src/hde/pstdint.h"
+    },
+    {
+      "path": "src/hde/table64.h",
+      "bytes": 3577,
+      "sha256": "b774446d2f110ce954fb0a710f4693c5562ddbd8d56fe84106f2ee80db8b50a2",
+      "git_blob_sha1": "01d4541f97765a1fe14ad4a60f3705156abaf176",
+      "upstream_url": "https://raw.githubusercontent.com/TsudaKageyu/minhook/c3fcafdc10146beb5919319d0683e44e3c30d537/src/hde/table64.h"
+    }
+  ]
+}

@@ -11,7 +11,7 @@ local function log(message)
  if file then file:write(tostring(message),'\n');file:close()end
 end
 local occupied=rawget(_G,'DBF_PHOTO_MODE_OWNER')
-if occupied or rawget(_G,'DBF_PHOTO_MODE_STARTED')or rawget(_G,'DBF_PHOTO_SAFE_EFFECTS')then
+if occupied or rawget(_G,'DBF_PHOTO_CAMERA_RUNTIME')or rawget(_G,'DBF_PHOTO_MODE_STARTED')or rawget(_G,'DBF_PHOTO_SAFE_EFFECTS')then
  log('Another Photo Mode provider is already active; choose one package and restart.');return
 end
 local files={

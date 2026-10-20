@@ -4,6 +4,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
     local roll_value;local self={};local api,handle,provider;local held=true;local retry=0;local controls={};local resume_after;local suppress_escape;local panel;local menu_focus=false;local controls_hidden=false;local recovery_menu=false;local focus_edge=false;local hide_edge=false;local slow_edge=false;local lock_edge=false;local escape_edge=false;local screenshot_edge=false
     local subject_pair;local subject_held;local subject_request;local subject_ready=false;local autofocus_write=false;local focus_deadline=0;local focus_elapsed=0;local focus_status='Manual focus';local focus_mode_seen;local menu_startup_reset=false
     local lighting_write=false;local lighting_revision=-1
+    self._menu_lll=type(rawget(_G,'DBF_PHOTO_PACKAGE_ROOT'))=='string'
     self._idle_stopped=false
     local clear_subject_click,game_chat_active,bindings
     self._input_tick=0
@@ -938,7 +939,33 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
         return true
     end
     local function inform_toggle(reveal_hidden) if self._external_menu_open() then local closed,why=api.close();if closed==false then log(tostring(why));return end end;local ok,why=toggle(reveal_hidden);if ok==false then log('freecam: '..tostring(why)) end end
+    function self._register_menu(definition)
+            if self._menu_lll and type(api.takeover)=='function'then
+                local function retire()
+                    local ok,why=self.close();if ok~=true then return false,why end
+                    self._menu_retired=true;return true
+                end
+                local function legacy(prior)
+                    if prior.name~='Photo Mode'or not prior.controls or not prior.controls.enabled then return false,'Unrecognized Photo menu owner' end
+                    local callback=prior.controls.enabled.on_change
+                    if type(callback)~='function'or not debug or not debug.getupvalue then return false,'Photo owner has no cleanup contract' end
+                    for index=1,64 do
+                        local name,value=debug.getupvalue(callback,index);if not name then break end
+                        if name=='self'and type(value)=='table'and type(value.close)=='function'and type(value.tick)=='function'then
+                            local ok,why=value.close();if ok~=true then return false,why end
+                            value.tick=function()end
+                            return true
+                        end
+                    end
+                    return false,'Photo owner cleanup could not be identified'
+                end
+                local why;local acquired;acquired,why=api.takeover(definition,{source='lll',priority=100,release=retire,release_legacy=legacy})
+                if not acquired then if self._takeover_error~=why then log('Photo menu takeover: '..tostring(why));self._takeover_error=why end;return nil end
+                return acquired
+            else return api.register(definition)end
+    end
     function self.tick(dt)
+        if self._menu_retired then return end
         rawset(_G,'DBF_PHOTO_EDITOR_INPUT',self.editor_bridge)
         if self.input_recovery then
             rawset(_G,'DBF_PHOTO_INPUT_RECOVERY',self.input_recovery)
@@ -963,7 +990,14 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
             api=current;held=true;retry=0
         end
         retry=retry-math.max(0,tonumber(dt) or 0)
-        if api and not handle and retry<=0 then
+        local occupied=api and not handle and api.mods and api.mods.dbf_freecam
+        if occupied and not(self._menu_lll and type(api.takeover)=='function')then
+            if self._registration_conflict~=occupied then
+                log('Photo Mode menu is already registered by another running instance; waiting for its cleanup')
+                self._registration_conflict=occupied
+            end
+        else self._registration_conflict=nil end
+        if api and not handle and (not occupied or self._menu_lll and type(api.takeover)=='function') and retry<=0 then
             retry=2
             local definition={id='dbf_freecam',name='Photo Mode',pages={{id='camera',name='Controls',require_confirmation=false,controls={
                 {id='enabled',type='toggle',label='Enable freecam',default=true,on_change=function(v)if not v then self.stop()end end},
@@ -1047,7 +1081,7 @@ function M.new(photo,settings,can_start,log,freeze,options,effects,menu_factory,
                 end
                 controls[control.id]=control
             end end
-            handle=api.register(definition)
+            handle=self._register_menu(definition);if not handle then return end
             local stored_set=handle.set
             handle.set=function(key,value)
                 local ok,why=stored_set(key,value)

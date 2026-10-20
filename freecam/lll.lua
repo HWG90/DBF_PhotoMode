@@ -2,6 +2,9 @@
 local started,reported,failed=false,false,false;local standalone,camera_api,camera_owner
 local function start()
         if started or failed then return end
+        if rawget(_G,'DBF_PHOTO_MODE_OWNER')or rawget(_G,'DBF_PHOTO_MODE_STARTED')or rawget(_G,'DBF_PHOTO_SAFE_EFFECTS')or rawget(_G,'DBF_PHOTO_CAMERA_RUNTIME')then
+            failed=true;mod.log('Another Photo Mode provider is already active; choose one package and restart.');return
+        end
         camera_owner=camera_owner or mod.require('src/camera_ownership.lua').new(_G,mod.log)
         local ready,reason=camera_owner.refresh()
         if not ready then if not reported then mod.log(reason);reported=true end;return end

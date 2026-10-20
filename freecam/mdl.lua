@@ -44,7 +44,7 @@ return {name='War Journalist',version='__VERSION__',author='Goose',
  description='Photo Mode. MCM optional. Preview; focus/f-stop and scene shaders disabled. Normal restart required after disabling/reloading.',
  on_enable=function(ctx)
   assert(ctx.api==2 and type(ctx.dir)=='string'and type(ctx.on_cleanup)=='function','MDL API 2 required')
-  assert(not get(G,'DBF_PHOTO_MODE_OWNER')and not get(G,'DBF_PHOTO_MODE_STARTED')and not get(G,'DBF_PHOTO_SAFE_EFFECTS'),'Another Photo Mode provider has installed camera hooks; choose one package and restart')
+  assert(not get(G,'DBF_PHOTO_CAMERA_RUNTIME')and not get(G,'DBF_PHOTO_MODE_OWNER')and not get(G,'DBF_PHOTO_MODE_STARTED')and not get(G,'DBF_PHOTO_SAFE_EFFECTS'),'Another Photo Mode provider has installed camera hooks; choose one package and restart')
   set(G,'DBF_PHOTO_MODE_OWNER',state)
   local appdata=assert(G.os.getenv('LOCALAPPDATA'),'Local AppData unavailable')
   local ffi=G.require('ffi');pcall(ffi.cdef,'int CreateDirectoryA(const char *,void *);')

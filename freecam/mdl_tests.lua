@@ -114,3 +114,19 @@ do
 end
 
 print('Photo-owned input: MCM facade teardown isolation, strict parent availability, foreign cursor takeover, unknown release retention and exact readback/retry restoration passed')
+
+-- A loader must reject an existing independent runtime before installing its
+-- own input service, owner global or callbacks.
+do
+ local duplicate,context,globals,calls=fixture()
+ local incumbent={state='idle'};globals.DBF_PHOTO_CAMERA_RUNTIME=incumbent;globals.stingray={}
+ assert(not pcall(duplicate.on_enable,context),'MDL must reject an incumbent LLL runtime')
+ assert(calls.start==0 and calls.standalone==0 and globals.DBF_PHOTO_MODE_OWNER==nil and globals.DBF_PHOTO_CAMERA_RUNTIME==incumbent)
+ local logs=0;local fake={log=function()logs=logs+1 end,require=function()error('Duplicate LLL must not construct services')end}
+ for _,flag in ipairs({'DBF_PHOTO_CAMERA_RUNTIME','DBF_PHOTO_MODE_STARTED','DBF_PHOTO_MODE_OWNER','DBF_PHOTO_SAFE_EFFECTS'})do
+  local game={[flag]=incumbent};local env=setmetatable({_G=game,mod=fake},{__index=_G})
+  local entry=setfenv(assert(loadfile(root..'lll.lua')),env)();local before=logs
+  entry.on_update();entry.on_update()
+  assert(logs==before+1 and game[flag]==incumbent and game.DBF_PHOTO_CAMERA_API==nil,'LLL must fail closed once without replacing the existing provider')
+ end
+end

@@ -1,7 +1,7 @@
 -- Exclusive camera ownership outlives input capture while any Photo cleanup is pending.
 local root=rawget(_G,'DBF_PHOTO_TEST_ROOT')or'freecam/'
 local controller=dofile(root..'controller.lua');local core=dofile('src/core.lua')
-local function fixture()
+local function fixture(occupied,reuse_api)
  local calls={acquire=0,release=0,input_acquire=0,input_release=0};local state={lease=false,input=false,effect_ok=true,input_ok=true,time_pending=false,enter_ok=true,native_open=false}
  local photo={active=false,input={}}
  local input={down=function()return false end,focused=function()return true end,
@@ -14,9 +14,17 @@ local function fixture()
   release=function()if not state.lease then return true end;assert(not state.input and state.effect_ok and not state.time_pending,'Camera ownership released before Photo cleanup');calls.release=calls.release+1;state.lease=false;return true end}
  local effects={release=function()return state.effect_ok,'effects pending'end,apply=function()return true end,capabilities=function()return{}end}
  local freeze={release=function()return true end,hold=function()return true end,needs_input_capture=function()return state.time_pending end}
- DBFMCM=core.new(nil,function()end);DBFMCM.camera_input=input;DBFMCM.is_open=function()return false end;DBFMCM.close=function()return true end
+ if not reuse_api then DBFMCM=core.new(nil,function()end);DBFMCM.camera_input=input;DBFMCM.is_open=function()return false end;DBFMCM.close=function()return true end end
  local c=controller.new(photo,{},function()return true end,function()end,freeze,nil,effects,nil,nil,nil,nil,nil,nil,nil,nil,nil,nil,nil,nil,ownership)
- c.tick(.016)
+ if occupied then
+  local prior=DBFMCM.register({id='dbf_freecam',name='Existing Photo owner',pages={{id='existing',name='Existing',controls={}}}})
+  local register=DBFMCM.register;local attempts=0
+  DBFMCM.register=function(...)attempts=attempts+1;return register(...)end
+  for i=1,10000 do c.tick(.016) end
+  assert(attempts==0 and DBFMCM.mods.dbf_freecam.handle==prior,'existing Photo menu is preserved without repeated registration errors')
+  prior.unregister();c.tick(2.1)
+  assert(attempts==1,'registration resumes when the previous owner is removed')
+ else c.tick(.016) end
  local handle=assert(DBFMCM.mods.dbf_freecam).handle
  assert(handle.set('freeze_player',false))
  return c,photo,state,calls,handle
@@ -41,5 +49,13 @@ assert(shared.stop()and not s3.lease and not s3.input and n3.release==1);assert(
 local failed,failed_photo,s2,n2,h2=fixture();s2.enter_ok=false
 assert(h2.activate('toggle'));assert(not failed_photo.active and not s2.lease and not s2.input and n2.input_acquire==0 and n2.release==1)
 assert(failed.close())
+local waiting=fixture(true);assert(waiting.close())
+local bundled,bphoto,bs,bc,bhandle=fixture();assert(bhandle.activate('toggle'));assert(bphoto.active)
+DBF_PHOTO_PACKAGE_ROOT='fixture-lll'
+local lll,lp,ls,lc,lh=fixture(false,true)
+assert(lh~=bhandle and not bphoto.active and not bs.lease and not bs.input,'LLL must retire bundled camera and input before replacing its menu')
+for i=1,10000 do bundled.tick(.016)end
+assert(DBFMCM.mods.dbf_freecam.handle==lh,'Retired bundled controller must remain idle')
+assert(lll.close());DBF_PHOTO_PACKAGE_ROOT=nil
 DBFMCM=nil
 print('Photo camera controller lease: acquire-before-input, effect/time/input cleanup retries, native-menu view/input handoff and failed-entry cancellation passed')
