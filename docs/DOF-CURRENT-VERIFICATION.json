@@ -1,0 +1,54 @@
+{
+  "verified_date_utc": "2026-10-12",
+  "native": {
+    "toggle_visual_verified": true,
+    "observation": "ON broadens distant hangar light highlights; nearby character remains sharp.",
+    "numeric_focus_aperture_verified": false,
+    "saved_state_after_test": "Native camera; DoF ON"
+  },
+  "shader": {
+    "focus_visual_verified": true,
+    "aperture_visual_verified": true,
+    "dim_failure_absent": true,
+    "quality_and_shape_submitted": [
+      "32 samples",
+      "64 samples",
+      "Round",
+      "Hex"
+    ],
+    "final_artistic_quality_accepted": false,
+    "blur_color_input_resolution": [
+      960,
+      540
+    ],
+    "focused_pixels": "Original full resolution scene preserved"
+  },
+  "evidence": {
+    "native": "dist/dof-investigation-20261011/native47136_return_1432_receipt.json",
+    "shader": "dist/dof-investigation-20261011/shader47136_return_1438_receipt.json",
+    "registration": "dist/dof-investigation-20261011/SHADER-RETURN-47136-REGISTRATION.json"
+  },
+  "remaining": [
+    "Native numeric focus/aperture adapter",
+    "Scene exposure/contrast/saturation"
+  ],
+  "menu_reopen": {
+    "user_confirmed": true,
+    "action": "Mouse Exit photo mode, then press P",
+    "photo_active_after": true,
+    "native_dof_after": true
+  },
+  "precision_controls": {
+    "user_confirmed": true,
+    "focus_aperture_respond": true,
+    "typed_value_commits_on_blur": true
+  },
+  "scene_test_package": {
+    "path": "dist/releases/photo-scene-controls-review/War-Journalist-Scene-Controls-BSL.zip",
+    "sha256": "ad20655a04d212ad1c113a3a6e22305a60a567bd3550eb180b0965b3c2891a59",
+    "fixture_groups_passed": 25,
+    "packaged_bootstrap_without_source_passed": true,
+    "includes_all_assets": true,
+    "scene_visual_verified": false
+  }
+}

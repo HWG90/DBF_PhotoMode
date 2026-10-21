@@ -17,6 +17,9 @@ local items={{id=51,index=1,position={0,10,0},values={color='#12ABEF',enabled=tr
 local function update(shown)gizmos.update(items,frame,fov,w,h,shown~=false)end
 local shift=false;local function tick(px,py,click,block,modal)return gizmos.tick({x=px,y=py,click=click},function(k)return k==16 and shift end,block,modal)end
 update();local commands={};gizmos.draw(commands);assert(#commands==4 and commands[1].ui_role=='light_marker'and commands[3].c[2]==171,'Behind-camera marker or light color wrong')
+local revision=gizmos.revision;for i=1,100 do update()end
+assert(gizmos.revision==revision,'Unchanged marker projection must not invalidate panel commands')
+items[1].values.color='#FFFFFF';update();assert(gizmos.revision==revision+1,'Marker color change must invalidate')
 assert(not tick(960,540,true)and#queued==0,'Held button at activation must not grab a light')
 tick(960,540,false);assert(tick(960,540,true)and queued[1].action=='select'and queued[1].value==1)
 assert(gizmos.active()and gizmos.hit(1500,300),'Captured marker must block scene focus until release')

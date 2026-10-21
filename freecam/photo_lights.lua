@@ -237,6 +237,10 @@ function M.new(sr,log,reuse,handoff)
   return ran,not ran and tostring(err)or nil
  end
  function self.count()return#records end
+ function self.follows_camera()
+  for _,record in ipairs(records)do if record.values.follow_camera then return true end end
+  return false
+ end
  function self.saved_setup()return saved and copy(saved)or nil end
  function self.scene_identity()
   observe_scene();return scene_verified and scene_key and{world=scene_key,epoch=scene_epoch}or nil

@@ -8,14 +8,13 @@ local function realtime()
  local api=rawget(_G,'DBF_PHOTO_CAMERA_API')or rawget(_G,'DBFMCM')or rawget(_G,'DBF_PHOTO_STANDALONE_API')
  local now=api and api.camera_input and api.camera_input.now
  if type(now)=='function'then local ok,value=pcall(now);if ok and finite(value)then return value end end
- if not M._clock then
-  local ok,clock=pcall(function()
-   local ffi=require('ffi');pcall(ffi.cdef,'unsigned long long Cinema_GetTickCount64(void) __asm__("GetTickCount64");')
-   local K=ffi.load('kernel32');return function()return tonumber(K.Cinema_GetTickCount64())/1000 end
-  end)
-  M._clock=ok and clock or function()return nil end
+ -- Engine wall time remains available in Lua 5.1. Clock injection stays the
+ -- authority for fixtures/hosts; no native library is loaded as a fallback.
+ local sr=rawget(_G,'stingray');local application=sr and sr.Application
+ if application and type(application.time_since_launch)=='function'then
+  local ok,value=pcall(application.time_since_launch)
+  if ok and finite(value)then return value end
  end
- return M._clock()
 end
 -- Photo looks down +X, with positive pitch up and roll around its forward axis.
 -- Keep quaternion math numeric so no borrowed engine rotation survives a frame.

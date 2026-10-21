@@ -4,6 +4,15 @@ function M.new(sr,preview_only,diagnostic_log,shared_fonts)
     local font_state=shared_fonts or {guis={}}
     local preview_guis={}
     local gui,world;local ids={};local G=sr.Gui;local self={};local reported=false
+    local partial_cleanup=false
+    local stable_commands,stable_token,stable_font,stable_gui,stable_text_guis
+    local split_commands,split_token,split_menu,split_preview,split_popup
+    local function forget_draw()
+        stable_commands,stable_token,stable_font,stable_gui,stable_text_guis=nil,nil,nil,nil,nil
+    end
+    local function forget_all()
+        forget_draw();split_commands,split_token,split_menu,split_preview,split_popup=nil,nil,nil,nil,nil
+    end
     local preview_materials={}
     local preview_view=not preview_only and M.new(sr,true,diagnostic_log,font_state) or nil
     local popup_view=not preview_only and M.new(sr,true,nil,font_state) or nil
@@ -138,22 +147,42 @@ function M.new(sr,preview_only,diagnostic_log,shared_fonts)
         return p
     end
     function self.clear()
+        if partial_cleanup then return false,'Preview cleanup pending'end
+        forget_all()
         if gui and live()then for _,item in ipairs(ids)do destroy_item(item)end end;ids={}
     end
     function self.release()
-        if preview_view then preview_view.release()end;if popup_view then popup_view.release()end;reported=false
-        if gui and live()then self.clear();for _,g in pairs(preview_guis)do sr.World.destroy_gui(world,g)end;sr.World.destroy_gui(world,gui)end
+        forget_all()
+        if preview_view then local ok,why=preview_view.release();if ok==false then return false,why end end
+        if popup_view then local ok,why=popup_view.release();if ok==false then return false,why end end;reported=false
+        if gui and live()then
+            if not partial_cleanup then
+                self.clear()
+                -- Whole-GUI retirement is the final ownership acknowledgement,
+                -- even when individual primitive deletion appeared successful.
+                -- A refusal/throw must block drawing until an explicit retry.
+                partial_cleanup=true
+            end
+            for role,g in pairs(preview_guis)do
+                local called,ok=pcall(sr.World.destroy_gui,world,g)
+                if not called or ok==false then return false,'Preview cleanup pending'end
+                font_state.guis[g]=nil;preview_guis[role]=nil
+            end
+            local called,ok=pcall(sr.World.destroy_gui,world,gui)
+            if not called or ok==false then return false,'Preview cleanup pending'end
+        end
         for _,g in pairs(preview_guis)do font_state.guis[g]=nil end
         if gui then font_state.guis[gui]=nil end
-        preview_guis={};ids={};gui,world=nil,nil;metric_ready=false;reset_metrics()
+        preview_guis={};ids={};gui,world=nil,nil;partial_cleanup=false;metric_ready=false;reset_metrics()
     end
     -- Retained primitives compare scalar fields directly: no per-frame serialization.
     local fields={'type','text','x','y','w','h','size','a','layer','font_resource','font_material','preview_material','preview_role','text_bold'}
+    local vector_fields={'points','preview_uv'}
     local function same_command(old,c)
         if type(old)~='table' or old.font_key~=(c.type=='text'and self.font_key or nil)then return false end
         for _,key in ipairs(fields)do if old[key]~=c[key]then return false end end
         for i=1,3 do if old.color[i]~=c.c[i]then return false end end
-        for _,key in ipairs({'points','preview_uv'})do
+        for _,key in ipairs(vector_fields)do
             local a,b=old[key],c[key]
             if (a==nil)~=(b==nil)then return false end
             if a then if #a~=#b then return false end;for i=1,#a do if a[i]~=b[i]then return false end end end
@@ -163,48 +192,86 @@ function M.new(sr,preview_only,diagnostic_log,shared_fonts)
     local function command_signature(c)
         local result={color={c.c[1],c.c[2],c.c[3]},font_key=c.type=='text'and self.font_key or nil}
         for _,key in ipairs(fields)do result[key]=c[key]end
-        for _,key in ipairs({'points','preview_uv'})do if c[key]then local copy={};for i,v in ipairs(c[key])do copy[i]=v end;result[key]=copy end end
+        for _,key in ipairs(vector_fields)do if c[key]then local copy={};for i,v in ipairs(c[key])do copy[i]=v end;result[key]=copy end end
         return result
     end
-    function self.draw(commands)
+    local function command_gui(c)
+        if not c.preview_role then return gui end
+        preview_guis[c.preview_role]=preview_guis[c.preview_role] or sr.World.create_screen_gui(world,'scale',1,1)
+        font_state.guis[preview_guis[c.preview_role]]=world
+        return preview_guis[c.preview_role]
+    end
+    -- A non-nil token is an explicit caller promise that this command table and
+    -- its contents remain immutable until the token changes. Mutable callers
+    -- keep the ordinary scalar diff. Native font handles are never retained.
+    function self.draw(commands,immutable_token)
+        if partial_cleanup then return false,'Preview cleanup pending'end
         if not drawable()then return false end
         if preview_view then
-            local menu,preview,popup={},{},{}
-            for _,c in ipairs(commands)do
-                local destination=c.hud_preview and preview or (c.popup and popup or menu)
-                destination[#destination+1]=c
+            if immutable_token==nil or split_token~=immutable_token or split_commands~=commands then
+                local menu,preview,popup={},{},{}
+                for _,c in ipairs(commands)do
+                    local destination=c.hud_preview and preview or (c.popup and popup or menu)
+                    destination[#destination+1]=c
+                end
+                split_commands,split_token,split_menu,split_preview,split_popup=commands,immutable_token,menu,preview,popup
             end
-            preview_view.draw(preview);popup_view.draw(popup);commands=menu
+            local ok,why=preview_view.draw(split_preview,immutable_token)
+            if ok==false then return false,why end
+            ok,why=popup_view.draw(split_popup,immutable_token)
+            if ok==false then return false,why end
+            commands=split_menu
         end
         if active_font and font_state.failed_key==descriptor_key(active_font)then return false end
-        if #commands==0 then self.release();return end
-        if gui and not live()then
+        if #commands==0 then return self.release()end
+        local gui_live=gui and live()
+        local retained=immutable_token~=nil and stable_token==immutable_token and stable_commands==commands
+            and stable_font==self.font_key and stable_gui==gui and gui_live
+        -- Required previews never become solid-color fallback rectangles.
+        -- Check before changing native ownership or allocating a replacement GUI.
+        -- Immutable static previews rely on explicit resource invalidation while
+        -- their normal world/GUI lifetime remains valid.
+        if not retained then for _,c in ipairs(commands)do
+            if c.preview_required and c.preview_material and not sr.Application.can_get('material',c.preview_material)then
+                return false,'Required preview material unavailable'
+            end
+        end end
+        if gui and not gui_live then
+            forget_draw()
             font_state.guis[gui]=nil;for _,g in pairs(preview_guis)do font_state.guis[g]=nil end
             font_state.failed_key=nil;gui,world=nil,nil;ids={};preview_guis={};metric_ready=false;reset_metrics()
         end
         if not gui then
+            forget_draw()
             local main=sr.Application.main_world();world=main
             for _,w in pairs(sr.Application.worlds() or {})do if w~=main then world=w;break end end
             if not world then return end
             gui=sr.World.create_screen_gui(world,'scale',1,1)
             font_state.guis[gui]=world
         end
-        local function command_gui(c)
-            if not c.preview_role then return gui end
-            preview_guis[c.preview_role]=preview_guis[c.preview_role] or sr.World.create_screen_gui(world,'scale',1,1)
-            font_state.guis[preview_guis[c.preview_role]]=world
-            return preview_guis[c.preview_role]
+        if retained then
+            -- Preserve frame-local atlas/material binding even when unchanged
+            -- geometry needs no scanning, signature allocation or submission.
+            if active_font then for owned in pairs(stable_text_guis)do
+                if not bind_font(owned,active_font)then forget_draw();return false end
+            end end
+            return true
         end
+        forget_draw()
         -- Newly opened planes bind before replacing retained primitives.
         local prepared={}
         if active_font then for _,c in ipairs(commands)do if c.type=='text' and not c.font_resource then
             local owned=command_gui(c)
             if not prepared[owned]then if not bind_font(owned,active_font)then return false end;prepared[owned]=true end
         end end end
-        local old_ids=ids;ids={};local report={};local seen={};local uniforms={}
         local report_now=diagnostic_log and not reported
-        local signatures={}
+        local report,seen;if report_now then report,seen={},{}end
+        local old_ids=ids;ids={};local uniforms={}
+        local signatures={};local cacheable=immutable_token~=nil;local incomplete_preview=false
         for index,c in ipairs(commands)do
+            -- Static previews opt into the same immutable-token promise as
+            -- geometry. Existing animated/mutable previews keep refreshing.
+            if c.preview_material and c.preview_static~=true then cacheable=false end
             -- Sidebar command counts must not change unrelated content depth.
             local z=(c.layer or 100)+(c.type=='text' and 1 or 0)
             local old=old_ids[index]
@@ -258,7 +325,21 @@ function M.new(sr,preview_only,diagnostic_log,shared_fonts)
                 local ud=uv and sr.Vector2(uv[3],uv[2]) or nil;local ue=uv and sr.Vector2(uv[1],uv[2]) or nil
                 value=G.triangle(target_gui,a,b,d,z,color,c.preview_material,ua,ub,ud)
                 extra_id=G.triangle(target_gui,a,d,e,z,color,c.preview_material,ua,ud,ue);primitive_type='triangle'
+                if not value or not extra_id then
+                    incomplete_preview=true;cacheable=false
+                    local survivor=value or extra_id
+                    if survivor then
+                        local called,removed=pcall(G.destroy_triangle,target_gui,survivor)
+                        if not called or removed==false then
+                            value,extra_id=survivor,nil;partial_cleanup=true
+                        else value,extra_id=nil,nil end
+                    end
+                end
                 if diagnostic_log and not preview_materials[c.preview_material] then preview_materials[c.preview_material]=true;diagnostic_log('MCM_PREVIEW_SHADER material='..c.preview_material..' triangles='..tostring(value)..','..tostring(extra_id)..' bounds='..c.x..','..c.y..','..c.w..','..c.h)end
+            elseif c.type=='rect' and c.preview_required then
+                -- A late availability/primitive loss after preflight must
+                -- still fail closed. The GUI remains owned for caller cleanup.
+                error('Required preview material unavailable',0)
             elseif c.type=='rect' then value=G.rect(target_gui,sr.Vector3(c.x,c.y,z),sr.Vector2(c.w,c.h),color)
             else
                 local font,material=font_id(),active_font and sr.IdString64.from_hex(active_font.material) or debug_font
@@ -270,7 +351,7 @@ function M.new(sr,preview_only,diagnostic_log,shared_fonts)
                 end
             end
             if report_now and c.type=='text' and not c.diagnostic_console then report[#report]=report[#report]..' allocation='..tostring(value)end
-            if value then ids[#ids+1]={type=primitive_type,id=value,extra_id=extra_id,bold_id=bold_id,signature=signature,gui=target_gui}else ids[#ids+1]={type=c.type,id=nil,signature=nil}end
+            if value then ids[#ids+1]={type=primitive_type,id=value,extra_id=extra_id,bold_id=bold_id,signature=signature,gui=target_gui}else ids[#ids+1]={type=c.type,id=nil,signature=nil};cacheable=false end
             end
         end
         if report_now then
@@ -279,6 +360,11 @@ function M.new(sr,preview_only,diagnostic_log,shared_fonts)
             for _,line in ipairs(report)do diagnostic_log('MCM TEXT '..line)end
             reported=true
         end
+        if cacheable then
+            stable_commands,stable_token,stable_font,stable_gui,stable_text_guis=commands,immutable_token,self.font_key,gui,prepared
+        end
+        if partial_cleanup then return false,'Preview cleanup pending'end
+        if incomplete_preview then return false end
     end
     return self
 end

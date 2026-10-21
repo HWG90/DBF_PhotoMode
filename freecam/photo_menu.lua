@@ -46,7 +46,7 @@ function M.new(view,actions,existing)
  end
  self.editing_value=nil;self.bound_key=nil;if legend and self.handle then legend.bind(self.handle)end
  local key_capture;local armed=false;local baseline={};local color_edit;local popup;local popup_close_on_release=false;local popup_scroll=0;local visible_count=1;local popup_count=1;local text_edit;local reset_regions={};local right_held
- local finish_number
+ local finish_number;local capture_cleared=false
  local function blur_number()if text_edit and text_edit.c.commit_on_blur==true then return finish_number()end;return true end
  stored_layout=function(key)
   if not self.handle or type(self.handle.get)~='function'then return end
@@ -81,7 +81,15 @@ function M.new(view,actions,existing)
  local function finish_layout()if layout_dirty then layout_dirty=false;self.persist_layout()end;finish_opacity()end
  function self.close()retained_commands=nil;blur_number();finish_layout();if self.light_gizmos then self.light_gizmos.cancel()end;if legend then legend.clear()end;view.release();panel_bounds=nil;hits={};drag=nil;resize=nil;scroll_drag=nil;move_panel=nil;key_capture=nil;text_edit=nil;color_edit=nil;popup=nil;popup_close_on_release=false;self.bound_key=nil;self.editing_value=nil;self.notice=nil;nav_ready=false;held=false;right_held=nil;pointer_x,pointer_y=nil,nil;pressed_key=nil;reveal_index=nil end
  local function suspend_input()blur_number();finish_layout();if self.light_gizmos then self.light_gizmos.cancel()end;if legend then legend.clear()end;nav_ready=false;held=false;right_held=nil;drag=nil;resize=nil;scroll_drag=nil;move_panel=nil;pressed_key=nil;pointer_x,pointer_y=nil,nil end
- function self.suspend()retained_commands=nil;suspend_input();panel_bounds=nil;view.draw({})end
+ function self.suspend()capture_cleared=false;retained_commands=nil;suspend_input();panel_bounds=nil;view.draw({})end
+ function self.hide_for_capture()
+  if capture_cleared then return true end
+  retained_commands=nil;suspend_input();panel_bounds=nil;hits={}
+  -- release is independent of font binding and drawable state. A refusal or
+  -- exception never acknowledges a clean frame; unchanged success stays idle.
+  if view.release()==false then return false end
+  capture_cleared=true;return true
+ end
  function self.bind(handle,pages)
   if self.handle~=handle then blur_number();finish_opacity();text_edit=nil;self.editing_value=nil end;self.handle=handle;self.pages=pages;if legend then legend.bind(handle)end
   ai_control=nil;ai_status=nil
@@ -203,7 +211,8 @@ function M.new(view,actions,existing)
   if not called or ok==false then self.notice=tostring(called and why or ok);return false end
   text_edit=nil;self.editing_value=nil;popup=nil;popup_close_on_release=false;drag=nil;color_edit=nil;self.notice=nil;return true
  end
- function self.draw_cinema(w,h,key,hidden,elapsed)
+ function self.draw_cinema(w,h,key,hidden,elapsed,capture_ready)
+  capture_cleared=false
   panel_bounds=nil;hits={};last_focus=false
   if legend then legend.clear()end
   if self.light_gizmos then self.light_gizmos.cancel()end
@@ -216,9 +225,10 @@ function M.new(view,actions,existing)
    {type='rect',x=x-8*scale,y=y-10*scale,w=340*scale,h=38*scale,c=T.background,a=.68*alpha,layer=300,ui_role='cinema_indicator'},
    {type='rect',x=x-8*scale,y=y+27*scale,w=340*scale,h=2*scale,c=T.gold,a=alpha,layer=301},
    {type='text',text='CINEMA CAMERA',x=x,y=y+10*scale,size=12*scale,c=T.gold,a=alpha,layer=310,text_bold=true,text_role='title'},
-   {type='text',text=key..': reposition  |  Screenshot key: capture',x=x,y=y-5*scale,size=10*scale,c=T.white,a=alpha,layer=310,text_role='body'}})
+   {type='text',text=key..': reposition'..(capture_ready==false and''or'  |  Screenshot key: capture'),x=x,y=y-5*scale,size=10*scale,c=T.white,a=alpha,layer=310,text_role='body'}})
  end
  function self.draw(w,h,focused,hidden,keys)
+  capture_cleared=false
   -- Tab changes input ownership inside the same visible panel. Preserve the
   -- retained GUI/font planes; explicit focus loss still clears via suspend().
   if focused~=last_focus then suspend_input();last_focus=focused end
@@ -231,12 +241,23 @@ function M.new(view,actions,existing)
   local function watch(v)slot=slot+1;if retained_state[slot]~=v then changed=true;retained_state[slot]=v end end
   watch(w);watch(h);watch(focused);watch(text_cache_context);watch(keys.focus);watch(keys.hide)
   watch(pointer_x);watch(pointer_y);watch(held);watch(pressed_key);watch(reveal_index)
+  if self.light_gizmos then watch(self.light_gizmos.revision)end
   for key,v in pairs(self)do if type(v)~='function'and type(v)~='table'then watch(key);watch(v)end end
   for _,page in ipairs(self.pages)do
    watch(page);watch(page.name)
    for _,c in ipairs(page.controls or{})do
-    watch(c);watch(c.label);watch(c.disabled);watch(c.button_label);if c.choices then watch(#c.choices);for _,choice in ipairs(c.choices)do watch(choice)end else watch(false)end
-    if c.id then local ok,v=pcall(self.handle.get,c.id);watch(ok);watch(v)end
+    watch(c);watch(c.label);watch(c.disabled);watch(c.button_label)
+    if c.choices then
+     watch(#c.choices)
+     -- Optional publisher promise: labels stay immutable until the revision or
+     -- array identity changes. Large fixed catalogs then cost O(1) per frame.
+     -- Legacy mutable/recreated lists keep their content-based invalidation.
+     if c.choices_revision~=nil then watch(c.choices);watch(c.choices_revision)
+     else for _,choice in ipairs(c.choices)do watch(choice)end end
+    else watch(false)end
+    if c.id and(c.type=='input'or c.type=='toggle'or c.type=='slider'or c.type=='choice'or c.type=='keybind'or c.type=='color')then
+     local ok,v=pcall(self.handle.get,c.id);watch(ok);watch(v)
+    end
    end
   end
   for _,name in ipairs({'freeze_state','slowmo_state'})do if actions[name]then local ok,a,b=pcall(actions[name]);watch(ok);watch(a);watch(b)end end
@@ -244,11 +265,11 @@ function M.new(view,actions,existing)
   if actions.faction then local ok,v=pcall(actions.faction);watch(ok);if type(v)=='table'then watch(v.name);watch(v.material)end end
   if retained_state.count~=slot then changed=true;retained_state.count=slot end
   local interactive=drag or resize or scroll_drag or move_panel or popup or key_capture or text_edit or color_edit or held
-  local page=self.pages[self.page];local dynamic=page and(page.id=='lighting'or page.name=='Lighting')
-  if retained_commands and not changed and not interactive and not dynamic then view.draw(retained_commands);return end
+  local page=self.pages[self.page];local dynamic=self.light_gizmos and self.light_gizmos.revision==nil and page and(page.id=='lighting'or page.name=='Lighting')
+  if retained_commands and not changed and not interactive and not dynamic then view.draw(retained_commands,retained_commands);return end
   layout_retry=false
   local has_ai=type(actions.ai)=='function'and ai_control~=nil
-  local footer_extra=(actions.slowmo or has_ai)and 36 or 0
+  local footer_extra=(actions.freeze or actions.slowmo or has_ai)and 36 or 0
   local commands={};hits={};reset_regions={};local base=math.max(.75,math.min(w/1920,h/1080));local maximum=math.min(w/(PANEL_WIDTH+48),h/(PANEL_HEIGHT+102+HUD_MARGIN+footer_extra));local minimum=math.min(maximum,math.max(.35,base*.65))
   local s=math.max(minimum,math.min(maximum,base*self.size_scale));local width=PANEL_WIDTH*s;local footprint=(PANEL_HEIGHT+62+footer_extra)*s
   local toolbar_font=has_ai and math.max(11,9/s)or 11
@@ -534,7 +555,7 @@ function M.new(view,actions,existing)
   if legend then legend.draw(commands,w,h,focused,false,{x=x,y=bottom,w=width,h=top-bottom,scale=s})end
   if self.light_gizmos then self.light_gizmos.draw(commands,self.scene_pointer_blocked,self.scene_input_blocked())end
   retained_commands=not layout_retry and commands or nil
-  view.draw(commands)
+  view.draw(commands,retained_commands)
  end
  local function activate(b)
   if not b then return end;if b.action then b.action();return end;local c=b.c;if not c or c.disabled then return end

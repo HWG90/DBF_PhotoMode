@@ -1,5 +1,6 @@
 -- Numeric camera projection and queued light dragging. No engine/native calls.
 local M={}
+local marker_fields={'id','index','x','y','color','selected','enabled'}
 local function finite(v)return type(v)=='number'and v==v and math.abs(v)<math.huge end
 local function vec(v)return type(v)=='table'and finite(v[1])and finite(v[2])and finite(v[3])end
 local function copy(v)return{v[1],v[2],v[3]}end
@@ -22,12 +23,13 @@ function M.project(frame,fov,w,h,position)
  local scale=h/(2*depth*math.tan(fov/2));return w/2+dot(delta,frame.right)*scale,h/2+dot(delta,frame.up)*scale,depth
 end
 function M.new(queue)
- local self={};local rows={};local frame,fov,w,h;local drag;local held=false;local armed=false;local visible=false
+ local self={revision=0};local rows={};local frame,fov,w,h;local drag;local held=false;local armed=false;local visible=false
  function self.cancel()drag=nil;held=false;armed=false end
  function self.active()return drag~=nil end
  function self.update(items,context,angle,width,height,shown)
+  local previous=rows;local was_visible=visible
   visible=shown==true and camera(context,angle,width,height);rows={}
-  if not visible then self.cancel();return end
+  if not visible then if was_visible then self.revision=self.revision+1 end;self.cancel();return end
   if frame and(frame.world~=context.world or frame.scene_epoch~=context.scene_epoch)then self.cancel()end
   frame={position=copy(context.position),forward=copy(context.forward),right=copy(context.right),up=copy(context.up),world=context.world,scene_epoch=context.scene_epoch};fov,w,h=angle,width,height
   local found=false
@@ -40,6 +42,15 @@ function M.new(queue)
    end
   end
   if drag and not found then self.cancel()end
+  local changed=not was_visible or #previous~=#rows
+  if not changed then for index,row in ipairs(rows)do
+   local old=previous[index]
+   for _,key in ipairs(marker_fields)do
+    if row[key]~=old[key]then changed=true;break end
+   end
+   if changed then break end
+  end end
+  if changed then self.revision=self.revision+1 end
  end
  local function radius()return math.max(10,math.min(20,h/72))end
  local function excluded(block,x,y,r)
@@ -85,6 +96,7 @@ function M.new(queue)
   if not closest then return false end
   if queue('select',closest.index)==false then return true end
   for _,row in ipairs(rows)do row.selected=row.id==closest.id end
+  self.revision=self.revision+1
   drag={id=closest.id,position=copy(closest.position),depth=closest.depth,x=input.x,y=input.y,frame=frame,fov=fov,h=h}
   return true
  end

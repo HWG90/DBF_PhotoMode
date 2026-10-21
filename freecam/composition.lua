@@ -9,12 +9,24 @@ M.shader_colors={oxidized_copper={188,110,66},hammered_metal={122,133,144},stipp
 M.scene_names={'None','Negative','Monochrome','Posterize','Field-report duotone','Solarize','Inverted depth','Thermal depth','Depth contours','Depth fog'}
 M.filter_names={'Original','Warm film','Cool film','Sepia tint','Emerald','Crimson','Democracy Gold','Frostbite','Martian Sundown','Midnight Operations','Alien Haze','Lavender Fog','Toxic Atmosphere','Emergency Broadcast','Deep Ocean','Bronze Archive','Desert Film','Cold Steel','Crimson and Gold','Solar Eclipse','Neon Frontier','Amber Horizon'}
 M.filter_colors={[2]={235,158,82},[3]={73,145,227},[4]={180,126,70},[5]={55,150,85},[6]={180,50,60},[7]={246,202,92},[8]={147,219,244},[9]={232,112,77},[10]={49,80,118},[11]={142,210,113},[12]={175,132,204},[13]={141,186,51},[14]={206,71,54},[15]={26,117,133},[16]={204,141,83},[17]={223,190,140},[18]={145,174,188},[19]={220,70,78},[20]={110,78,169},[21]={83,191,225},[22]={245,161,78}}
-function M.layout(w,h,o,seconds)
- local out={};local function rect(x,y,width,height,alpha,color)
-  if width>0 and height>0 and alpha>0 then out[#out+1]={kind='rect',x=x,y=y,w=width,h=height,a=alpha,c=color or {0,0,0}}end
- end
- local ratios={false,2.39,16/9,1,4/5};local ratio=ratios[o.frame or 1];local x,y,fw,fh=0,0,w,h
+local function framing(w,h,frame)
+ local ratios={false,2.39,16/9,1,4/5};local ratio=ratios[frame or 1];local x,y,fw,fh=0,0,w,h
  if ratio then if w/h>ratio then fw=h*ratio;x=(w-fw)/2 else fh=w/ratio;y=(h-fh)/2 end end
+ return x,y,fw,fh
+end
+local function append_rect(out,layer,x,y,width,height,alpha,color)
+ if width>0 and height>0 and alpha>0 then out[#out+1]={kind='rect',x=x,y=y,w=width,h=height,a=alpha,c=color or {0,0,0},layer=layer}end
+end
+local function append_grain(rect,x,y,fw,fh,grain,size,phase)
+ for i=1,96 do
+  local gx=((i*739+phase*47)%997)/997;local gy=((i*397+phase*89)%991)/991
+  rect(x+gx*math.max(0,fw-size),y+gy*math.max(0,fh-size),math.min(size,fw),math.min(size,fh),grain*.22,i%2==0 and {255,255,255}or {0,0,0})
+ end
+end
+local function layout(w,h,o,seconds,static)
+ local out={};local layer=static and 100 or nil
+ local function rect(...)append_rect(out,layer,...)end
+ local x,y,fw,fh=framing(w,h,o.frame)
  rect(0,0,x,h,1);rect(x+fw,0,x,h,1);rect(x,0,fw,y,1);rect(x,y+fh,fw,y,1)
  local tint=M.filter_colors[o.filter]
  if tint then
@@ -32,12 +44,12 @@ function M.layout(w,h,o,seconds)
   rect(x,y+i*vy,fw,vy,a);rect(x,y+fh-(i+1)*vy,fw,vy,a)
  end end
  -- Deterministic sparse grain, independent of paused game time.
- local grain=(o.grain or 0)/100
- if grain>0 then local seed=math.floor((seconds or 0)*12)%4096;for i=1,96 do
-  local gx=((i*739+seed*47)%997)/997;local gy=((i*397+seed*89)%991)/991
-  local size=o.grain_size or 1.5;rect(x+gx*math.max(0,fw-size),y+gy*math.max(0,fh-size),math.min(size,fw),math.min(size,fh),grain*.22,i%2==0 and {255,255,255}or {0,0,0})
- end end
+ if not static then
+  local grain=(o.grain or 0)/100
+  if grain>0 then append_grain(rect,x,y,fw,fh,grain,o.grain_size or 1.5,math.floor((seconds or 0)*12)%4096)end
+ end
  if o.clean_view then return out end
+ layer=static and 102 or nil
  local white={255,255,255};local grid=o.grid or 1
  if grid==2 or grid==4 then local divisions=grid==2 and {1/3,2/3}or {.382,.618};for _,t in ipairs(divisions)do
   rect(x+fw*t,y,1,fh,.35,white);rect(x,y+fh*t,fw,1,.35,white)
@@ -56,7 +68,7 @@ function M.layout(w,h,o,seconds)
    for _,t in ipairs(art.triangles or{})do
     local p={ax+t[1]*factor,ay+(art.height-t[2])*factor,ax+t[3]*factor,ay+(art.height-t[4])*factor,ax+t[5]*factor,ay+(art.height-t[6])*factor}
     local lowx,highx=math.min(p[1],p[3],p[5]),math.max(p[1],p[3],p[5]);local lowy,highy=math.min(p[2],p[4],p[6]),math.max(p[2],p[4],p[6])
-    out[#out+1]={type='triangle',points=p,x=lowx,y=lowy,w=highx-lowx,h=highy-lowy,a=a,c=c}
+    out[#out+1]={type='triangle',points=p,x=lowx,y=lowy,w=highx-lowx,h=highy-lowy,a=a,c=c,layer=layer}
    end
   elseif o.logo==2 then
    -- Winged skull: vector geometry retains sharp edges at any resolution.
@@ -71,6 +83,17 @@ function M.layout(w,h,o,seconds)
    local glyphs={'110101101101110','110101110101110','111100110100100'}
    for g,bits in ipairs(glyphs)do for i=1,15 do if bits:sub(i,i)=='1'then mark(-.66+(g-1)*.45+((i-1)%3)*.12,.3-math.floor((i-1)/3)*.12,.1,.1)end end end
   end
+ end
+ return out
+end
+function M.layout(w,h,o,seconds)return layout(w,h,o,seconds,false)end
+function M.layout_static(w,h,o)return layout(w,h,o,nil,true)end
+function M.layout_grain(w,h,o,phase)
+ assert(type(phase)=='number'and phase>=0 and phase<=4095 and phase%1==0,'Grain phase must be an integer in [0,4095]')
+ local out={};local grain=(o.grain or 0)/100
+ if grain>0 then
+  local x,y,fw,fh=framing(w,h,o.frame)
+  append_grain(function(...)append_rect(out,101,...)end,x,y,fw,fh,grain,o.grain_size or 1.5,phase)
  end
  return out
 end

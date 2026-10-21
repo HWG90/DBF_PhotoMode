@@ -1,0 +1,16 @@
+{
+  "development_build": "0.8-dev.20261012.3",
+  "live_pid": 25996,
+  "user_visual_confirmed": true,
+  "user_confirmation": "Yes, both respond",
+  "problem": "The render-only observer missed the queued camera view, and an attached transient weapon profile was retained after the active view switched to the main camera profile.",
+  "fix": "Observe during update, retain fresh camera identity and scalar fields, follow uniquely matching profile handoffs, tolerate bounded GPU delay, and preserve changes made by another writer during restoration.",
+  "live_evidence": "dist/dof-investigation-20261011/native-observer-25996/NATIVE-LIVE-FIX-25996.json",
+  "fixture_evidence": "dist/validation/native-update-handoff-final.json",
+  "all_lua_fixtures": "dist/validation/native-legend-all-fixtures.json",
+  "installed_runtime_sha256": "a840630e6665ba426628e828ee411cf2a48458789447822f3a7cb239fc44ca70",
+  "limits": [
+    "The current session uses an owned live factory and update observer bridge.",
+    "The permanent runtime is installed for the next normal startup; that cold startup is not yet observed."
+  ]
+}

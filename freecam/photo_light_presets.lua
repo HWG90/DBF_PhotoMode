@@ -102,25 +102,33 @@ function M.decode(data)
  return rows
 end
 local function atomic_replace(source,target)
- local loaded,ffi=pcall(require,'ffi')
- if loaded and ffi.os=='Windows'then
-  local ok,done=pcall(function()
-   pcall(ffi.cdef,[[int PLP_MoveFileExW(const wchar_t*,const wchar_t*,unsigned long) __asm__("MoveFileExW");
-    int PLP_MultiByteToWideChar(unsigned int,unsigned long,const char*,int,wchar_t*,int) __asm__("MultiByteToWideChar");]])
-   local k=ffi.load('kernel32')
-   local function wide(s)local n=k.PLP_MultiByteToWideChar(65001,8,s,#s,nil,0);assert(n>0,'Invalid preset path');local v=ffi.new('wchar_t[?]',n+1);assert(k.PLP_MultiByteToWideChar(65001,8,s,#s,v,n)==n,'Preset path conversion failed');return v end
-   return k.PLP_MoveFileExW(wide(source),wide(target),9)~=0
-  end)
-  if not ok or not done then return false,'Atomic lighting preset replacement failed'end;return true
+ if M.replace then return M.replace(source,target)end
+ -- Standalone portable fallback: keep a recovery journal across Windows'
+ -- refusal to rename over an existing file. Runtime hosts can inject a truly
+ -- atomic replace/storage provider, as the legacy builder does below.
+ local backup=target..'.replace-backup'
+ local old=io.open(target,'rb')
+ if not old then
+  local journal=io.open(backup,'rb')
+  if journal then journal:close();local ok,why=os.rename(backup,target);if not ok then return false,why end;old=io.open(target,'rb')end
  end
- return os.rename(source,target)
+ if old then
+  old:close();os.remove(backup)
+  local ok,why=os.rename(target,backup);if not ok then return false,why end
+ end
+ local ok,why=os.rename(source,target)
+ if not ok then if old then os.rename(backup,target)end;return false,why end
+ if old then os.remove(backup)end
+ return true
 end
 function M.storage(path,filesystem)
  local fs=filesystem or{open=io and io.open,replace=atomic_replace,remove=os and os.remove};local self={}
  local function available()return type(path)=='string'and#path>0 and type(fs.open)=='function'and type(fs.replace)=='function'and type(fs.remove)=='function'end
  function self.load()
   if not available()then return nil,'Lighting preset storage unavailable'end
-  local f=fs.open(path,'rb');if not f then return{}end
+  local f=fs.open(path,'rb')
+  if not f and not filesystem then f=fs.open(path..'.replace-backup','rb')end
+  if not f then return{}end
   local ok,data=pcall(f.read,f,M.bytes+1);local closed,done=pcall(f.close,f)
   if not ok or not closed or not done then return nil,'Lighting preset read failed'end
   return M.decode(data)
