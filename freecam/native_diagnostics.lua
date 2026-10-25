@@ -23,8 +23,8 @@ function M.hud(bridge)
  if not root then return'scene '..tostring(state and word(state+0xac29c))..', HUD root unreadable'end
  local widget,panel=root+0x820,root+0x24e340+0x146940
  local flags,panel_flags,near=word(widget),word(panel),read(root+0x24e330,16)
- return string.format('scene %s, hud flag %s, tree %s, widget flags %s (visible %s), panel flags %s (visible %s), root+0x24E330 %s',
-  tostring(state and word(state+0xac29c)),near and tostring(near:byte(5))or'?',ptr(widget+0xf0)==root+0x258 and ptr(panel+0xf0)==widget and'ok'or'differs',
+ return string.format('scene %s, hud flag %s, parents widget %s panel %s, widget flags %s (visible %s), panel flags %s (visible %s), root+0x24E330 %s',
+  tostring(state and word(state+0xac29c)),near and tostring(near:byte(5))or'?',ptr(widget+0xf0)==root+0x258 and'ok'or'differs',ptr(panel+0xf0)==widget and'ok'or'differs',
   hex(flags),flags and tostring(math.floor(flags/16)%2)or'?',hex(panel_flags),panel_flags and tostring(math.floor(panel_flags/16)%2)or'?',
   near and(near:gsub('.',function(c)return string.format('%02X',c:byte())end))or'unreadable')
 end

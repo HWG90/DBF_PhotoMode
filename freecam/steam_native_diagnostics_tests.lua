@@ -33,8 +33,8 @@ local memory={[game+0x2ce1508]=le64(state),[state+0xac29c]=le32(3),[game+0x2e287
  [panel]=le32(0x21),[panel+0xf0]=le64(widget),[root+0x24e330]='\0\0\0\0\1'..string.rep('\0',11)}
 local hud_bridge={module_base=function()return game end,read_memory=function(at,n)local s=memory[at];if not s then error('Protected native read failed')end;return s:sub(1,n)end}
 local line=D.hud(hud_bridge)
-assert(line:find('scene 3, hud flag 1, tree ok, widget flags 0x31 (visible 1), panel flags 0x21 (visible 0), root+0x24E330 00000000010000',1,true),line)
+assert(line:find('scene 3, hud flag 1, parents widget ok panel ok, widget flags 0x31 (visible 1), panel flags 0x21 (visible 0), root+0x24E330 00000000010000',1,true),line)
 memory[widget]=le32(0x21);assert(D.hud(hud_bridge):find('widget flags 0x21 (visible 0)',1,true),'A hidden widget reads as such')
-memory[panel+0xf0]=le64(root);assert(D.hud(hud_bridge):find('tree differs',1,true))
+memory[panel+0xf0]=le64(root);assert(D.hud(hud_bridge):find('parents widget ok panel differs',1,true),'Each parent is checked on its own')
 memory[game+0x2e28788]=nil;assert(D.hud(hud_bridge)=='scene 3, HUD root unreadable')
 print('Native diagnostics: page readability, binding entries and bridge verdicts, read-only, bridge failure, HUD probe passed')

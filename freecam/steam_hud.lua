@@ -28,17 +28,26 @@ function M.new(sr,log,memory,setter)
   setter=function(widget,visible)assert(native.hud_visible(widget,visible and 1 or 0))end
  end
  local self={};local owned,custom,desired,foreign,pending,last_probe
+ -- Scene 4 is a mission. Scene 3 is the ship: there the same widget answers the game's own
+ -- Toggle HUD key (live HUD probe, 2026-10-25) and the mission panel does not exist, so only
+ -- the widget's own parent is required, and a ship without it simply has no HUD to hide.
  local function identity()
   local state=p(game+0x2ce1508)
-  if word(read(state+0xac29c,4))~=4 then return nil end
+  local scene=word(read(state+0xac29c,4))
+  if scene~=4 and scene~=3 then return nil end
   local root=p(game+0x2e28788)
   if read(root+0x24e334,1)~='\1'then return nil end
   local world=sr.Application.main_world();if world==nil then return nil end
-  local widget=root+0x820;local panel=root+0x24e340+0x146940
-  assert(p(widget+0xf0)==root+0x258 and p(panel+0xf0)==widget,'Gameplay HUD parent hierarchy differs')
-  return{root=root,widget=widget,state=state,world=world}
+  local widget=root+0x820
+  if scene==3 then
+   local s=read(widget+0xf0,8);if word(s)+word(s:sub(5))*4294967296~=root+0x258 then return nil end
+  else
+   local panel=root+0x24e340+0x146940
+   assert(p(widget+0xf0)==root+0x258 and p(panel+0xf0)==widget,'Gameplay HUD parent hierarchy differs')
+  end
+  return{root=root,widget=widget,state=state,world=world,scene=scene}
  end
- local function same(a,b)return a and b and a.root==b.root and a.widget==b.widget and a.state==b.state and a.world==b.world end
+ local function same(a,b)return a and b and a.scene==b.scene and a.root==b.root and a.widget==b.widget and a.state==b.state and a.world==b.world end
  local function visible(at)return math.floor(word(read(at,4))/16)%2==1 end
  local function write(entry,value)
   entry.written=value -- A throwing native call can partially apply.
