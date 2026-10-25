@@ -20,13 +20,14 @@ FFI=re.compile(r"['\"]c?ffi['\"]|\bffi\s*\.|\bcdef\b|\bPORT51\b|luaopen_hd2_cffi
 NATIVE_LIBRARIES=('port51/hd2_nativeinfo_f6d3465944c1aea1.dll', 'port51/hd2_nativeinfo_3139cc5f8ecb4078.dll', 'port51/hd2_nativeinfo_78b314de6177433d.dll', 'port51/hd2_nativeinfo_4aab2adfbc4090d6.dll', 'port51/hd2_nativeinfo_5e39eeeeb76b863a.dll')
 
 def digest(data):return hashlib.sha256(data).hexdigest()
-def build(output):
+def build(output,release=False):
     from lupa.lua51 import LuaRuntime
     output=output.resolve()
     assert output.is_relative_to(ROOT/'dist/review'),'Development port must stay in dist/review'
     output.mkdir(parents=True,exist_ok=True)
     fixture=run()
-    version=(ROOT/'VERSION').read_text().strip()+'-steam51-dev'
+    # A public build carries the plain version; everything else stays marked as a candidate.
+    version=(ROOT/'VERSION').read_text().strip()+(''if release else'-steam51-dev')
     manifest={'id':MOD_ID,'name':'War Journalist (Lua 5.1)','version':version,'author':'Goose',
               'lll':{'entry':'main.lua','defaults':'config/defaults.cfg','modules':['src/'+name for name in MODULES],
                      'restart_only':False,'retain_until_exit':False}}
@@ -44,7 +45,7 @@ def build(output):
             assert not re.search(r"\brequire\s*\(\s*['\"](?:ffi|bit|jit(?:\.[^'\"]+)?)['\"]",source),name
             assert not FFI.search(source),name+' uses FFI'
             compile_lua(source)
-    provenance={'version':version,'runtime':'Lua 5.1','ffi':'none; FFI enemy behavior omitted','candidate_only':True,'publication_performed':False,
+    provenance={'version':version,'runtime':'Lua 5.1','ffi':'none; FFI enemy behavior omitted','candidate_only':not release,'publication_performed':False,
                 'source_sha256':{name:digest(body)for name,body in files.items()},
                 'native_features':'Still being ported; full parity is not verified',
                 'minimum_input_service':1,'requires_relative_mouse':True,
@@ -76,6 +77,7 @@ def build(output):
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output',type=Path,default=ROOT/'dist/review/steam-lua51/package')
+    parser.add_argument('--release',action='store_true',help='public build: plain VERSION, candidate_only false')
     args=parser.parse_args()
-    result=build(args.output)
+    result=build(args.output,args.release)
     print(json.dumps({k:result[k]for k in ('package','sha256','candidate','installed','live_acceptance')},indent=2))

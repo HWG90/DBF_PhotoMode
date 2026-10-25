@@ -250,10 +250,13 @@ def build(candidate, output):
     assets = folder / 'Assets'
     shutil.copytree(ASSETS, assets)
     description = ('War Journalist Photo Mode for Boot Mod Loader on the Lua 5.1 game, with its assets. No FFI, so no '
-                   'Enemy behavior; no screenshots or keyboard capture (keys also reach the game). Proton only: it loads '
-                   'its native bridges, installing them into LLL\'s Native folder or the game\'s settings folder on first '
-                   'load. Settings live in LLL/Helldivers2/Settings/' + MOD_ID + ' when that folder exists, else in the '
-                   'game\'s settings folder. Also runs as an LLL archive mod. Use one War Journalist at a time.')
+                   'Enemy behavior. Its keys are set in HD2 Mod Setting GUI or the Photo panel. On Linux/Proton its native '
+                   'bridges add subject poses, the native lens, hiding the game HUD and keeping Photo Mode\'s keys from the '
+                   'game; they install into LLL\'s Native folder or the game\'s settings folder on first load. Native Windows '
+                   'refuses unsigned DLLs, so there those features turn off and keys are shared with the game. Screenshots '
+                   'are PNG through the War Journalist Linux capture worker where it runs, else DDS from the engine. Settings '
+                   'live in LLL/Helldivers2/Settings/' + MOD_ID + ' when that folder exists, else in the game\'s settings '
+                   'folder. Also runs as an LLL archive mod. Use one War Journalist at a time.')
     arsenal = {'Version': 1, 'Guid': GUID, 'Name': TITLE + ' ' + manifest['version'], 'Description': description,
                'Options': [{'Name': TITLE, 'Description': 'Photo Mode and its assets.', 'Include': [OPTION, 'Assets']}]}
     (folder / 'manifest.json').write_text(json.dumps(arsenal, indent=2, ensure_ascii=False) + '\n')
