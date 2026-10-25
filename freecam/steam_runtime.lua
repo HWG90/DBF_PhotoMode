@@ -417,6 +417,7 @@ function M.new(host,sr,deps,service)
    if ok then
     subject_backend=value;visibility=deps.subject_visibility.new(value,host.log)
     handycam=deps.handycam and deps.handycam.new()
+    if backend_error then host.log('Subject backend ready (it was unavailable: '..backend_error..')')end
     backend_error=nil
    elseif backend_error~=tostring(value)then
     backend_error=tostring(value);host.log('Subject backend unavailable: '..backend_error)
@@ -1695,8 +1696,16 @@ function M.new(host,sr,deps,service)
   ensure_subject_backend()
   if not hover and deps.load_hover then
    local ok,value,why=pcall(deps.load_hover,sr)
-   if ok and type(value)=='table'then hover=value;hover_fault=nil
-   else hover_fault=tostring(ok and why or value);host.log('Hover pause unavailable: '..hover_fault)end
+   if ok and type(value)=='table'then
+    if hover_fault then host.log('Hover pause ready')end
+    hover=value;hover_fault=nil
+   else
+    -- Its game code reads back only once the game has run it; say so once, not at every open.
+    local reason=tostring(ok and why or value)
+    if reason:find('Protected native read failed',1,true)then reason='waiting for its game code, which becomes readable once the game has run it (for example after a Hover Pack is used)'end
+    if reason~=hover_fault then host.log('Hover pause unavailable: '..reason)end
+    hover_fault=reason
+   end
   end
   if handycam then
    if controls.action_camera_mode then controls.action_camera_mode.choices={'Placed camera','First-person handycam'}end

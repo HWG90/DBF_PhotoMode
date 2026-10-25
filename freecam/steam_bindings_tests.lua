@@ -30,7 +30,7 @@ do
  api.values['war_journalist.toggle_key']='';assert(hosted.label('toggle_key')=='NONE')
 end
 -- The runtime with a hosted helper: the minimal harness of steam_runtime_tests.
-local function runtime_case(api,saved,virtual_cursor)
+local function runtime_case(api,saved,virtual_cursor,extra,log)
  local pressed={};local time=0;local stored=saved or{}
  local token,lease
  local raw={x=100,y=100,width=1920,height=1080,buttons=0,wheel=0,dx=0,dy=0}
@@ -56,10 +56,11 @@ local function runtime_case(api,saved,virtual_cursor)
   view={new=function()return{draw=function(commands)for _,c in ipairs(commands or{})do if c.ui_role=='photo_pointer'then drawn_pointer=true end end end,release=function()end}end},
   options=module('photo_options'),menu=module('photo_menu'),legend=module('control_legend'),composition=module('composition'),
   look=module('look'),lens=module('lens'),hosted_bindings=api and{api=api,window=api.window,factory=B}}
+ for k,v in pairs(extra or{})do deps[k]=v end
  local menu;local menu_new=deps.menu.new;deps.menu.new=function(...)menu=menu_new(...);return menu end
  render=function()return'native'end
  drawn_pointer=false
- local runtime=module('steam_runtime').new({config_dir='unused',log=function()end},sr,deps,service)
+ local runtime=module('steam_runtime').new({config_dir='unused',log=log or function()end},sr,deps,service)
  -- The camera is written at render time, as in game.
  local function tick()time=time+.016;runtime.tick();render()end
  return runtime,deps,pressed,tick,function()return last_position end,function()return menu end
@@ -110,4 +111,28 @@ do
  assert(runtime.active and runtime.mode=='menu'and drawn_pointer,'The menu draws the virtual cursor')
  assert(runtime.dispose())
 end
-print('Hosted bindings: registration and defaults, refused keys stay ours, held keys and our edges, loader hold-back, labels, no Enable row, the drawn virtual cursor and the unhosted path passed')
+do
+ -- Native features retried at each open: subject logs once it recovers; hover says once that
+ -- it waits for its game code instead of repeating the read failure.
+ local lines={};local subject_calls,hover_calls=0,0
+ local function quiet(fields)return setmetatable(fields,{__index=function()return function()return true end end})end
+ local extra={subject_backend={new=function()subject_calls=subject_calls+1
+   if subject_calls==1 then error('Native binding is not executable')end
+   return quiet({frame=function()return nil end,head_frame=function()return nil end,can_freeze=function()return false end})end},
+  subject_visibility={new=function()return quiet({ready=function()return false end})end},
+  load_hover=function()hover_calls=hover_calls+1
+   if hover_calls<=2 then error('dbf_freecam_lua51/src/steam_hover_backend.lua:56: Protected native read failed')end
+   return quiet({owned=function()return false end,status=function()return{available=true}end})end}
+ local runtime,deps,pressed,tick=runtime_case(nil,nil,nil,extra,function(m)lines[#lines+1]=m end)
+ local function count(text)local n=0;for _,m in ipairs(lines)do if m:find(text,1,true)then n=n+1 end end;return n end
+ assert(count('Subject backend unavailable: ')==1 and count('Subject backend ready')==0,'Start-up failure logged once')
+ for open=1,3 do
+  pressed.p=true;tick();pressed.p=false;tick();assert(runtime.active,'Photo Mode opens with native features unavailable')
+  runtime.close(true);tick()
+ end
+ assert(count('Subject backend ready (it was unavailable: ')==1,'Recovery after the first open is logged once')
+ assert(count('Hover pause unavailable: waiting for its game code')==1 and count('Protected native read failed')==0,'Hover says once that it waits')
+ assert(count('Hover pause ready')==1 and hover_calls==3,'Hover logs when it becomes ready')
+ assert(runtime.dispose())
+end
+print('Hosted bindings: registration and defaults, refused keys stay ours, held keys and our edges, loader hold-back, labels, no Enable row, the drawn virtual cursor, native retry messages and the unhosted path passed')
