@@ -263,6 +263,28 @@ function M.new(adapter,bank,is_frozen)
   end
   selected=candidate;pose=nil;closing=false;state('selected','Photographic subject selected');return true
  end
+ -- Automatic choice: the listed subject nearest a world point (the camera).
+ function self.select_nearest(point)
+  if lease then return false,'Reset the held pose before changing subjects'end
+  if type(adapter.position)~='function'then return choices[1]and self.select(choices[1].id)or false,'No subject listed'end
+  local best,best_distance
+  for _,choice in ipairs(choices)do
+   local called,p=pcall(adapter.position,targets[choice.id],bank.rig)
+   if called and type(p)=='table'then
+    local d=(p[1]-point[1])^2+(p[2]-point[2])^2+(p[3]-point[3])^2
+    if not best_distance or d<best_distance then best,best_distance=choice.id,d end
+   end
+  end
+  if not best then return false,'No listed subject is available'end
+  return self.select(best)
+ end
+ -- Scene choice: the listed subject that owns a picked engine unit handle.
+ function self.select_unit(unit)
+  if type(adapter.locate)~='function'then return false,'Subject picking unavailable'end
+  local target=adapter.locate(unit)
+  if not target then return false,'Picked character is not a listed subject'end
+  return self.select(target.identity)
+ end
  function self.apply(id)
   if not supported then return false,status.message end
   if blocked then return false,'Recover the pending subject cleanup first'end

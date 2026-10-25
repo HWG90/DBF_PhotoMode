@@ -97,8 +97,10 @@ do
  assert(results.n==5 and results[1]==nil and results[2]==false and results[5]==nil)
  assert(f.calls[2].n==4 and f.calls[2][3]==false and f.calls[2][4]==nil)
  local ok,why=pcall(f.A.set_render_setting,'error');assert(not ok and why==f.sentinel)
+ -- A foreign write of the selected value is adopted as the restore value; the
+ -- held selection needs no extra write, and close then restores nothing.
  f.A.set_render_setting('bloom_enabled','true');local writes=#f.calls;f.policy.tick()
- assert(f.policy.state=='foreign'and f.policy.close(true)and #f.calls==writes)
+ assert(f.policy.state=='active'and f.policy.close(true)and #f.calls==writes)
 end
 do
  local f=fixture();assert(f.policy.open(true));f.settled();f.A.set_render_setting=function()end

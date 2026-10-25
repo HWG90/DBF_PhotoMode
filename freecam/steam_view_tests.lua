@@ -112,8 +112,15 @@ for _,fault in ipairs({'refuse','throw'})do
  assert(complete.release()~=false and complete.draw(required_commands)~=false)
  assert(complete.release()~=false)
 end
+-- Routine draws never write per-primitive text reports to the log.
+do
+ local messages={};local d=View.new(sr,true,function(line)messages[#messages+1]=line end)
+ d.draw({{type='text',text='Quiet',x=10,y=20,size=14,a=1,c={255,255,255}}})
+ assert(#messages==0,'Text diagnostics are opt-in');assert(d.release()~=false)
+end
 -- Diagnostic bookkeeping is lazy, but its one-shot output and explicit release
 -- reset must remain identical for mutable as well as retained callers.
+DBF_VIEW_TEXT_DIAGNOSTICS=true
 do
  local messages={};local d=View.new(sr,true,function(line)messages[#messages+1]=line end)
  local label={type='text',text='Diagnostic',x=10,y=20,size=14,a=1,c={255,255,255}}
@@ -136,4 +143,5 @@ do
  assert(#messages==4 and allocations==allocated,'Retained frames preserve the one-shot diagnostic contract')
  assert(d.release()~=false)
 end
+DBF_VIEW_TEXT_DIAGNOSTICS=nil
 print('Steam retained view: immutable/static geometry, mutable safety, font binding, lifetime/retry and required/dynamic previews passed')

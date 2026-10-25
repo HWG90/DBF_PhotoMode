@@ -38,6 +38,10 @@ function M.active(options)return M.uniforms(options).active end
 function M.new(sr,depth,allow_candidate,registration,verify_color)
  local self={combined_scene_dof_candidate=true,shader_dof_active=false,scene_active=false}
  local gui,world,signature,bound;local failed=false
+ -- Registry/descriptor/color verification runs on any resolution, HDR or
+ -- material change and at most once per second otherwise. The bound depth
+ -- resource itself is still fetched and identity-checked every frame.
+ local verified_key,verified_at
  local color_guard,color_guard_error
  if verify_color then color_guard=verify_color
  else color_guard_error='Current color resource verifier required'end
@@ -91,8 +95,9 @@ function M.new(sr,depth,allow_candidate,registration,verify_color)
   self.color_binding_identity=tostring(target.resource)..':'..tostring(target.backing)..':'..tostring(target.id)
   return true
  end
+ function self.rearm()failed=false;verified_key=nil end
  function self.release()
-  self.shader_dof_active,self.scene_active=false,false
+  self.shader_dof_active,self.scene_active=false,false;verified_key=nil
   if gui and present(world)then
    local ok,why=pcall(sr.World.destroy_gui,world,gui)
    if not ok then return false,tostring(why)end
@@ -105,7 +110,14 @@ function M.new(sr,depth,allow_candidate,registration,verify_color)
   self.shader_dof_active,self.scene_active=false,false
   local uniforms=M.uniforms(options,fov)
   if not uniforms.active then local done,why=self.release();return done,why,false end
-  local ready,reason=self.ready(options);if not ready then self.release();return false,reason,false end
+  local w,h=sr.Gui.resolution()
+  local read_hdr,hdr=pcall(sr.Application.render_setting,'hdr_enabled')
+  local key=tostring(w)..'x'..tostring(h)..'|'..tostring(read_hdr and hdr)..'|'..tostring(options and options.dof==true and options.dof_mode==2)
+  local clock=sr.Application.time_since_launch;local now=type(clock)=='function'and clock()or nil
+  if key~=verified_key or not now or not verified_at or now<verified_at or now-verified_at>=1 then
+   local ready,reason=self.ready(options);if not ready then self.release();return false,reason,false end
+   verified_key,verified_at=key,now
+  end
   local material=self.material;local sdr=self.sdr
   local color_binding_identity=self.color_binding_identity
   local ui_brightness=self.ui_brightness
@@ -115,7 +127,6 @@ function M.new(sr,depth,allow_candidate,registration,verify_color)
   local main=sr.Application.main_world();local owner
   for _,candidate in pairs(sr.Application.worlds()or {})do if candidate~=main then owner=candidate;break end end
   if not owner then self.release();return false,'Photo UI world unavailable',false end
-  local w,h=sr.Gui.resolution()
   if not(w and h and w>0 and h>0)then self.release();return false,'Photo viewport unavailable',false end
   local key=tostring(owner)..'|'..w..'|'..h..'|'..material
   local ok,why=pcall(function()

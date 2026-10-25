@@ -1,13 +1,17 @@
--- Modular Lua 5.1 controller. Native-dependent features remain capability
--- gated while their backends are ported; never execute old-build addresses.
+-- Modular controller for the Steam build (LuaJIT or Lua 5.1). Native features
+-- stay capability gated; never execute old-build addresses.
 local M={}
 -- True-zero pause and slow motion use the documented engine policy setter.
 -- Resume is an explicit 1x policy, not an invented native-state snapshot.
--- A foreign Lua multiplier write revokes ownership; it is never overwritten.
+-- Freeze Action is held: a direct foreign Lua multiplier write (focus loss, the
+-- game, another mod) is followed by true zero again while we own the freeze.
 function M.time_policy(sr,clock,before_nonzero,before_zero)
  local A,G,N=sr.Application,sr.GameSession,sr.Network
  local self={frozen=false,preparing=false,slowmo_active=false,rate=.2,owned=false,revision=0,reason=nil}
  local original,wrapper,world,session,last_check,zero_confirmed
+ -- True while we are deliberately resuming or releasing time; a foreign write
+ -- then takes control exactly as before instead of being held against.
+ local releasing=false;local held_at
  local acquire
  local retry_at,retry_binding,retry_reason,retry_value,retry_dependency
  local function permit_nonzero()
@@ -102,10 +106,25 @@ function M.time_policy(sr,clock,before_nonzero,before_zero)
    local result={saved(...)}
    if wrapper==owned and result[1]~=false then
     for _,arg in ipairs(args)do if arg=='external_multiplier'then
-     self.owned,self.frozen,self.slowmo_active,self.pending_restore=false,false,false,false
-     self.reason='Another time modifier took control';self.revision=self.revision+1
-     -- Keep other mods' wrappers intact; retained callbacks remain inert.
-     detach();break
+     -- Hold only while our wrapper is the live binding. A successor wrapper's
+     -- write still takes control, so cleanup can never be starved by a hold.
+     -- Only Freeze Action is held; a foreign rate still ends Slow Motion.
+     -- At most one reassertion per second: a writer that keeps changing time
+     -- takes control as before instead of a per-frame tug-of-war.
+     local stamp=clock()
+     local hold=self.owned and self.frozen and not self.pending_restore and not releasing and A.set_time_step_policy==owned and
+      not(held_at and stamp>=held_at and stamp-held_at<1)
+     local called,ok=false,false
+     if hold then held_at=stamp;called,ok=pcall(saved,'external_multiplier',0)end
+     if called and ok~=false then
+      -- A notice, not a reason: reasons mean ownership was lost.
+      zero_confirmed=true;self.notice='Freeze Action kept after another time change';self.revision=self.revision+1
+     else
+      self.owned,self.frozen,self.slowmo_active,self.pending_restore=false,false,false,false
+      self.reason='Another time modifier took control';self.revision=self.revision+1
+      detach()
+     end
+     break
     end end
    end
    return unpack(result)
@@ -161,6 +180,11 @@ function M.time_policy(sr,clock,before_nonzero,before_zero)
   if not self.frozen and not enabled then self.owned=false;detach()end
   return true
  end
+ do
+  local release,resume=self.release,self.resume
+  function self.release()releasing=true;local ok,why=release();releasing=false;return ok,why end
+  function self.resume()releasing=true;local ok,why=resume();releasing=false;return ok,why end
+ end
  function self.tick()
   if self.preparing then local ok,why=self.freeze();if not ok then return false,why end end
   if self.pending_restore then return self.release()end
@@ -209,7 +233,7 @@ function M.render_flag_policy(sr,setting,label)
  local self={state='closed',revision=0,reason=nil,failures={}}
  local getter,prior,wrapper,baseline,observed,owned,desired,inflight
  local active,closing,written,restore_attempted,foreign,foreign_unknown=false,false,false,false,false,false
- local next_poll,deadline,last_clock
+ local next_poll,deadline,last_clock,held_at
  local function pack(...)return{n=select('#',...),...}end
  local function finite(n)return type(n)=='number'and n==n and n>=0 and n<math.huge end
  local function state(value,reason)
@@ -291,7 +315,7 @@ function M.render_flag_policy(sr,setting,label)
   baseline=read();if baseline==nil then return false,self.reason end
   observed,owned,desired=baseline,baseline,value
   active,closing,written,restore_attempted,foreign,foreign_unknown=true,false,false,false,false,false
-  inflight,next_poll,deadline,last_clock=nil,nil,nil,nil;self.failures={}
+  inflight,next_poll,deadline,last_clock,held_at=nil,nil,nil,nil,nil;self.failures={}
   prior=A.set_render_setting
   if type(prior)~='function'then active=false;state('blocked',label..' setter unavailable');return false,self.reason end
   local saved=prior
@@ -302,7 +326,17 @@ function M.render_flag_policy(sr,setting,label)
    if not result[1]or result[2]==false then
     if written then foreign_unknown=true;failure('foreign',result,'Failed foreign '..label..' write; ownership remains unknown')
     else foreign=true end
-   else foreign=true end
+   else
+    -- Hold the selection: the foreign value becomes what close restores, and
+    -- the selected value is submitted again once, through the wrapped setter.
+    local value=select(2,...);local read_clock,stamp=pcall(A.time_since_launch);if not read_clock then stamp=nil end
+    if active and not closing and(type(value)=='boolean'or value=='true'or value=='false')and
+     not(held_at and stamp and stamp>=held_at and stamp-held_at<1)then
+     held_at=stamp
+     baseline=value==true or value=='true';observed,owned,inflight=baseline,baseline,nil
+     if desired~=baseline then submit(desired,'apply')else state('active',label..' matches the selected value')end
+    else foreign=true end
+   end
    if not result[1]then error(result[2],0)end
    return unpack(result,2,result.n)
   end
@@ -324,9 +358,8 @@ function M.render_flag_policy(sr,setting,label)
   desired=value;self.revision=self.revision+1
   if inflight then return true end -- Coalesce without another native submission.
   local current=read();if current==nil then return false,self.reason end
-  if current~=observed then
-   detach('foreign',label..' changed outside Photo Mode; its value is preserved');return false,self.reason
-  end
+  -- A native-side change is adopted as the value to restore on close.
+  if current~=observed then baseline,observed,owned=current,current,current end
   if current==value then return true end
   return submit(value,'apply')
  end
@@ -401,7 +434,10 @@ function M.new(host,sr,deps,service)
  ensure_subject_backend()
  local ai=deps.ai and deps.ai.new(deps.load_ai,sr.Application.time_since_launch,host.log)
  local scene,scene_enabled,autofocus_write
- local native_lens,native_lens_retry
+ -- Scene/DoF readiness is retried only at known events (open, first frame,
+ -- DoF acknowledgement, option change) plus a short bounded backoff.
+ local scene_retry_at,scene_retries,ensure_scene=nil,0
+ local native_lens,native_lens_fault
  local camera=deps.camera.new(sr);local input=deps.input.new(sr,service,deps.input_cleanup,deps.input_policy)
  local hud,hud_reason
  if deps.hud then local ok,value=pcall(deps.hud.new,sr,host.log);if ok then hud=value else host.log('HUD backend unavailable: '..tostring(value))end end
@@ -427,12 +463,17 @@ function M.new(host,sr,deps,service)
  local capture_context={}
  local lighting=deps.lighting and deps.lighting.new(sr,deps.lights,host.log,deps.subject_backend and function()assert(subject_backend,'Local player backend unavailable');return subject_backend.frame()end or nil)
  local presets=deps.light_presets and deps.light_presets.new(host.config_dir..'/lighting-presets.ini')
- local core=deps.core.new(deps.store.new(host.config_dir),host.log)
+ -- Per-value commit lines would log every slider step; keep other messages.
+ local function core_log(message)
+  if type(message)=='string'and(message:find('^Setting committed: ')or message:find('^Settings batch committed: '))then return end
+  return host.log(message)
+ end
+ local core=deps.core.new(deps.store.new(host.config_dir),core_log)
  local view=deps.view.new(sr,nil,host.log);local overlay=deps.view.new(sr,true,host.log)
  if deps.font then
  local fonts=deps.font.new();view.set_font_source(fonts);overlay.set_font_source(fonts)
  end
- local handle,menu,prior,wrapper,photo,initial,options,options_revision
+ local handle,menu,prior,wrapper,photo,initial,options,options_revision,initial_player
  local light_sync=false;local light_revision
  local light_frame
  local refresh_setups
@@ -448,6 +489,8 @@ function M.new(host,sr,deps,service)
  local subject_pending,subject_holds,subject_cleanup_attempted,subject_close_started=false,false,false,false
  local subject_fault,subject_message
  local subject_revision=0;local sync_subject
+ -- Double-click scene picking: one-shot, never a per-frame unit scan.
+ local pick=deps.pick and deps.pick.new(sr);local pick_click,pick_held,picked_label
  local shot
  local first_render=false
  local function checkpoint(stage)
@@ -455,7 +498,7 @@ function M.new(host,sr,deps,service)
  end
  local path=deps.path and deps.path.new();local path_output={};local path_sync=false
  local sync_path
- local decorative,decorative_active,decorative_finalizing
+ local decorative,decorative_active,decorative_finalizing,decorative_fault
  local decorative_status
  local function shader_status(message)
   if message~=decorative_status then
@@ -487,7 +530,9 @@ function M.new(host,sr,deps,service)
  local function sync_dof()
   if not dof or dof_revision==dof.revision then return end
   dof_revision=dof.revision
-  if texts.focus_status then texts.focus_status.label=dof.status()..' Focus distance and aperture await the lens backend.'end
+  if texts.focus_status then texts.focus_status.label=dof.status()end
+  -- The native flag is what creates the depth target the scene shader reads.
+  if dof.state=='active'and self.active and not scene_enabled and ensure_scene then ensure_scene(true)end
  end
  local function tick_bloom(time)
   if bloom then local ok,why=bloom.tick(time);sync_bloom();if not ok and why then notice(why)end end
@@ -520,7 +565,7 @@ function M.new(host,sr,deps,service)
   controls.subject_pose_play.disabled=not enabled or subject_pending or not(s and s.selected)or not(simulation and simulation.owns_zero())
   controls.subject_pose_stop.disabled=not enabled or not subject_holds
   controls.subject_recover.disabled=not subject_pending
-  if texts.subject_pose_status then texts.subject_pose_status.label=subject_message end
+  if texts.subject_pose_status then texts.subject_pose_status.label=(picked_label and picked_label..'  |  'or'')..subject_message end
  end
  local function subject_call(method,value)
   local called,ok,why=pcall(subject[method],value)
@@ -593,6 +638,35 @@ function M.new(host,sr,deps,service)
   subject_opt_in=true;subject_close_started=false;subject_cleanup_attempted=false;sync_subject()
   return true
  end
+ -- A picked character becomes the focus and lighting subject; a Helldiver is
+ -- also selected for poses. The unit handle is used only within this frame.
+ local function pick_subject(x,y,o)
+  local width,height=sr.Gui.resolution()
+  local f,r=photo.forward,photo.right
+  local up=deps.lens.up(f,r,photo.path_roll or photo.roll or o.roll)
+  local fov=photo.path_fov or(o.fov>0 and math.rad(o.fov)or initial.fov)
+  local hit,why=pick.pick({pos=photo.pos,forward=f,up=up,fov=fov},x,y,width,height,math.max(24,height*.04))
+  if not hit then notice(why);return false end
+  local distance=math.max(.1,math.min(200,math.floor(hit.distance*1000+.5)/1000))
+  if controls.focus_distance and not controls.focus_distance.disabled then
+   autofocus_write=true;handle.set('focus_distance',distance);autofocus_write=false
+  end
+  if controls.light_subject_distance and not controls.light_subject_distance.disabled then handle.set('light_subject_distance',distance)end
+  local message=hit.label..string.format(' selected (%.1f m)',hit.distance)
+  if hit.helldiver and subject and type(subject.select_unit)=='function'then
+   if subject_holds then message=message..'; reset the held pose to pose it'
+   elseif subject_action('refresh')then
+    local ok,reason=subject_call('select_unit',hit.unit);if not ok then message=message..'; '..tostring(reason)end
+   end
+  elseif not hit.helldiver then message=message..' for focus and lighting; poses need a Helldiver'end
+  picked_label=message;sync_subject();notice(message)
+  return true
+ end
+ -- On open, list the current subjects and select the one nearest the camera.
+ local function auto_subject(point)
+  if not subject or subject_holds or subject_pending or type(subject.select_nearest)~='function'then return end
+  if subject_action('refresh')then subject_call('select_nearest',point)end
+ end
  local function flush_roll()
   if photo and photo.roll~=nil then
    local value=photo.roll;photo.roll=nil
@@ -612,6 +686,85 @@ function M.new(host,sr,deps,service)
  end
  local function edge(code)
   local down=input.down(code);local value=down and not edges[code];edges[code]=down;return value
+ end
+ -- Other menus (LLL manager, MCM) open over Photo Mode. Their keys are read at
+ -- open; pressing one yields our captured input while camera, freeze and UI
+ -- state stay held, and our lease is retaken once that menu has closed.
+ local handoff,handoff_keys
+ local function menu_key(value)return type(value)=='number'and value%1==0 and value>=7 and value<=255 and value~=27 end
+ local function read_handoff_keys()
+  local keys={};local own={}
+  for _,id in ipairs({'toggle_key','focus_key','hide_controls_key','lock_camera_key','screenshot_key','slowmo_key'})do own[handle.get(id)]=true end
+  local loader=rawget(_G,'LiveLuaLoader')
+  if type(loader)=='table'and type(loader.open_manager)=='function'then
+   local key=45
+   if type(loader.get_loader_option)=='function'then
+    local ok,values=pcall(loader.get_loader_option,'manager_ui')
+    if ok and type(values)=='table'and menu_key(values.menu_toggle_key)then key=values.menu_toggle_key end
+   end
+   keys[#keys+1]={label='Live Lua Loader',key=key,is_open=function()return false end,
+    open=function()local ok,why=pcall(loader.open_manager);return ok,not ok and tostring(why)or nil end}
+  end
+  local mcm=rawget(_G,'DBFMCM')
+  if type(mcm)=='table'and type(mcm.open)=='function'and type(mcm.is_open)=='function'then
+   local key=46
+   if type(mcm.menu_binding_status)=='function'then
+    local ok,status=pcall(mcm.menu_binding_status)
+    if ok and type(status)=='table'and menu_key(status.global_key)then key=status.global_key end
+   end
+   keys[#keys+1]={label='Mod Configuration Menu',key=key,is_open=function()local ok,value=pcall(mcm.is_open);return ok and value==true end,
+    open=function()local ok,done,why=pcall(mcm.open);if not ok then return false,tostring(done)end;return done~=false,why end}
+  end
+  local usable={};for _,entry in ipairs(keys)do if not own[entry.key]then usable[#usable+1]=entry end end
+  return usable
+ end
+ local generic_yields,generic_yield_at=0,nil
+ local function yield_input(entry,now)
+  if not entry then
+   -- Repeated unexplained input loss (lease taken back, failed samples) ends
+   -- in the ordinary full close rather than a held scene with no input.
+   if generic_yield_at and now-generic_yield_at<2 then generic_yields=generic_yields+1 else generic_yields=1 end
+   generic_yield_at=now
+   if generic_yields>5 then notice('Photo input keeps failing; Photo Mode closed');self.close(true);return false end
+  end
+  local ok,why=input.release()
+  -- A refused release still enters the bounded 4 Hz retake path; set_mode
+  -- retries the release itself, so this never repeats every frame.
+  if not ok then notice(why);entry=nil end
+  menu.suspend();sample_sequence=sample_sequence+1
+  handoff={entry=entry,phase=entry and'wait'or'open',started=now,up=0,next_try=now+.25}
+  return true
+ end
+ -- Per-session state reset at every open (kept out of open: upvalue limit).
+ local function begin_session()
+  handoff,handoff_keys=nil,read_handoff_keys()
+  decorative_fault,generic_yields,generic_yield_at=nil,0,nil
+ end
+ local function handoff_tick(now)
+  local h=handoff
+  if h.phase=='wait'then
+   if h.entry.is_open()then h.phase,h.next_try='open',now+.25;return end
+   -- Our capture consumed the key press, so open explicitly once it is up.
+   if input.down(h.entry.key)then h.up=0 else h.up=h.up+1 end
+   if h.up>=2 then
+    local ok,why=h.entry.open();h.phase,h.next_try='open',now+.25
+    if not ok then notice(why or(h.entry.label..' did not open'))end
+   elseif now-h.started>3 then h.phase='open'end
+   return
+  end
+  if now<h.next_try then return end
+  h.next_try=now+.25
+  if h.entry and h.entry.is_open()then return end
+  -- Nobody else holds input yet ours is still refused: stop after 5 s.
+  if not h.entry and now-h.started>5 then
+   local called,status=pcall(service.status)
+   if not called or type(status)~='table'or status.owner==nil then notice('Photo input could not be retaken; Photo Mode closed');self.close(true);return end
+  end
+  -- Acquisition is refused while the loader manager or MCM owns input.
+  local ok=input.set_mode(self.mode=='camera'and'camera'or'menu')
+  if not ok then return end
+  for code in pairs(edges)do edges[code]=input.down(code)end
+  handoff=nil;sample_sequence=sample_sequence+1;menu.suspend()
  end
  local function bookmark_context()
   if subject_backend then
@@ -699,8 +852,15 @@ function M.new(host,sr,deps,service)
   capture.tick(capture.active()and capture_state()or nil)
   if capture.state()~=before then capture_notice()end
  end
+ -- The label names the game's current output color space (render setting).
+ local function screenshot_label()
+  if not(capture and controls.screenshot)then return end
+  local ok,hdr=pcall(sr.Application.render_setting,'hdr_enabled')
+  controls.screenshot.button_label=ok and hdr==true and'Take screenshot (HDR)'or'Take screenshot (SDR)'
+ end
  function self.screenshot()
   if not capture then return false,'Screenshot unavailable'end
+  screenshot_label()
   if capture.state()=='cleanup_blocked'then
    local ok,why=capture.cancel('User requested screenshot cleanup retry');capture_notice();return ok,why
   end
@@ -796,7 +956,7 @@ function M.new(host,sr,deps,service)
   if ok==false then notice(why);return false,why end
   local retired,reason=close_decorative(false)
   if not retired then notice(reason);return false,reason end
-  base_cleanup_done=true;self.active=false;self.focus_suspended=nil
+  base_cleanup_done=true;self.active=false;self.focus_suspended=nil;handoff=nil;pick_click,pick_held,picked_label=nil,nil,nil
   photo,initial,shot=nil,nil,nil
   end
   -- Subject failure never returns before camera/input/UI retirement. Time stays
@@ -814,7 +974,7 @@ function M.new(host,sr,deps,service)
   end
   if hover then local ok,why=hover.dispose();if not ok then notice(why);return false,why end end
   if native_lens then local ok,why=native_lens.release();if not ok then notice(why);return false,why end end
-  native_lens_retry=nil
+  native_lens_fault=nil;if native_lens then native_lens.reacquires=nil end
   if hud then local ok,why=hud.release();if not ok then notice(why);return false,why end;hud_reason=nil end
   if visibility then
    local ok,why=visibility.release()
@@ -842,7 +1002,7 @@ function M.new(host,sr,deps,service)
   if photo.view then photo.view.target_yaw=nil;photo.view.target_pitch=nil end
   local next_mode=self.mode=='menu'and'camera'or'menu'
   local ok,why=input.set_mode(next_mode)
-  if not ok then notice(why);self.close();return false,why end
+  if not ok then notice(why);self.mode=next_mode;yield_input(nil,sr.Application.time_since_launch());return false,why end
   self.mode=next_mode;menu.suspend();sample_sequence=sample_sequence+1
   return true
  end
@@ -875,7 +1035,7 @@ function M.new(host,sr,deps,service)
   {id='slowmo_key',type='keybind',label='Slow-motion key',default=220,disabled=not simulation},
   {id='recover_input_key',type='keybind',label='Recovery key (Ctrl+Shift)',default=121},
   {id='recover_input',type='button',label='Recover gameplay input',on_activate=function()return self.close(true,nil,true)end},
-  {id='runtime_status',type='text',label='Lua 5.1 development port: native feature backends are still being validated.'}}
+  {id='runtime_status',type='text',label='Runtime: '..tostring(rawget(_G,'jit')and jit.version or _VERSION)}}
  local movement={
   {id='speed',type='slider',label='Movement speed (m/s)',default=3,min=.1,max=50,step=.1},
   {id='wheel_step',type='slider',label='Wheel speed change (%)',default=20,min=5,max=100,step=5},
@@ -1019,18 +1179,45 @@ function M.new(host,sr,deps,service)
   sync_subject()
   return true
  end
- local function ensure_scene()
-  if scene_enabled then return true end
-  if not scene then local ok,value=pcall(deps.load_scene,sr);if not ok then notice(value);return false,value end;scene=value end
-  local ok,why=scene.ready();if not ok then notice(why);return false,why end;scene_enabled=true
+ local function scene_status(message)if texts.scene_status then texts.scene_status.label=message end end
+ local function scene_controls(enabled)
   for _,id in ipairs({'scene_shader','scene_strength','fog_distance','fog_density','scene_depth_range','exposure','contrast','saturation','dof_mode','dof_quality','dof_strength','bokeh_shape','focus_mode'})do
-   if controls[id]then controls[id].disabled=not scene_enabled end
+   if controls[id]then controls[id].disabled=not enabled end
   end
+ end
+ ensure_scene=function(explicit)
+  if scene_enabled then return true end
+  if not deps.load_scene or not self.active or pending_cleanup then return false end
+  if not scene then local ok,value=pcall(deps.load_scene,sr);if not ok then scene_status(tostring(value));return false,value end;scene=value end
+  -- Only an explicit event clears the overlay's error latch.
+  if explicit and scene.rearm then scene.rearm()end
+  local ok,why=scene.ready()
+  if not ok then
+   -- Bounded backoff (0.25, 0.5, 1, 2 s) covers targets the renderer creates a
+   -- few frames after DoF is enabled; afterwards only an explicit event retries.
+   if scene_retries<4 then scene_retry_at=sr.Application.time_since_launch()+.25*2^scene_retries;scene_retries=scene_retries+1 end
+   scene_status('Scene effects waiting: '..tostring(why));return false,why
+  end
+  scene_enabled,scene_retry_at=true,nil;scene_controls(true);scene_status('Scene effects ready')
   return true
  end
- local pages=deps.options.pages(reset,function()
-  local was=self.active;local ok=self.close();if ok and was then self.open()end
- end,deps.composition,{camera_controls=movement,
+ -- Return to player moves the Photo camera back to its opening view, offset by
+ -- any player movement since then. It never closes, so time stays frozen.
+ local function return_to_player()
+  if not self.active or pending_cleanup or self.mode=='shot'or not initial then return false,'Open Photo Mode first'end
+  if not stop_path()then return false,self.reason end
+  local pos=copy(initial.position)
+  if initial_player and subject_backend then
+   local ok,frame=pcall(subject_backend.frame)
+   if ok and type(frame)=='table'and type(frame.position)=='table'then
+    for axis=1,3 do pos[axis]=pos[axis]+frame.position[axis]-initial_player[axis]end
+   end
+  end
+  photo.pos,photo.forward,photo.right=pos,copy(initial.forward),copy(initial.right)
+  photo.view,photo.target,photo.roll=nil,nil,nil;sample_sequence=sample_sequence+1
+  return true
+ end
+ local pages=deps.options.pages(reset,return_to_player,deps.composition,{camera_controls=movement,
   ai_change=function(value)if ai then local ok,why=ai.select(value);if not ok then notice(why)end end end,
   ai_reset=function()if ai then return ai.select(1)end end,
   director_save=function()return director_action('save')end,
@@ -1047,7 +1234,12 @@ function M.new(host,sr,deps,service)
   path_add=function()return path_action('add')end,path_remove=function()return path_action('remove')end,
   path_clear=function()return path_action('clear')end,path_play=function()return path_action('play')end,
   subject_pose_play=function()return subject_action('apply',subject_pose_ids and subject_pose_ids[handle.get('subject_pose')])end,
-  subject_pose_stop=function()return subject_action('reset')end,
+  subject_pose_stop=function()
+   -- Reset recovers automatically when the plain restoration is refused.
+   local ok,why=subject_action('reset')
+   if not ok and subject_pending then ok,why=subject_action('recover')end
+   return ok,why
+  end,
   cinema_begin=function()return self.begin_shot()end,
   cinema_reposition=function()if self.mode=='shot'then return self.reposition_shot()else return self.focus()end end,
   cinema_end=function()return self.close()end,
@@ -1122,11 +1314,11 @@ function M.new(host,sr,deps,service)
   if c.type~='text'and c.type~='section'then
    c.disabled=not supported[c.id]
    controls[c.id]=c
-  elseif c.id and c.id:match('_status$')then texts[c.id]=c;c.label='Lua 5.1: backend validation pending'end
+  elseif c.id and c.id:match('_status$')then texts[c.id]=c end
  end end
  handle=core.register({id='dbf_freecam',name='War Journalist',pages=pages})
  controls=core.mods.dbf_freecam.controls
- if capture then controls.screenshot.button_label='Take screenshot (SDR)'end
+ screenshot_label()
  -- Registration copies definitions. Keep live status references on those
  -- registered rows, not on the discarded construction tables.
  texts={}
@@ -1138,15 +1330,16 @@ function M.new(host,sr,deps,service)
  end end
  if deps.decorative_overlay and controls.shader then
   controls.shader.on_change=function(value)
+   decorative_fault=nil -- An explicit choice retries a parked overlay.
    if value>1 and decorative then
-    local ok,why=decorative.invalidate();if not ok then notice(why);self.close(true)end
+    local ok,why=decorative.invalidate();if not ok then notice(why)end
    end
   end
  end
  if controls.subject_refresh then
   controls.subject_pose.on_change=function()sync_subject()end
   for _,page in ipairs(core.mods.dbf_freecam.pages)do for _,c in ipairs(page.controls)do if c.id=='subject_pose_hint'then
-   c.label='Refresh lists up to four subjects. Select one and freeze action to pose it. Reset before switching subjects; only one subject can be posed at a time.'
+   c.label='The Helldiver nearest the camera is selected on open. Double-click a character to choose another; poses apply to Helldivers while Freeze Action holds.'
   end end end
  end
  sync_subject()
@@ -1270,12 +1463,13 @@ function M.new(host,sr,deps,service)
  deps.menu.legend_factory=deps.legend
  menu=deps.menu.new(view,{focus=self.focus,hide=hide,exit=self.close,
   freeze=simulation and function()
-   local value=not simulation.frozen
+   -- A pending (hover-settling) freeze counts as engaged, so this cancels it.
+   local value=not(simulation.frozen or simulation.preparing)
    if handle.get('freeze_player')~=value then return handle.set('freeze_player',value)end
    local ok,why;if value then ok,why=simulation.freeze()else ok,why=simulation.resume()end
    if not ok then notice(why)end;sync_subject();return ok,why
   end or nil,
-  freeze_state=simulation and function()return simulation.frozen,self.active and not pending_cleanup end or nil,
+  freeze_state=simulation and function()return simulation.frozen or simulation.preparing,self.active and not pending_cleanup and self.mode~='shot',simulation.preparing end or nil,
   slowmo=simulation and function()return self.toggle_slowmo()end or nil,
   slowmo_state=simulation and function()return simulation.slowmo_active,handle.get('enabled')and not pending_cleanup and not simulation.pending_restore end or nil,
   ai=ai and function()local state=ai.state();return{available=state.available and self.active,status=state.status}end or nil,
@@ -1367,22 +1561,27 @@ function M.new(host,sr,deps,service)
     end
    end
   end
-  if deps.load_native_lens and o.dof and o.dof_mode==1 and not native_lens then
-   local now=sr.Application.time_since_launch()
-   if not native_lens_retry or now>=native_lens_retry then
-    native_lens_retry=now+1;local ok,value=pcall(deps.load_native_lens,sr)
-    if ok then native_lens=value else if texts.lens_status then texts.lens_status.label=tostring(value)end end
-   end
+  if not scene_enabled and(probe or scene_retry_at and sr.Application.time_since_launch()>=scene_retry_at)then
+   scene_retry_at=nil;ensure_scene()
   end
   if scene_enabled then
    local called,ok,why,shader_dof=pcall(scene.render,o,fov)
-   if not called or not ok then notice(called and why or ok);scene.release();scene_enabled=false
+   if not called or not ok then
+    -- Keep Photo Mode open: drop the effect, report it and retry boundedly.
+    local reason=tostring(called and why or ok);scene.release();scene_enabled=false;scene_status('Scene effects paused: '..reason)
+    -- Retry within the same bounded budget; the latch stays until an event.
+    if scene_retries<4 then scene_retry_at=sr.Application.time_since_launch()+.25*2^scene_retries;scene_retries=scene_retries+1 end
+    if dof then local ok,why=dof.request(o.dof==true);if not ok then notice(why)end end
    elseif dof then local ok,why=dof.request(o.dof and not shader_dof);if not ok then notice(why)end end
   end
-  if native_lens then
+  if native_lens and not(native_lens_fault and sr.Application.time_since_launch()<native_lens_fault)then
    local called,ok,why=pcall(native_lens.tick,o,fov,camera.identity(),core.revision)
-   if not called or not ok then notice(called and why or ok);self.close(true);return end
-   if texts.lens_status then texts.lens_status.label=native_lens.message end
+   if not called or not ok then
+    -- A failed lens never closes Photo Mode; it reacquires after a 2 s pause.
+    local reason=tostring(called and why or ok);pcall(native_lens.release)
+    native_lens_fault=sr.Application.time_since_launch()+2
+    if texts.lens_status then texts.lens_status.label='Native lens paused: '..reason end
+   elseif texts.lens_status then texts.lens_status.label=native_lens.message end
   end
   if controls.focus_distance then controls.focus_distance.disabled=not(scene_enabled or native_lens and native_lens.ready)end
   if controls.aperture then controls.aperture.disabled=not(scene_enabled or native_lens and native_lens.ready)end
@@ -1408,28 +1607,35 @@ function M.new(host,sr,deps,service)
   -- Geometry is immutable until the revision, viewport or capture mode changes.
   -- Retain it without rescanning thousands of logo primitives each frame.
   local decorative_drawn=true
-  if deps.decorative_overlay and o.shader>1 and o.shader_opacity>0 then
+  -- A failed overlay is retired and parked until another overlay is chosen;
+  -- Photo Mode itself stays open.
+  if decorative_fault and decorative_fault~=o.shader then decorative_fault=nil end
+  local function park_decorative(reason)
+   decorative_fault=o.shader;notice(reason);shader_status('Decorative overlay stopped: '..tostring(reason))
+  end
+  if deps.decorative_overlay and o.shader>1 and o.shader_opacity>0 and not decorative_fault then
    if not decorative then decorative=deps.decorative_overlay.new(sr,deps.view,deps.composition,host.log)end
+   local opened=true
    if not decorative_active then
     local called,ready,reason=pcall(decorative.open)
-    if not called or ready==false then
-     notice(called and reason or ready);self.close(true);return false
-    end
-    decorative_active=true
+    if not called or ready==false then park_decorative(called and reason or ready);opened=false
+    else decorative_active=true end
    end
-   local called,done,reason=pcall(decorative.draw,width,height,o,last_time or 0)
-   decorative_drawn=called and done==true
-   if not called then
-    notice(done);self.close(true);return false
-   elseif done~=true then
-    local _,pending=decorative.status()
-    shader_status(reason or'Decorative overlay draw unacknowledged')
-    if pending then notice(reason);self.close(true);return false end
-   else shader_status('Decorative overlay active')end
-  elseif decorative_active then
+   if opened then
+    local called,done,reason=pcall(decorative.draw,width,height,o,last_time or 0)
+    decorative_drawn=called and done==true
+    if not called then park_decorative(done)
+    elseif done~=true then
+     local _,pending=decorative.status()
+     shader_status(reason or'Decorative overlay draw unacknowledged')
+     if pending then park_decorative(reason or'Decorative overlay draw unacknowledged')end
+    else shader_status('Decorative overlay active')end
+   end
+  end
+  if decorative_active and(decorative_fault or not(deps.decorative_overlay and o.shader>1 and o.shader_opacity>0))then
    local retired,reason=close_decorative(false)
-   if not retired then notice(reason);self.close(true);return false end
-   shader_status('Choose an overlay and nonzero opacity')
+   if not retired then notice(reason)
+   elseif not decorative_fault then shader_status('Choose an overlay and nonzero opacity')end
   end
   if probe then checkpoint('render: overlay draw')end
   local drawn=overlay.draw(overlay_commands,overlay_commands)
@@ -1449,9 +1655,7 @@ function M.new(host,sr,deps,service)
    grain_drawn=grain_view.draw(grain_commands,grain_commands)
   elseif grain_view then
    local called,ok,why=pcall(release_grain)
-   if not called or ok==false then
-    notice(called and why or ok);self.close(true);return false
-   end
+   if not called or ok==false then notice(called and why or ok)end
   end
   if probe then checkpoint('render: menu draw')end
   if capturing then
@@ -1462,7 +1666,7 @@ function M.new(host,sr,deps,service)
    menu.draw_cinema(width,height,deps.legend.key_label(handle.get('toggle_key')),capturing or not o.cinema_notification,
     sr.Application.time_since_launch()-shot.started,capture~=nil)
   else
-   menu.draw(width,height,self.mode=='menu',capturing or o.hide_controls or o.clean_view,
+   menu.draw(width,height,self.mode=='menu'and not handoff,capturing or o.hide_controls or o.clean_view or handoff~=nil,
     {focus=deps.legend.key_label(handle.get('focus_key')),hide=deps.legend.key_label(handle.get('hide_controls_key')),slowmo=deps.legend.key_label(handle.get('slowmo_key'))})
   end
   return false
@@ -1472,7 +1676,6 @@ function M.new(host,sr,deps,service)
   -- Native code may be unavailable during loader startup. Retry only at an
   -- explicit session boundary, preserving all current build/ownership guards.
   ensure_subject_backend()
-  if deps.load_scene then ensure_scene()end
   if not hover and deps.load_hover then
    local ok,value,why=pcall(deps.load_hover,sr)
    if ok and type(value)=='table'then hover=value;hover_fault=nil
@@ -1488,6 +1691,11 @@ function M.new(host,sr,deps,service)
   ok,why=camera.open();if not ok then notice(why);self.close();return false,why end
   checkpoint('open: camera frame')
   initial=assert(camera.frame());photo={pos=copy(initial.position),forward=copy(initial.forward),right=copy(initial.right)}
+  initial_player=nil
+  if subject_backend then
+   local ok,frame=pcall(subject_backend.frame)
+   if ok and type(frame)=='table'and type(frame.position)=='table'then initial_player=copy(frame.position)end
+  end
   if lighting then
    local world,generation=camera.scene()
    local ready=lighting.open(world,generation,light_frame())
@@ -1508,11 +1716,18 @@ function M.new(host,sr,deps,service)
    if ready then visibility.queue(read_options())end
   end
   self.active=true;self.mode='menu';self.state='active';self.reason=nil
-  subject_close_started=false
-  if type(deps.load_subject)=='function'then load_subject()end
+  subject_close_started=false;begin_session();screenshot_label()
+  if type(deps.load_subject)=='function'and load_subject()then auto_subject(initial.position)end
   checkpoint('open: renderer flags')
   if bloom then local ok,why=bloom.open(handle.get('bloom'));sync_bloom();if not ok then notice(why)end end
   if dof then local ok,why=dof.open(handle.get('dof'));sync_dof();if not ok then notice(why)end end
+  -- Grab scene resources and the native lens now, after the DoF flag, instead
+  -- of waiting for a render-time retry or a second open.
+  scene_retries,scene_retry_at=0,nil;ensure_scene(true)
+  if deps.load_native_lens and not native_lens then
+   local ok,value=pcall(deps.load_native_lens,sr)
+   if ok then native_lens=value elseif texts.lens_status then texts.lens_status.label=tostring(value)end
+  end
   checkpoint('open: freeze action')
   if simulation and handle.get('freeze_player')then
    local ok,why=simulation.freeze();if not ok then
@@ -1570,6 +1785,29 @@ function M.new(host,sr,deps,service)
   if not called then notice(ok);self.close();return false,ok end
   return ok,why
  end
+ -- Per-frame helpers kept outside tick (Lua 5.1 allows 60 upvalues).
+ local function handoff_frame(now)
+  if not handoff then return false end
+  -- Another menu owns input: keep the held scene, retake input when it closes.
+  if ragdoll then local ok,why=ragdoll.flush(simulation and simulation.owns_zero()or false,subject_holds==true);if not ok then notice(why)end end
+  -- ESC still exits when no other menu took the input.
+  if not handoff.entry and input.focused()and edge(27)then self.close();return true end
+  if input.focused()then handoff_tick(now)end
+  return true
+ end
+ local function handoff_pressed(now)
+  if not handoff_keys or menu.editing_key()or menu.editing_text()or menu.bound_key then return false end
+  for _,entry in ipairs(handoff_keys)do if edge(entry.key)then yield_input(entry,now);return true end end
+  return false
+ end
+ local function pick_tick(sample,o,now)
+  if not pick or not sample or capture and capture.active()then return end
+  local pressed=sample.click and not pick_held;pick_held=sample.click
+  if not pressed or menu.contains_pointer(sample.x,sample.y)or menu.editing_text()or menu.editing_key()then return end
+  if pick_click and now-pick_click.time<=.4 and math.abs(sample.x-pick_click.x)<=8 and math.abs(sample.y-pick_click.y)<=8 then
+   pick_click=nil;pick_subject(sample.x,sample.y,o)
+  else pick_click={x=sample.x,y=sample.y,time=now}end
+ end
  function self.tick()
   if disposed then return end
   if capture then capture_frame=capture_frame+1 end
@@ -1601,19 +1839,22 @@ function M.new(host,sr,deps,service)
    if bloom and bloom.waiting()or dof and dof.waiting()then tick_bloom()end
    self.close(nil,true);return
   end
-  if input.focused()and not self.focus_suspended then
+  -- The Photo key stays usable during a handoff unless MCM itself is open.
+  if input.focused()and not self.focus_suspended and not(handoff and handoff.entry and handoff.entry.is_open())then
   local slow_edge=edge(handle.get('slowmo_key'))
   if menu.bound_key and not input.down(menu.bound_key)then menu.bound_key=nil end
-  if slow_edge and not(menu.editing_key()or menu.editing_text()or menu.bound_key)then self.toggle_slowmo()end
+  if slow_edge and not handoff and not(menu.editing_key()or menu.editing_text()or menu.bound_key)then self.toggle_slowmo()end
   if edge(handle.get('toggle_key'))then
    if self.mode=='shot'and self.active then self.reposition_shot()
    elseif self.active then self.close()else self.open()end
   end
   end
   if simulation then
-   local ok,why=simulation.tick();if not ok then notice(why);self.close(true);return end
+   -- A refused time state is reported; Photo Mode itself stays open.
+   local ok,why=simulation.tick();if not ok then notice(why)end
    if simulation_revision~=simulation.revision then
     simulation_revision=simulation.revision
+    if simulation.notice then notice(simulation.notice);simulation.notice=nil end
     if self.active and self.mode~='shot'and not simulation.frozen and not simulation.preparing and handle.get('freeze_player')then
      freeze_sync=true;local called,accepted=pcall(handle.set,'freeze_player',false);freeze_sync=false
      if not called or accepted==false then notice('Freeze setting synchronization failed')end
@@ -1636,14 +1877,16 @@ function M.new(host,sr,deps,service)
   end
   if not self.active then return end
   if hover and simulation and simulation.owns_zero()then
-   local ok,why=hover.hold();if not ok then notice(why);self.close(true);return end
+   local ok,why=hover.hold();if not ok then notice(why)end
   end
   local now=sr.Application.time_since_launch();local dt=math.max(0,math.min(.1,now-(last_time or now)));last_time=now
   tick_bloom(now)
+  if handoff_frame(now)then return end
   if not input.focused()then
+   -- Focus loss only yields input. Freeze, camera and menu state are kept.
    self.focus_suspended=true
    if self.mode~='shot'then local ok,why=input.release();if not ok then notice(why)end end
-   if ragdoll then local ok,why=ragdoll.flush(simulation and simulation.owns_zero()or false,subject_holds==true);if not ok then notice(why);self.close(true)end end
+   if ragdoll then local ok,why=ragdoll.flush(simulation and simulation.owns_zero()or false,subject_holds==true);if not ok then notice(why)end end
    return
   end
   if self.focus_suspended then
@@ -1662,11 +1905,12 @@ function M.new(host,sr,deps,service)
     shot.check_at=now;local ok,why=check_shot()
     if not ok then notice(why);self.close(true);return end
    end
-  elseif not input.owns()then self.close(true);return end
+  elseif not input.owns()then yield_input(nil,now);return end
   local sample
   if self.mode~='shot'then
-   local why;sample,why=input.sample();if not sample then notice(why);self.close();return end
+   local why;sample,why=input.sample();if not sample then notice(why);yield_input(nil,now);return end
   end
+  if self.mode~='shot'and handoff_pressed(now)then return end
   if self.mode~='shot'and edge(handle.get('focus_key'))then self.focus();return end
   if edge(27)then if not menu.dismiss()then self.close()end;return end
   if capture and edge(handle.get('screenshot_key'))and not(menu.editing_key()or menu.editing_text()or menu.bound_key)then self.screenshot()end
@@ -1677,9 +1921,10 @@ function M.new(host,sr,deps,service)
   end
   if ragdoll then
    local ok,why=ragdoll.flush(simulation and simulation.owns_zero()or false,subject_holds==true)
-   if not ok then notice(why);self.close(true);return end
+   if not ok then notice(why)end
   end
   local o=read_options()
+  if self.mode=='menu'then pick_tick(sample,o,now)end
   if scene_enabled and not(capture and capture.active())then
    local message=scene.focus(o,sample,self.mode=='menu',menu.contains_pointer,menu.editing_text()or menu.editing_key(),function(value)
     autofocus_write=true;local ok,why=handle.set('focus_distance',value);autofocus_write=false;return ok,why
@@ -1732,7 +1977,7 @@ function M.new(host,sr,deps,service)
   end
   if visibility then
    local called,ok,why=pcall(visibility.flush,dt)
-   if not called or ok==false then notice(called and why or ok);self.close(true);return end
+   if not called or ok==false then notice(called and why or ok)end
    local ready,status,caps=visibility.refresh(dt)
    for _,id in ipairs({'hide_player','hide_armour','hide_weapons','hide_cape'})do controls[id].disabled=not(ready and caps and caps[id])end
    if texts.subject_status then texts.subject_status.label=status end

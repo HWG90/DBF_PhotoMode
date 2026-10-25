@@ -21,12 +21,21 @@ for _,order in ipairs({1,2})do
  assert(A.set_render_setting==original,'Detached observers must leave the original function')
  assert(values.bloom_enabled and values.dof_enabled)
 end
--- An external writer revokes only the flag that it changed.
+-- An external writer is held against: its value becomes the one restored on
+-- close and the selection is submitted again once. Other flags are untouched.
 local bloom,dof=pair();assert(bloom.open(false));assert(dof.open(false));apply();assert(bloom.tick(now));assert(dof.tick(now))
-A.set_render_setting('bloom_enabled','true');apply()
-assert(bloom.tick(now));assert(bloom.state=='foreign');assert(dof.tick(now));assert(dof.state=='active')
-assert(bloom.close(true));assert(dof.close(true)==false);apply();assert(dof.tick(now));assert(dof.close(true))
+A.set_render_setting('bloom_enabled','true')
+assert(#queue==2 and queue[1][2]==true and queue[2][1]=='bloom_enabled'and queue[2][2]==false,'Reassert the selection once after a foreign write')
+apply();assert(bloom.tick(now));assert(bloom.state=='active'and values.bloom_enabled==false);assert(dof.tick(now));assert(dof.state=='active')
+assert(bloom.close(true)==false);assert(dof.close(true)==false);apply()
+assert(bloom.tick(now));assert(dof.tick(now));assert(bloom.close(true));assert(dof.close(true))
 assert(A.set_render_setting==original and values.bloom_enabled and values.dof_enabled)
+-- A native-side change seen by the next explicit request is adopted as the
+-- restore value; the selection is then submitted without polling.
+bloom,dof=pair();assert(dof.open(false));apply();assert(dof.tick(now));assert(dof.state=='active')
+values.dof_enabled=true;assert(dof.request(true));assert(dof.request(false));assert(#queue==1 and queue[1][2]==false)
+apply();assert(dof.tick(now));assert(values.dof_enabled==false and dof.state=='active')
+assert(dof.close(true)==false);apply();assert(dof.tick(now));assert(dof.close(true));assert(values.dof_enabled==true)
 -- A replacement setter is never overwritten during cleanup.
 bloom,dof=pair();assert(bloom.open(true));assert(dof.open(true))
 local replacement=function()end;A.set_render_setting=replacement

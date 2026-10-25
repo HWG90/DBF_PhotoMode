@@ -26,7 +26,12 @@ assert(p.frozen and rate==0,'Refused foreign write must retain pause ownership')
 fail_restore=false;assert(p.release()and rate==1,'Cleanup must thaw after a refused foreign write')
 assert(p.freeze());local owned=sr.Application.set_time_step_policy
 sr.Application.set_time_step_policy('external_multiplier',.3)
-assert(rate==.3 and not p.frozen);before=#writes;assert(p.release()and #writes==before,'Never overwrite observed foreign time')
+assert(rate==0 and p.frozen and p.notice,'Freeze Action holds through a direct foreign time write')
+sr.Application.set_time_step_policy('external_multiplier',.4)
+assert(rate==.4 and not p.frozen and not p.owned,'A second write within one second takes control: no tug-of-war')
+assert(p.freeze()and rate==0);now=now+1.5
+sr.Application.set_time_step_policy('external_multiplier',.3);assert(rate==0 and p.frozen,'The hold renews after a second')
+assert(p.release()and rate==1 and not p.frozen)
 assert(p.freeze());peers={local_peer=true,remote_peer=true};now=3;assert(p.tick()and rate==1 and not p.frozen,'Keyed peer inventory must thaw')
 assert(not p.freeze()and rate==1,'Refuse multiplayer freeze')
 peers={'local'};assert(p.freeze());world={};now=4;assert(p.tick()and rate==1,'World replacement must thaw')

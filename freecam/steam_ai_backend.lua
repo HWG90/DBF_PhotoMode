@@ -125,7 +125,7 @@ function M.new(sr,memory)
  end
  local function session_context(cleanup)
   local world=ptr(memory.game+L.WORLD);local state=ptr(memory.game+L.GAME_STATE);local mode=ptr(memory.game+L.GAME_MODE)
-  if not(world and state and mode and u32(state+L.STATE_VALUE)==4 and u32(mode+8)==1)then return nil,'Enemy controls require a mission'end
+  if not(world and state and mode and u32(state+L.STATE_VALUE)==4 and u32(mode+8)==1)then return nil,'Enemy controls require a mission','no_mission'end
   -- Classify network uncertainty explicitly. Ordinary world/scene reads may
   -- fail during respawn or loading; that suspends work without losing intent.
   local checked,session,why,policy=pcall(session_authority,cleanup)

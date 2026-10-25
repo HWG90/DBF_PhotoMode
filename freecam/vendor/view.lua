@@ -264,7 +264,8 @@ function M.new(sr,preview_only,diagnostic_log,shared_fonts)
             local owned=command_gui(c)
             if not prepared[owned]then if not bind_font(owned,active_font)then return false end;prepared[owned]=true end
         end end end
-        local report_now=diagnostic_log and not reported
+        -- Per-primitive text reports are opt-in diagnostics, not routine logs.
+        local report_now=diagnostic_log and rawget(_G,'DBF_VIEW_TEXT_DIAGNOSTICS')==true and not reported
         local report,seen;if report_now then report,seen={},{}end
         local old_ids=ids;ids={};local uniforms={}
         local signatures={};local cacheable=immutable_token~=nil;local incomplete_preview=false

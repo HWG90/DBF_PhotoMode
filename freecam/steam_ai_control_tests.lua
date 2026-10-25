@@ -461,3 +461,20 @@ do
  print('AI control performance: verified caller reads 6->1 per initial Dummy, safe fallback/partial cleanup, stable bounded registries/status and lease-preserving migration/rollback passed')
 end
 print('Photo AI: honest Passive/Dummy behavior, bounded changed-only updates, conditional restoration, transient target safety, retry/generation/component/world ownership, fixed build/registry guards and fresh byte-backed native lookups passed')
+-- Leaving the mission retires Passive/Dummy leases instead of waiting forever.
+do
+ local in_mission,clock,passive_writes=true,0,0
+ local function context()
+  if in_mission then return{solo=true,player_count=1,identity='mission-end'}end
+  return nil,'Enemy controls require a mission','no_mission'
+ end
+ local backend={now=function()return clock end,context=context,restore_context=context,
+  passive_update=function(ctx,lease,restore)passive_writes=passive_writes+1;if not restore then lease.entity=1;lease.identity=ctx.identity end end,
+  scan=function()return{},0 end}
+ local c=C.new(backend,function()end)
+ assert(c.queue('passive')and c.flush(true)and c.mode=='passive')
+ in_mission=false;local writes=passive_writes
+ assert(c.queue('normal'));assert(c.flush(false),'Passive cleanup outside a mission must complete')
+ assert(c.mode=='normal'and c.count()==0 and passive_writes==writes,'A retired mission lease is dropped without native writes')
+end
+print('AI mission exit: Passive lease retired outside a mission without waiting passed')

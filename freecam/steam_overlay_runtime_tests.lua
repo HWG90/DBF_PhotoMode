@@ -157,17 +157,25 @@ for _,fault in ipairs({'retire_refuse','retire_throw'})do
 end
 
 do
+ -- A refused retirement keeps Photo Mode open and its ownership retained; the
+ -- retirement is retried, and an explicit close still cannot discard it.
  local f=fixture(nil,configured);f.open();preview(f);f.retire_refuse=true
  assert(f.runtime.handle.set('shader',1));f.step(.016,1)
- assert(f.runtime.state=='closing'and not f.lease and not f.camera_open and not f.runtime.open(),
-  'Turning an overlay off cannot discard refused ownership or trap gameplay input')
+ assert(f.runtime.active and f.lease and f.camera_open,'Turning an overlay off keeps Photo Mode open')
+ assert(not f.runtime.close(true)and f.runtime.state=='closing'and not f.lease and not f.camera_open and not f.runtime.open(),
+  'Closing cannot discard refused ownership or trap gameplay input')
  f.retire_refuse=false;assert(f.runtime.close(true));closed(f)
 end
 
 do
+ -- A refused adapter open parks that overlay; Photo Mode stays open, and
+ -- choosing an overlay again retries it.
  local f=fixture(nil,configured);f.open();f.open_refuse=true;preview(f)
- assert(not f.runtime.active and not f.lease and not f.camera_open,'Failed adapter open restores the camera and input')
- f.open_refuse=false;assert(f.runtime.open());f.step(.016,1);assert(f.runtime.active and f.decorative_draws==1)
+ assert(f.runtime.active and f.lease and f.camera_open and f.decorative_draws==0,'Failed adapter open keeps Photo Mode open')
+ local opens=f.overlay_opens;for _=1,20 do f.step(.016,1)end
+ assert(f.overlay_opens==opens,'A parked overlay is not reopened every frame')
+ f.open_refuse=false;assert(f.runtime.handle.set('shader',1)and f.runtime.handle.set('shader',2));f.step(.016,1)
+ assert(f.runtime.active and f.decorative_draws==1)
  f.dispose_refuse=true
  assert(not f.runtime.dispose()and f.runtime.state=='closing'and not f.runtime.open(),
   'A refused final disposal retains the runtime registration and blocks reopen')

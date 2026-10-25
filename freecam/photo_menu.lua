@@ -260,7 +260,7 @@ function M.new(view,actions,existing)
     end
    end
   end
-  for _,name in ipairs({'freeze_state','slowmo_state'})do if actions[name]then local ok,a,b=pcall(actions[name]);watch(ok);watch(a);watch(b)end end
+  for _,name in ipairs({'freeze_state','slowmo_state'})do if actions[name]then local ok,a,b,c=pcall(actions[name]);watch(ok);watch(a);watch(b);watch(c)end end
   if actions.ai then local ok,v=pcall(actions.ai);watch(ok);if type(v)=='table'then watch(v.available);watch(v.status)end end
   if actions.faction then local ok,v=pcall(actions.faction);watch(ok);if type(v)=='table'then watch(v.name);watch(v.material)end end
   if retained_state.count~=slot then changed=true;retained_state.count=slot end
@@ -471,8 +471,8 @@ function M.new(view,actions,existing)
    rate_x=slow_x+slow_width+8*s;rate_width=lock_x-rate_x-8*s
   end
   if actions.freeze then
-   local ok,frozen,enabled=pcall(actions.freeze_state or function()return false,false end)
-   button(ok and frozen==true and 'Resume Action'or 'Freeze Action',{x=left+(footer_extra>0 and 0 or 470)*s,y=footer_extra>0 and top-103*s-tab_extra or strip_bottom+29*s,w=footer_extra>0 and freeze_width or 142*s,h=21*s},actions.freeze,'freeze_action',ok and frozen==true,toolbar_font,nil,not(ok and enabled==true))
+   local ok,frozen,enabled,preparing=pcall(actions.freeze_state or function()return false,false end)
+   button(ok and preparing==true and 'Freezing...'or ok and frozen==true and 'Resume Action'or 'Freeze Action',{x=left+(footer_extra>0 and 0 or 470)*s,y=footer_extra>0 and top-103*s-tab_extra or strip_bottom+29*s,w=footer_extra>0 and freeze_width or 142*s,h=21*s},actions.freeze,'freeze_action',ok and frozen==true,toolbar_font,nil,not(ok and enabled==true))
   end
   if has_ai then
    local called,state=pcall(actions.ai);state=called and type(state)=='table'and state or{}

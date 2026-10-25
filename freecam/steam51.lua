@@ -6,7 +6,7 @@ local function stop()
  if rawget(_G,'DBF_PHOTO_MODE_OWNER')==runtime then rawset(_G,'DBF_PHOTO_MODE_OWNER',nil)end
  runtime=nil;return true
 end
-return {live_lua_api=1,name='War Journalist — Lua 5.1 development port',
+return {live_lua_api=1,name='War Journalist',
  on_enable=function()
   assert(_VERSION=='Lua 5.1','Unsupported Lua runtime')
   local loader=assert(rawget(_G,'LiveLuaLoader'),'Live Lua Loader is required')
@@ -18,7 +18,8 @@ return {live_lua_api=1,name='War Journalist — Lua 5.1 development port',
    gizmos=mod.require('src/photo_light_gizmos.lua'),
    font=mod.require('src/vendor/font.lua'),core=mod.require('src/vendor/core.lua'),store=mod.require('src/vendor/store.lua'),view=mod.require('src/vendor/view.lua'),
    options=mod.require('src/photo_options.lua'),menu=mod.require('src/photo_menu.lua'),legend=mod.require('src/control_legend.lua'),
-   composition=mod.require('src/composition.lua'),look=mod.require('src/look.lua'),lens=mod.require('src/lens.lua')}
+   composition=mod.require('src/composition.lua'),look=mod.require('src/look.lua'),lens=mod.require('src/lens.lua'),
+   pick=mod.require('src/steam_pick.lua')}
   local ffi_available=pcall(require,'cffi')
   if not ffi_available then local name='ffi';ffi_available=pcall(require,name)end
   deps.ai=mod.require('src/steam_ai.lua')
@@ -108,7 +109,7 @@ return {live_lua_api=1,name='War Journalist — Lua 5.1 development port',
   end
   runtime=mod.require('src/steam_runtime.lua').new(mod,assert(stingray),deps,assert(loader.input_service,'Update LLL for its shared input service'))
   rawset(_G,'DBF_PHOTO_MODE_OWNER',runtime)
-  mod.log('Lua 5.1 camera/menu candidate ready; native feature ports remain in progress')
+  mod.log('Photo Mode ready on '..tostring(rawget(_G,'jit')and jit.version or _VERSION))
  end,
  on_update=function()if runtime then runtime.tick()end end,
  on_disable=stop,

@@ -104,13 +104,18 @@ function M.new(backend,log)
  end
  local function release_all(reason)
   if passive_lease.entity then
-   local ctx,why=get_context(true);if not ctx then return fail('Passive cleanup waiting: '..tostring(why))end
-   if ctx.identity~=passive_lease.identity then passive_lease={} else
+   -- Outside a mission the player and enemies that held our fields no longer
+   -- exist; their leases are retired, never waited on.
+   local ctx,why,policy=get_context(true)
+   if not ctx and policy=='no_mission'then passive_lease={}
+   elseif not ctx then return fail('Passive cleanup waiting: '..tostring(why))end
+   if not ctx then elseif ctx.identity~=passive_lease.identity then passive_lease={} else
     local ok,err=pcall(backend.passive_update,ctx,passive_lease,true);if not ok then return fail('Passive cleanup pending: '..tostring(err))end
    end
   end
   if next(held)==nil and next(detectors)==nil then context=nil;self.affected=0;self.status=reason or'Enemy behavior: Normal';return true end
-  local current,why=get_context(true)
+  local current,why,policy=get_context(true)
+  if not current and policy=='no_mission'then reset_records();context=nil;self.affected=0;self.status='Enemy scene retired';return true end
   if not current then return fail('Enemy cleanup waiting for authority: '..tostring(why))end
   if context and current.identity~=context.identity then reset_records();context=nil;self.affected=0;self.status='Enemy scene retired';return true end
   context=current

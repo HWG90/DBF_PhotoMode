@@ -11,7 +11,7 @@ from verify_installed_modules import audit
 from test_steam_port import run
 
 ROOT=Path(__file__).resolve().parents[1]
-MODULES=('steam_overlay.lua', 'steam_camera.lua', 'steam_input.lua', 'steam_path.lua', 'steam_runtime.lua', 'steam_capture.lua', 'steam_lighting.lua', 'photo_lights.lua', 'photo_light_presets.lua', 'photo_light_gizmos.lua', 'photo_options.lua', 'photo_menu.lua', 'control_legend.lua', 'composition.lua', 'look.lua', 'lens.lua', 'vendor/core.lua', 'vendor/store.lua', 'vendor/view.lua', 'assets/logo_art.lua', 'assets/helldiver_crest.lua', 'steam_bookmark.lua', 'host_native.lua', 'subject_backend.lua', 'subject_visibility.lua', 'input_cleanup.lua', 'vendor/font.lua', 'director.lua', 'steam_subject.lua', 'steam_subject_native.lua', 'subject_poses.lua', 'assets/steam_subject_poses.lua', 'steam_hud.lua', 'cffi.lua', 'linux_capture.lua', 'steam_handycam.lua', 'ragdoll_pause.lua', 'steam_lens_model.lua', 'steam_native_lens.lua', 'hover_pause.lua', 'steam_hover_backend.lua', 'steam_hover_pause.lua', 'steam_update_clock.lua', 'steam_ai.lua', 'steam_ai_backend.lua', 'steam_ai_control.lua', 'steam_scene_resources.lua', 'steam_scene_overlay.lua', 'steam_focus_sampler.lua', 'steam_scene.lua')
+MODULES=('steam_overlay.lua', 'steam_camera.lua', 'steam_input.lua', 'steam_path.lua', 'steam_runtime.lua', 'steam_capture.lua', 'steam_lighting.lua', 'photo_lights.lua', 'photo_light_presets.lua', 'photo_light_gizmos.lua', 'photo_options.lua', 'photo_menu.lua', 'control_legend.lua', 'composition.lua', 'look.lua', 'lens.lua', 'vendor/core.lua', 'vendor/store.lua', 'vendor/view.lua', 'assets/logo_art.lua', 'assets/helldiver_crest.lua', 'steam_bookmark.lua', 'host_native.lua', 'subject_backend.lua', 'subject_visibility.lua', 'input_cleanup.lua', 'vendor/font.lua', 'director.lua', 'steam_subject.lua', 'steam_subject_native.lua', 'subject_poses.lua', 'assets/steam_subject_poses.lua', 'steam_hud.lua', 'cffi.lua', 'linux_capture.lua', 'steam_handycam.lua', 'ragdoll_pause.lua', 'steam_lens_model.lua', 'steam_native_lens.lua', 'hover_pause.lua', 'steam_hover_backend.lua', 'steam_hover_pause.lua', 'steam_update_clock.lua', 'steam_ai.lua', 'steam_ai_backend.lua', 'steam_ai_control.lua', 'steam_scene_resources.lua', 'steam_scene_overlay.lua', 'steam_focus_sampler.lua', 'steam_scene.lua', 'steam_pick.lua')
 NATIVE_LIBRARIES=('port51/hd2_nativeinfo_f6d3465944c1aea1.dll', 'port51/hd2_nativeinfo_3139cc5f8ecb4078.dll', 'port51/hd2_nativeinfo_4aab2adfbc4090d6.dll', 'port51/hd2_nativeinfo_5e39eeeeb76b863a.dll')
 
 def digest(data):return hashlib.sha256(data).hexdigest()
@@ -22,7 +22,7 @@ def build(output):
     output.mkdir(parents=True,exist_ok=True)
     fixture=run()
     version=(ROOT/'VERSION').read_text().strip()+'-steam51-dev'
-    manifest={'id':'dbf_freecam','name':'War Journalist — Lua 5.1 development port','version':version,'author':'Goose',
+    manifest={'id':'dbf_freecam','name':'War Journalist','version':version,'author':'Goose',
               'lll':{'entry':'main.lua','defaults':'config/defaults.cfg','modules':['src/'+name for name in MODULES],
                      'restart_only':False,'retain_until_exit':False}}
     manifest['license_files']=['LICENSE-Link.txt','LICENSE-Bingus.txt']

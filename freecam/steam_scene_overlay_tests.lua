@@ -79,4 +79,15 @@ assert(u.active and u.shader_dof_active and not u.scene_active and u.clip[1]==0 
 assert(shader_options.exposure==0 and shader_options.contrast==100 and shader_options.saturation==100,'Uniform packing never mutates user values')
 u=factory.uniforms(neutral,.9)
 assert(not u.active and u.clip[1]==0 and u.clip[2]==1 and u.clip[3]==1,'Native without scene adjustments keeps its original color path')
+-- With a clock, full verification runs once per second or on a resolution
+-- change, not every frame; the frame still draws from the cached result.
+do
+ local t=100;sr.Application.time_since_launch=function()return t end
+ local cached=factory.new(sr,depth,true,registration,verify_color)
+ local checks=color_checks
+ for _=1,60 do assert(cached.apply(o,.9));t=t+1/60 end
+ assert(color_checks-checks<=2,'Verification must not run every frame: '..(color_checks-checks))
+ checks=color_checks;width=1280;assert(cached.apply(o,.9));assert(color_checks==checks+1,'A resolution change verifies at once')
+ width=1920;assert(cached.release());sr.Application.time_since_launch=nil
+end
 print('Combined scene/DoF: exact shared uniforms, Native/Shader/DoF-off composition, registration/resource/depth/full-color guards, fresh fullsize format/backing verification, draw-before-native-suppression signal, retained draw/rebinding/resize, retired world and cleanup failure passed; no game accessed')

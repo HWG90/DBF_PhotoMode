@@ -65,16 +65,21 @@ function M.new(sr,host,model,lens,bridge_name,dir)
   end
   return p
  end
- function self.release()
+ -- Render packets are observed only until the lens source is selected; the
+ -- held source is then checked at write time and once per second.
+ local function unhook()
   if observer_switch then observer_switch.active=false end
   if observer and rawget(_G,'update')==observer then rawset(_G,'update',previous_update)end
   observer,previous_update,observer_switch=nil,nil,nil
+ end
+ function self.release()
+  unhook()
   if selected then local ok,why=selected.release();if not ok then self.message=why;return false,why end end
   self.foreign=nil
   selected,current,observed,observed_at,last_revision,next_attach,next_observe,history,next_check,mismatch,mismatch_at,last_seen=nil,nil,nil,nil,nil,nil,nil,nil,nil,nil,nil,nil;self.ready=false;return true
  end
  function self.observe()
-  if not current then return end
+  if not current or selected then return end
   local now=sr.Application.time_since_launch();if next_observe and now<next_observe then return end;next_observe=now+.05
   local ok,value=pcall(function()
    local renderer=ptr(ptr(exe+0x24099e8)+0x338);local n=u32(renderer+0x1600);assert(n>0 and n<=64)
@@ -110,19 +115,21 @@ function M.new(sr,host,model,lens,bridge_name,dir)
   if ok and value then observed,observed_at=value,now end
  end
  function self.tick(options,fov,frame,revision)
-  if self.foreign and options.dof then return true end
-  if not options.dof then self.foreign=nil end
+  local now=sr.Application.time_since_launch()
+  -- A foreign writer pauses ownership briefly, then the lens is reacquired.
+  if self.foreign and options.dof and now<self.foreign then return true end
+  self.foreign=nil
+  if not options.dof then self.reacquires=nil end
   if not options.dof or options.dof_mode~=1 then local ok,why=self.release();self.message='Native lens waits for Depth of field';return ok,why end
   local id=identity(frame);if current and not same(id,current)then local ok,why=self.release();if not ok then return false,why end end
   current=current or id
-  if not observer then
+  if not selected and not observer then
    local previous=assert(rawget(_G,'update'),'Game update callback unavailable');local switch={active=true}
    local function after(...)if switch.active then pcall(self.observe)end;return ...end
    local function wrapped(...)if switch.active then pcall(self.observe)end;return after(previous(...))end
    previous_update,observer,observer_switch=previous,wrapped,switch;rawset(_G,'update',wrapped)
   end
   self.observe()
-  local now=sr.Application.time_since_launch()
   if not selected then
    if next_attach and now<next_attach then return true end;next_attach=now+.1
    if not observed or now-observed_at>.5 then self.message='Waiting for current camera lens';return true end
@@ -139,26 +146,19 @@ function M.new(sr,host,model,lens,bridge_name,dir)
    end)
    if not ok or not p then self.message=ok and'Current lens source unavailable'or tostring(p);return true end
    selected=p;self.ready=true;last_revision=nil;history=model.selection_history(observed,function()return sr.Application.time_since_launch()end)
+   unhook()
   end
   if selected.valid()~=true then return false,'Native lens source lifetime changed'end
   if not next_check or now>=next_check then
-   next_check=now+.1
+   next_check=now+1
    for name,value in pairs(selected.written)do if float(selected.offsets[name])~=value then
     local ok,why=self.release();if not ok then return false,why end
-    self.foreign=true;self.message='Lens changed by another writer; toggle Depth of field to reacquire';return true
+    -- Three automatic reacquires per DoF activation, then wait for a toggle.
+    self.reacquires=(self.reacquires or 0)+1
+    if self.reacquires>3 then self.foreign=math.huge;self.message='Lens keeps changing; toggle Depth of field to reacquire'
+    else self.foreign=now+.5;self.message='Lens changed by another writer; reacquiring'end
+    return true
    end end
-   local fields={};for _,name in ipairs({'distance','region','close_distance','close_region'})do fields[name]=float(selected.offsets[name])end
-   history.record(fields)
-   if observed and observed_at~=last_seen and now-observed_at<.5 then
-    last_seen=observed_at
-    if history.accept(observed)then mismatch,mismatch_at=nil,nil else
-     mismatch=(mismatch or 0)+1;mismatch_at=mismatch_at or now
-     if mismatch>=3 and now-mismatch_at>=.25 then
-      local ok,why=self.release();if not ok then return false,why end
-      self.foreign=true;self.message='Rendered lens changed; toggle Depth of field to reacquire';return true
-     end
-    end
-   end
   end
   if last_revision~=revision or self.last_fov~=fov then
    -- Same physical near/far mapping as the recovered branch postfx.lua.

@@ -110,10 +110,12 @@ local function fixture(extra)
  function f.action(id)return assert(f.controls[id],id).on_activate()end
  function f.enable()
   f.open();assert(f.factories==1)
-  assert(f.subject.status().selected==nil and f.discoveries==0)
+  -- Opening lists the subjects once and selects one automatically.
+  assert(f.subject.status().selected~=nil and f.discoveries==1,'Opening auto-selects a subject')
  end
  function f.select()
-  assert(f.action('subject_refresh')and f.discoveries==1)
+  local discoveries=f.discoveries
+  assert(f.action('subject_refresh')and f.discoveries==discoveries+1)
   assert(f.subject.status().selected==nil and f.controls.subject_pose_play.disabled,'Refresh must never select a sole or first avatar')
   assert(f.action('subject_select_2'));assert(f.subject.status().selected=='Helldiver B')
  end
@@ -190,8 +192,8 @@ do
  for _=1,10 do f.step(.016)end
  assert(f.subject_calls.recover==recoveries and f.subject_native==native,'Held recovery keys cannot repeat partial cleanup')
  f.pressed['left ctrl'],f.pressed['left shift'],f.pressed.f10=false,false,false;f.step(.016)
- assert(f.runtime.open()and f.subject.status().selected==nil and f.subject.status().pose==nil)
- assert(f.controls.subject_select_1.disabled and f.controls.subject_select_2.disabled,'Exit discards stale selection rows until explicit refresh')
+ assert(f.runtime.open()and f.subject.status().selected~=nil and f.subject.status().pose==nil,
+  'Reopening lists current subjects and auto-selects one; no stale pose survives exit')
  f.finish()
 end
 do
@@ -242,11 +244,11 @@ do
 end
 do
  local f=fixture();f.enable();f.select();f.pose()
- -- A successful foreign policy write is authoritative. Cleanup follows its
- -- existing revision event; this runtime never writes over the foreign rate.
+ -- Freeze Action holds through a direct foreign policy write: true zero is
+ -- submitted again once and the held pose survives until an explicit exit.
  f.sr.Application.set_time_step_policy('external_multiplier',.6);f.events={};f.step(.016)
- f.restored();assert(f.rate==.6 and not index_of(f.events,'time:1'),'Foreign rate remains authoritative through subject cleanup')
- assert(f.subject.status().pose==nil);f.finish();assert(f.rate==.6)
+ assert(f.rate==0 and f.subject.status().state=='posed','Freeze and the held pose survive a foreign time write')
+ f.finish();f.restored();assert(f.rate==1)
 end
 do
  local f=fixture();f.enable();f.select();f.pose();f.events={};f.foreign_commit=true

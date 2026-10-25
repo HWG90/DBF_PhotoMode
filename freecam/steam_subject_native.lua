@@ -278,6 +278,19 @@ local function factory(sr,policy,preview)
    generation=next_generation;records=next_records;return found
   end)
  end
+ -- Read-only helpers for automatic and scene (double-click) selection. They
+ -- use handles from the current discovery and the full lifetime guard, which
+ -- proves the 107-node scene graph before any transform getter runs.
+ function self.locate(unit)
+  for target,r in pairs(records)do if not r.retired and r.unit==unit then return target end end
+ end
+ function self.position(target,rig)
+  return result(function()
+   local r=record(target,rig);lifetime(r)
+   local getter=rawget(U,'world_position');check(type(getter)=='function','Unit.world_position unavailable')
+   return xyz(one(pack(getter(r.unit,1)),'userdata','Unit.world_position'))
+  end)
+ end
  function self.valid(target,rig)
   local ok,why=pcall(function()local r=record(target,rig);if r.retired then error({tag=retired_tag,reason='Selected subject retired'},0)end;lifetime(r)end)
   if ok then return true end
