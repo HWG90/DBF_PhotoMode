@@ -172,7 +172,8 @@ static int native_hud_visible(lua_State *L) {
  const unsigned char prefix[]={0x48,0x83,0xec,0x28,0x44,0x8b,0x01,0x4c,0x8b,0xd1,0x41,0x8b,0xc0,0x45,0x8b,0xc8,0x83,0xe0,0xef,0x41,0x83,0xc9,0x10,0x84,0xd2,0x44,0x0f,0x44,0xc8,0x44,0x89,0x09};
  unsigned char actual[sizeof(prefix)]={};if(!rd(game+0x12e4cc0,actual,sizeof(actual))||std::memcmp(actual,prefix,sizeof(actual)))return native_api.luaL_error(L,"HUD setter witness differs");
  uintptr_t state=0,root=0,parent=0,panel_parent=0;uint32_t scene=0;unsigned char initialized=0;
- if(!rd(game+0x2ce1508,&state,8)||!rd(state+0xac29c,&scene,4)||scene!=4||!rd(game+0x2e28788,&root,8)||widget!=root+0x820||!rd(root+0x24e334,&initialized,1)||initialized!=1||!rd(widget+0xf0,&parent,8)||parent!=root+0x258||!rd(root+0x24e340+0x146940+0xf0,&panel_parent,8)||panel_parent!=widget)return native_api.luaL_error(L,"Gameplay HUD ownership differs");
+ // Scene 4 is a mission. Scene 3 is the ship: the same widget, and no mission panel there.
+ if(!rd(game+0x2ce1508,&state,8)||!rd(state+0xac29c,&scene,4)||(scene!=4&&scene!=3)||!rd(game+0x2e28788,&root,8)||widget!=root+0x820||!rd(root+0x24e334,&initialized,1)||initialized!=1||!rd(widget+0xf0,&parent,8)||parent!=root+0x258||(scene==4&&(!rd(root+0x24e340+0x146940+0xf0,&panel_parent,8)||panel_parent!=widget)))return native_api.luaL_error(L,"Gameplay HUD ownership differs");
  reinterpret_cast<void(*)(uintptr_t,uint8_t)>(game+0x12e4cc0)(widget,static_cast<uint8_t>(value));
  uint32_t flags=0;if(!rd(widget,&flags,4)||((flags>>4)&1)!=static_cast<uint32_t>(value))return native_api.luaL_error(L,"HUD visibility acknowledgement differs");
  native_api.lua_pushboolean(L,1);return 1;

@@ -67,6 +67,7 @@ def run():
             # The shared MCM checkout can be an unmounted link; record the gap.
             rows.extend({'fixture':fixture,'passed':None,'skipped':'DBF-MCM checkout unavailable'}for fixture in FEATURE_FIXTURES)
             return {'passed':True,'fixtures':rows,'live_game_verified':False,'feature_fixtures_skipped':len(FEATURE_FIXTURES)}
+        (ROOT/'dist/validation').mkdir(parents=True,exist_ok=True)  # Light presets write a fixture file here.
         os.chdir(mcm)
         for fixture in FEATURE_FIXTURES:
             lua=LuaRuntime()
