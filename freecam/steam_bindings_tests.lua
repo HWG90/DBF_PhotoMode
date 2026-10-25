@@ -15,6 +15,7 @@ local function helper()
  end
  function api.is_down(id)return api.registered[id]~=nil and api.down[id]==true and not api.blocked end
  function api.binding(id)local v=api.values[id];if v==''then return{}end;return{{api.registered[id].default.device,v,modifiers={},trigger='hold'}}end
+ function api.set_binding(id,spec)if not api.registered[id]then return false,'not an extended binding'end;api.values[id]=spec.button;return true end
  return api
 end
 do
@@ -76,8 +77,12 @@ do
  assert(api.registered['war_journalist.forward_key'].default.button=='w'and api.registered['war_journalist.up_key'].default.button=='left shift')
  local rows={}
  for _,page in ipairs(menu().pages)do for _,c in ipairs(page.controls)do rows[c.id]=c end end
- assert(rows.keys_status and rows.keys_status.label:find('HD2 Mod Setting GUI',1,true),'The Controls page says where keys are set')
- assert(rows.toggle_key.disabled and rows.toggle_key.key_label()=='P'and not rows.speed.disabled,'Hosted rows are a disabled record showing the hosted key')
+ assert(rows.keys_status and rows.keys_status.label:find('shared with HD2 Mod Setting GUI',1,true),'The Controls page says the keys are shared')
+ assert(not rows.toggle_key.disabled and rows.toggle_key.key_label()=='P','Hosted rows stay editable and show the hosted key')
+ -- A key set in our panel is written through to the helper.
+ assert(runtime.handle.set('toggle_key',79)and api.values['war_journalist.toggle_key']=='o'and rows.toggle_key.key_label()=='O','Panel edits reach the helper')
+ assert(runtime.handle.set('focus_key',1)and api.values['war_journalist.focus_key']=='tab','Left mouse cannot be bound there; the helper keeps its key')
+ assert(runtime.handle.set('toggle_key',80)and api.values['war_journalist.toggle_key']=='p')
  assert(rows.enabled==nil,'No Enable Photo Mode row: it could only be turned back on from the panel it closes')
  assert(deps.legend.binding_label('toggle_key',runtime.handle)=='P','Labels come from the helper')
  -- The engine key alone no longer opens Photo Mode; the helper's key does.

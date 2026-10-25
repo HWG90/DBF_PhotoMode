@@ -154,6 +154,7 @@ ModBindingsMenu={window='HD2 Mod Setting GUI',is_down=function()return false end
 update=function(dt)calls=calls+1;return 'game',dt end
 shutdown=function()shut=true end
 stingray={Gui={resolution=function()return 1920,1080 end},
+ Application={time_since_launch=function()return os.clock()end,render_setting=function()return false end,save_render_target=nop},
  Window={mouse_focus=function()return true end,show_cursor=function()return false end,clip_cursor=function()return true end,
   set_mouse_focus=nop,set_show_cursor=nop,set_clip_cursor=nop,has_focus=function()return true end},
  Mouse={axis_id=function(n)return({mouse=0,wheel=1,cursor=2})[n]end,button_id=function()return 0 end,axis=nop,button=function()return 0 end},
@@ -181,6 +182,8 @@ return entry,a,b,calls,shut,table.concat(registered,'|')
             # On a bare engine the runtime starts with its native features reported unavailable.
             assert 'Photo Mode started on Boot Mod Loader' in log and 'stopped after an error' not in log and 'cleanup failed' not in log, log
             assert 'Native diagnostics (0 s)' in log and 'Native diagnostics failed' not in log, 'The start-up native diagnostic runs'
+            # No LLL and no Linux worker: the engine writes DDS into the game's settings folder.
+            assert 'Engine DDS capture selected: ' + str(game).replace('\\', '/') in log, log
             # LLL: its folders, and the entry handed back for LLL to drive.
             (lll / 'Native').mkdir(parents=True)
             (lll / 'Settings' / MOD_ID).mkdir(parents=True)
@@ -247,7 +250,7 @@ def build(candidate, output):
                   'candidate_files_sha256': digest((candidate / 'FILES-SHA256.txt').read_bytes()),
                   'modules': len(sources) - 1, 'native_bridges': {name: digest(b) for name, b in libraries.items()},
                   'assets': {p.relative_to(assets).as_posix(): digest(p.read_bytes()) for p in sorted(assets.iterdir())},
-                  'verified': ['modules and bridges read back exactly', 'Boot Mod Loader: wraps update/shutdown, passes the game results through, starts, ticks and cleans up on a bare engine, registers its keys with ModBindingsMenu',
+                  'verified': ['modules and bridges read back exactly', 'Boot Mod Loader: wraps update/shutdown, passes the game results through, starts, ticks and cleans up on a bare engine, registers its keys with ModBindingsMenu, selects engine DDS capture without LLL or the Linux worker',
                                'no LLL: bridges go to the game settings folder', 'LLL: returns the API 1 entry, uses LLL folders',
                                'installs missing bridges', 'refuses a differing bridge'],
                   'registered': False, 'deployed': False, 'live_acceptance': 'pending'}

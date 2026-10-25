@@ -1,7 +1,7 @@
 -- Keys hosted by a loader's Mod Bindings Menu (Boot Mod Loader's look-alike of the v2.3
--- API). Players set them in its settings window, and the loader answers false while the
--- game window has no focus or the chat box is open. Registered as held keys: the runtime
--- keeps computing its own edges.
+-- API). Players set them in its settings window or in our panel (written through with
+-- set_binding), and the loader answers false while the game window has no focus or the
+-- chat box is open. Registered as held keys: the runtime keeps computing its own edges.
 local M={}
 -- The helper binds keyboard keys and the three extra mouse buttons, never left/right
 -- mouse or modifiers.
@@ -22,6 +22,16 @@ function M.new(api,rows,names,log)
  end
  function self.hosted(id)return ids[id]~=nil end
  function self.down(id)local called,value=pcall(api.is_down,ids[id]);return called and value==true end
+ -- A key chosen in our panel, as the helper's binding; left/right mouse cannot be bound there.
+ function self.set(id,code)
+  if not ids[id]then return false,'Key not hosted'end
+  local spec=M.spec(code,names)
+  if spec.button==''then return false,'That key cannot be bound in '..tostring(api.window or'the loader\'s settings window')end
+  if type(api.set_binding)~='function'then return false,'The loader cannot change bindings'end
+  local called,ok,why=pcall(api.set_binding,ids[id],spec)
+  if called and ok then return true end
+  return false,tostring(called and why or ok)
+ end
  function self.label(id)
   if not ids[id]then return nil end
   local called,list=pcall(api.binding,ids[id]);local first=called and type(list)=='table'and list[1]

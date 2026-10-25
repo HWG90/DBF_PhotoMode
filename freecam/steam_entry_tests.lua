@@ -119,5 +119,26 @@ do
  assert(hosted and hosted.api==bindings and hosted.window=='HD2 Mod Setting GUI','Engine host hands in its bindings helper')
  assert(entry.on_disable()and DBF_PHOTO_MODE_OWNER==nil)
 end
+-- The engine host with the Linux capture worker: its PNG backend, our job tokens, no cursor clip.
+do
+ local input_service={};local created,deps_seen,args
+ local getenv=os.getenv;os.getenv=function(n)if n=='LOCALAPPDATA'then return'C:\\users\\me\\AppData\\Local'end;return getenv(n)end
+ local linux_backend={version=1,output_directory='C:/users/me/AppData/Local/LLL/Helldivers2/Screenshots',
+  capabilities={async=true,game_window=true,format='png',color_space='sdr',max_jobs=1},new_job_token=function()end,request=function()end,status=function()end,cancel=function()end}
+ LiveLuaLoader,DBF_PHOTO_MODE_OWNER,stingray=nil,nil,{}
+ mod={log=function()end,host_loader={engine_input=true,input_service=input_service,capabilities={revision='boot-mod-loader-host.1'}},
+  require=function(path)
+   if path=='src/linux_capture.lua'then return{new=function(root,output,issue)args={root,output,issue()};return linux_backend end}end
+   if path=='src/steam_capture.lua'then return{}end
+   if path=='src/steam_runtime.lua'then return{new=function(host,sr,deps,input)deps_seen,created=deps,true;return{tick=function()end,dispose=function()return true end}end}end
+   return{}
+  end}
+ local entry=dofile('freecam/steam51.lua');local ok,why=pcall(entry.on_enable);os.getenv=getenv
+ assert(ok,why)
+ assert(created and deps_seen.capture_backend==linux_backend,'The Linux worker backend is selected')
+ assert(args[1]=='C:/users/me/AppData/Local/LLL/Helldivers2/LinuxCapture'and args[2]=='C:/users/me/AppData/Local/LLL/Helldivers2/Screenshots'and args[3]:match('^lll%-shot:war_journalist:%d+$'),'Its folders and our job tokens')
+ assert(deps_seen.input_policy.pointer_clip==nil,'No cursor clip under the engine host')
+ assert(entry.on_disable())
+end
 mod,stingray,LiveLuaLoader,DBF_PHOTO_MODE_OWNER=globals.mod,globals.stingray,globals.loader,globals.owner
 print('Steam entry: no FFI imports or AI, engine host, capture gates, lazy R34 Subject admission, exact session return slots and older-loader camera fallback passed')

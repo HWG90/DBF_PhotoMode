@@ -881,7 +881,7 @@ function M.new(host,sr,deps,service)
   -- Plain ASCII, one direct basename under the service's fixed directory.
   -- The service validates the path and never replaces an existing file.
   local stamp=string.format('%.0f',sr.Application.time_since_launch()*1000000)
-  local name='War-Journalist-'..os.date('%Y%m%d-%H%M%S')..'-'..stamp..'-'..capture_sequence..'.png'
+  local name='War-Journalist-'..os.date('%Y%m%d-%H%M%S')..'-'..stamp..'-'..capture_sequence..'.'..(capture_backend.extension or'png')
   local path=capture_backend.output_directory:gsub('[/\\]+$','')..'/'..name
   local ok,why=capture.begin({output_token=name,output_path=path},capture_state())
   if ok then menu.suspend()else notice(why)end
@@ -1045,7 +1045,7 @@ function M.new(host,sr,deps,service)
   {id='recover_input',type='button',label='Recover gameplay input',on_activate=function()return self.close(true,nil,true)end},
   {id='runtime_status',type='text',label='Runtime: '..tostring(rawget(_G,'jit')and jit.version or _VERSION)}}
  if deps.hosted_bindings then
-  table.insert(bindings,1,{id='keys_status',type='text',label='Keys are set in '..tostring(deps.hosted_bindings.window or'the loader\'s settings window')..'; they pause while chat is open.'})
+  table.insert(bindings,1,{id='keys_status',type='text',label='Keys are shared with '..tostring(deps.hosted_bindings.window or'the loader\'s settings window')..'; they pause while chat is open.'})
  end
  local movement={
   {id='speed',type='slider',label='Movement speed (m/s)',default=3,min=.1,max=50,step=.1},
@@ -1343,7 +1343,9 @@ function M.new(host,sr,deps,service)
   end
   hosted=deps.hosted_bindings.factory.new(deps.hosted_bindings.api,rows,deps.input.key_names,host.log)
   for _,row in ipairs(rows)do if hosted.hosted(row.id)then
-   local control=controls[row.id];control.disabled=true;control.key_label=function()return hosted.label(row.id)end
+   -- A key set here is written through to the helper, so both places agree.
+   local control=controls[row.id];control.key_label=function()return hosted.label(row.id)end
+   control.on_change=function(value)local ok,why=hosted.set(row.id,value);if not ok then notice(why)end end
   end end
   deps.legend.hosted_label=hosted.label
  end

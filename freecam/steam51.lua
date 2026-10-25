@@ -56,7 +56,29 @@ return {live_lua_api=1,name='War Journalist',
   -- they never fall back to an unqualified in-game capture or helper pipe.
   local capture=loader.capture_service
   local local_data=os.getenv('LOCALAPPDATA')
-  if capture and type(capture.output_directory)=='string'and type(local_data)=='string'then
+  -- Boot Mod Loader has no capture service. Where the Linux host worker runs (the one LLL
+  -- uses), it writes PNGs to LLL's Screenshots folder and we issue its job tokens; anywhere
+  -- else (native Windows) the engine writes DDS itself.
+  if engine_host and not capture then
+   local function writable(dir)
+    if type(dir)~='string'then return false end
+    local probe=dir..'/.wj-probe';local f=io.open(probe,'wb');if not f then return false end;f:close();os.remove(probe);return true
+   end
+   local lll=type(local_data)=='string'and local_data:gsub('\\','/')..'/LLL/Helldivers2'
+   local issued=os.time()%1000000000
+   capture={output_directory=lll and lll..'/Screenshots',new_job_token=function()issued=issued+1;return'lll-shot:war_journalist:'..issued end}
+   local linux=lll and mod.require('src/linux_capture.lua')
+   local backend=linux and type(linux.new)=='function'and linux.new(lll..'/LinuxCapture',capture.output_directory,capture.new_job_token)
+   if backend then capture=backend;mod.log('Linux game-window PNG capture selected')
+   else
+    local profile=os.getenv('USERPROFILE');local game=os.getenv('APPDATA')
+    profile=type(profile)=='string'and profile:gsub('\\','/')..'/Pictures';game=type(game)=='string'and game:gsub('\\','/')..'/Arrowhead/Helldivers2'
+    local folder=writable(capture.output_directory)and capture.output_directory or writable(profile)and profile or writable(game)and game
+    capture=folder and mod.require('src/engine_capture.lua').new(stingray,folder)or nil
+    if capture then mod.log('Engine DDS capture selected: '..folder)end
+   end
+  end
+  if capture and not engine_host and type(capture.output_directory)=='string'and type(local_data)=='string'then
    local linux=mod.require('src/linux_capture.lua')
    if type(linux.new)=='function'then
     local backend=linux.new(local_data..'/LLL/Helldivers2/LinuxCapture',capture.output_directory,capture.new_job_token)
@@ -67,10 +89,10 @@ return {live_lua_api=1,name='War Journalist',
   -- Development qualification is tied to the factory-lifetime repair. Do not
   -- silently re-enable the known-crashing API v1 helper after a loader rollback.
   local revision=loader.capabilities.revision
-  local capture_revision=revision=='R33-steam-screenshots-factoryfix-candidate'or revision=='R34-steam-lua51-preview.1'or revision=='R35-26088801-cffi-dev.2'or revision=='R35-26088801-cffi-insert-fix.2'
+  local capture_revision=revision=='R33-steam-screenshots-factoryfix-candidate'or revision=='R34-steam-lua51-preview.1'or revision=='R35-26088801-cffi-dev.2'or revision=='R35-26088801-cffi-insert-fix.2'or engine_host
   local ready=capture_revision and
    type(capture)=='table'and capture.version==1 and type(caps)=='table'and
-   caps.async==true and caps.game_window==true and caps.format=='png'and caps.color_space=='sdr'and caps.max_jobs==1 and
+   caps.async==true and caps.max_jobs==1 and(caps.game_window==true and caps.format=='png'and caps.color_space=='sdr'or engine_host and caps.format=='dds')and
    type(capture.output_directory)=='string'and #capture.output_directory>0
   for _,name in ipairs({'new_job_token','request','status','cancel'})do
    if not ready or type(capture[name])~='function'then ready=false;break end
@@ -95,15 +117,16 @@ return {live_lua_api=1,name='War Journalist',
   end
   -- The engine clip flag alone does not retain Wine Wayland confinement
   -- when its mouse focus is yielded to our shared camera/menu lease.
+  -- Engine input moves a virtual cursor: nothing to confine, and native Windows refuses the DLL.
   local pointer_native
-  deps.input_policy.pointer_clip=function(active)
+  if not engine_host then deps.input_policy.pointer_clip=function(active)
    if not pointer_native then
     if not active then return true end
     local open,why=package.loadlib(mod.require('src/host_native.lua').library('hd2_nativeinfo_5e39eeeeb76b863a.dll'),'luaopen_hd2_nativeinfo');assert(open,why)
     pointer_native=assert(open());assert(type(pointer_native.pointer_clip)=='function','Pointer confinement bridge unavailable')
    end
    return pointer_native.pointer_clip(active and 1 or 0)
-  end
+  end end
   runtime=mod.require('src/steam_runtime.lua').new(mod,assert(stingray),deps,assert(loader.input_service,'Update LLL for its shared input service'))
   rawset(_G,'DBF_PHOTO_MODE_OWNER',runtime)
   mod.log('Photo Mode ready on '..tostring(rawget(_G,'jit')and jit.version or _VERSION))
