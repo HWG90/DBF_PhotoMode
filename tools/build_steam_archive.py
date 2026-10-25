@@ -64,7 +64,10 @@ if rawget(_G,'LiveLuaLoader')then return entry end
 -- the game's update and shutdown, as LLL would.
 local bindings=rawget(_G,'ModBindingsMenu')
 if not(type(bindings)=='table'and type(bindings.register_binding)=='function'and type(bindings.is_down)=='function'and type(bindings.binding)=='function')then bindings=nil end
-mod.host_loader={engine_input=true,input_service=mod.require('src/engine_input.lua').new(stingray,mod.log),bindings=bindings,capabilities={revision='boot-mod-loader-host.1'}}
+-- Keyboard isolation: the bridge reserves Photo Mode's keys in-game, as LLL's helper did (Proton;
+-- native Windows refuses the DLL, and the keys then stay shared with the game).
+local function keyboard()local open,why=package.loadlib(mod.require('src/host_native.lua').library('hd2_nativeinfo_78b314de6177433d.dll'),'luaopen_hd2_nativeinfo');assert(open,why);return open()end
+mod.host_loader={engine_input=true,input_service=mod.require('src/engine_input.lua').new(stingray,mod.log,keyboard),bindings=bindings,capabilities={revision='boot-mod-loader-host.1'}}
 local state='waiting'
 -- Read-only native diagnostics at start and twice later, while subject/hover fail here.
 local diagnose_at,started_at={0,30,120}

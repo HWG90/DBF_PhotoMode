@@ -7,6 +7,7 @@ local M={}
 -- mouse or modifiers.
 local mouse={[4]='middle',[5]='extra_1',[6]='extra_2'}
 local mouse_labels={middle='MOUSE 3',extra_1='MOUSE 4',extra_2='MOUSE 5'}
+local mouse_codes={middle=4,extra_1=5,extra_2=6}
 -- A virtual key from our settings as the helper's default spec; no name means no key.
 function M.spec(code,names)
  if mouse[code]then return{button=mouse[code],device='mouse',trigger='hold'}end
@@ -14,7 +15,8 @@ function M.spec(code,names)
 end
 -- rows: {id=,label=,default=virtual key}. A row the helper refuses stays ours.
 function M.new(api,rows,names,log)
- local self={};local ids={}
+ local self={};local ids={};local codes={}
+ for code,name in pairs(names)do codes[name]=code end
  for _,row in ipairs(rows)do
   local id='war_journalist.'..row.id
   local called,ok,why=pcall(api.register_binding,id,row.label,nil,{category='War Journalist',default=M.spec(row.default,names)})
@@ -31,6 +33,15 @@ function M.new(api,rows,names,log)
   local called,ok,why=pcall(api.set_binding,ids[id],spec)
   if called and ok then return true end
   return false,tostring(called and why or ok)
+ end
+ -- The virtual key of a hosted binding, for reading it from an isolated keyboard (the engine,
+ -- and so the helper, no longer sees reserved keys).
+ function self.code(id)
+  if not ids[id]then return nil end
+  local called,list=pcall(api.binding,ids[id]);local first=called and type(list)=='table'and list[1]
+  if type(first)~='table'or type(first[2])~='string'then return nil end
+  if first[1]=='mouse'then return mouse_codes[first[2]]end
+  return codes[first[2]]
  end
  function self.label(id)
   if not ids[id]then return nil end

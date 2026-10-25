@@ -320,14 +320,21 @@ static int native_hover_ensure(lua_State *L) {
  native_api.lua_pushboolean(L,1);return 1;
 }
 
+#include "keyboard_native.cc"
 static int open_nativeinfo(lua_State *L) {
- native_api.lua_createtable(L,0,9);
+ native_api.lua_createtable(L,0,13);
  native_api.lua_pushcclosure(L,native_profile_float,0);
  native_api.lua_setfield(L,-2,"profile_float");
  native_api.lua_pushcclosure(L,native_hud_visible,0);
  native_api.lua_setfield(L,-2,"hud_visible");
  native_api.lua_pushcclosure(L,native_hud_toggle,0);
  native_api.lua_setfield(L,-2,"hud_toggle");
+ native_api.lua_pushcclosure(L,native_keyboard_acquire,0);
+ native_api.lua_setfield(L,-2,"keyboard_acquire");
+ native_api.lua_pushcclosure(L,native_keyboard_sample,0);
+ native_api.lua_setfield(L,-2,"keyboard_sample");
+ native_api.lua_pushcclosure(L,native_keyboard_release,0);
+ native_api.lua_setfield(L,-2,"keyboard_release");
  native_api.lua_pushcclosure(L,native_hover_height,0);
  native_api.lua_setfield(L,-2,"hover_height");
  native_api.lua_pushcclosure(L,native_gamepads_absent,0);

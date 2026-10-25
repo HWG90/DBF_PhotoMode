@@ -29,9 +29,12 @@ do
  assert(hosted.label('toggle_key')=='P'and hosted.label('up_key')=='LEFT SHIFT'and hosted.label('roll_left_key')==nil)
  api.values['war_journalist.toggle_key']='o';assert(hosted.label('toggle_key')=='O','A key set in the window shows')
  api.values['war_journalist.toggle_key']='';assert(hosted.label('toggle_key')=='NONE')
+ -- Each hosted binding maps back to its virtual key, for an isolated keyboard.
+ api.values['war_journalist.toggle_key']='o';assert(hosted.code('toggle_key')==79 and hosted.code('up_key')==16 and hosted.code('roll_left_key')==nil)
+ api.values['war_journalist.toggle_key']='';assert(hosted.code('toggle_key')==nil,'No key, no code')
 end
 -- The runtime with a hosted helper: the minimal harness of steam_runtime_tests.
-local function runtime_case(api,saved,virtual_cursor,extra,log)
+local function runtime_case(api,saved,virtual_cursor,extra,log,custom_service)
  local pressed={};local time=0;local stored=saved or{}
  local token,lease
  local raw={x=100,y=100,width=1920,height=1080,buttons=0,wheel=0,dx=0,dy=0}
@@ -41,6 +44,7 @@ local function runtime_case(api,saved,virtual_cursor,extra,log)
   status=function()return{owner=lease and'dbf_freecam'or nil,pending_restore=false}end,
   release=function(t)assert(t==lease);lease=nil;return true end,
   snapshot=function(t)assert(t==lease);return raw end}
+ service=custom_service and custom_service(raw)or service
  local key_names,key_ids={},{}
  local sr={Application={time_since_launch=function()return time end,main_world=function()return'world'end,
    set_time_step_policy=function()end},Gui={resolution=function()return 1920,1080 end},
@@ -99,6 +103,34 @@ do
  tick();tick();assert(not runtime.active,'Holding the key does not toggle again')
  api.down['war_journalist.toggle_key']=false;tick()
  assert(runtime.dispose()and deps.legend.hosted_label==nil,'Dispose drops the legend hook')
+end
+do
+ -- An isolated keyboard (BML bridge): the loader's helper no longer sees reserved keys, so
+ -- hosted keys are read from the bridge by their virtual key.
+ local api=helper();local held={}
+ local mask=dofile('freecam/engine_input.lua').keyboard_mask
+ local function bits()local b={};for i=1,32 do b[i]=0 end;for c in pairs(held)do local i=math.floor(c/8)+1;b[i]=b[i]+2^(c%8)end
+  local t={};for i=1,32 do t[i]=string.char(b[i])end;return table.concat(t)end
+ local runtime,deps,pressed,tick,position=runtime_case(api,nil,true,nil,nil,function(raw)
+  local lease
+  return{version=1,capabilities={menu=true,camera=true,relative_mouse=true,virtual_cursor=true,keyboard=true,keyboard_mask=mask},
+   acquire=function(_,mode,_,options)assert(not lease and options and options.keyboard);lease={};return lease end,
+   owns=function(t)return lease~=nil and lease==t end,set_mode=function(t)return t==lease end,
+   status=function()return{owner=lease and'dbf_freecam'or nil,pending_restore=false}end,
+   release=function(t)lease=nil;return true end,
+   snapshot=function(t)assert(t==lease)
+    local r={};for k,v in pairs(raw)do r[k]=v end
+    r.valid=true;r.keyboard_state=2;r.keyboard_active=true;r.keyboard_keys=bits();r.keyboard_mask=mask;r.keyboard_generation=1
+    return r end}
+ end)
+ api.down['war_journalist.toggle_key']=true;tick();api.down['war_journalist.toggle_key']=false;tick()
+ assert(runtime.active,'Closed, the loader\'s helper opens Photo Mode as before')
+ tick();assert(runtime.input_status().keyboard_isolated,'Open, the keyboard is isolated')
+ held[9]=true;tick();held[9]=nil;tick();assert(runtime.mode=='camera','The hosted focus key (tab) is read from the bridge')
+ local before=position();held[87]=true;for _=1,5 do tick()end;held[87]=nil
+ local after=position();assert(before and after and after[1]>before[1],'W from the bridge moves the camera')
+ held[80]=true;tick();held[80]=nil;tick();assert(not runtime.active,'The hosted toggle (P) closes Photo Mode from the bridge')
+ assert(runtime.dispose())
 end
 do
  -- Without a helper the stored virtual keys work as before; a saved enabled=false from

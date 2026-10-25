@@ -51,4 +51,35 @@ assert(input.set_mode('camera'))
 input.frame();input.sample();input.frame();motion={x=5,y=-2}
 sample=assert(input.sample());assert(sample.dx==5 and sample.dy==-2,'Camera motion after the first sample, y down as in the contract')
 assert(input.release()and window_calls==0,'Closing leaves the game\'s Window flags alone')
-print('Engine input: Window flags untouched, virtual menu cursor, camera motion, late mouse, _id fallback, first-event log lines and steam_input on the engine host passed')
+-- Keyboard isolation from a bridge: LLL's whitelist mask, arming then active, keys read
+-- from the bridge (the engine no longer sees them), mode changes that keep the reservation,
+-- a pending release that is retried, and a host whose bridge cannot load falling back.
+local function key_mask(codes)local b={};for i=1,32 do b[i]=0 end;for _,c in ipairs(codes)do local i=math.floor(c/8)+1;b[i]=b[i]+2^(c%8)end
+ local t={};for i=1,32 do t[i]=string.char(b[i])end;return table.concat(t)end
+local K={state=1,keys={},acquired=0,released=0,retiring=0}
+local bridge={keyboard_acquire=function(mask)assert(mask==dofile(root..'engine_input.lua').keyboard_mask and#mask==32);K.acquired=K.acquired+1;K.state=1;return 7 end,
+ keyboard_sample=function()return K.state,K.state==2 and key_mask(K.keys)or string.rep('\0',32),7 end,
+ keyboard_release=function()if K.retiring>0 then K.retiring=K.retiring-1;return false,'Keyboard lease is still retiring'end;K.released=K.released+1;K.state=3;return true end}
+lines={};local kb=dofile(root..'engine_input.lua').new(sr,function(m)lines[#lines+1]=m end,function()return bridge end)
+assert(kb.capabilities.keyboard==true and kb.capabilities.keyboard_mask==dofile(root..'engine_input.lua').keyboard_mask)
+local engine_keys=0;sr.Keyboard.button=function()engine_keys=engine_keys+1;return 0 end
+input=dofile(root..'steam_input.lua').new(sr,kb,nil,{require_keyboard=false})
+assert(input.set_mode('menu')and K.acquired==1);input.frame()
+sample=assert(input.sample());assert(sample.pending and not input.keyboard_isolated(),'Arming is pending, not yet isolated')
+K.state=2;K.keys={87,16};input.frame()
+sample=assert(input.sample());assert(sample.valid and input.keyboard_isolated(),'Active lease isolates the keyboard')
+assert(input.down(87)and input.down(16)and not input.down(65)and engine_keys==0,'Keys come from the bridge, never the engine')
+assert(input.set_mode('camera')and K.acquired==1,'A mode change keeps the reservation')
+input.frame();assert(input.sample()and input.keyboard_isolated())
+K.retiring=1;assert(not input.release(),'A retiring worker leaves the release pending')
+assert(kb.status().pending_restore and input.release()and K.released==1 and kb.status().owner==nil,'The retried release completes')
+K.state=2;assert(input.set_mode('menu')and K.acquired==2);input.frame();input.sample()
+K.state=3;input.frame();assert(input.sample()==nil and not input.keyboard_isolated(),'A revoked reservation (focus change) is reported')
+assert(input.release())
+-- No bridge (native Windows refuses the DLL): refused once, then engine keys.
+lines={};local none=dofile(root..'engine_input.lua').new(sr,function(m)lines[#lines+1]=m end,function()error('loadlib refused (577)')end)
+input=dofile(root..'steam_input.lua').new(sr,none,nil,{require_keyboard=false})
+assert(input.set_mode('menu')and input.keyboard_fallback and not input.keyboard_isolated(),'Falls back to engine keys')
+input.frame();input.sample();input.down(87);assert(engine_keys>0,'Engine keys after the fallback')
+assert(table.concat(lines,'\n'):find('keyboard isolation unavailable: ',1,true)and input.release())
+print('Engine input: Window flags untouched, virtual menu cursor, camera motion, late mouse, _id fallback, first-event log lines, steam_input on the engine host and bridge keyboard isolation passed')

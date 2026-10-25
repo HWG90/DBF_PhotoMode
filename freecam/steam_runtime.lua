@@ -688,7 +688,10 @@ function M.new(host,sr,deps,service)
  -- key in our settings; a number is a raw virtual key (ESC, modifiers, other menus' keys).
  local function held(key)
   if type(key)=='string'then
-   if hosted and hosted.hosted(key)then return hosted.down(key)end
+   if hosted and hosted.hosted(key)then
+    if not(input.keyboard_isolated and input.keyboard_isolated())then return hosted.down(key)end
+    local code=hosted.code(key);return code~=nil and input.down(code)
+   end
    key=handle.get(key)
   end
   return input.down(key)
