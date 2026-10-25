@@ -1,0 +1,3 @@
+[submodule "lll"]
+	path = lll
+	url = https://github.com/HWG90/LLL.git

@@ -10,7 +10,7 @@ FIXTURES=('steam_control_updates_tests.lua','steam_director_runtime_tests.lua','
           'steam_capture_tests.lua','linux_capture_tests.lua','steam_capture_runtime_tests.lua','steam_entry_tests.lua','steam_composition_asset_tests.lua','steam_grain_tests.lua','steam_overlay_tests.lua','steam_overlay_runtime_tests.lua',
           'steam_bloom_tests.lua','steam_bloom_runtime_tests.lua',
           'steam_pose_bank_tests.lua','steam_subject_tests.lua','steam_subject_native_tests.lua','steam_subject_runtime_tests.lua')
-FIXTURES+=('steam_scene_sdr_tests.lua','steam_scene_resources_tests.lua','steam_scene_tests.lua','steam_focus_sampler_tests.lua','steam_scene_overlay_tests.lua','steam_ai_backend_tests.lua','steam_player_passive_tests.lua','steam_ai_control_tests.lua','steam_ai_tests.lua','steam_required_input_tests.lua','steam_hud_tests.lua','steam_hud_runtime_tests.lua','steam_handycam_tests.lua')
+FIXTURES+=('steam_scene_sdr_tests.lua','steam_scene_resources_tests.lua','steam_scene_tests.lua','steam_focus_sampler_tests.lua','steam_scene_overlay_tests.lua','steam_required_input_tests.lua','steam_hud_tests.lua','steam_hud_runtime_tests.lua','steam_handycam_tests.lua')
 
 FIXTURES+=('steam_pick_tests.lua','steam_handoff_runtime_tests.lua','steam_native_lens_runtime_tests.lua','steam_ragdoll_runtime_tests.lua','steam_hover_pause_tests.lua','steam_hover_runtime_tests.lua','steam_hover_backend_tests.lua')
 
@@ -47,6 +47,14 @@ def run():
             content=hashlib.sha256(source+b':aligned-v2').hexdigest()[:16]
             assert path==f'mods/dbf_photo/materials/decorative_{name}_{content}'
         rows.append({'fixture':'decorative_asset_path_closure','passed':True,'materials':40})
+        # lll/ pins the last Lua 5.1 loader (R35 insert-fix.2); the input
+        # service the fixtures load must stay byte-identical to it.
+        service=ROOT/'lll/src/steam/input_service.lua'
+        if service.is_file():
+            assert (ROOT/'freecam/test_reference/input_service_r35.lua').read_bytes()==service.read_bytes(),'Input service reference differs from lll/'
+            rows.append({'fixture':'lll_r35_input_service_reference','passed':True})
+        else:
+            rows.append({'fixture':'lll_r35_input_service_reference','passed':None,'skipped':'lll submodule not checked out'})
         for fixture in FIXTURES:
             lua=LuaRuntime()
             assert lua.eval('_VERSION')=='Lua 5.1' and lua.eval('jit==nil and package.loaded.ffi==nil')

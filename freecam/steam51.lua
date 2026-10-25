@@ -1,4 +1,4 @@
--- Ordinary Lua feature graph; AI alone imports the optional private FFI adapter.
+-- Ordinary Lua 5.1 feature graph; no FFI. Enemy behavior needs FFI and is omitted.
 local runtime
 local function stop()
  if not runtime then return true end
@@ -20,13 +20,6 @@ return {live_lua_api=1,name='War Journalist',
    options=mod.require('src/photo_options.lua'),menu=mod.require('src/photo_menu.lua'),legend=mod.require('src/control_legend.lua'),
    composition=mod.require('src/composition.lua'),look=mod.require('src/look.lua'),lens=mod.require('src/lens.lua'),
    pick=mod.require('src/steam_pick.lua')}
-  local ffi_available=pcall(require,'cffi')
-  if not ffi_available then local name='ffi';ffi_available=pcall(require,name)end
-  deps.ai=mod.require('src/steam_ai.lua')
-  if ffi_available then deps.load_ai=function()
-   local backend=mod.require('src/steam_ai_backend.lua').new(stingray)
-   return mod.require('src/steam_ai_control.lua').new(backend,mod.log)
-  end end
   deps.load_scene=function(sr)
    local host_native=mod.require('src/host_native.lua');local memory=host_native.memory();local bridge=host_native.open()
    local open,why=package.loadlib(mod.dir..'/port51/hd2_nativeinfo_4aab2adfbc4090d6.dll','luaopen_hd2_nativeinfo');assert(open,why);local native=open()

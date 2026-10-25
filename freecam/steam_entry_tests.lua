@@ -7,8 +7,11 @@ local function service()
 end
 local qualified_revision='R33-steam-screenshots-factoryfix-candidate'
 local function trial(backend,expected,loader_caps,subject_case,ffi_case)
- local saved_preload,saved_loaded=package.preload.cffi,package.loaded.cffi
- package.loaded.cffi=nil;package.preload.cffi=ffi_case and function()return{}end or function()error('No CFFI build')end
+ -- A loader may still offer cffi; the entry must never import it or ffi.
+ local saved={cffi={package.preload.cffi,package.loaded.cffi},ffi={package.preload.ffi,package.loaded.ffi}};local ffi_imports=0
+ for name in pairs(saved)do
+  package.loaded[name]=nil;package.preload[name]=function()ffi_imports=ffi_imports+1;if ffi_case then return{}end;error('No CFFI build')end
+ end
  local required={};local created;local disposed=false
  local composition,art,crest,decorative={},{},{},{}
  local camera_service={};local input_service={}
@@ -28,9 +31,9 @@ local function trial(backend,expected,loader_caps,subject_case,ffi_case)
   required[path]=true
   if path=='src/steam_runtime.lua'then return{new=function(host,sr,deps,input)
    assert(host==mod and sr==stingray and input==input_service)
-   assert((deps.load_ai~=nil)==(ffi_case==true),'AI must be optional only on FFI builds')
-   assert(not required['src/steam_ai_backend.lua']and not required['src/steam_ai_control.lua'],'Idle entry loaded AI native routines')
-   assert(type(deps.load_scene)=='function'and type(deps.load_hover)=='function','Non-FFI builds must retain other feature factories')
+   assert(deps.ai==nil and deps.load_ai==nil,'The Lua 5.1 build has no FFI enemy behavior')
+   assert(ffi_imports==0,'Entry imported cffi or ffi')
+   assert(type(deps.load_scene)=='function'and type(deps.load_hover)=='function','Keep the other feature factories')
    assert(deps.decorative_overlay==decorative,'Declare the optional decorative adapter in the module graph')
    assert(deps.composition==composition and composition.logo_art==art and art[2]==crest,
     'Load composition assets without changing the capture service gate')
@@ -69,7 +72,8 @@ local function trial(backend,expected,loader_caps,subject_case,ffi_case)
  assert(created and DBF_PHOTO_MODE_OWNER==runtime)
  assert((required['src/steam_capture.lua']==true)==expected,'Do not load capture on unavailable services')
  entry.on_update();assert(entry.on_disable()and disposed and DBF_PHOTO_MODE_OWNER==nil)
- package.preload.cffi,package.loaded.cffi=saved_preload,saved_loaded
+ assert(ffi_imports==0,'Entry imported cffi or ffi')
+ for name,pair in pairs(saved)do package.preload[name],package.loaded[name]=pair[1],pair[2]end
 end
 trial(nil,false);trial(false,false);trial(nil,false,nil,nil,true)
 local valid,caps=service();trial(valid,true)
@@ -97,4 +101,4 @@ for _,version in ipairs({0,2,'1'})do local backend=service();backend.version=ver
 for _,directory in ipairs({'',false,1})do local backend=service();backend.output_directory=directory;trial(backend,false)end
 local backend=service();backend.capabilities=false;trial(backend,false)
 mod,stingray,LiveLuaLoader,DBF_PHOTO_MODE_OWNER=globals.mod,globals.stingray,globals.loader,globals.owner
-print('Steam entry: capture gates, lazy R34 Subject admission, exact session return slots and older-loader camera fallback passed')
+print('Steam entry: no FFI imports or AI, capture gates, lazy R34 Subject admission, exact session return slots and older-loader camera fallback passed')

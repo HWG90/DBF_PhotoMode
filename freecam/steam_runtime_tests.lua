@@ -119,6 +119,9 @@ for _,page in ipairs(menu.pages)do for _,control in ipairs(page.controls)do
 end end
 assert(not vignette_controls.vignette.disabled and not vignette_controls.vignette_width.disabled,
  'Portable vignette controls must be available')
+for _,page in ipairs(menu.pages)do for _,control in ipairs(page.controls)do
+ assert(not(control.id and control.id:match('^ai_'))and not control.photo_global_ai,'The Lua 5.1 build has no FFI enemy behavior rows')
+end end
 assert(runtime.handle.set('vignette',60));assert(runtime.handle.set('vignette_width',20));render()
 assert(#overlay_commands==48,'Vignette must draw its actual edge geometry')
 local retained_commands=overlay_commands;local retained_layouts=composition_layouts

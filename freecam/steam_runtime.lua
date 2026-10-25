@@ -432,7 +432,6 @@ function M.new(host,sr,deps,service)
   return subject_backend~=nil
  end
  ensure_subject_backend()
- local ai=deps.ai and deps.ai.new(deps.load_ai,sr.Application.time_since_launch,host.log)
  local scene,scene_enabled,autofocus_write
  -- Scene/DoF readiness is retried only at known events (open, first frame,
  -- DoF acknowledgement, option change) plus a short bounded backoff.
@@ -1217,9 +1216,7 @@ function M.new(host,sr,deps,service)
   photo.view,photo.target,photo.roll=nil,nil,nil;sample_sequence=sample_sequence+1
   return true
  end
- local pages=deps.options.pages(reset,return_to_player,deps.composition,{camera_controls=movement,
-  ai_change=function(value)if ai then local ok,why=ai.select(value);if not ok then notice(why)end end end,
-  ai_reset=function()if ai then return ai.select(1)end end,
+ local pages=deps.options.pages(reset,return_to_player,deps.composition,{camera_controls=movement,without_ai=true,
   director_save=function()return director_action('save')end,
   director_recall=function()return director_action('recall')end,
   director_clear=function()return director_action('clear')end,
@@ -1303,7 +1300,6 @@ function M.new(host,sr,deps,service)
  if simulation then supported.freeze_player=true;supported.slowmo_speed=true end
  if type(deps.load_subject)=='function'then for _,id in ipairs({'subject_refresh','subject_select_1','subject_select_2',
   'subject_select_3','subject_select_4','subject_recover','subject_pose','subject_pose_play','subject_pose_stop'})do supported[id]=true end end
- if ai then supported.ai_behavior=deps.load_ai~=nil;supported.ai_reset=deps.load_ai~=nil end
  if hud then supported.hide_hud=true end
  if bloom then supported.bloom=true end
  if dof then supported.dof=true end
@@ -1472,8 +1468,6 @@ function M.new(host,sr,deps,service)
   freeze_state=simulation and function()return simulation.frozen or simulation.preparing,self.active and not pending_cleanup and self.mode~='shot',simulation.preparing end or nil,
   slowmo=simulation and function()return self.toggle_slowmo()end or nil,
   slowmo_state=simulation and function()return simulation.slowmo_active,handle.get('enabled')and not pending_cleanup and not simulation.pending_restore end or nil,
-  ai=ai and function()local state=ai.state();return{available=state.available and self.active,status=state.status}end or nil,
-  faction=ai and function()local ok,value=pcall(ai.faction);if ok and deps.options.faction_art then return deps.options.faction_art[value]end end or nil,
   hud=hud and function()return handle.set('hide_hud',not handle.get('hide_hud'))end or nil})
  menu.bind(handle,core.mods.dbf_freecam.pages)
  if deps.gizmos and lighting then
@@ -1812,18 +1806,6 @@ function M.new(host,sr,deps,service)
   if disposed then return end
   if capture then capture_frame=capture_frame+1 end
   input.frame()
-  if ai then
-   ai.tick();local state=ai.state()
-   controls.ai_behavior.disabled=not(self.active and state.available)
-   controls.ai_reset.disabled=not(state.available or state.mode~='normal'or state.pending)
-   if texts.ai_status then texts.ai_status.label=state.status end
-   local index=({normal=1,passive=2,dummy=3})[state.mode]or 1
-   -- Direct publication avoids re-queuing native mode changes during sync.
-   if not state.pending and handle.get('ai_behavior')~=index then
-    local control=controls.ai_behavior;local disabled,callback=control.disabled,control.on_change
-    control.disabled=false;control.on_change=nil;handle.set('ai_behavior',index);control.on_change=callback;control.disabled=disabled
-   end
-  end
   capture_tick()
   if input.focused()and not self.focus_suspended then
   local recovery_key=handle.get('recover_input_key')
@@ -1997,7 +1979,6 @@ function M.new(host,sr,deps,service)
   if capture and capture.busy()then return false,'Screenshot cleanup unconfirmed'end
   local retired,reason=close_decorative(true)
   if not retired then pending_cleanup=true;self.state='closing';notice(reason);return false,reason end
-  if ai then local ok,why=ai.dispose();if not ok then return false,why end end
   disposed=true;handle.unregister();return true
  end
  return self
