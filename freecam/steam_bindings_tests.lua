@@ -30,11 +30,11 @@ do
  api.values['war_journalist.toggle_key']='';assert(hosted.label('toggle_key')=='NONE')
 end
 -- The runtime with a hosted helper: the minimal harness of steam_runtime_tests.
-local function runtime_case(api,saved)
+local function runtime_case(api,saved,virtual_cursor)
  local pressed={};local time=0;local stored=saved or{}
  local token,lease
  local raw={x=100,y=100,width=1920,height=1080,buttons=0,wheel=0,dx=0,dy=0}
- local service={version=1,capabilities={menu=true,camera=true,relative_mouse=true},
+ local service={version=1,capabilities={menu=true,camera=true,relative_mouse=true,virtual_cursor=virtual_cursor},
   acquire=function()assert(not lease);token={};lease=token;return token end,
   owns=function(t)return lease~=nil and lease==t end,
   status=function()return{owner=lease and'dbf_freecam'or nil,pending_restore=false}end,
@@ -53,11 +53,12 @@ local function runtime_case(api,saved)
   write_view=function(p)last_position={p[1],p[2],p[3]};return true end,close=function()camera_active=false;return true end}
  local deps={camera={new=function()return camera end},input=module('steam_input'),core=module('vendor/core'),
   store={new=function()return{load=function()return stored end,save=function(_,values)stored=values;return true end}end},
-  view={new=function()return{draw=function()end,release=function()end}end},
+  view={new=function()return{draw=function(commands)for _,c in ipairs(commands or{})do if c.ui_role=='photo_pointer'then drawn_pointer=true end end end,release=function()end}end},
   options=module('photo_options'),menu=module('photo_menu'),legend=module('control_legend'),composition=module('composition'),
   look=module('look'),lens=module('lens'),hosted_bindings=api and{api=api,window=api.window,factory=B}}
  local menu;local menu_new=deps.menu.new;deps.menu.new=function(...)menu=menu_new(...);return menu end
  render=function()return'native'end
+ drawn_pointer=false
  local runtime=module('steam_runtime').new({config_dir='unused',log=function()end},sr,deps,service)
  -- The camera is written at render time, as in game.
  local function tick()time=time+.016;runtime.tick();render()end
@@ -99,6 +100,14 @@ do
  local runtime,deps,pressed,tick=runtime_case(nil,{enabled=false})
  assert(deps.legend.hosted_label==nil and deps.legend.binding_label('toggle_key',runtime.handle)=='P')
  pressed.p=true;tick();pressed.p=false;tick();assert(runtime.active,'Unhosted toggle opens Photo Mode')
+ for _=1,3 do tick()end;assert(not drawn_pointer,'An OS-cursor host draws no pointer')
  assert(runtime.dispose())
 end
-print('Hosted bindings: registration and defaults, refused keys stay ours, held keys and our edges, loader hold-back, labels, no Enable row and the unhosted path passed')
+do
+ -- An engine host's virtual cursor is drawn by the Photo menu.
+ local runtime,deps,pressed,tick=runtime_case(nil,nil,true)
+ pressed.p=true;tick();pressed.p=false;for _=1,3 do tick()end
+ assert(runtime.active and runtime.mode=='menu'and drawn_pointer,'The menu draws the virtual cursor')
+ assert(runtime.dispose())
+end
+print('Hosted bindings: registration and defaults, refused keys stay ours, held keys and our edges, loader hold-back, labels, no Enable row, the drawn virtual cursor and the unhosted path passed')

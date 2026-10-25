@@ -555,6 +555,12 @@ function M.new(view,actions,existing)
   end
   if legend then legend.draw(commands,w,h,focused,false,{x=x,y=bottom,w=width,h=top-bottom,scale=s})end
   if self.light_gizmos then self.light_gizmos.draw(commands,self.scene_pointer_blocked,self.scene_input_blocked())end
+  -- Hosts without an OS cursor (Boot Mod Loader's engine input) get an arrow drawn at the pointer.
+  if self.draw_pointer and focused and pointer_x and pointer_y then
+   local px,py,k=pointer_x,pointer_y,math.max(.75,h/1080)
+   commands[#commands+1]={type='triangle',points={px-2*k,py+3*k,px-2*k,py-25*k,px+18*k,py-17*k},x=px-2*k,y=py-25*k,w=20*k,h=28*k,c={12,14,16},a=1,layer=990,ui_role='photo_pointer_outline'}
+   commands[#commands+1]={type='triangle',points={px,py,px,py-20*k,px+14*k,py-14*k},x=px,y=py-20*k,w=14*k,h=20*k,c={234,235,228},a=1,layer=991,ui_role='photo_pointer'}
+  end
   retained_commands=not layout_retry and commands or nil
   view.draw(commands,retained_commands)
  end

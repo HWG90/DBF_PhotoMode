@@ -1491,6 +1491,8 @@ function M.new(host,sr,deps,service)
   slowmo_state=simulation and function()return simulation.slowmo_active,not pending_cleanup and not simulation.pending_restore end or nil,
   hud=hud and function()return handle.set('hide_hud',not handle.get('hide_hud'))end or nil})
  menu.bind(handle,core.mods.dbf_freecam.pages)
+ -- An input service without an OS cursor (Boot Mod Loader's engine input) moves a virtual one.
+ menu.draw_pointer=type(service.capabilities)=='table'and service.capabilities.virtual_cursor==true
  if deps.gizmos and lighting then
   menu.light_gizmos=deps.gizmos.new(light_action)
   menu.prepare_light_gizmos=function(w,h,focused,hidden)

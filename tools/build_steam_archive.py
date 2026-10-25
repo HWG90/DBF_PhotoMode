@@ -64,7 +64,7 @@ if rawget(_G,'LiveLuaLoader')then return entry end
 -- the game's update and shutdown, as LLL would.
 local bindings=rawget(_G,'ModBindingsMenu')
 if not(type(bindings)=='table'and type(bindings.register_binding)=='function'and type(bindings.is_down)=='function'and type(bindings.binding)=='function')then bindings=nil end
-mod.host_loader={engine_input=true,input_service=mod.require('src/engine_input.lua').new(stingray),bindings=bindings,capabilities={revision='boot-mod-loader-host.1'}}
+mod.host_loader={engine_input=true,input_service=mod.require('src/engine_input.lua').new(stingray,mod.log),bindings=bindings,capabilities={revision='boot-mod-loader-host.1'}}
 local state='waiting'
 local function stop(reason)
  if state~='running'then return end

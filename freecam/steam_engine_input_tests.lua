@@ -1,41 +1,54 @@
--- Engine input service: Window flags held and restored, cursor/motion conversion, and the
--- real steam_input consumer on top of it. Fake engine only.
+-- Engine input service: Window flags untouched, a virtual menu cursor from relative motion,
+-- camera motion passed through, a mouse missing in the first frames, the _id fallback,
+-- one log line per first event, and the real steam_input consumer on top. Fake engine only.
 local root='freecam/'
-local flags={mouse_focus=true,show_cursor=false,clip_cursor=true};local refuse
-local W={}
-for _,name in ipairs({'mouse_focus','show_cursor','clip_cursor'})do
- W[name]=function()return flags[name]end
- W['set_'..name]=function(value)if refuse~=name then flags[name]=value end end
-end
-W.has_focus=function()return true end
-local axes={mouse={x=0,y=0},cursor={x=0,y=0},wheel={x=0,y=0}};local ids={mouse=0,wheel=1,cursor=2}
-local down={}
-local Mouse={axis_id=function(name)return ids[name]end,button_id=function(name)return({left=0,right=1,middle=2})[name]end,
- axis=function(id)for name,i in pairs(ids)do if i==id then return axes[name]end end end,button=function(id)return down[id]and 1 or 0 end}
+local window_calls=0
+local W=setmetatable({has_focus=function()return true end},{__index=function(_,k)return function()window_calls=window_calls+1 end end})
+local motion,wheel={x=0,y=0},{x=0,y=0};local down={};local ready=false
+local Mouse={axis=function(id)return id==0 and motion or id==1 and wheel or nil end,button=function(id)return down[id]and 1 or 0 end}
+Mouse.axis_index=function(name)if not ready then return nil end;return({mouse=0,wheel=1})[name]end
+Mouse.button_index=function(name)return({left=0,right=1,middle=2})[name]end
 local sr={Window=W,Mouse=Mouse,Gui={resolution=function()return 1920,1080 end},Keyboard={button_id=function()return 7 end,button=function()return 0 end}}
-local service=dofile(root..'engine_input.lua').new(sr)
-assert(service.version==1 and service.capabilities.menu and service.capabilities.camera and service.capabilities.relative_mouse and service.capabilities.keyboard==false)
+local lines={}
+local service=dofile(root..'engine_input.lua').new(sr,function(m)lines[#lines+1]=m end)
+local caps=service.capabilities
+assert(service.version==1 and caps.menu and caps.camera and caps.relative_mouse and caps.virtual_cursor and caps.keyboard==false)
+assert(service.acquire('dbf_freecam','menu')==nil,'No lease before the engine mouse exists')
+ready=true
 local token=assert(service.acquire('dbf_freecam','menu'))
-assert(flags.mouse_focus==false and flags.show_cursor==true and flags.clip_cursor==true,'Menu lease takes the mouse from the game and shows the cursor')
 assert(service.acquire('other','menu')==nil,'One lease at a time')
-axes.cursor={x=100,y=1000};axes.wheel={x=0,y=-1};axes.mouse={x=3,y=4};down[0]=true
 local s=service.snapshot(token)
-assert(s.valid and s.x==100 and s.y==80 and s.width==1920 and s.height==1080,'Cursor converts to client top-left')
-assert(s.buttons==1 and s.wheel==-120 and s.dx==3 and s.dy==-4,'Buttons, wheel notches and y-down motion')
-assert(service.release(token)and flags.mouse_focus==true and flags.show_cursor==false and flags.clip_cursor==true,'Release restores the saved flags')
-assert(service.snapshot(token)==nil,'A released token samples nothing')
-refuse='show_cursor';flags.show_cursor=false
-assert(service.acquire('dbf_freecam','menu')==nil and flags.mouse_focus==true,'A refused flag rolls the others back')
-refuse=nil
+assert(s.valid and s.x==960 and s.y==540 and s.width==1920 and s.height==1080,'The virtual cursor starts at the centre')
+motion={x=30,y=-20};down[0]=true;wheel={x=0,y=-1}
+s=service.snapshot(token)
+assert(s.x==990 and s.y==520 and s.dx==30 and s.dy==-20,'Relative motion moves the cursor (y counts down)')
+assert(s.buttons==1 and s.wheel==-120,'Buttons and wheel notches')
+motion={x=-5000,y=5000};s=service.snapshot(token);assert(s.x==0 and s.y==1079,'The cursor stays on screen')
+assert(service.release(token)and service.snapshot(token)==nil,'A released token samples nothing')
+assert(window_calls==0,'Window flags are never changed')
+local found,moved,clicked=0,0,0
+for _,m in ipairs(lines)do
+ if m:find('mouse found',1,true)then found=found+1 end
+ if m:find('first mouse motion',1,true)then moved=moved+1 end
+ if m:find('first left click',1,true)then clicked=clicked+1 end
+end
+assert(found==1 and moved==1 and clicked==1,'One log line per first event')
+-- Builds that name them _id still work.
+local legacy={axis=Mouse.axis,button=Mouse.button,axis_id=function(n)return({mouse=0,wheel=1})[n]end,button_id=Mouse.button_index}
+local old=dofile(root..'engine_input.lua').new({Mouse=legacy,Gui=sr.Gui})
+assert(old.acquire('dbf_freecam','camera'),'axis_id/button_id fallback')
 -- The real consumer: engine keys stay active because the host does not capture the keyboard.
+motion={x=0,y=0};down={}
 local input=dofile(root..'steam_input.lua').new(sr,service,nil,{require_keyboard=false})
 assert(input.set_mode('menu'));input.frame()
-axes.cursor={x=960,y=540};down[0]=false
-assert(input.sample().buttons==0);input.frame();down[1]=true
-local sample=assert(input.sample())
-assert(sample.valid and sample.x==960 and sample.y==540 and sample.right and not sample.click,'Menu sample through steam_input')
-assert(input.set_mode('camera')and flags.show_cursor==false and flags.mouse_focus==false,'Camera keeps the cursor hidden')
-input.frame();input.sample();input.frame();axes.mouse={x=5,y=-2};down[1]=false
-sample=assert(input.sample());assert(sample.dx==5 and sample.dy==2,'Camera motion after the first sample')
-assert(input.release()and flags.mouse_focus==true,'Closing returns the mouse to the game')
-print('Engine input: Window flags held and restored, refused flag rollback, cursor/motion conversion and steam_input on the engine host passed')
+local sample=assert(input.sample());assert(sample.valid and sample.x>=0,'Menu sample through steam_input')
+input.frame();motion={x=0,y=-10}
+sample=assert(input.sample());local up=sample.y
+input.frame();motion={x=0,y=10};sample=assert(input.sample());assert(sample.y<up,'Moving the mouse down lowers the menu pointer (menu y grows upward)')
+input.frame();motion={x=0,y=0};down[1]=true;sample=assert(input.sample());assert(sample.right and not sample.click,'Right button through steam_input')
+down[1]=false
+assert(input.set_mode('camera'))
+input.frame();input.sample();input.frame();motion={x=5,y=-2}
+sample=assert(input.sample());assert(sample.dx==5 and sample.dy==-2,'Camera motion after the first sample, y down as in the contract')
+assert(input.release()and window_calls==0,'Closing leaves the game\'s Window flags alone')
+print('Engine input: Window flags untouched, virtual menu cursor, camera motion, late mouse, _id fallback, first-event log lines and steam_input on the engine host passed')
