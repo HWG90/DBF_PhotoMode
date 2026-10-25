@@ -11,6 +11,9 @@ from verify_installed_modules import audit
 from test_steam_port import run
 
 ROOT=Path(__file__).resolve().parents[1]
+# Own LLL folder/id so it installs beside the FFI build (dbf_freecam); the
+# runtime's internal 'dbf_freecam' ids stay, so only one can run at a time.
+MOD_ID='dbf_freecam_lua51'
 MODULES=('steam_overlay.lua', 'steam_camera.lua', 'steam_input.lua', 'steam_path.lua', 'steam_runtime.lua', 'steam_capture.lua', 'steam_lighting.lua', 'photo_lights.lua', 'photo_light_presets.lua', 'photo_light_gizmos.lua', 'photo_options.lua', 'photo_menu.lua', 'control_legend.lua', 'composition.lua', 'look.lua', 'lens.lua', 'vendor/core.lua', 'vendor/store.lua', 'vendor/view.lua', 'assets/logo_art.lua', 'assets/helldiver_crest.lua', 'steam_bookmark.lua', 'host_native.lua', 'subject_backend.lua', 'subject_visibility.lua', 'input_cleanup.lua', 'vendor/font.lua', 'director.lua', 'steam_subject.lua', 'steam_subject_native.lua', 'subject_poses.lua', 'assets/steam_subject_poses.lua', 'steam_hud.lua', 'linux_capture.lua', 'steam_handycam.lua', 'ragdoll_pause.lua', 'steam_lens_model.lua', 'steam_native_lens.lua', 'hover_pause.lua', 'steam_hover_backend.lua', 'steam_hover_pause.lua', 'steam_update_clock.lua', 'steam_scene_resources.lua', 'steam_scene_overlay.lua', 'steam_focus_sampler.lua', 'steam_scene.lua', 'steam_pick.lua')
 # Plain Lua 5.1 only: no cffi/ffi imports, ffi calls, cdef blocks or PORT51 adapters.
 FFI=re.compile(r"['\"]c?ffi['\"]|\bffi\s*\.|\bcdef\b|\bPORT51\b|luaopen_hd2_cffi")
@@ -24,7 +27,7 @@ def build(output):
     output.mkdir(parents=True,exist_ok=True)
     fixture=run()
     version=(ROOT/'VERSION').read_text().strip()+'-steam51-dev'
-    manifest={'id':'dbf_freecam','name':'War Journalist','version':version,'author':'Goose',
+    manifest={'id':MOD_ID,'name':'War Journalist (Lua 5.1)','version':version,'author':'Goose',
               'lll':{'entry':'main.lua','defaults':'config/defaults.cfg','modules':['src/'+name for name in MODULES],
                      'restart_only':False,'retain_until_exit':False}}
     manifest['license_files']=['LICENSE-Link.txt','LICENSE-Bingus.txt']
@@ -55,14 +58,14 @@ def build(output):
     files['FILES-SHA256.txt']=''.join(digest(body)+'  '+name+'\n'for name,body in sorted(files.items())).encode()
     package=output/('War-Journalist-'+version+'-LLL.zip')
     with zipfile.ZipFile(package,'w',zipfile.ZIP_DEFLATED)as archive:
-        for name,body in files.items():archive.writestr('dbf_freecam/'+name,body)
+        for name,body in files.items():archive.writestr(MOD_ID+'/'+name,body)
     # Reconstruct only our fixed candidate directory, then audit actual bytes.
     unpacked=output/'candidate'
     if unpacked.exists():
         assert unpacked.resolve().is_relative_to(ROOT/'dist/review')
         shutil.rmtree(unpacked)
     with zipfile.ZipFile(package)as archive:archive.extractall(unpacked)
-    directory=unpacked/'dbf_freecam'
+    directory=unpacked/MOD_ID
     for name,body in files.items():assert (directory/name).read_bytes()==body,name
     report=audit(directory);assert report['passed'],report['errors']
     receipt={'package':str(package),'sha256':digest(package.read_bytes()),'candidate':str(directory),'fixtures':fixture,
