@@ -26,7 +26,7 @@ end
 function F.new(memory,game,at)
     local function ensure_memory()
         if memory then return end
-        local path=assert(os.getenv('LOCALAPPDATA'))..'/LLL/Helldivers2/Native/hd2_nativeinfo_f6d3465944c1aea1.dll'
+        local path=mod.require('src/host_native.lua').library('hd2_nativeinfo_f6d3465944c1aea1.dll')
         local entry=assert(package.loadlib(path,'luaopen_hd2_nativeinfo'))
         local native=assert(entry())
         game=assert(native.module_base('game.dll'))

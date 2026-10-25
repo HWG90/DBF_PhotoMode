@@ -9,9 +9,11 @@ end
 return {live_lua_api=1,name='War Journalist',
  on_enable=function()
   assert(_VERSION=='Lua 5.1','Unsupported Lua runtime')
-  local loader=assert(rawget(_G,'LiveLuaLoader'),'Live Lua Loader is required')
+  -- Archive hosts without LLL (Boot Mod Loader) hand in an engine host with the same fields.
+  local loader=assert(mod.host_loader or rawget(_G,'LiveLuaLoader'),'Live Lua Loader or Boot Mod Loader is required')
+  local engine_host=loader.engine_input==true
   assert(not rawget(_G,'DBF_PHOTO_MODE_OWNER'),'Another Photo Mode runtime is already active')
-  local deps={ragdoll=mod.require('src/ragdoll_pause.lua'),handycam=mod.require('src/steam_handycam.lua'),hud=mod.require('src/steam_hud.lua'),input_policy={require_keyboard=true},director=mod.require('src/director.lua'),bookmark=mod.require('src/steam_bookmark.lua'),subject_backend=mod.require('src/subject_backend.lua'),subject_visibility=mod.require('src/subject_visibility.lua'),input_cleanup=mod.require('src/input_cleanup.lua'),camera=mod.require('src/steam_camera.lua'),input=mod.require('src/steam_input.lua'),
+  local deps={ragdoll=mod.require('src/ragdoll_pause.lua'),handycam=mod.require('src/steam_handycam.lua'),hud=mod.require('src/steam_hud.lua'),input_policy={require_keyboard=not engine_host},director=mod.require('src/director.lua'),bookmark=mod.require('src/steam_bookmark.lua'),subject_backend=mod.require('src/subject_backend.lua'),subject_visibility=mod.require('src/subject_visibility.lua'),input_cleanup=mod.require('src/input_cleanup.lua'),camera=mod.require('src/steam_camera.lua'),input=mod.require('src/steam_input.lua'),
    path=mod.require('src/steam_path.lua'),decorative_overlay=mod.require('src/steam_overlay.lua'),
    lighting=mod.require('src/steam_lighting.lua'),lights=mod.require('src/photo_lights.lua'),
    light_presets=mod.require('src/photo_light_presets.lua'),
@@ -77,7 +79,7 @@ return {live_lua_api=1,name='War Journalist',
   -- Subject appearance remains a separate visual test. Native modules and
   -- the catalog load only on explicit session enable, never on entry/tick.
   local subject_qualification=revision=='R34-steam-lua51-preview.1'and'R34-unit-pose12-private-roundtrip-20261020-v1'or'R35-unit-pose12-private-roundtrip-20261023-v1'
-  if subject_qualification and(revision=='R34-steam-lua51-preview.1'or revision=='R35-26088801-cffi-insert-fix.2')then
+  if subject_qualification and(revision=='R34-steam-lua51-preview.1'or revision=='R35-26088801-cffi-insert-fix.2'or engine_host)then
    deps.load_subject=function(sr,is_frozen,subject_backend)
     local function pack(...)return{n=select('#',...),...}end
     local values=pack(sr.Network.game_session())

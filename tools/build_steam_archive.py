@@ -1,4 +1,5 @@
-"""Pack the audited dbf_freecam_lua51 candidate into one LLL archive addon for HD2 Arsenal.
+"""Bundle the audited dbf_freecam_lua51 candidate and the War Journalist assets as one HD2
+Arsenal mod: an `-- HD2-Addon:` archive for Boot Mod Loader (which it drives itself) or LLL.
 Builds under dist/review only; never registers, deploys or installs."""
 from pathlib import Path
 import argparse
@@ -17,13 +18,22 @@ RESOURCE = 'mods/goose/war_journalist_lua51'
 GUID = '7020a1c8-01ed-4a9d-874f-f778916eb067'
 TITLE = 'War Journalist (Lua 5.1)'
 OPTION = 'War Journalist'
+ASSETS = Path.home() / '.config/hd2arsenal/mods/War-Journalist-1.2.0-Assets_AR297988/Assets'
 ARCHIVE = '9ba626afa44a3aa3.patch_0'
 
 RUNTIME = r'''
-local root=assert(os.getenv('LOCALAPPDATA'),'LOCALAPPDATA unavailable'):gsub('\\','/'):gsub('/+$','')..'/LLL/Helldivers2'
--- The same project surface LLL gives folder mods; bridges load from LLL's Native folder.
-local mod={id=ID,name=TITLE,native_dir=root..'/Native',config_dir=root..'/Settings/'..ID}
-function mod.log(message)print('['..TITLE..'] '..tostring(message))end
+local function env(name)local value=os.getenv(name);return value and value:gsub('\\','/'):gsub('/+$','')end
+local function writable(dir)local probe=dir..'/.wj-probe';local f=io.open(probe,'wb');if not f then return false end;f:close();os.remove(probe);return true end
+local game=assert(env('APPDATA'),'APPDATA unavailable')..'/Arrowhead/Helldivers2'
+local lll=env('LOCALAPPDATA')and env('LOCALAPPDATA')..'/LLL/Helldivers2'
+-- The project surface LLL gives folder mods. LLL's folders when they exist, else the
+-- game's own settings folder, which every install has.
+local mod={id=ID,name=TITLE,native_dir=lll and writable(lll..'/Native')and lll..'/Native'or game,
+ config_dir=lll and writable(lll..'/Settings/'..ID)and lll..'/Settings/'..ID or game}
+function mod.log(message)
+ print('['..TITLE..'] '..tostring(message))
+ local f=io.open(game..'/war_journalist_lua51.log','ab');if f then f:write(os.date('%Y-%m-%d %H:%M:%S '),tostring(message),'\n');f:close()end
+end
 -- Bridges are content-addressed: install a missing one, refuse one whose size differs.
 local function size_of(path)local f=io.open(path,'rb');if not f then return nil end;local size=f:seek('end');f:close();return size end
 for _,library in ipairs(LIBRARIES)do
@@ -36,9 +46,6 @@ for _,library in ipairs(LIBRARIES)do
  end
  assert(size==library.size,'Native bridge differs from this build: '..path)
 end
-do local probe=mod.config_dir..'/.write-probe';local f=io.open(probe,'wb')
- if f then f:close();os.remove(probe)else mod.log('Settings folder unavailable, settings will not be saved: '..mod.config_dir)end
-end
 local scope=setmetatable({mod=mod},{__index=_G})
 local cache,loading={},{}
 function mod.require(path,...)
@@ -50,7 +57,31 @@ function mod.require(path,...)
  if not called then error(value,2)end
  if value==nil then value=true end;cache[path]=value;return value
 end
-return mod.require('main.lua')
+local entry=mod.require('main.lua')
+-- Live Lua Loader runs archive entries itself (LLL API 1).
+if rawget(_G,'LiveLuaLoader')then return entry end
+-- Boot Mod Loader only runs this file: hand in an engine host and drive the entry from
+-- the game's update and shutdown, as LLL would.
+mod.host_loader={engine_input=true,input_service=mod.require('src/engine_input.lua').new(stingray),capabilities={revision='boot-mod-loader-host.1'}}
+local state='waiting'
+local function stop(reason)
+ if state~='running'then return end
+ state='stopped';if reason then mod.log(reason)end
+ local ok,why=pcall(entry.on_disable);if not ok then mod.log('Photo Mode cleanup failed: '..tostring(why))end
+end
+local function frame(dt,...)
+ if state=='waiting'then
+  local ok,why=pcall(entry.on_enable)
+  if ok then state='running';mod.log('Photo Mode started on Boot Mod Loader')else state='failed';mod.log('Photo Mode did not start: '..tostring(why))end
+ elseif state=='running'then
+  local ok,why=pcall(entry.on_update,dt);if not ok then stop('Photo Mode stopped after an error: '..tostring(why))end
+ end
+ return ...
+end
+local game_update,game_shutdown=rawget(_G,'update'),rawget(_G,'shutdown')
+rawset(_G,'update',function(dt,...)if game_update then return frame(dt,game_update(dt,...))end;return frame(dt)end)
+rawset(_G,'shutdown',function(...)stop();if game_shutdown then return game_shutdown(...)end end)
+return entry
 '''
 
 
@@ -101,34 +132,64 @@ def verify(text, head, source_block, library_block, sources, libraries):
         assert got[path] == body, 'Module differs after packing: ' + path
     rows = compile_lua(library_block + 'return LIBRARIES', '=libraries')()
     assert {row['name']: bytes.fromhex(row['hex']) for row in rows.values()} == libraries
-    # Run the addon once against an empty and then a populated native folder.
-    with tempfile.TemporaryDirectory() as local:
-        base = Path(local) / 'LLL/Helldivers2'
-        (base / 'Native').mkdir(parents=True)
-        (base / 'Settings' / MOD_ID).mkdir(parents=True)
-        previous = os.environ.get('LOCALAPPDATA')
-        os.environ['LOCALAPPDATA'] = local
+    run = 'function(s) return assert(loadstring(s,"@archive"))() end'
+    # Boot Mod Loader: no LLL global; the addon wraps the game's update and shutdown.
+    host = """
+local text=...
+local nop=function()end
+calls,shut=0,false
+update=function(dt)calls=calls+1;return 'game',dt end
+shutdown=function()shut=true end
+stingray={Gui={resolution=function()return 1920,1080 end},
+ Window={mouse_focus=function()return true end,show_cursor=function()return false end,clip_cursor=function()return true end,
+  set_mouse_focus=nop,set_show_cursor=nop,set_clip_cursor=nop,has_focus=function()return true end},
+ Mouse={axis_id=function(n)return({mouse=0,wheel=1,cursor=2})[n]end,button_id=function()return 0 end,axis=nop,button=function()return 0 end},
+ Keyboard={button_id=function()return 0 end,button=function()return 0 end}}
+local entry=assert(loadstring(text,'@archive'))()
+local a,b=update(.5);for _=1,5 do update(1/60)end;shutdown()
+return entry,a,b,calls,shut
+"""
+    with tempfile.TemporaryDirectory() as temp:
+        game = Path(temp) / 'Roaming/Arrowhead/Helldivers2'
+        lll = Path(temp) / 'Local/LLL/Helldivers2'
+        game.mkdir(parents=True)
+        previous = {name: os.environ.get(name) for name in ('APPDATA', 'LOCALAPPDATA')}
+        os.environ['APPDATA'], os.environ['LOCALAPPDATA'] = str(Path(temp) / 'Roaming'), str(Path(temp) / 'Local')
         try:
+            # Without LLL's folders the bridges go to the game's settings folder.
+            entry, a, b, calls, shut = LuaRuntime().execute(host, text)
+            assert entry['live_lua_api'] == 1 and (a, b, calls, shut) == ('game', 0.5, 6, True), 'Update/shutdown wrapping'
+            for name, data in libraries.items():
+                assert (game / name).read_bytes() == data, name
+            log = (game / 'war_journalist_lua51.log').read_text()
+            # On a bare engine the runtime starts with its native features reported unavailable.
+            assert 'Photo Mode started on Boot Mod Loader' in log and 'stopped after an error' not in log and 'cleanup failed' not in log, log
+            # LLL: its folders, and the entry handed back for LLL to drive.
+            (lll / 'Native').mkdir(parents=True)
+            (lll / 'Settings' / MOD_ID).mkdir(parents=True)
             for attempt in range(2):
-                entry = LuaRuntime().eval('function(s) return assert(loadstring(s,"@archive"))() end')(text)
+                lua_lll = LuaRuntime()
+                lua_lll.execute('LiveLuaLoader={}')
+                entry = lua_lll.eval(run)(text)
                 assert entry['live_lua_api'] == 1 and entry['name'] == 'War Journalist'
                 for name in ('on_enable', 'on_update', 'on_disable', 'on_cleanup_poll'):
                     assert lua_type(entry[name]) == 'function', name
                 for name, data in libraries.items():
-                    assert (base / 'Native' / name).read_bytes() == data, name
+                    assert (lll / 'Native' / name).read_bytes() == data, name
             name, data = next(iter(libraries.items()))
-            (base / 'Native' / name).write_bytes(data[:-1])
+            (lll / 'Native' / name).write_bytes(data[:-1])
             try:
-                LuaRuntime().eval('function(s) return assert(loadstring(s,"@archive"))() end')(text)
+                LuaRuntime().eval(run)(text)
             except Exception as error:
                 assert 'Native bridge differs' in str(error), error
             else:
                 raise AssertionError('A differing bridge must be refused')
         finally:
-            if previous is None:
-                os.environ.pop('LOCALAPPDATA')
-            else:
-                os.environ['LOCALAPPDATA'] = previous
+            for name, value in previous.items():
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
 
 
 def build(candidate, output):
@@ -153,19 +214,24 @@ def build(candidate, output):
     (payload / f'{key:016x}.lua').write_bytes(data)
     for name in manifest['license_files']:
         shutil.copyfile(candidate / name, folder / name)
-    description = ('Photo Mode for Helldivers 2 on plain Lua 5.1, without FFI (no Enemy behavior). '
-                   'Needs Live Lua Loader R35 (Lua 5.1) and the War Journalist assets. '
-                   'Its native bridges are installed into LLL\'s Native folder on first load; settings live in '
-                   'LLL/Helldivers2/Settings/' + MOD_ID + '. Do not run it beside another War Journalist.')
+    assets = folder / 'Assets'
+    shutil.copytree(ASSETS, assets)
+    description = ('War Journalist Photo Mode for Boot Mod Loader on the Lua 5.1 game, with its assets. No FFI, so no '
+                   'Enemy behavior; no screenshots or keyboard capture (keys also reach the game). Proton only: it loads '
+                   'its native bridges, installing them into LLL\'s Native folder or the game\'s settings folder on first '
+                   'load. Settings live in LLL/Helldivers2/Settings/' + MOD_ID + ' when that folder exists, else in the '
+                   'game\'s settings folder. Also runs as an LLL archive mod. Use one War Journalist at a time.')
     arsenal = {'Version': 1, 'Guid': GUID, 'Name': TITLE + ' ' + manifest['version'], 'Description': description,
-               'Options': [{'Name': TITLE, 'Description': 'The only option.', 'Include': [OPTION]}]}
+               'Options': [{'Name': TITLE, 'Description': 'Photo Mode and its assets.', 'Include': [OPTION, 'Assets']}]}
     (folder / 'manifest.json').write_text(json.dumps(arsenal, indent=2, ensure_ascii=False) + '\n')
     digest = lambda b: hashlib.sha256(b).hexdigest()
     provenance = {'version': manifest['version'], 'runtime': 'Lua 5.1', 'ffi': 'none', 'resource': RESOURCE,
                   'resource_key': f'{key:016x}', 'addon_sha256': digest(data), 'archive_sha256': digest(body),
                   'candidate_files_sha256': digest((candidate / 'FILES-SHA256.txt').read_bytes()),
                   'modules': len(sources) - 1, 'native_bridges': {name: digest(b) for name, b in libraries.items()},
-                  'verified': ['modules and bridges read back exactly', 'loads in Lua 5.1 and returns the LLL API 1 entry',
+                  'assets': {p.relative_to(assets).as_posix(): digest(p.read_bytes()) for p in sorted(assets.iterdir())},
+                  'verified': ['modules and bridges read back exactly', 'Boot Mod Loader: wraps update/shutdown, passes the game results through, starts, ticks and cleans up on a bare engine',
+                               'no LLL: bridges go to the game settings folder', 'LLL: returns the API 1 entry, uses LLL folders',
                                'installs missing bridges', 'refuses a differing bridge'],
                   'registered': False, 'deployed': False, 'live_acceptance': 'pending'}
     (folder / 'PROVENANCE.json').write_text(json.dumps(provenance, indent=2) + '\n')
@@ -177,6 +243,8 @@ if __name__ == '__main__':
     default = ROOT / 'dist/review/steam-lua51-noffi/package'
     parser.add_argument('--candidate', type=Path, default=default / 'candidate' / MOD_ID)
     parser.add_argument('--output', type=Path, default=ROOT / 'dist/review/steam-lua51-noffi/arsenal')
+    parser.add_argument('--assets', type=Path, default=ASSETS)
     args = parser.parse_args()
+    ASSETS = args.assets
     folder, provenance = build(args.candidate, args.output)
     print(json.dumps({'folder': str(folder), **{k: provenance[k] for k in ('resource', 'resource_key', 'addon_sha256', 'modules')}}, indent=2))

@@ -100,5 +100,22 @@ end
 for _,version in ipairs({0,2,'1'})do local backend=service();backend.version=version;trial(backend,false)end
 for _,directory in ipairs({'',false,1})do local backend=service();backend.output_directory=directory;trial(backend,false)end
 local backend=service();backend.capabilities=false;trial(backend,false)
+-- Boot Mod Loader hands in an engine host: no LLL global, engine keys, same-build Subject admission.
+do
+ local input_service={};local created,policy,subject
+ LiveLuaLoader,DBF_PHOTO_MODE_OWNER,stingray=nil,nil,{}
+ mod={log=function()end,host_loader={engine_input=true,input_service=input_service,capabilities={revision='boot-mod-loader-host.1'}},
+  require=function(path)
+   if path=='src/steam_runtime.lua'then return{new=function(host,sr,deps,input)
+    assert(input==input_service and deps.capture_backend==nil,'Engine host input, no capture service')
+    policy,subject,created=deps.input_policy,deps.load_subject,true
+    return{tick=function()end,dispose=function()return true end}
+   end}end
+   return{}
+  end}
+ local entry=dofile('freecam/steam51.lua');entry.on_enable()
+ assert(created and policy.require_keyboard==false and type(subject)=='function','Engine host: engine keys and Subject admission')
+ assert(entry.on_disable()and DBF_PHOTO_MODE_OWNER==nil)
+end
 mod,stingray,LiveLuaLoader,DBF_PHOTO_MODE_OWNER=globals.mod,globals.stingray,globals.loader,globals.owner
-print('Steam entry: no FFI imports or AI, capture gates, lazy R34 Subject admission, exact session return slots and older-loader camera fallback passed')
+print('Steam entry: no FFI imports or AI, engine host, capture gates, lazy R34 Subject admission, exact session return slots and older-loader camera fallback passed')
