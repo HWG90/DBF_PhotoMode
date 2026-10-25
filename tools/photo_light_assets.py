@@ -154,7 +154,9 @@ def validate_archive(cpu, gpu=b'', **kwargs):
     return audit
 
 
-def package(output):
+def package(output, archive_name=SHARED_ARCHIVE):
+    if archive_name not in (SHARED_ARCHIVE, '9ba626afa44a3aa3.patch_1'):
+        raise ValueError('Unsupported Photo light review archive')
     output = Path(output)
     if output.exists():
         raise ValueError('Preserve an existing named candidate output')
@@ -164,7 +166,7 @@ def package(output):
     if gpu or photo_assets.read_archive(cpu) != [row]:
         raise ValueError('Photo light archive serialization differs')
     audit.update(candidate=True, installed=False, live_verified=False, testing_status=TESTING_STATUS,
-                 archive=SHARED_ARCHIVE, loading='Additive resource in existing shared boot archive; no ResourcePackage constructor assumed',
+                 archive=archive_name, loading='Additive resource in existing shared boot archive; no ResourcePackage constructor assumed',
                  source_light_only_structure_sha256=SOURCE_SHA256,
                  optional_reference_zero_proof='Stock shared boot unit 6906ba0515f518d7; both header references are already zero',
                  required_next_check='Startup can_get(unit, resource ID), then root-node light readback and a visible light in a mission')
@@ -174,9 +176,9 @@ def package(output):
                 'Options': [{'Name': 'Photo light boot asset review', 'Include': ['Assets']}]}
     files = {'manifest.json': (json.dumps(manifest, indent=2) + '\n').encode(),
              'PHOTO-LIGHT-ASSET.json': (json.dumps(audit, indent=2) + '\n').encode(),
-             'Assets/' + SHARED_ARCHIVE: cpu,
-             'Assets/' + SHARED_ARCHIVE + '.gpu_resources': b'',
-             'Assets/' + SHARED_ARCHIVE + '.stream': b'',
+             'Assets/' + archive_name: cpu,
+             'Assets/' + archive_name + '.gpu_resources': b'',
+             'Assets/' + archive_name + '.stream': b'',
              'INSTALL.txt': b'''PHOTO LIGHT BOOT ASSET - DEVELOPMENT REVIEW
 
 This candidate contains one dedicated light-only unit in the shared boot
@@ -193,6 +195,17 @@ package after the runtime has released all units it owns.
 '''}
     files['FILES-SHA256.txt'] = ''.join(sha(data) + '  ' + name + '\n'
                                       for name, data in sorted(files.items())).encode()
+    if archive_name != SHARED_ARCHIVE:
+        files['INSTALL.txt'] = b'''STEAM LUA 5.1 LIGHT ASSET REVIEW - NOT INSTALLED
+
+This candidate uses 9ba626afa44a3aa3.patch_1 and contains only the owned
+Photo light unit. Never rename it to patch_0 or replace LLL's boot patch.
+Check for an existing patch_1 owner before any installation. Startup loading,
+native light readback and visible illumination still require verification.
+No shaders, Lua, settings or existing resources are replaced.
+'''
+        files['FILES-SHA256.txt'] = ''.join(sha(data) + '  ' + name + '\n'
+            for name, data in sorted(files.items()) if name != 'FILES-SHA256.txt').encode()
     output.mkdir(parents=True)
     (output / 'photo_light.unit.bin').write_bytes(row[2])
     for name, data in files.items():
@@ -219,6 +232,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path,
                         default=ROOT / 'dist/releases/photo-light-boot-review-20261013')
+    parser.add_argument('--steam-review', action='store_true',
+                        help='Use separate patch_1 so the candidate cannot replace LLL patch_0')
     args = parser.parse_args()
-    target, audit = package(args.output.resolve())
+    target, audit = package(args.output.resolve(), '9ba626afa44a3aa3.patch_1' if args.steam_review else SHARED_ARCHIVE)
     print(json.dumps({'zip': str(target), **audit}, indent=2))

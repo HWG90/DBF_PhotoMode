@@ -27,4 +27,11 @@ function M.basis(photo,initial,input)
     local cy,sy,cp,sp=math.cos(v.yaw),math.sin(v.yaw),math.cos(v.pitch),math.sin(v.pitch)
     return {cy*cp,sy*cp,sp},{sy,-cy,0}
 end
+-- A level view along a camera's forward: its yaw and pitch, never its roll.
+function M.level(forward)
+    local yaw=math.atan2(forward[2],forward[1])
+    local pitch=math.max(math.rad(-89),math.min(math.rad(89),math.asin(math.max(-1,math.min(1,forward[3])))))
+    local cy,sy,cp,sp=math.cos(yaw),math.sin(yaw),math.cos(pitch),math.sin(pitch)
+    return {cy*cp,sy*cp,sp},{sy,-cy,0}
+end
 return M

@@ -6,15 +6,62 @@ M.shader_names={'None','CRT scanlines','RGB phosphor','Ordered dither','Ion inte
 -- pale backing across the scene rather than copper, steel or dark stippling.
 -- They remain decorative overlays; they do not sample the scene's color.
 M.shader_colors={oxidized_copper={188,110,66},hammered_metal={122,133,144},stipple_gradient={80,80,80}}
+-- Continuous replacements (tools/build_decorative_v2.py, aligned stage records;
+-- verified by tools/verify_decorative_candidate.py). The adapter keeps the
+-- shipped mapped material whenever a replacement is not deployed.
+M.shader_materials={
+ amber_glass='mods/dbf_photo/materials/decorative_amber_glass_3e6bf5b051f300e5',
+ brushed_steel='mods/dbf_photo/materials/decorative_brushed_steel_2d09dca8de9035f1',
+ carbon='mods/dbf_photo/materials/decorative_carbon_a5d2d7ae0a71359c',
+ caution_dots='mods/dbf_photo/materials/decorative_caution_dots_f695a3d1b0e45e6d',
+ ceramic='mods/dbf_photo/materials/decorative_ceramic_40a785a1279e2fe6',
+ ceramic_cracks='mods/dbf_photo/materials/decorative_ceramic_cracks_b5bbe3d123ee1377',
+ circuit='mods/dbf_photo/materials/decorative_circuit_59732b04707050fe',
+ cobalt_glass='mods/dbf_photo/materials/decorative_cobalt_glass_f6a614e5371d1d47',
+ diagonal_weave='mods/dbf_photo/materials/decorative_diagonal_weave_21bfdb1679610adc',
+ dot_matrix='mods/dbf_photo/materials/decorative_dot_matrix_2fcbed6b568558e9',
+ energy_threads='mods/dbf_photo/materials/decorative_energy_threads_889cf9b123f9bc76',
+ frosted='mods/dbf_photo/materials/decorative_frosted_5bca632b20402b3f',
+ glass_sheen='mods/dbf_photo/materials/decorative_glass_sheen_a0c89766e1154d95',
+ grid_nodes='mods/dbf_photo/materials/decorative_grid_nodes_aab192e6d1627e95',
+ gunmetal='mods/dbf_photo/materials/decorative_gunmetal_08a1dd2dfbde6a43',
+ hammered_metal='mods/dbf_photo/materials/decorative_hammered_metal_9d0b5e5c5b3c412e',
+ hazard_red='mods/dbf_photo/materials/decorative_hazard_red_357ea89b39d09dba',
+ heat_shimmer='mods/dbf_photo/materials/decorative_heat_shimmer_4aa63f6a8271b562',
+ ion_noise='mods/dbf_photo/materials/decorative_ion_noise_4aaaaa6ccbdc2dfe',
+ iridescent='mods/dbf_photo/materials/decorative_iridescent_8d7e7e129bc76d5b',
+ leather='mods/dbf_photo/materials/decorative_leather_6150e0c3ad3caa31',
+ oxidized_copper='mods/dbf_photo/materials/decorative_oxidized_copper_2b9d0a9229cf3848',
+ prismatic='mods/dbf_photo/materials/decorative_prismatic_a17c52fd4b35f0f6',
+ rail_glints='mods/dbf_photo/materials/decorative_rail_glints_37551379bdf360eb',
+ ribbed_alloy='mods/dbf_photo/materials/decorative_ribbed_alloy_1b40d9beb21e2048',
+ stipple_gradient='mods/dbf_photo/materials/decorative_stipple_gradient_a4ef3c058a3b42ca',
+ sweep='mods/dbf_photo/materials/decorative_sweep_49e0a409b25992a1',
+ thermal='mods/dbf_photo/materials/decorative_thermal_374071e7040f55d2',
+ triangular_grille='mods/dbf_photo/materials/decorative_triangular_grille_56c434fdb38de7b6',
+ warning_hatch='mods/dbf_photo/materials/decorative_warning_hatch_79a624c7dcc1b431',
+}
 M.scene_names={'None','Negative','Monochrome','Posterize','Field-report duotone','Solarize','Inverted depth','Thermal depth','Depth contours','Depth fog'}
 M.filter_names={'Original','Warm film','Cool film','Sepia tint','Emerald','Crimson','Democracy Gold','Frostbite','Martian Sundown','Midnight Operations','Alien Haze','Lavender Fog','Toxic Atmosphere','Emergency Broadcast','Deep Ocean','Bronze Archive','Desert Film','Cold Steel','Crimson and Gold','Solar Eclipse','Neon Frontier','Amber Horizon'}
 M.filter_colors={[2]={235,158,82},[3]={73,145,227},[4]={180,126,70},[5]={55,150,85},[6]={180,50,60},[7]={246,202,92},[8]={147,219,244},[9]={232,112,77},[10]={49,80,118},[11]={142,210,113},[12]={175,132,204},[13]={141,186,51},[14]={206,71,54},[15]={26,117,133},[16]={204,141,83},[17]={223,190,140},[18]={145,174,188},[19]={220,70,78},[20]={110,78,169},[21]={83,191,225},[22]={245,161,78}}
-function M.layout(w,h,o,seconds)
- local out={};local function rect(x,y,width,height,alpha,color)
-  if width>0 and height>0 and alpha>0 then out[#out+1]={kind='rect',x=x,y=y,w=width,h=height,a=alpha,c=color or {0,0,0}}end
- end
- local ratios={false,2.39,16/9,1,4/5};local ratio=ratios[o.frame or 1];local x,y,fw,fh=0,0,w,h
+local function framing(w,h,frame)
+ local ratios={false,2.39,16/9,1,4/5};local ratio=ratios[frame or 1];local x,y,fw,fh=0,0,w,h
  if ratio then if w/h>ratio then fw=h*ratio;x=(w-fw)/2 else fh=w/ratio;y=(h-fh)/2 end end
+ return x,y,fw,fh
+end
+local function append_rect(out,layer,x,y,width,height,alpha,color)
+ if width>0 and height>0 and alpha>0 then out[#out+1]={kind='rect',x=x,y=y,w=width,h=height,a=alpha,c=color or {0,0,0},layer=layer}end
+end
+local function append_grain(rect,x,y,fw,fh,grain,size,phase)
+ for i=1,96 do
+  local gx=((i*739+phase*47)%997)/997;local gy=((i*397+phase*89)%991)/991
+  rect(x+gx*math.max(0,fw-size),y+gy*math.max(0,fh-size),math.min(size,fw),math.min(size,fh),grain*.22,i%2==0 and {255,255,255}or {0,0,0})
+ end
+end
+local function layout(w,h,o,seconds,static)
+ local out={};local layer=static and 100 or nil
+ local function rect(...)append_rect(out,layer,...)end
+ local x,y,fw,fh=framing(w,h,o.frame)
  rect(0,0,x,h,1);rect(x+fw,0,x,h,1);rect(x,0,fw,y,1);rect(x,y+fh,fw,y,1)
  local tint=M.filter_colors[o.filter]
  if tint then
@@ -32,12 +79,12 @@ function M.layout(w,h,o,seconds)
   rect(x,y+i*vy,fw,vy,a);rect(x,y+fh-(i+1)*vy,fw,vy,a)
  end end
  -- Deterministic sparse grain, independent of paused game time.
- local grain=(o.grain or 0)/100
- if grain>0 then local seed=math.floor((seconds or 0)*12)%4096;for i=1,96 do
-  local gx=((i*739+seed*47)%997)/997;local gy=((i*397+seed*89)%991)/991
-  local size=o.grain_size or 1.5;rect(x+gx*math.max(0,fw-size),y+gy*math.max(0,fh-size),math.min(size,fw),math.min(size,fh),grain*.22,i%2==0 and {255,255,255}or {0,0,0})
- end end
+ if not static then
+  local grain=(o.grain or 0)/100
+  if grain>0 then append_grain(rect,x,y,fw,fh,grain,o.grain_size or 1.5,math.floor((seconds or 0)*12)%4096)end
+ end
  if o.clean_view then return out end
+ layer=static and 102 or nil
  local white={255,255,255};local grid=o.grid or 1
  if grid==2 or grid==4 then local divisions=grid==2 and {1/3,2/3}or {.382,.618};for _,t in ipairs(divisions)do
   rect(x+fw*t,y,1,fh,.35,white);rect(x,y+fh*t,fw,1,.35,white)
@@ -56,7 +103,7 @@ function M.layout(w,h,o,seconds)
    for _,t in ipairs(art.triangles or{})do
     local p={ax+t[1]*factor,ay+(art.height-t[2])*factor,ax+t[3]*factor,ay+(art.height-t[4])*factor,ax+t[5]*factor,ay+(art.height-t[6])*factor}
     local lowx,highx=math.min(p[1],p[3],p[5]),math.max(p[1],p[3],p[5]);local lowy,highy=math.min(p[2],p[4],p[6]),math.max(p[2],p[4],p[6])
-    out[#out+1]={type='triangle',points=p,x=lowx,y=lowy,w=highx-lowx,h=highy-lowy,a=a,c=c}
+    out[#out+1]={type='triangle',points=p,x=lowx,y=lowy,w=highx-lowx,h=highy-lowy,a=a,c=c,layer=layer}
    end
   elseif o.logo==2 then
    -- Winged skull: vector geometry retains sharp edges at any resolution.
@@ -71,6 +118,17 @@ function M.layout(w,h,o,seconds)
    local glyphs={'110101101101110','110101110101110','111100110100100'}
    for g,bits in ipairs(glyphs)do for i=1,15 do if bits:sub(i,i)=='1'then mark(-.66+(g-1)*.45+((i-1)%3)*.12,.3-math.floor((i-1)/3)*.12,.1,.1)end end end
   end
+ end
+ return out
+end
+function M.layout(w,h,o,seconds)return layout(w,h,o,seconds,false)end
+function M.layout_static(w,h,o)return layout(w,h,o,nil,true)end
+function M.layout_grain(w,h,o,phase)
+ assert(type(phase)=='number'and phase>=0 and phase<=4095 and phase%1==0,'Grain phase must be an integer in [0,4095]')
+ local out={};local grain=(o.grain or 0)/100
+ if grain>0 then
+  local x,y,fw,fh=framing(w,h,o.frame)
+  append_grain(function(...)append_rect(out,101,...)end,x,y,fw,fh,grain,o.grain_size or 1.5,phase)
  end
  return out
 end

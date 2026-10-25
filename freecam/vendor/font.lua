@@ -24,8 +24,19 @@ local function pointer(bytes)
     return address
 end
 function F.new(memory,game,at)
+    local function ensure_memory()
+        if memory then return end
+        local path=mod.require('src/host_native.lua').library('hd2_nativeinfo_f6d3465944c1aea1.dll')
+        local entry=assert(package.loadlib(path,'luaopen_hd2_nativeinfo'))
+        local native=assert(entry())
+        game=assert(native.module_base('game.dll'))
+        memory={read=native.read_memory,address=function(value)return value end}
+    end
+
     local self={}
     function self.resolve(sr)
+        local ready=pcall(ensure_memory);if not ready then return nil end
+
         if not memory or type(memory.read)~='function' or type(memory.address)~='function' then return nil end
         if not sr or not sr.IdString64 or type(sr.IdString64.from_hex)~='function'
             or not sr.Application or type(sr.Application.can_get)~='function' then return nil end
@@ -45,11 +56,11 @@ function F.new(memory,game,at)
             local function read(offset,count) return read_address(base+offset,count) end
             local pe=u32(read(0x3c,4))
             if not pe or pe<0x40 or pe>0x1000 or u32(read(pe,4))~=0x4550
-                or u32(read(pe+8,4))~=0x6AB3B43F
-                or u32(read(pe+80,4))~=0x4744000
-                or u32(read(pe+88,4))~=0xECDA6F then return nil end
-            local font,atlas=hash(read(0x3772268,8)),hash(read(0x3772EE8,8))
-            local owner=pointer(read(0x37C5478,8))
+                or u32(read(pe+8,4))~=0x6AD7C05D
+                or u32(read(pe+80,4))~=0x3382000
+                or u32(read(pe+88,4))~=0x2ED14F0 then return nil end
+            local font,atlas=hash(read(0x312D998,8)),hash(read(0x312E618,8))
+            local owner=pointer(read(0x3180C08,8))
             local material=owner and hash(read_address(owner+24,8))
             if not font or not atlas or not material then return nil end
             local I,app=sr.IdString64,sr.Application

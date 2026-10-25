@@ -10,11 +10,14 @@ function M.key_label(v)
  if v and(v>=48 and v<=57 or v>=65 and v<=90)then return string.char(v)end
  return 'VK '..tostring(v)
 end
+-- A binding's label: the key a loader's bindings helper holds for it (hosted_label, set by the
+-- runtime), else our stored virtual key.
+function M.binding_label(id,handle)return M.hosted_label and M.hosted_label(id)or M.key_label(handle and handle.get(id))end
 function M.new(view)
  local self={};local handle;local geometry;local gesture;local held=false;local visible=false;local owning=false;local pointer_x,pointer_y
  local function get(id,default)local v=handle and handle.get(id);if v==nil then return default end;return v end
  local function num(id,default)local v=get(id,default);return type(v)=='number'and v==v and math.abs(v)<math.huge and v or default end
- local function key(id,fallback)return M.key_label(get(id,fallback))end
+ local function key(id,fallback)return M.hosted_label and M.hosted_label(id)or M.key_label(get(id,fallback))end
  function self.bind(value)if handle~=value then self.clear()end;handle=value end
  function self.clear()gesture=nil;held=false;visible=false;owning=false;geometry=nil;pointer_x,pointer_y=nil,nil end
  local function persist(g)

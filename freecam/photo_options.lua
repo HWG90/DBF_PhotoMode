@@ -5,8 +5,10 @@ M.defaults={fov=0,focal_preset=1,roll=0,roll_preset=1,saved_camera_radius=60,loc
  shader=1,shader_opacity=10,shader_scale=1,shader_animate=true,scene_shader=1,scene_strength=100,fog_distance=25,fog_density=50,scene_depth_range=100,vignette=0,vignette_width=18,grain=0,grain_size=1.5,
  frame=1,grid=1,logo=1,logo_size=100,logo_x=90,logo_y=8,logo_opacity=85,logo_color='#FFFFFF',clean_view=false,hide_hud=true,hide_controls=false,
  light_selected=1,light_preset=1,light_setup_slot=1,light_kind=1,light_enabled=true,light_intensity=3,light_color='#FFFFFF',light_range=8,light_cone=45,light_right=0,light_forward=1,light_up=0,light_follow=false,light_follow_player=false,
- hide_player=false,hide_armour=false,hide_weapons=false,hide_cape=false,subject_pose=1,director_slot=1,ai_behavior=1,path_point=1,path_duration=3,path_transition=1,
+ hide_player=false,hide_armour=false,hide_weapons=false,hide_cape=false,subject_pose=1,director_slot=1,path_point=1,path_duration=3,path_transition=1,
  show_legend=true,legend_open=true,legend_docked=true,legend_tab_y=75,legend_columns=2,legend_x=2,legend_y=2,legend_size=38}
+-- Enemy behavior is stored only when its rows exist (FFI AI backend; see pages).
+M.ai_defaults={ai_behavior=1}
 M.ai_modes={'normal','passive','dummy'}
 M.subject_poses={'salute','wave','taunt'}
 M.subject_pose_labels={'Salute','Wave','Taunt'}
@@ -75,7 +77,7 @@ function M.pages(reset,recenter,catalog,saved_actions)
   return control
  end
  local function ai_control()
-  local control=choice('ai_behavior','Enemy behavior',{'Normal','Passive','Dummy'});control.disabled=true
+  local control=choice('ai_behavior','Enemy behavior',{'Normal','Passive','Dummy'});control.disabled=true;control.default=M.ai_defaults.ai_behavior
   control.on_change=function(value)if saved_actions and saved_actions.ai_change then saved_actions.ai_change(value)end end
   return control
  end
@@ -90,11 +92,14 @@ function M.pages(reset,recenter,catalog,saved_actions)
  -- Move the existing controller-owned movement/pause definitions intact. Their
  -- IDs, defaults and callbacks remain shared with MCM and saved settings.
  for _,control in ipairs(saved_actions and saved_actions.camera_controls or{})do camera_controls[#camera_controls+1]=control end
- for _,control in ipairs({ai_control(),director_action('ai_reset','Reset AI to Normal','ai_reset'),
-  {id='ai_status',type='text',label='Enemy behavior unavailable: waiting for a verified solo mission'},
-  {id='ai_hint',type='text',label='Solo only. Persists after Photo Mode exits; joining players reset behavior to Normal.'},
-  {id='ai_limits',type='text',label='Passive allows movement; Dummy also stops voluntary movement. Physics, damage and active attacks can continue.'}})do
-  control.photo_global_ai=true;camera_controls[#camera_controls+1]=control
+ -- Enemy behavior needs the FFI AI backend; runtimes without one omit the rows.
+ if not(saved_actions and saved_actions.without_ai)then
+  for _,control in ipairs({ai_control(),director_action('ai_reset','Reset AI to Normal','ai_reset'),
+   {id='ai_status',type='text',label='Enemy behavior unavailable: waiting for a verified solo mission'},
+   {id='ai_hint',type='text',label='Solo only. Persists after Photo Mode exits; joining players reset behavior to Normal.'},
+   {id='ai_limits',type='text',label='Passive allows movement; Dummy also stops voluntary movement. Physics, damage and active attacks can continue.'}})do
+   control.photo_global_ai=true;camera_controls[#camera_controls+1]=control
+  end
  end
  camera_controls[#camera_controls+1]={id='reset_photo',type='button',label='Reset photo adjustments',button_label='Reset',on_activate=reset}
  local definition={
@@ -120,7 +125,7 @@ function M.pages(reset,recenter,catalog,saved_actions)
  slider('saturation','Saturation (%)',0,200,1),slider('contrast','Contrast (%)',50,200,1),toggle('bloom','Bloom')}},
  {id='effects',name='Effects',require_confirmation=false,controls={
  {id='scene_status',type='text',label='',status_only=true},
- choice('scene_shader','Scene effect (preview)',catalog and catalog.scene_names or {'None','Negative','Monochrome','Posterize','Field-report duotone','Solarize','Inverted depth','Thermal depth','Depth contours','Depth fog'}),
+ choice('scene_shader','Scene effect',catalog and catalog.scene_names or {'None','Negative','Monochrome','Posterize','Field-report duotone','Solarize','Inverted depth','Thermal depth','Depth contours','Depth fog'}),
  slider('scene_strength','Scene effect strength (%)',0,100,1),slider('scene_depth_range','Depth display range (m)',1,200,1),
  slider('fog_distance','Fog half-density distance (m)',.1,200,.1),slider('fog_density','Maximum fog opacity (%)',0,100,1),
  choice('shader','Shader overlay',catalog and catalog.shader_names or {'None','CRT scanlines','RGB phosphor','Ordered dither','Ion interference','Scanner sweep'}),
@@ -242,6 +247,9 @@ function M.reset_menu(handle)
  for key,value in pairs(values)do local ok,why=handle.set(key,value);if ok==false then return false,why end end
  return true
 end
-function M.reset(handle,controls)for key,value in pairs(M.defaults)do if not controls or not controls[key]or not controls[key].disabled then handle.set(key,value)end end end
+function M.reset(handle,controls)
+ for key,value in pairs(M.defaults)do if not controls or not controls[key]or not controls[key].disabled then handle.set(key,value)end end
+ for key,value in pairs(M.ai_defaults)do if controls and controls[key]and not controls[key].disabled then handle.set(key,value)end end
+end
 return M
 
