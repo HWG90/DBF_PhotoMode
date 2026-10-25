@@ -1,8 +1,10 @@
 -- Normal Lua 5.1 extension: no LuaJIT or CFFI dependency.
 local M={};local native
+-- Folder installs keep the bridges in port51/; the archive build sets mod.native_dir.
+function M.library(name)return(mod.native_dir or mod.dir..'/port51')..'/'..name end
 function M.open()
  if not native then
-  local open,why=package.loadlib(mod.dir..'/port51/hd2_nativeinfo_f6d3465944c1aea1.dll','luaopen_hd2_nativeinfo')
+  local open,why=package.loadlib(M.library('hd2_nativeinfo_f6d3465944c1aea1.dll'),'luaopen_hd2_nativeinfo')
   assert(open,why);native=assert(open(),'War Journalist native bridge refused this host')
   for _,name in ipairs({'function_address','userdata_address','read_memory','module_base'})do assert(type(native[name])=='function','Native bridge API differs: '..name)end
  end

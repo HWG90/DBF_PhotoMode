@@ -22,7 +22,7 @@ return {live_lua_api=1,name='War Journalist',
    pick=mod.require('src/steam_pick.lua')}
   deps.load_scene=function(sr)
    local host_native=mod.require('src/host_native.lua');local memory=host_native.memory();local bridge=host_native.open()
-   local open,why=package.loadlib(mod.dir..'/port51/hd2_nativeinfo_4aab2adfbc4090d6.dll','luaopen_hd2_nativeinfo');assert(open,why);local native=open()
+   local open,why=package.loadlib(host_native.library('hd2_nativeinfo_4aab2adfbc4090d6.dll'),'luaopen_hd2_nativeinfo');assert(open,why);local native=open()
    local resources=mod.require('src/steam_scene_resources.lua').new(sr,memory,bridge)
    resources.depth.bind=function(material,slot,resource)assert(slot=='diffuse_map');return native.depth_bind(material,resource)end
    local overlay=mod.require('src/steam_scene_overlay.lua').new(sr,resources.depth,true,{present=resources.registered},resources.color)
@@ -43,7 +43,7 @@ return {live_lua_api=1,name='War Journalist',
    return mod.require('src/steam_hover_pause.lua').new(backend,mod.require('src/hover_pause.lua'),clock,sr.Application.time_since_launch)
   end
   deps.load_native_lens=function(sr)
-   return mod.require('src/steam_native_lens.lua').new(sr,mod.require('src/host_native.lua'),mod.require('src/steam_lens_model.lua'),deps.lens,'hd2_nativeinfo_3139cc5f8ecb4078.dll',mod.dir)
+   return mod.require('src/steam_native_lens.lua').new(sr,mod.require('src/host_native.lua'),mod.require('src/steam_lens_model.lua'),deps.lens,'hd2_nativeinfo_3139cc5f8ecb4078.dll')
   end
   -- Pure retained geometry, loaded once at entry with the legacy picker indices.
   deps.composition.logo_art=mod.require('src/assets/logo_art.lua')
@@ -95,7 +95,7 @@ return {live_lua_api=1,name='War Journalist',
   deps.input_policy.pointer_clip=function(active)
    if not pointer_native then
     if not active then return true end
-    local open,why=package.loadlib(mod.dir..'/port51/hd2_nativeinfo_5e39eeeeb76b863a.dll','luaopen_hd2_nativeinfo');assert(open,why)
+    local open,why=package.loadlib(mod.require('src/host_native.lua').library('hd2_nativeinfo_5e39eeeeb76b863a.dll'),'luaopen_hd2_nativeinfo');assert(open,why)
     pointer_native=assert(open());assert(type(pointer_native.pointer_clip)=='function','Pointer confinement bridge unavailable')
    end
    return pointer_native.pointer_clip(active and 1 or 0)

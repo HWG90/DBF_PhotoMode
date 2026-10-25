@@ -8,8 +8,8 @@ local function rounded(v)
  if f>.5 or f==.5 and q%2==1 then q=q+1 end
  return math.ldexp(q,e-24)
 end
-function M.new(sr,host,model,lens,bridge_name,dir)
- local open,why=package.loadlib(dir..'/port51/'..bridge_name,'luaopen_hd2_nativeinfo');assert(open,why)
+function M.new(sr,host,model,lens,bridge_name)
+ local open,why=package.loadlib(host.library(bridge_name),'luaopen_hd2_nativeinfo');assert(open,why)
  local bridge=open();assert(type(bridge.profile_float)=='function','Numeric lens bridge unavailable')
  local mem=host.memory();local exe=mem.exe
  local function read(a,n)return mem.read(a,n)end
