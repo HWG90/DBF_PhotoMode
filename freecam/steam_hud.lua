@@ -6,7 +6,7 @@ local function word(s)
  assert(type(s)=='string'and#s>=4,'HUD word unavailable')
  local a,b,c,d=s:byte(1,4);return a+b*256+c*65536+d*16777216
 end
-function M.new(sr,log,memory,setter)
+function M.new(sr,log,memory,setter,toggler)
  log=log or function()end
  if not memory then memory=mod.require('src/host_native.lua').memory()end
  local game=assert(memory.game,'HUD module unavailable')
@@ -23,11 +23,12 @@ function M.new(sr,log,memory,setter)
  local signature='\072\131\236\040\068\139\001\076\139\209\065\139\192\069\139\200\131\224\239\065\131\201\016\132\210\068\015\068\200\068\137\009'
  assert(read(game+0x12e4cc0,#signature)==signature,'HUD visibility binding differs')
  if not setter then
-  local open,why=package.loadlib(mod.require('src/host_native.lua').library('hd2_nativeinfo_65703adf81d52749.dll'),'luaopen_hd2_nativeinfo');assert(open,why)
-  local native=open();assert(type(native.hud_visible)=='function','Typed HUD bridge unavailable')
+  local open,why=package.loadlib(mod.require('src/host_native.lua').library('hd2_nativeinfo_0f03601402697bf7.dll'),'luaopen_hd2_nativeinfo');assert(open,why)
+  local native=open();assert(type(native.hud_visible)=='function'and type(native.hud_toggle)=='function','Typed HUD bridge unavailable')
   setter=function(widget,visible)assert(native.hud_visible(widget,visible and 1 or 0))end
+  toggler=function(root,expected,value)assert(native.hud_toggle(expected,value,root)==value,'HUD toggle readback differs')end
  end
- local self={};local owned,custom,desired,foreign,pending,last_probe
+ local self={};local owned,toggled,custom,desired,foreign,pending,last_probe
  -- Scene 4 is a mission. Scene 3 is the ship: there the same widget answers the game's own
  -- Toggle HUD key (live HUD probe, 2026-10-25) and the mission panel does not exist, so only
  -- the widget's own parent is required, and a ship without it simply has no HUD to hide.
@@ -49,6 +50,9 @@ function M.new(sr,log,memory,setter)
  end
  local function same(a,b)return a and b and a.scene==b.scene and a.root==b.root and a.widget==b.widget and a.state==b.state and a.world==b.world end
  local function visible(at)return math.floor(word(read(at,4))/16)%2==1 end
+ -- On the ship the widget holds only part of the HUD; the rest follows the game's own Toggle
+ -- HUD state, the byte its key flips (1 hides). Owned only when we set it from 0.
+ local function toggle(at)return read(at.root+0x24e338,1):byte()end
  local function write(entry,value)
   entry.written=value -- A throwing native call can partially apply.
   setter(entry.identity.widget,value)
@@ -79,6 +83,12 @@ function M.new(sr,log,memory,setter)
     end
     owned=nil
    end
+   if toggled then
+    -- Same UI root, any scene: a scene change must not leave the game's HUD switched off.
+    local found,root=pcall(p,game+0x2e28788)
+    if found and root==toggled.root and toggle(toggled)==1 then toggler(root,1,0)end
+    toggled=nil
+   end
    restore_custom()
   end)
   pending=not ok
@@ -97,6 +107,8 @@ function M.new(sr,log,memory,setter)
    if current then
     owned={identity=current,before=visible(current.widget)}
     write(owned,false)
+    -- A throwing native call can partially apply: own it before the write.
+    if current.scene==3 and toggler and toggle(current)==0 then toggled={identity=current,root=current.root};toggler(current.root,0,1)end
    end
    local hud=rawget(_G,'DBFHUD')
    if type(hud)=='table'then
@@ -116,12 +128,17 @@ function M.new(sr,log,memory,setter)
  end
  function self.tick(time)
   if pending then return false,'HUD restoration is pending'end
-  if not owned or foreign then return true end
+  if not(owned or toggled)or foreign then return true end
   assert(type(time)=='number'and time==time and time>=0,'HUD clock unavailable')
   if last_probe and time>=last_probe and time-last_probe<.2 then return true end
   last_probe=time
   local ok,why=pcall(function()
    local current=identity()
+   -- Only the player's own toggle-back drops it; a scene change leaves it for release.
+   if toggled and same(current,toggled.identity)and toggle(current)~=1 then
+    toggled=nil;log('Game HUD toggled back on; leaving it as the player set it')
+   end
+   if not owned then return end
    if not same(current,owned.identity)then owned=nil;return end
    if visible(current.widget)~=owned.written then
     owned=nil;foreign=true;log('Gameplay HUD visibility changed; preserving its current owner')
@@ -133,7 +150,7 @@ function M.new(sr,log,memory,setter)
  function self.release()
   local ok,why=release();if ok then desired,foreign,last_probe=nil,nil,nil end;return ok,why
  end
- function self.status()return{hidden=desired==true,native_owned=owned~=nil,custom_owned=custom~=nil,pending_restore=pending==true,foreign=foreign==true}end
+ function self.status()return{hidden=desired==true,native_owned=owned~=nil,toggle_owned=toggled~=nil,custom_owned=custom~=nil,pending_restore=pending==true,foreign=foreign==true}end
  return self
 end
 return M

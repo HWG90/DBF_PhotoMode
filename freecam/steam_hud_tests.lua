@@ -1,6 +1,6 @@
 local factory=dofile('freecam/steam_hud.lua')
 local function fixture()
- local f={scene=4,root=2000000,state=3000000,world={},visible=true,writes={},reads=0}
+ local f={scene=4,root=2000000,state=3000000,world={},visible=true,writes={},reads=0,toggle=0,toggles={}}
  local game=1048576
  local function u(n)return string.char(n%256,math.floor(n/256)%256,math.floor(n/65536)%256,math.floor(n/16777216)%256)end
  local function p(n)return u(n%4294967296)..u(math.floor(n/4294967296))end
@@ -20,6 +20,7 @@ local function fixture()
   if at==f.root+0x820+0xf0 then return p(f.bad_parent and f.root+0x260 or f.root+0x258)end
   if at==f.root+0x24e340+0x146940+0xf0 then assert(f.scene==4,'The ship has no mission panel to read');return p(f.root+0x820)end
   if at==f.root+0x820 then return u(f.visible and 0x92 or 0x82)end
+  if at==f.root+0x24e338 then return string.char(f.toggle)end
   error('Unexpected HUD read '..at..'/'..n)
  end
  local function write(widget,value)
@@ -29,7 +30,13 @@ local function fixture()
  end
  f.memory={game=game,read=read}
  f.sr={Application={main_world=function()return f.world end}}
- f.new=function()return factory.new(f.sr,function()end,f.memory,write)end
+ local function toggler(root,expected,value)
+  assert(root==f.root and(f.scene==3 or value==0)and f.toggle==expected,'Stale HUD toggle write')
+  f.toggles[#f.toggles+1]=value;f.toggle=value
+  if f.toggle_partial then f.toggle_partial=false;error('partial HUD toggle write')end
+ end
+ f.log={}
+ f.new=function()return factory.new(f.sr,function(m)f.log[#f.log+1]=m end,f.memory,write,f.with_toggle and toggler or nil)end
  return f
 end
 local f=fixture();local h=f.new();assert(#f.writes==0 and not h.status().native_owned)
@@ -59,9 +66,21 @@ f=fixture();f.scene=3;h=f.new();assert(h.set(true)and not f.visible and h.status
 assert(h.tick(1)and h.set(false)and f.visible and #f.writes==2)
 f=fixture();f.scene=3;f.bad_parent=true;h=f.new();assert(h.set(true)and not h.status().native_owned and#f.writes==0)
 f=fixture();f.scene=3;h=f.new();assert(h.set(true));f.scene=4;assert(h.release()and #f.writes==1,'A scene change retires the ship lease')
+-- The ship's game Toggle HUD byte: set from 0 and restored, never in a mission, never taken
+-- over when the player already hid the HUD, and the player's own toggle-back stands.
+f=fixture();f.scene=3;f.with_toggle=true;h=f.new();assert(h.set(true)and f.toggle==1 and not f.visible and h.status().toggle_owned)
+assert(h.tick(1)and h.status().toggle_owned and h.release()and f.toggle==0 and f.visible and#f.toggles==2)
+f=fixture();f.with_toggle=true;h=f.new();assert(h.set(true)and f.toggle==0 and#f.toggles==0 and h.release(),'Missions keep the widget hide only')
+f=fixture();f.scene=3;f.with_toggle=true;f.toggle=1;h=f.new();assert(h.set(true)and not h.status().toggle_owned and h.release()and f.toggle==1 and#f.toggles==0)
+f=fixture();f.scene=3;f.with_toggle=true;h=f.new();assert(h.set(true));f.toggle=0
+assert(h.tick(1)and not h.status().toggle_owned and f.log[#f.log]:find('toggled back on',1,true))
+assert(h.release()and f.toggle==0 and#f.toggles==1,'The player toggled it back: no restore write')
+f=fixture();f.scene=3;f.with_toggle=true;h=f.new();f.toggle_partial=true;assert(not h.set(true));assert(f.toggle==0 and f.visible and#f.toggles==2,'A partial toggle write is restored')
+f=fixture();f.scene=3;f.with_toggle=true;h=f.new();assert(h.set(true));f.scene=5;assert(h.tick(1)and h.status().toggle_owned and h.release()and f.toggle==0 and#f.toggles==2,'A scene change still restores the game HUD on the same root')
+f=fixture();f.scene=3;f.with_toggle=true;h=f.new();assert(h.set(true));f.root=2100000;f.toggle=1;assert(h.release()and#f.toggles==1,'Never write through a replaced UI root')
 -- Custom HUD values retain independent ownership and foreign values survive.
 f=fixture();f.scene=5;h=f.new();local custom={hidden=false,opacity=.8,photo_hidden=false};DBFHUD=custom
 assert(h.set(true)and custom.hidden and custom.opacity==0 and custom.photo_hidden)
 custom.opacity=.6;assert(h.release()and not custom.hidden and custom.opacity==.6 and not custom.photo_hidden)
 assert(not h.status().custom_owned and#f.writes==0);DBFHUD=nil
-print('WJ gameplay HUD: exact build/parent gate, owned hide/restore, zero settled work, bounded checks, foreign state, retirement, unknown/partial cleanup and custom-HUD ownership, ship widget passed')
+print('WJ gameplay HUD: exact build/parent gate, owned hide/restore, zero settled work, bounded checks, foreign state, retirement, unknown/partial cleanup and custom-HUD ownership, ship widget and game Toggle HUD byte passed')
