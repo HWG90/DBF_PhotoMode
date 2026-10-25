@@ -248,4 +248,23 @@ do
  local calls,writes=f.calls,f.writes;for _=1,100 do check(not f.controller.close())end;check(f.calls==calls and f.writes==writes,'Unknown partial never retries automatically')
  f.failure={};f.nodes[8]=clone(f.original[8]);f:step();check(f.controller.recover()and same(f.nodes,f.original)and f.adapter.status().pending==0,'Explicit exact original observation retires unknown matrix receipt')
 end
+-- Shared cape solver is captured before body writes, maintained only while
+-- held, and restored after body evaluation; another subject grants no access.
+for _,local_subject in ipairs({true,false})do
+ local f=fixture();local captures,applies,restores=0,0,0
+ f.policy.cape_reader={pose_frame=function()return{root_handle=local_subject and f.unit or newproxy(),world=f.world}end,
+  pose_valid=function()return true end}
+ f.policy.cape_factory=function(sr,reader,guard)return{
+  capture=function(frame)guard(frame,true);captures=captures+1;check(f.writes==0);return{{}}end,
+  apply=function(lease)applies=applies+1;check(f.updates>0 and f.mode=='ignore')end,
+  restore=function(lease)restores=restores+1;check(same(f.nodes,f.original)and f.mode=='position_and_rotation')end}end
+ local base=f:ready().nodes[8];local desired=f:desired();f:step()
+ check(f.adapter.set_mode(f.target,f.rig,f.mode,'ignore'))
+ check(f.adapter.set_node(f.target,f.rig,8,base,desired,'ignore')and f.adapter.commit(f.target,f.rig))
+ check(captures==(local_subject and 1 or 0)and applies==captures)
+ check(f.adapter.maintain(f.target,f.rig));check(applies==captures*2)
+ check(f.adapter.set_node(f.target,f.rig,8,desired,base,'ignore'))
+ check(f.adapter.set_mode(f.target,f.rig,'ignore','position_and_rotation')and f.adapter.commit(f.target,f.rig))
+ check(restores==captures)
+end
 print('steam_subject_native_tests: '..assertions..' assertions passed (actual Lua5.1; strict matrix12; source only)')

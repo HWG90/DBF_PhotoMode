@@ -6,6 +6,41 @@ M.shader_names={'None','CRT scanlines','RGB phosphor','Ordered dither','Ion inte
 -- pale backing across the scene rather than copper, steel or dark stippling.
 -- They remain decorative overlays; they do not sample the scene's color.
 M.shader_colors={oxidized_copper={188,110,66},hammered_metal={122,133,144},stipple_gradient={80,80,80}}
+-- Continuous replacements (tools/build_decorative_v2.py, aligned stage records;
+-- verified by tools/verify_decorative_candidate.py). The adapter keeps the
+-- shipped mapped material whenever a replacement is not deployed.
+M.shader_materials={
+ amber_glass='mods/dbf_photo/materials/decorative_amber_glass_3e6bf5b051f300e5',
+ brushed_steel='mods/dbf_photo/materials/decorative_brushed_steel_2d09dca8de9035f1',
+ carbon='mods/dbf_photo/materials/decorative_carbon_a5d2d7ae0a71359c',
+ caution_dots='mods/dbf_photo/materials/decorative_caution_dots_f695a3d1b0e45e6d',
+ ceramic='mods/dbf_photo/materials/decorative_ceramic_40a785a1279e2fe6',
+ ceramic_cracks='mods/dbf_photo/materials/decorative_ceramic_cracks_b5bbe3d123ee1377',
+ circuit='mods/dbf_photo/materials/decorative_circuit_59732b04707050fe',
+ cobalt_glass='mods/dbf_photo/materials/decorative_cobalt_glass_f6a614e5371d1d47',
+ diagonal_weave='mods/dbf_photo/materials/decorative_diagonal_weave_21bfdb1679610adc',
+ dot_matrix='mods/dbf_photo/materials/decorative_dot_matrix_2fcbed6b568558e9',
+ energy_threads='mods/dbf_photo/materials/decorative_energy_threads_889cf9b123f9bc76',
+ frosted='mods/dbf_photo/materials/decorative_frosted_5bca632b20402b3f',
+ glass_sheen='mods/dbf_photo/materials/decorative_glass_sheen_a0c89766e1154d95',
+ grid_nodes='mods/dbf_photo/materials/decorative_grid_nodes_aab192e6d1627e95',
+ gunmetal='mods/dbf_photo/materials/decorative_gunmetal_08a1dd2dfbde6a43',
+ hammered_metal='mods/dbf_photo/materials/decorative_hammered_metal_9d0b5e5c5b3c412e',
+ hazard_red='mods/dbf_photo/materials/decorative_hazard_red_357ea89b39d09dba',
+ heat_shimmer='mods/dbf_photo/materials/decorative_heat_shimmer_4aa63f6a8271b562',
+ ion_noise='mods/dbf_photo/materials/decorative_ion_noise_4aaaaa6ccbdc2dfe',
+ iridescent='mods/dbf_photo/materials/decorative_iridescent_8d7e7e129bc76d5b',
+ leather='mods/dbf_photo/materials/decorative_leather_6150e0c3ad3caa31',
+ oxidized_copper='mods/dbf_photo/materials/decorative_oxidized_copper_2b9d0a9229cf3848',
+ prismatic='mods/dbf_photo/materials/decorative_prismatic_a17c52fd4b35f0f6',
+ rail_glints='mods/dbf_photo/materials/decorative_rail_glints_37551379bdf360eb',
+ ribbed_alloy='mods/dbf_photo/materials/decorative_ribbed_alloy_1b40d9beb21e2048',
+ stipple_gradient='mods/dbf_photo/materials/decorative_stipple_gradient_a4ef3c058a3b42ca',
+ sweep='mods/dbf_photo/materials/decorative_sweep_49e0a409b25992a1',
+ thermal='mods/dbf_photo/materials/decorative_thermal_374071e7040f55d2',
+ triangular_grille='mods/dbf_photo/materials/decorative_triangular_grille_56c434fdb38de7b6',
+ warning_hatch='mods/dbf_photo/materials/decorative_warning_hatch_79a624c7dcc1b431',
+}
 M.scene_names={'None','Negative','Monochrome','Posterize','Field-report duotone','Solarize','Inverted depth','Thermal depth','Depth contours','Depth fog'}
 M.filter_names={'Original','Warm film','Cool film','Sepia tint','Emerald','Crimson','Democracy Gold','Frostbite','Martian Sundown','Midnight Operations','Alien Haze','Lavender Fog','Toxic Atmosphere','Emergency Broadcast','Deep Ocean','Bronze Archive','Desert Film','Cold Steel','Crimson and Gold','Solar Eclipse','Neon Frontier','Amber Horizon'}
 M.filter_colors={[2]={235,158,82},[3]={73,145,227},[4]={180,126,70},[5]={55,150,85},[6]={180,50,60},[7]={246,202,92},[8]={147,219,244},[9]={232,112,77},[10]={49,80,118},[11]={142,210,113},[12]={175,132,204},[13]={141,186,51},[14]={206,71,54},[15]={26,117,133},[16]={204,141,83},[17]={223,190,140},[18]={145,174,188},[19]={220,70,78},[20]={110,78,169},[21]={83,191,225},[22]={245,161,78}}

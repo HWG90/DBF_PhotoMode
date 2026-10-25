@@ -3,15 +3,20 @@ from pathlib import Path
 import argparse
 import json
 import os
+import re
 
 ROOT=Path(__file__).resolve().parents[1]
-FIXTURES=('steam_camera_tests.lua','steam_input_tests.lua','steam_path_tests.lua','steam_simulation_tests.lua','steam_runtime_tests.lua','steam_lighting_tests.lua','steam_view_tests.lua',
-          'steam_capture_tests.lua','steam_capture_runtime_tests.lua','steam_entry_tests.lua','steam_composition_asset_tests.lua','steam_grain_tests.lua','steam_overlay_tests.lua','steam_overlay_runtime_tests.lua',
+FIXTURES=('steam_control_updates_tests.lua','steam_director_runtime_tests.lua','steam_input_refusal_tests.lua','steam_render_flags_tests.lua','steam_bookmark_runtime_tests.lua','steam_camera_tests.lua','steam_input_tests.lua','steam_path_tests.lua','steam_simulation_tests.lua','steam_runtime_tests.lua','steam_lighting_tests.lua','steam_view_tests.lua',
+          'steam_capture_tests.lua','linux_capture_tests.lua','steam_capture_runtime_tests.lua','steam_entry_tests.lua','steam_composition_asset_tests.lua','steam_grain_tests.lua','steam_overlay_tests.lua','steam_overlay_runtime_tests.lua',
           'steam_bloom_tests.lua','steam_bloom_runtime_tests.lua',
           'steam_pose_bank_tests.lua','steam_subject_tests.lua','steam_subject_native_tests.lua','steam_subject_runtime_tests.lua')
+FIXTURES+=('steam_scene_sdr_tests.lua','steam_scene_resources_tests.lua','steam_scene_tests.lua','steam_focus_sampler_tests.lua','steam_scene_overlay_tests.lua','steam_ai_backend_tests.lua','steam_player_passive_tests.lua','steam_ai_control_tests.lua','steam_ai_tests.lua','steam_required_input_tests.lua','steam_hud_tests.lua','steam_hud_runtime_tests.lua','steam_handycam_tests.lua')
+
+FIXTURES+=('steam_native_lens_runtime_tests.lua','steam_ragdoll_runtime_tests.lua','steam_hover_pause_tests.lua','steam_hover_runtime_tests.lua','steam_hover_backend_tests.lua')
+
 FEATURE_FIXTURES=('cinema_camera_tests.lua','cinema_controls_tests.lua','cinema_hint_tests.lua',
                   'saved_camera_tests.lua','director_tests.lua','photo_lights_tests.lua','photo_light_presets_tests.lua',
-                  'subject_poses_tests.lua','ragdoll_pause_tests.lua','photo_menu_cache_tests.lua','photo_light_gizmos_tests.lua')
+                  'subject_poses_tests.lua','subject_pose_cape_tests.lua','ragdoll_pause_tests.lua','photo_menu_cache_tests.lua','photo_light_gizmos_tests.lua')
 
 def run():
     from lupa.lua51 import LuaRuntime
@@ -19,6 +24,29 @@ def run():
     rows=[]
     try:
         os.chdir(ROOT)
+        # Compare runtime paths against the retained asset manifest, not a
+        # fixture that duplicates an assumed namespace.
+        manifest=json.loads((ROOT/'freecam/assets/shaders/manifest.json').read_text())
+        materials={row['id']:row['material'] for row in manifest['overlays']}
+        composition=LuaRuntime().execute((ROOT/'freecam/composition.lua').read_text())
+        catalog=composition.shaders
+        prefix=re.search(r"material='([^']+)'\.\.name",(ROOT/'freecam/steam_overlay.lua').read_text())[1]
+        assert len(materials)==40
+        for index in range(2,len(catalog)+1):
+            name=catalog[index];assert prefix+name==materials[name],name
+        # Replacement identities must name the exact maintained HLSL content.
+        import hashlib
+        # Aligned builds salt the content ID so they never alias the
+        # withdrawn decorative-v2-r3 resources.
+        replacements=dict(composition.shader_materials.items())
+        import generate_decorative_v2 as generator
+        assert set(replacements)<=set(catalog.values())-{''}
+        assert set(replacements)==set(generator.PATTERNS)|set(generator.SMOOTH),'Map every generated replacement'
+        for name,path in replacements.items():
+            source=(ROOT/'freecam/assets/decorative-v2'/f'{name}.hlsl').read_bytes()
+            content=hashlib.sha256(source+b':aligned-v2').hexdigest()[:16]
+            assert path==f'mods/dbf_photo/materials/decorative_{name}_{content}'
+        rows.append({'fixture':'decorative_asset_path_closure','passed':True,'materials':40})
         for fixture in FIXTURES:
             lua=LuaRuntime()
             assert lua.eval('_VERSION')=='Lua 5.1' and lua.eval('jit==nil and package.loaded.ffi==nil')

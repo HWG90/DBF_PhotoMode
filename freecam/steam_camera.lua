@@ -47,25 +47,53 @@ function M.new(sr)
         if held then return false,'Camera is already open' end
         local world=A.main_world()
         if not world then return false,'Main world unavailable' end
-        local rendered=B.translation(W.debug_camera_pose(world))
+        local rendered_pose=W.debug_camera_pose(world)
+        local rendered=B.translation(rendered_pose)
         local units=W.units(world)
         if type(units)~='table' or #units>32768 then return false,'Camera inventory unavailable' end
         local candidate,count=nil,0
+        local candidates={}
         for _,unit in ipairs(units) do
             if U.alive(unit) and U.num_cameras(unit)==1 then
                 local camera=U.camera(unit,1)
                 if camera and near(C.world_position(camera),rendered) then
                     candidate=unit;count=count+1
+                    candidates[#candidates+1]=unit
                 end
             end
         end
-        if count~=1 then return false,'Rendered camera is not unique' end
+        if count~=1 then
+            local exact,exact_count=nil,0
+            local function same_vector(a,b)
+                local x,y,z=xyz(a);local p,q,r=xyz(b)
+                return x==p and y==q and z==r
+            end
+            -- Ship cameras can share a position. Only a unique exact match
+            -- to the published world pose disambiguates them.
+            if count>1 and type(C.world_pose)=='function'and type(B.forward)=='function'and type(B.right)=='function'and type(B.up)=='function'then
+                for _,unit in ipairs(candidates)do
+                    local pose=C.world_pose(U.camera(unit,1))
+                    if same_vector(B.translation(pose),rendered)and
+                       same_vector(B.forward(pose),B.forward(rendered_pose))and
+                       same_vector(B.right(pose),B.right(rendered_pose))and
+                       same_vector(B.up(pose),B.up(rendered_pose))then
+                        exact,exact_count=unit,exact_count+1
+                    end
+                end
+            end
+            if exact_count~=1 then return false,'Rendered camera is not unique'end
+            candidate=exact
+        end
         local camera=U.camera(candidate,1)
         local p=C.local_position(camera,candidate)
         local x,y,z=xyz(p)
         generation=generation+1
-        held={world=world,unit=candidate,camera=camera,original={x,y,z},generation=generation}
+        held={world=world,unit=candidate,camera=camera,original={x,y,z},anchor=numbers(rendered),generation=generation}
         return true
+    end
+    function self.identity()
+        local camera,why=current();if not camera then return nil,why end
+        return{world=held.world,unit=held.unit,camera=camera,generation=held.generation}
     end
     function self.position()
         local camera,why=current();if not camera then return nil,why end
@@ -160,6 +188,10 @@ function M.new(sr)
         if held.scene_dirty and W.update_unit(held.world,held.unit)==false then return false,'Camera scene restoration refused' end
         held=nil
         return true
+    end
+    function self.bookmark_context()
+        local camera,why=current();if not camera then return nil,why end
+        return{world=held.world,unit=held.unit,position={held.anchor[1],held.anchor[2],held.anchor[3]}}
     end
     function self.active()return held~=nil end
     function self.scene()

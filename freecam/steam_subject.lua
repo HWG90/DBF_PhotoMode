@@ -325,6 +325,14 @@ function M.new(adapter,bank,is_frozen)
   end
   return restore()
  end
+ function self.maintain()
+  if not lease or not pose or blocked or type(adapter.maintain)~='function'then return true end
+  local frozen,value=pcall(is_frozen)
+  if not frozen or value~=true then return self.reset()end
+  local called,ok,why=pcall(adapter.maintain,selected,bank.rig)
+  if not called or ok~=true then return pending('Cape alignment needs explicit recovery',called and why or ok)end
+  return true
+ end
  function self.resume()return self.reset()end
  function self.invalidate()closing=true;return restore()end
  function self.choices()return choices end

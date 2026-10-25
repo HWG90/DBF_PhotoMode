@@ -5,11 +5,11 @@ local fixture=dofile('freecam/steam_capture_runtime_tests.lua')
 DBF_PHOTO_CAPTURE_FIXTURE_ONLY=nil
 local Overlay=dofile('freecam/steam_overlay.lua')
 local function configured(f,deps,sr)
- f.saved.shader=2;f.saved.shader_animate=false
+ f.saved.shader=1;f.saved.shader_animate=false
  f.queries,f.adapter_creates,f.overlay_opens,f.overlay_closes,f.overlay_disposes,f.decorative_draws=0,0,0,0,0,0
  f.available=true;f.logs=0;f.log=function()f.logs=f.logs+1 end
  sr.Application.can_get=function(kind,path)
-  f.queries=f.queries+1;assert(kind=='material'and path=='mods/dbf_photo/materials/mapped_crt_scan')
+  f.queries=f.queries+1;assert(kind=='material'and path=='mods/dbf_hud/materials/mapped_crt_scan')
   return f.available
  end
  local make_view=deps.view.new
@@ -52,8 +52,8 @@ local function configured(f,deps,sr)
  end}
 end
 local function preview(f)
- assert(f.runtime.handle.activate('shader_preview'))
- assert(f.controls.shader_preview.button_label=='Disable preview')
+ assert(f.runtime.handle.set('shader',2))
+ assert(not f.controls.shader_preview)
  f.step(.016,1)
 end
 local function closed(f)
@@ -62,15 +62,26 @@ local function closed(f)
 end
 
 do
+ local f=fixture(nil,function(f,deps,sr)configured(f,deps,sr);f.saved.shader=2 end)
+ local saves=f.saves;f.open()
+ assert(f.adapter_creates==1 and f.queries==1 and f.decorative_draws==1 and f.saves==saves,
+  'Saved nonzero overlay applies directly on open without rewriting preferences')
+ assert(f.runtime.close()and f.runtime.open());f.step(.016,1)
+ assert(f.adapter_creates==1 and f.overlay_opens==2 and f.decorative_draws==2,
+  'Reopening restores saved overlay using the retained cleanup-qualified adapter')
+ closed(f)
+end
+
+do
  local f=fixture(nil,configured);local clock=f.clock_reads
  for _=1,100 do f.step(.016)end
  assert(f.adapter_creates==0 and f.queries==0 and f.clock_reads==clock,'Closed overlays add no reads or allocations')
- f.open();assert(not f.controls.shader.disabled and not f.controls.shader_preview.disabled)
+ f.open();assert(not f.controls.shader.disabled and not f.controls.shader_preview)
  for _=1,100 do f.step(.016,1)end
- assert(f.runtime.handle.get('shader')==2 and f.adapter_creates==0 and f.queries==0,
-  'Saved nonzero shaders never activate unvalidated assets before explicit opt-in')
+ assert(f.runtime.handle.get('shader')==1 and f.adapter_creates==0 and f.queries==0,
+  'None does not instantiate decorative resources')
  local saves=f.saves;preview(f)
- assert(f.saves==saves and f.adapter_creates==1 and f.queries==1,'Session opt-in never writes preferences')
+ assert(f.saves==saves+1 and f.adapter_creates==1 and f.queries==1,'Selecting an overlay activates it directly')
  local commands=f.decorative_commands;clock=f.clock_reads;local queries=f.queries
  for _=1,100 do f.step(.016,1)end
  assert(f.decorative_commands==commands and f.decorative_token==commands and f.queries==queries,
@@ -79,7 +90,7 @@ do
  assert(f.runtime.handle.set('shader_animate',true));clock=f.clock_reads;f.step(.016,1)
  assert(f.clock_reads==clock+1 and f.decorative_commands[1].preview_time==f.time and not f.decorative_token,
   'Animation receives the already-sampled active time and uses the dynamic retained path')
- assert(f.runtime.handle.activate('shader_preview'));f.step(.016,1)
+ assert(f.runtime.handle.set('shader',1));f.step(.016,1)
  local draws,creates,closes=f.decorative_draws,f.adapter_creates,f.overlay_closes
  for _=1,100 do f.step(.016,1)end
  assert(f.decorative_draws==draws and f.adapter_creates==creates and f.overlay_closes==closes,
@@ -100,7 +111,7 @@ do
  f.available=true
  for _=1,12 do f.step(.016,1)end;f.step(0)
  assert(f.requests==0 and f.queries==queries,'Appearance alone does not trigger negative-cache retries')
- assert(f.runtime.handle.activate('shader_preview')and f.runtime.handle.activate('shader_preview'))
+ assert(f.runtime.handle.set('shader',1)and f.runtime.handle.set('shader',2))
  for _=1,12 do f.step(.016,1);assert(f.requests==0)end
  f.step(0);assert(f.requests==1,'Explicit disable/enable retries and requires twelve fully acknowledged clean frames')
  closed(f)
@@ -116,7 +127,7 @@ do
  for _=1,100 do f.step(.016,1);assert(f.requests==0)end
  assert(f.queries==queries and f.decorative_draws==draws and f.decorative_view.releases==releases,
   'Unchanged refused preview adds no material queries, draw/allocation attempts or retirements')
- assert(f.runtime.handle.activate('shader_preview')and f.runtime.handle.activate('shader_preview'))
+ assert(f.runtime.handle.set('shader',1)and f.runtime.handle.set('shader',2))
  for _=1,12 do f.step(.016,1);assert(f.requests==0)end
  f.step(0);assert(f.requests==1,'Explicit disable/enable permits capture after a fresh completed-frame wait')
  closed(f)
@@ -171,4 +182,4 @@ do
   'Missing optional adapter gates only decorative controls')
  assert(f.runtime.active and f.camera_writes>0);f.finish()
 end
-print('Steam decorative runtime: explicit session opt-in, saved-state quarantine, lazy static/negative caches, capture refusal/recovery and lifecycle ownership passed')
+print('Steam decorative runtime: direct selection, None idle, lazy static/negative caches, capture refusal/recovery and lifecycle ownership passed')

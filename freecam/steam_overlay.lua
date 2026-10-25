@@ -1,5 +1,5 @@
--- Decorative overlay adapter; the development runtime requires explicit session
--- opt-in. Native asset selection/rendering still requires cold-load validation.
+-- Decorative overlay adapter, activated by the normal overlay selection.
+-- Material discovery is lazy and uses the retained asset manifest identities.
 -- new(sr, view_module, composition [, log]); open(), draw(w,h,options,seconds),
 -- invalidate(), close(), dispose(). Options use composition's shader index,
 -- shader_opacity (0..100), shader_scale (.005..16), shader_animate (default true).
@@ -13,15 +13,16 @@
 local M={}
 local function finite(n)return type(n)=='number'and n==n and math.abs(n)<math.huge end
 function M.new(sr,view_module,composition,log)
- local names,colors={},{}
+ local names,colors,materials={},{},{}
  for index,name in ipairs(composition.shaders)do
   assert(name==''or name:match('^[a-z0-9_]+$'),'Invalid decorative shader catalog')
   names[index]=name
+  materials[index]=composition.shader_materials and composition.shader_materials[name]
   local rgb=composition.shader_colors and composition.shader_colors[name]or{255,255,255}
   colors[index]={rgb[1],rgb[2],rgb[3]}
  end
  local self={};local active,disposed,pending=false,false,false
- local view,selected,available,commands,key,reason
+ local view,selected,available,commands,key,reason,material
  local function release()
   if view then
    local called,ok,why=pcall(view.release)
@@ -71,10 +72,16 @@ function M.new(sr,view_module,composition,log)
    local ok,why=release();if not ok then return false,why end
    selected,available=name,nil
   end
-  local material='mods/dbf_photo/materials/mapped_'..name
   if available==nil then
-   local called,found=pcall(sr.Application.can_get,'material',material)
-   available=called and found==true
+   -- Prefer a reviewed replacement only when its assets are deployed.
+   local function present(path)
+    if not path then return false end
+    local called,found=pcall(sr.Application.can_get,'material',path)
+    return called and found==true
+   end
+   material=materials[index]
+   if not present(material)then material='mods/dbf_hud/materials/mapped_'..name end
+   available=present(material)
    if not available then reason='Decorative shader assets unavailable'end
   end
   if not available then return false,reason end

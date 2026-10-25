@@ -155,3 +155,19 @@ do
  near(local_position.x,8,'Foreign local position');near(yaw(local_rotation),.4,'Foreign local rotation');near(lens,1.3,'Foreign lens')
 end
 print('Steam camera: parent ABI, no level IDs, explicit discovery, idle work and owned cleanup passed')
+
+-- Co-located ship cameras must be resolved by exact published pose, never
+-- iteration order or a guessed lens. Truly identical views remain ambiguous.
+do
+ local scene,a,b={},{},{};local p=vector(1,2,3);local angle=.3
+ local native={Vector3=V,Matrix4x4=M4,Application={main_world=function()return scene end},
+  World={debug_camera_pose=function()return pose(.3,p)end,units=function()return{b,a}end},
+  Unit={alive=function()return true end,num_cameras=function()return 1 end,camera=function(u)return u end},
+  Camera={world_position=function()return p end,world_pose=function(u)return pose(u==a and .3 or angle,p)end,
+   local_position=function(u,owner)assert(u==a and owner==a);return p end}}
+ angle=.300001
+ local camera=factory.new(native);assert(camera.open(),'Exact pose must resolve co-located cameras');assert(camera.close())
+ angle=.3;assert(camera.open()==false,'Identical cameras must remain ambiguous')
+ angle=.300001;native.World.debug_camera_pose=function()return pose(.4,p)end
+ assert(camera.open()==false,'No exact pose must remain ambiguous')
+end

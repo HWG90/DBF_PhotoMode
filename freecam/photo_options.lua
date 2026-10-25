@@ -120,7 +120,7 @@ function M.pages(reset,recenter,catalog,saved_actions)
  slider('saturation','Saturation (%)',0,200,1),slider('contrast','Contrast (%)',50,200,1),toggle('bloom','Bloom')}},
  {id='effects',name='Effects',require_confirmation=false,controls={
  {id='scene_status',type='text',label='',status_only=true},
- choice('scene_shader','Scene effect (preview)',catalog and catalog.scene_names or {'None','Negative','Monochrome','Posterize','Field-report duotone','Solarize','Inverted depth','Thermal depth','Depth contours','Depth fog'}),
+ choice('scene_shader','Scene effect',catalog and catalog.scene_names or {'None','Negative','Monochrome','Posterize','Field-report duotone','Solarize','Inverted depth','Thermal depth','Depth contours','Depth fog'}),
  slider('scene_strength','Scene effect strength (%)',0,100,1),slider('scene_depth_range','Depth display range (m)',1,200,1),
  slider('fog_distance','Fog half-density distance (m)',.1,200,.1),slider('fog_density','Maximum fog opacity (%)',0,100,1),
  choice('shader','Shader overlay',catalog and catalog.shader_names or {'None','CRT scanlines','RGB phosphor','Ordered dither','Ion interference','Scanner sweep'}),

@@ -6,7 +6,9 @@ local function service()
   new_job_token=function()end,request=function()end,status=function()end,cancel=function()end},caps
 end
 local qualified_revision='R33-steam-screenshots-factoryfix-candidate'
-local function trial(backend,expected,loader_caps,subject_case)
+local function trial(backend,expected,loader_caps,subject_case,ffi_case)
+ local saved_preload,saved_loaded=package.preload.cffi,package.loaded.cffi
+ package.loaded.cffi=nil;package.preload.cffi=ffi_case and function()return{}end or function()error('No CFFI build')end
  local required={};local created;local disposed=false
  local composition,art,crest,decorative={},{},{},{}
  local camera_service={};local input_service={}
@@ -26,6 +28,9 @@ local function trial(backend,expected,loader_caps,subject_case)
   required[path]=true
   if path=='src/steam_runtime.lua'then return{new=function(host,sr,deps,input)
    assert(host==mod and sr==stingray and input==input_service)
+   assert((deps.load_ai~=nil)==(ffi_case==true),'AI must be optional only on FFI builds')
+   assert(not required['src/steam_ai_backend.lua']and not required['src/steam_ai_control.lua'],'Idle entry loaded AI native routines')
+   assert(type(deps.load_scene)=='function'and type(deps.load_hover)=='function','Non-FFI builds must retain other feature factories')
    assert(deps.decorative_overlay==decorative,'Declare the optional decorative adapter in the module graph')
    assert(deps.composition==composition and composition.logo_art==art and art[2]==crest,
     'Load composition assets without changing the capture service gate')
@@ -64,8 +69,9 @@ local function trial(backend,expected,loader_caps,subject_case)
  assert(created and DBF_PHOTO_MODE_OWNER==runtime)
  assert((required['src/steam_capture.lua']==true)==expected,'Do not load capture on unavailable services')
  entry.on_update();assert(entry.on_disable()and disposed and DBF_PHOTO_MODE_OWNER==nil)
+ package.preload.cffi,package.loaded.cffi=saved_preload,saved_loaded
 end
-trial(nil,false);trial(false,false)
+trial(nil,false);trial(false,false);trial(nil,false,nil,nil,true)
 local valid,caps=service();trial(valid,true)
 trial(valid,true,{native_ffi=false,revision='R34-steam-lua51-preview.1'})
 for _,case in ipairs({'valid','trailing_nil','two','missing','wrong_type'})do

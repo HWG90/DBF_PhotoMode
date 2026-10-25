@@ -2,15 +2,15 @@
 -- Native discovery is explicit on entry; static lights do no update work.
 local M={}
 local fields={light_enabled='enabled',light_intensity='intensity',light_color='color',
- light_cone='cone',light_right='right',light_forward='forward',
+ light_range='range',light_cone='cone',light_right='right',light_forward='forward',
  light_up='up',light_follow='follow_camera'}
-function M.new(sr,model,log)
- -- Current runtime's falloff setter/getter roundtrip returned zero for 8 m.
- -- Keep its compiled range; do not advertise or repeatedly apply that setter.
- local native={};for key,value in pairs(sr)do native[key]=value end
- native.Light={};for key,value in pairs(sr.Light or{})do native.Light[key]=value end
- native.Light.set_falloff_start=nil;native.Light.set_falloff_end=nil
- local manager=model.new(native,log);local world,epoch;local following=false;local active=false;local fault=false
+function M.new(sr,model,log,player_context)
+ -- The current engine's falloff_end getter reads +0x80, while its setter
+ -- writes +0x34. Owned-light readback verified 8/16/4 m at the setter field;
+ -- do not use that unrelated getter to discard the ordinary Lua capability.
+ local manager=model.new(sr,log);
+ if type(player_context)=='function'then manager.player_context=player_context end
+ local world,epoch;local following=false;local active=false;local fault=false
  local scene_world,scene_levels;local scene_generation=0
  local function scene_stamp(w)
   local W=sr.World or{}
@@ -36,7 +36,7 @@ function M.new(sr,model,log)
   return ok,why
  end
  local function refresh()
-  following=manager.follows_camera()
+  following=manager.follows_camera()or manager.follow_player==true
   self.status=manager.status
  end
  function self.open(w,g,frame)
@@ -63,6 +63,10 @@ function M.new(sr,model,log)
   return result(ok,why)
  end
  function self.change(id,value)
+  if id=='light_follow_player'then
+   if type(player_context)~='function'then return false,'Verified local player context unavailable'end
+   return self.action('set_follow_player',value)
+  end
   if id=='light_selected'then return self.action('select',value)end
   if id=='light_kind'then return self.action('update',{kind=value==2 and'spot'or'omni'})end
   local field=fields[id]

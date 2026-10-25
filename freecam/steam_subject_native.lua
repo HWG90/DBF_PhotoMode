@@ -225,10 +225,38 @@ local function factory(sr,policy,preview)
    if entry.attempt and entry.attempt.mode==before then entry.attempt.mode=value end
   end
  end
+ -- Reuse the maintained local-avatar cape attachment solver. Discovery of
+ -- photographic subjects grants no ownership of another player's attachments.
+ local cape_reader=policy.cape_reader
+ local cape=type(policy.cape_factory)=='function'and cape_reader and policy.cape_factory(sr,cape_reader,function(frame,owned)
+  local valid,why=cape_reader.pose_valid(frame,owned);check(valid==true,why or'Cape body owner unavailable')
+ end)or nil
+ local function capture_cape(r)
+  if not cape or r.cape_capture_done then return end
+  r.cape_capture_done=true
+  local ok,frame=pcall(cape_reader.pose_frame)
+  if not ok or frame.root_handle~=r.unit or frame.world~=r.world then status.cape='No proven local cape owner';return end
+  local records=cape.capture(frame)
+  status.cape=records and #records or 'Cape topology unavailable'
+  if records and #records>0 then r.cape={frame=frame,capes=records}end
+ end
+ local function restore_cape(r)
+  if r.cape then cape.restore(r.cape);r.cape=nil end
+  r.cape_capture_done=nil
+ end
+ function self.maintain(target,rig)
+  return result(function()
+   local r=record(target,rig)
+   if not r.cape then return true end
+   current(r,nil,'ignore')
+   local valid,why=cape_reader.pose_valid(r.cape.frame,true);check(valid==true,why or'Cape owner changed')
+   cape.apply(r.cape);return true
+  end)
+ end
  function self.discover(wanted,limit,rig)
   return result(function()
    ready();check(wanted==resource and limit==4,'Bounded exact-resource subject discovery required')
-   for _,r in pairs(records)do check(not next(r.nodes)and not r.mode and not r.scene_dirty,'Retire owned subjects before refreshing')end
+   for _,r in pairs(records)do check(not next(r.nodes)and not r.mode and not r.scene_dirty and not r.cape,'Retire owned subjects before refreshing')end
    check(one(pack(N.game_session()),'userdata','Game session')==session,'Qualified session changed')
    local topology_copy=rig_copy(rig);local world=one(pack(A.main_world()),'userdata','Main world')
    local id=one(pack(I.from_hex(resource)),'userdata','IdString64.from_hex')
@@ -253,7 +281,11 @@ local function factory(sr,policy,preview)
  function self.valid(target,rig)
   local ok,why=pcall(function()local r=record(target,rig);if r.retired then error({tag=retired_tag,reason='Selected subject retired'},0)end;lifetime(r)end)
   if ok then return true end
-  if type(why)=='table'and why.tag==retired_tag then return false,why.reason end
+  if type(why)=='table'and why.tag==retired_tag then
+   local r=records[target];local restored,issue=pcall(restore_cape,r)
+   if not restored then return nil,issue end
+   return false,why.reason
+  end
   return nil,why
  end
  function self.canonical_node(target,rig,value)
@@ -301,6 +333,7 @@ local function factory(sr,policy,preview)
    entry=entry or{base=copy(expected),value=copy(expected)}
    authorize(equal(value,entry.base)and'restore_node.pose'or'set_node.pose',target)
    if preview then record(target,rig);local _,authorized=current(r,index,expected_mode);check(equal(authorized,expected),'Subject matrix changed during authorization')end
+   capture_cape(r)
    local temporary=matrix_from(value.pose)
    matrix_node(temporary) -- Validate actual target PQS without rebuilding its quaternion.
    r.nodes[index]=entry;begin_attempt(entry,expected,value,expected_mode);r.scene_dirty=true
@@ -338,6 +371,7 @@ local function factory(sr,policy,preview)
    if expected==value then return true end
    authorize(entry and value==entry.base and'restore_mode'or'set_mode',target)
    if preview then record(target,rig);current(r,nil,expected)end
+   capture_cape(r)
    entry=entry or{base=expected,value=expected};r.mode=entry
    if not entry.attempt then pending=pending+1 end
    entry.attempt={before=expected,target=value};status.pending=pending;r.scene_dirty=true
@@ -380,6 +414,9 @@ local function factory(sr,policy,preview)
    check(called[1]and called[2]~=false,called[1]and(called[3]or'Subject scene refresh refused')or called[2])
    current(r,nil,actual_mode)
    for index,expected in pairs(expected_nodes)do topology(r,index);check(equal(read_node(r.unit,index),expected),'Subject changed during scene refresh')end
+   if r.cape then
+    if next(r.nodes)or r.mode then cape.apply(r.cape)else restore_cape(r)end
+   elseif not next(r.nodes)and not r.mode then r.cape_capture_done=nil end
    r.refresh_expected=nil;r.refresh_nodes={};r.scene_dirty=false;return true
   end)
   if ok~=true then return false,why end;return true

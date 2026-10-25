@@ -1,25 +1,8 @@
 -- Fixed authored poses. No gameplay events, animation graph swaps or time steps.
 -- Writes/restoration run only from the owning update hook; menu callbacks queue.
 local M={catalog={{id='salute',label='Salute'},{id='wave',label='Wave'},{id='taunt',label='Taunt'}}}
-function M.native(sr,subject,data)
- local U,X,V,Q=sr.Unit,sr.Matrix4x4,sr.Vector3,sr.Quaternion
- assert(subject and subject.pose_frame and subject.pose_valid,'Fixed pose ownership reader unavailable')
- assert(data and data.version==1 and data.rig.node_count==107,'Fixed pose data unavailable')
- for _,name in ipairs({'num_scene_graph_items','scene_graph_parent','has_node','node','local_pose','set_local_pose','animation_bone_mode','set_animation_bone_mode'})do
-  assert(type(U[name])=='function','Fixed pose API unavailable: '..name)
- end
- assert(sr.Matrix4x4Box and sr.World and type(sr.World.update_unit)=='function','Fixed pose transform API unavailable')
- local adapter={};local compiled={}
- function adapter.frame()
-  local frame=subject.pose_frame()
-  assert(frame.local_owner and frame.root_handle and frame.identity,'Local subject pose ownership required')
-  assert(U.num_scene_graph_items(frame.root_handle)==107,'Subject skeleton changed')
-  return frame
- end
- function adapter.valid(frame,owned)return subject.pose_valid(frame,owned)end
- local function checked(frame,owned)
-  local valid,why=adapter.valid(frame,owned);assert(valid==true,why or'Subject pose owner retired')
- end
+function M.capes(sr,subject,checked)
+ local U,X,V=sr.Unit,sr.Matrix4x4,sr.Vector3
  -- Cloth keeps its simulated shape while world time is stopped. Its separate
  -- mesh-placement nodes must follow the posed shoulder anchor as well as the
  -- skeleton. Discover the owned cape rig from its live topology; an unsupported garment
@@ -185,6 +168,29 @@ function M.native(sr,subject,data)
   end
   assert(not failure,failure)
  end
+ return{capture=capture_capes,apply=apply_capes,restore=restore_capes}
+end
+function M.native(sr,subject,data)
+ local U,X,V,Q=sr.Unit,sr.Matrix4x4,sr.Vector3,sr.Quaternion
+ assert(subject and subject.pose_frame and subject.pose_valid,'Fixed pose ownership reader unavailable')
+ assert(data and data.version==1 and data.rig.node_count==107,'Fixed pose data unavailable')
+ for _,name in ipairs({'num_scene_graph_items','scene_graph_parent','has_node','node','local_pose','set_local_pose','animation_bone_mode','set_animation_bone_mode'})do
+  assert(type(U[name])=='function','Fixed pose API unavailable: '..name)
+ end
+ assert(sr.Matrix4x4Box and sr.World and type(sr.World.update_unit)=='function','Fixed pose transform API unavailable')
+ local adapter={};local compiled={}
+ function adapter.frame()
+  local frame=subject.pose_frame()
+  assert(frame.local_owner and frame.root_handle and frame.identity,'Local subject pose ownership required')
+  assert(U.num_scene_graph_items(frame.root_handle)==107,'Subject skeleton changed')
+  return frame
+ end
+ function adapter.valid(frame,owned)return subject.pose_valid(frame,owned)end
+ local function checked(frame,owned)
+  local valid,why=adapter.valid(frame,owned);assert(valid==true,why or'Subject pose owner retired')
+ end
+ local cape=M.capes(sr,subject,checked)
+ local capture_capes,apply_capes,restore_capes=cape.capture,cape.apply,cape.restore
  function adapter.capture(frame)
   checked(frame,true)
   local unit=frame.root_handle

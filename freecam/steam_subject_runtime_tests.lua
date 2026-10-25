@@ -109,7 +109,7 @@ local function fixture(extra)
  f.step=function(dt,renders)wall=f.time+(dt or .016);return step(dt,renders)end
  function f.action(id)return assert(f.controls[id],id).on_activate()end
  function f.enable()
-  f.open();assert(f.action('subject_preview'));assert(f.factories==1)
+  f.open();assert(f.factories==1)
   assert(f.subject.status().selected==nil and f.discoveries==0)
  end
  function f.select()
@@ -136,19 +136,20 @@ end
 do
  local f=fixture()
  for _=1,100 do f.step(.016)end
- assert(f.factories==0 and f.subject_native==0 and f.controls.subject_preview.disabled==true)
+ assert(f.factories==0 and f.subject_native==0 and f.controls.subject_refresh.disabled==true)
  f.enable();assert(#f.controls.subject_pose.choices==213 and f.controls.subject_pose.choices_revision==f.subject.catalog)
- assert(f.controls.subject_preview.button_label=='Disable preview'and f.controls.subject_select_3.disabled)
+ assert(f.controls.subject_preview==nil and f.controls.subject_select_3.disabled)
  f.select();local writes=f.node_writes
  assert(f.runtime.handle.set('subject_pose',2)and f.node_writes==writes and f.decodes==0,'Picking a pose never applies or decodes it')
  f.pose(2);local native,status,decodes=f.subject_native,f.status_reads,f.decodes
  for _=1,100 do f.step(.016,1)end
  assert(f.subject_native==native and f.status_reads==status and f.decodes==decodes,'Unchanged active posing has no subject update work')
  f.pose(3);assert(f.decodes==decodes+1);assert(f.action('subject_pose_stop'));f.restored()
- assert(f.subject.status().pose==nil);f.pose(1);assert(f.action('subject_preview'));f.restored()
- assert(f.controls.subject_preview.button_label=='Enable preview'and f.controls.subject_pose_play.disabled)
+ assert(f.subject.status().pose==nil);f.pose(1);assert(f.runtime.close(true));f.restored()
+ assert(f.controls.subject_refresh.disabled and f.controls.subject_pose_play.disabled)
+ f.finish()
  native,status=f.subject_native,f.status_reads;for _=1,100 do f.step(.016,1)end
- assert(f.subject_native==native and f.status_reads==status,'Disabled preview remains idle')
+ assert(f.subject_native==native and f.status_reads==status,'Closed subject controls remain idle')
  assert(f.runtime.close(true));f.finish()
 end
 do
@@ -229,7 +230,7 @@ end
 
 do
  local f=fixture();f.enable();f.select();f.pose();f.events={};f.foreground=false;f.step(1.1)
- f.restored();assert(f.rate==1 and index_of(f.events,'mode:position_and_rotation')<index_of(f.events,'time:1'))
+ assert(f.rate==0 and f.runtime.active,'Focus loss must preserve the frozen Photo Mode session')
  f.foreground=true;f.finish()
 end
 do
@@ -255,15 +256,15 @@ do
  f.finish();assert(f.rate==.6)
 end
 do
- local f=fixture();f.open();f.factory_error=true
- assert(not f.action('subject_preview')and f.runtime.active and f.camera_open and f.lease and f.subject_native==0)
- assert(f.controls.subject_preview.button_label=='Enable preview')
- f.factory_error=false;assert(f.action('subject_preview')and f.factories==2 and f.discoveries==0)
+ local f=fixture();f.factory_error=true;f.open()
+ assert(f.runtime.active and f.camera_open and f.lease and f.subject_native==0)
+ assert(not f.controls.subject_refresh.disabled)
+ f.factory_error=false;assert(f.action('subject_refresh')and f.factories==2 and f.discoveries==1)
  f.finish()
 end
 do
  wall=0;local f=base_fixture()
- assert(f.controls.subject_preview==nil and f.controls.subject_pose.disabled and f.controls.subject_pose_play.disabled,
+ assert(f.controls.subject_refresh==nil and f.controls.subject_pose.disabled and f.controls.subject_pose_play.disabled,
   'Absent optional factory preserves the current disabled subject controls')
  f.finish()
 end

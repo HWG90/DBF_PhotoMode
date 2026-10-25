@@ -14,9 +14,10 @@ local function fixture()
  sr.Application.worlds=function()return{f.world}end
  sr.Application.main_world=function()return f.world end
  sr.Application.can_get=function(kind,path)
-  f.queries=f.queries+1;assert(kind=='material'and path:match('^mods/dbf_photo/materials/mapped_[a-z0-9_]+$'))
+  f.queries=f.queries+1;assert(kind=='material'and (path:match('^mods/dbf_hud/materials/mapped_[a-z0-9_]+$')or path:match('^mods/dbf_photo/materials/decorative_[a-z0-9_]+$')))
   f.path=path;if f.query_error then error('availability failed')end
-  if f.late_missing and f.queries>=3 then return false end;return f.available
+  if f.late_missing and f.queries>=3 then return false end
+  if f.replacements_missing and path:match('^mods/dbf_photo/')then return false end;return f.available
  end
  sr.Gui.resolution=function()return f.width,1080 end
  sr.World.create_screen_gui=function()f.creates=f.creates+1;return{}end
@@ -68,7 +69,7 @@ do
  for _=1,200 do assert(f.overlay.draw(1920,1080,o))end
  assert(f.queries==0 and f.creates==0 and f.views==0,'None must remain completely idle')
  o=options();assert(f.overlay.draw(1920,1080,o))
- assert(f.path=='mods/dbf_photo/materials/mapped_crt_scan'and f.allocations==2)
+ assert(f.path=='mods/dbf_hud/materials/mapped_crt_scan'and f.allocations==2)
  local c=f.commands[1];assert(c.layer==90 and c.a==.37 and c.preview_static and f.token==f.commands)
  assert(c.x==0 and c.y==0 and c.w==1920 and c.h==1080)
  assert(f.last_vectors.scissor_rect[1]==2 and f.last_vectors.scissor_rect[4]==0)
@@ -101,8 +102,19 @@ do
  local copper
  for i,name in ipairs(catalog.shaders)do if name=='oxidized_copper'then copper=i end end
  o.shader=copper;assert(f.overlay.draw(1920,1080,o))
+ assert(catalog.shader_materials.oxidized_copper and f.path==catalog.shader_materials.oxidized_copper,'Use the deployed replacement material')
  assert(f.commands[1].c[1]==188 and f.commands[1].c[2]==110 and f.commands[1].c[3]==66,'Preserve catalog carrier color')
  q=f.queries;assert(f.overlay.open());assert(f.overlay.draw(1920,1080,o));assert(f.queries>q,'Reopen explicitly retries availability')
+ assert(f.overlay.close())
+end
+do
+ local f=fixture();assert(f.overlay.open());f.replacements_missing=true
+ local o=options();for i,name in ipairs(catalog.shaders)do if name=='prismatic'then o.shader=i end end
+ assert(f.overlay.draw(1920,1080,o));assert(f.path=='mods/dbf_hud/materials/mapped_prismatic',
+  'An undeployed replacement keeps the shipped material')
+ assert(f.commands[1].preview_material=='mods/dbf_hud/materials/mapped_prismatic')
+ f.replacements_missing=false;assert(f.overlay.invalidate()and f.overlay.draw(1920,1080,o))
+ assert(f.commands[1].preview_material==catalog.shader_materials.prismatic,'Invalidation re-resolves a deployed replacement')
  assert(f.overlay.close())
 end
 do

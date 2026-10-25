@@ -14,12 +14,24 @@ local modifiers={[16]={160,161},[17]={162,163},[18]={164,165}}
 local zero_mask=string.rep('\0',32)
 local function finite(n)return type(n)=='number'and n==n and math.abs(n)<1e12 end
 local function bit(bytes,code)return math.floor(bytes:byte(math.floor(code/8)+1)/2^(code%8))%2==1 end
-function M.new(sr,service)
+function M.new(sr,service,recovery,policy)
  assert(type(service)=='table'and service.version==1,'LLL shared input service v1 is required')
  local self={};local token,mode,release_wait,blocked,first_sample
+ local keyboard_required=type(policy)=='table'and policy.require_keyboard==true
+ local keyboard_denied=false
  local keyboard_requested,keyboard_generation,keyboard_keys,keyboard_mask,keyboard_contract_mask,capture_fault
  local ids,keys,output={},{},{}
  local sampled,sample_result,wheel_taken,foreground=false,false,false,false
+ local clip_attempted=false
+ local function pointer_clip(active)
+  if not(policy and type(policy.pointer_clip)=='function')then return true end
+  if not active and not clip_attempted then return true end
+  if active then clip_attempted=true end
+  local called,ok=pcall(policy.pointer_clip,active)
+  if not called or ok~=true then return false,'Photo pointer confinement is unconfirmed'end
+  if not active then clip_attempted=false end
+  return true
+ end
  local function owns()return token~=nil and service.owns(token)==true end
  local function invalidate()
   for key in pairs(keys)do keys[key]=nil end
@@ -31,6 +43,8 @@ function M.new(sr,service)
   keyboard_requested,keyboard_generation,keyboard_contract_mask,capture_fault=nil,nil,nil,nil;invalidate()
  end
  function self.release()
+  local clipped,issue=pointer_clip(false)
+  if not clipped then release_wait=true;invalidate();return false,issue end
   if not token then retired();return true end
   if not owns()then
    local state=service.status()
@@ -39,6 +53,11 @@ function M.new(sr,service)
    end
   end
   local called,ok,why=pcall(service.release,token)
+  if called and ok~=true and why=='Keyboard request refused (0x00000005)'and recovery then
+   local recovered,done,reason=pcall(recovery.retire_denied,service,token)
+   if recovered and done==true then retired();return true end
+   if not recovered then why=done elseif reason then why=reason end
+  end
   if not called or ok~=true then
    release_wait=true;invalidate()
    if not called then return false,ok end
@@ -50,7 +69,10 @@ function M.new(sr,service)
  end
  function self.set_mode(value)
   assert(value=='menu'or value=='camera','Invalid Photo input mode')
-  local capture_keyboard=service.capabilities and service.capabilities.keyboard==true
+  if keyboard_required and not(service.capabilities and service.capabilities.keyboard==true)then
+   return false,'Native keyboard isolation is required; update the shared input service'
+  end
+  local capture_keyboard=not keyboard_denied and service.capabilities and service.capabilities.keyboard==true
   local canonical_mask=service.capabilities and service.capabilities.keyboard_mask
   if owns()and not release_wait and not capture_fault and keyboard_requested==capture_keyboard and service.capabilities[value]==true and
    (not capture_keyboard or canonical_mask==keyboard_contract_mask)then
@@ -77,6 +99,16 @@ function M.new(sr,service)
   else token,why,cleanup=service.acquire('dbf_freecam',value,nil)end
   if not token then
    if cleanup then token=cleanup;release_wait=true end
+   if capture_keyboard and why=='Keyboard request refused (0x00000005)'then
+    local restored=self.release()
+    local status=service.status()
+    if restored and type(status)=='table'and status.owner==nil and status.pending_restore==false then
+     if keyboard_required then return false,'Native keyboard isolation was denied; Photo Mode stayed closed'end
+     keyboard_denied=true
+     self.keyboard_fallback='Native keyboard capture was denied; engine key input is active'
+     return self.set_mode(value)
+    end
+   end
    return false,why
   end
   mode,blocked,first_sample=value,true,true;invalidate()
@@ -85,6 +117,8 @@ function M.new(sr,service)
  function self.frame()
   invalidate()
   foreground=sr.Window.has_focus()==true
+  local ok,why=pointer_clip(foreground and owns()and not release_wait and not capture_fault)
+  if not ok then capture_fault=why end
  end
  local function fail(reason,detail)
   output.valid=false;output.reason=reason;output.detail=detail
@@ -173,6 +207,8 @@ function M.new(sr,service)
   if wheel_taken then return 0 end;wheel_taken=true
   local sample=self.sample();return sample and sample.wheel or 0
  end
+ function self.keyboard_isolated()return owns()and not release_wait and not capture_fault and keyboard_requested==true and keyboard_generation~=nil and keyboard_keys~=nil and keyboard_mask==keyboard_contract_mask end
+ function self.status()return{owner=owns()and'dbf_freecam'or nil,mode=mode,required_keyboard=keyboard_required,requested_keyboard=keyboard_requested==true,keyboard_isolated=self.keyboard_isolated(),pending_restore=release_wait==true,reason=capture_fault}end
  function self.owns()return owns()and not release_wait and not capture_fault end
  function self.pending_restore()return token~=nil and release_wait==true end
  function self.focused()return foreground end

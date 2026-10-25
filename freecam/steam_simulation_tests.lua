@@ -67,3 +67,20 @@ assert(p.set_slowmo(true,.4));peers={'local','remote'};now=7
 assert(p.tick()and rate==1 and not p.owned,'Slow motion must retire on multiplayer transition too')
 peers={'local'}
 print('Steam simulation: true zero, idle state, bounded solo checks, exact 1x policy, restoration retry and foreign ownership passed')
+
+-- Refuse unsafe/unknown equipment before ownership or a zero setter call.
+do
+ local native_writes=0;local allowed=false;local broken=false
+ local native=function(_,v)native_writes=native_writes+1;assert(v>=0)end
+ local s={Application={set_time_step_policy=native,main_world=function()return{}end},
+ Network={game_session=function()return{}end},GameSession={peers=function()return{'local'}end}}
+ local t=M.time_policy(s,function()return 0 end,nil,function()
+  if broken then error('Unreadable backpack')end
+  return allowed,'Hover Pack pause is being repaired'
+ end)
+ local ok,why=t.freeze();assert(not ok and why:find('Hover Pack')and native_writes==0 and not t.owned and not t.frozen)
+ broken=true;ok,why=t.freeze();assert(not ok and why:find('Unreadable backpack')and native_writes==0 and s.Application.set_time_step_policy==native)
+ broken=false;allowed=true;assert(t.freeze()and native_writes==1 and t.owns_zero())
+ assert(t.release()and native_writes==2 and not t.frozen)
+end
+print('Pause equipment gate: unsafe/unknown reads refuse before zero or ownership; safe equipment still freezes/restores passed')

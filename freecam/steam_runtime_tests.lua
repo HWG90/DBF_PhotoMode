@@ -190,8 +190,8 @@ key('p');assert(runtime.active)
 local old=render;local outer=function(...)return old(...)end;render=outer
 key('p');assert(not runtime.active and render==outer)
 key('p');before=writes;render();assert(writes==before+1,'Retained old wrapper must not double-render')
-foreground=false;lease=nil;tick();assert(not runtime.active,'Focus-loss revocation must close Photo Mode')
-foreground=true;key('p');assert(runtime.active)
+foreground=false;lease=nil;pressed.p=true;tick();time=time+2;tick();assert(runtime.active and runtime.focus_suspended and lease==nil and rate==0,'Focus loss must retain frozen Photo Mode and release input')
+foreground=true;tick();tick();assert(runtime.active and not runtime.focus_suspended and lease~=nil,'Focus return and a held toggle key must not close or reopen Photo Mode');pressed.p=false;tick()
 assert(runtime.handle.set('slowmo_speed',.25));assert(runtime.toggle_slowmo()and rate==0,
  'Enabling slow motion while frozen must leave world time zero')
 key('p');assert(not runtime.active and rate==.25 and runtime.handle.get('freeze_player'),
@@ -282,7 +282,8 @@ assert(action.mode=='menu'and rate==0,'Photo key returns path action shot to fro
 assert(action.begin_shot());camera_changed=true;render();camera_changed=false
 assert(not action.active and rate==1 and lease==nil,'Changed rendered camera must close shot and release time')
 assert(action.open()and rate==0);assert(action.begin_shot());foreground=false
-action.tick();foreground=true;assert(not action.active and rate==1,'Focus loss must close shot without a pointer lease')
+action.tick();foreground=true;assert(action.active and action.focus_suspended and action.mode=='shot','Focus loss must retain the action shot')
+action.tick();assert(action.active and not action.focus_suspended);assert(action.close(true));
 assert(action.open()and rate==0);assert(action.begin_shot());game_session={};time=time+2;action.tick()
 assert(not action.active and rate==1,'Session replacement must retire the action shot')
 assert(action.open()and rate==0);refuse_release=true

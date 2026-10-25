@@ -52,7 +52,7 @@ local function bitmap(codes)
 end
 local capture_mask=('00331f08ffe1ff03feffff27fffffff7ff0003003f0000fc010000f804000000'):gsub('%x%x',
  function(hex)return string.char(tonumber(hex,16))end)
-local function captured_fixture(legacy)
+local function captured_fixture(legacy,policy)
  local f={snapshots=0,acquires=0,releases=0,mode_changes=0,engine_reads=0,engine_ids=0,resolutions=0,
   focus=true,owns=true,claimed=false,generation=7,acquire_calls={}}
  f.raw={valid=true,x=50,y=25,width=100,height=100,buttons=0,wheel=120,dx=3,dy=-4,
@@ -84,7 +84,7 @@ local function captured_fixture(legacy)
   Gui={resolution=function()f.resolutions=f.resolutions+1;return 200,300 end},
   Keyboard={button_id=function(name)f.engine_ids=f.engine_ids+1;return name=='f12'and 123 or name=='w'and 87 or 20 end,
    button=function()f.engine_reads=f.engine_reads+1;return f.engine_value==nil and 1 or f.engine_value end}}
- f.broker=broker;f.input=F.new(native,broker)
+ f.broker=broker;f.input=F.new(native,broker,nil,policy)
  function f.frame()f.input.frame()end
  function f.active(codes)
   f.raw.keyboard_state,f.raw.keyboard_active,f.raw.valid=2,true,true
@@ -284,5 +284,17 @@ for _,kind in ipairs({'nil','throw'})do
   'Pending release has no automatic release/snapshot retry or engine fallback')
  assert(i.release()and attempts==2 and not i.pending_restore(),'Only acknowledged true retires the same cleanup token')
  f.frame();assert(i.down(87),'Gameplay keyboard fallback resumes after acknowledged release')
+end
+do
+ local calls={};local refuse=false
+ local f=captured_fixture(false,{pointer_clip=function(active)calls[#calls+1]=active;return not refuse end});local i=f.input
+ f.frame();assert(#calls==0,'Closed input must never touch confinement')
+ assert(i.set_mode('menu'));f.frame();assert(calls[#calls]==true)
+ assert(i.set_mode('camera'));f.frame();assert(calls[#calls]==true,'Both pointer modes retain client confinement')
+ f.focus=false;f.frame();assert(calls[#calls]==false,'Alt-Tab releases confinement')
+ local count=#calls;f.frame();assert(#calls==count,'Background idle does not repeat release')
+ f.focus=true;f.frame();assert(calls[#calls]==true)
+ refuse=true;assert(not i.release()and i.pending_restore()and f.claimed,'Unconfirmed clipping restore retains cleanup ownership')
+ refuse=false;assert(i.release()and not f.claimed and calls[#calls]==false)
 end
 print('Steam input: shared pointer/physical-key snapshot, arming retention, exact capture guards, aliases, old brokers, mode reuse and cleanup ownership passed')
