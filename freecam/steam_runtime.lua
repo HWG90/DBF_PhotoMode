@@ -1224,7 +1224,7 @@ function M.new(host,sr,deps,service)
     for axis=1,3 do pos[axis]=pos[axis]+frame.position[axis]-initial_player[axis]end
    end
   end
-  photo.pos,photo.forward,photo.right=pos,copy(initial.forward),copy(initial.right)
+  photo.pos=pos;photo.forward,photo.right=deps.look.level(initial.forward)
   photo.view,photo.target,photo.roll=nil,nil,nil;sample_sequence=sample_sequence+1
   return true
  end
@@ -1718,7 +1718,10 @@ function M.new(host,sr,deps,service)
   checkpoint('open: camera discovery')
   ok,why=camera.open();if not ok then notice(why);self.close();return false,why end
   checkpoint('open: camera frame')
-  initial=assert(camera.frame());photo={pos=copy(initial.position),forward=copy(initial.forward),right=copy(initial.right)}
+  -- Start level: the game camera's yaw and pitch without its roll, and Roll back at 0
+  -- (pending like a keyboard roll, so entry needs no settings write).
+  initial=assert(camera.frame());local level_forward,level_right=deps.look.level(initial.forward)
+  photo={pos=copy(initial.position),forward=level_forward,right=level_right,roll=handle.get('roll')~=0 and 0 or nil}
   initial_player=nil
   if subject_backend then
    local ok,frame=pcall(subject_backend.frame)

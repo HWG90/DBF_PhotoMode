@@ -26,12 +26,13 @@ sr.Application.set_time_step_policy=native_policy
 sr.Application.main_world=function()return'world'end
 sr.Network={game_session=function()return game_session end}
 sr.GameSession={peers=function()return session_peers end}
-local camera_active=false;local last_position;local camera_changed=false;local guarded_writes=0
+local camera_active=false;local last_position,last_up;local camera_changed=false;local guarded_writes=0
 local camera={open=function()assert(not camera_active);camera_active=true;scans=scans+1;return true end,
  scene=function()assert(camera_active);return'world',scans end,
- frame=function()return{position={0,0,0},forward={1,0,0},right={0,-1,0},up={0,0,1},fov=1}end,
+ -- The game camera is rolled 15 degrees: Photo Mode must still start level.
+ frame=function()return{position={0,0,0},forward={1,0,0},right={0,-.96592583,.25881905},up={0,-.25881905,.96592583},fov=1}end,
  write_view=function(p,f,u,fov,guard)
-  assert(camera_active and f and u and fov)
+  assert(camera_active and f and u and fov);last_up={unpack(u)}
   if guard then guarded_writes=guarded_writes+1;if camera_changed then return false,'Rendered camera changed'end end
   writes=writes+1;last_position={unpack(p)};return true
  end,
@@ -113,6 +114,8 @@ assert(runtime.handle.set('clean_view',true));key('h')
 assert(not runtime.handle.get('clean_view')and not runtime.handle.get('hide_controls'),
  'Show controls must escape persisted clean view')
 local a,b,c=render(nil);assert(a=='native'and b==1 and c==nil,'Preserve native render arguments/results')
+assert(math.abs(last_up[1])<1e-6 and math.abs(last_up[2])<1e-6 and math.abs(last_up[3]-1)<1e-6,
+ 'Photo Mode starts level: no game camera roll and no saved Roll')
 local vignette_controls={}
 for _,page in ipairs(menu.pages)do for _,control in ipairs(page.controls)do
  if control.id=='vignette'or control.id=='vignette_width'then vignette_controls[control.id]=control end

@@ -12,6 +12,22 @@ local function word64(s)
  if type(s)~='string'or#s<8 then return nil end
  local n=0;for i=8,1,-1 do n=n*256+s:byte(i)end;return n
 end
+-- The gameplay HUD as the HUD lease sees it (scene 3 is the ship, 4 a mission), for finding
+-- what the game's own Toggle HUD key changes. Reads only.
+function M.hud(bridge)
+ local game=bridge.module_base('game.dll')
+ local function read(at,n)local ok,s=pcall(bridge.read_memory,at,n);if ok and type(s)=='string'and#s==n then return s end end
+ local function word(at)local s=read(at,4);return s and s:byte(1)+s:byte(2)*256+s:byte(3)*65536+s:byte(4)*16777216 end
+ local function ptr(at)local s=read(at,8);local v=s and word64(s);return v and v>=65536 and v<2^47 and v or nil end
+ local state=type(game)=='number'and ptr(game+0x2ce1508);local root=type(game)=='number'and ptr(game+0x2e28788)
+ if not root then return'scene '..tostring(state and word(state+0xac29c))..', HUD root unreadable'end
+ local widget,panel=root+0x820,root+0x24e340+0x146940
+ local flags,panel_flags,near=word(widget),word(panel),read(root+0x24e330,16)
+ return string.format('scene %s, hud flag %s, tree %s, widget flags %s (visible %s), panel flags %s (visible %s), root+0x24E330 %s',
+  tostring(state and word(state+0xac29c)),near and tostring(near:byte(5))or'?',ptr(widget+0xf0)==root+0x258 and ptr(panel+0xf0)==widget and'ok'or'differs',
+  hex(flags),flags and tostring(math.floor(flags/16)%2)or'?',hex(panel_flags),panel_flags and tostring(math.floor(panel_flags/16)%2)or'?',
+  near and(near:gsub('.',function(c)return string.format('%02X',c:byte())end))or'unreadable')
+end
 -- A Lua 5.1 function's GC object address, as tostring prints it.
 function M.closure(f)local s=tostring(f):match('^function: ?(%x+)$')or tostring(f):match('^function: 0x(%x+)$');return s and tonumber(s,16)end
 function M.run(sr,host_native,log,label)

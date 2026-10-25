@@ -26,4 +26,15 @@ assert(all:find('Application.time_since_launch',1,true)and all:find('entry=0x7FF
 assert(all:find('Application.save_render_target: function',1,true)and all:find('entry unreadable',1,true))
 D.run(sr,{open=function()error('loadlib refused')end},function(m)lines[#lines+1]=m end,'30 s')
 assert(lines[#lines]:find('Native diagnostics (30 s): bridge unavailable: ',1,true))
-print('Native diagnostics: page readability, binding entries and bridge verdicts, read-only, bridge failure passed')
+-- HUD probe: the lease's scene, flag, hierarchy and widget flags; an unreadable root says so.
+local function le32(n)return le64(n):sub(1,4)end
+local state,root=0x10000000,0x20000000;local widget,panel=root+0x820,root+0x24e340+0x146940
+local memory={[game+0x2ce1508]=le64(state),[state+0xac29c]=le32(3),[game+0x2e28788]=le64(root),[widget]=le32(0x31),[widget+0xf0]=le64(root+0x258),
+ [panel]=le32(0x21),[panel+0xf0]=le64(widget),[root+0x24e330]='\0\0\0\0\1'..string.rep('\0',11)}
+local hud_bridge={module_base=function()return game end,read_memory=function(at,n)local s=memory[at];if not s then error('Protected native read failed')end;return s:sub(1,n)end}
+local line=D.hud(hud_bridge)
+assert(line:find('scene 3, hud flag 1, tree ok, widget flags 0x31 (visible 1), panel flags 0x21 (visible 0), root+0x24E330 00000000010000',1,true),line)
+memory[widget]=le32(0x21);assert(D.hud(hud_bridge):find('widget flags 0x21 (visible 0)',1,true),'A hidden widget reads as such')
+memory[panel+0xf0]=le64(root);assert(D.hud(hud_bridge):find('tree differs',1,true))
+memory[game+0x2e28788]=nil;assert(D.hud(hud_bridge)=='scene 3, HUD root unreadable')
+print('Native diagnostics: page readability, binding entries and bridge verdicts, read-only, bridge failure, HUD probe passed')

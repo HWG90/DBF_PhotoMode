@@ -68,6 +68,7 @@ mod.host_loader={engine_input=true,input_service=mod.require('src/engine_input.l
 local state='waiting'
 -- Read-only native diagnostics at start and twice later, while subject/hover fail here.
 local diagnose_at,started_at={0,30,120}
+local hud_probe,hud_probe_at=nil,0
 local function clock()local ok,t=pcall(function()return stingray.Application.time_since_launch()end);return ok and type(t)=='number'and t or os.clock()end
 local function stop(reason)
  if state~='running'then return end
@@ -84,6 +85,13 @@ local function frame(dt,...)
    local label=diagnose_at[1]..' s';table.remove(diagnose_at,1)
    local done,why=pcall(function()mod.require('src/native_diagnostics.lua').run(stingray,mod.require('src/host_native.lua'),mod.log,label)end)
    if not done then mod.log('Native diagnostics failed: '..tostring(why))end
+  end
+  -- The gameplay HUD's state twice a second, logged when it changes (the game's Toggle HUD key).
+  if hud_probe~=false and clock()>=hud_probe_at then
+   hud_probe_at=clock()+.5
+   local done,line=pcall(function()return mod.require('src/native_diagnostics.lua').hud(mod.require('src/host_native.lua').open())end)
+   if not done then hud_probe=false;mod.log('HUD probe stopped: '..tostring(line))
+   elseif line~=hud_probe then hud_probe=line;mod.log('HUD probe: '..line)end
   end
  end
  return ...
@@ -182,6 +190,8 @@ return entry,a,b,calls,shut,table.concat(registered,'|')
             # On a bare engine the runtime starts with its native features reported unavailable.
             assert 'Photo Mode started on Boot Mod Loader' in log and 'stopped after an error' not in log and 'cleanup failed' not in log, log
             assert 'Native diagnostics (0 s)' in log and 'Native diagnostics failed' not in log, 'The start-up native diagnostic runs'
+            # No bridge on a bare engine: the HUD probe stops once, saying why.
+            assert log.count('HUD probe stopped: ') == 1, log
             # No LLL and no Linux worker: the engine writes DDS into the game's settings folder.
             assert 'Engine DDS capture selected: ' + str(game).replace('\\', '/') in log, log
             # LLL: its folders, and the entry handed back for LLL to drive.

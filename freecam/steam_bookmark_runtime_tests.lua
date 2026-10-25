@@ -4,7 +4,7 @@ local camera={open=function()return true end,close=function()return true end,
  frame=function()return{position={0,0,0},forward={1,0,0},right={0,-1,0},fov=1}end,
  bookmark_context=function()return{world=1,unit=2,position={0,0,0}}end}
 local input={set_mode=function()return true end,release=function()return true end}
-local deps={bookmark=load('steam_bookmark'),camera={new=function()return camera end},input={new=function()return input end},
+local deps={bookmark=load('steam_bookmark'),look=load('look'),camera={new=function()return camera end},input={new=function()return input end},
  core={new=function(...)core=core_module.new(...);return core end},
  store={new=function()return{load=function()return{}end,save=function()return true end}end},
  view={new=function()return{release=function()return true end}end},
