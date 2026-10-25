@@ -4,8 +4,12 @@
 -- scene-graph count, since the transform getters do not check either.
 local M={}
 local helldiver='4d1c334d294dfa97'
--- Feet, waist and head height above the root, so tall and short rigs both hit.
-local heights={0,.9,1.6}
+-- Feet, waist, head and large-rig body height above the root.
+local heights={0,.9,1.6,3}
+-- A hit must lie within this world distance of the camera (DoF focus tops out
+-- at 200 m) and within BODY metres of the click ray, or within the screen
+-- radius while still no more than REACH metres off the ray. The nearest hit wins.
+M.max_distance,M.body,M.reach=200,.6,1.5
 function M.new(sr)
  local A,W,U,I,V=sr.Application,sr.World,sr.Unit,sr.IdString64,sr.Vector3
  local self={}
@@ -38,6 +42,7 @@ function M.new(sr)
   local p,f,u=camera.pos,camera.forward,camera.up
   local r={f[2]*u[3]-f[3]*u[2],f[3]*u[1]-f[1]*u[3],f[1]*u[2]-f[2]*u[1]}
   local tangent=math.tan(camera.fov/2);local aspect=width/height
+  local metres=2*tangent/height -- world metres per pixel at unit depth
   local best,best_score,best_depth
   for _,unit in pairs(units)do if type(unit)=='userdata'then
    local ok,score,depth,center=pcall(function()
@@ -51,16 +56,17 @@ function M.new(sr)
     for _,h in ipairs(heights)do
      local dx,dy,dz=x0-p[1],y0-p[2],z0+h-p[3]
      local z=dx*f[1]+dy*f[2]+dz*f[3]
-     if z>.3 then
+     if z>.3 and z<=M.max_distance then
       local sx=width/2+(dx*r[1]+dy*r[2]+dz*r[3])/z/(tangent*aspect)*width/2
       local sy=height/2+(dx*u[1]+dy*u[2]+dz*u[3])/z/tangent*height/2
-      local d=math.sqrt((sx-x)^2+(sy-y)^2)
-      if not nearest or d<nearest then nearest,depth=d,z end
+      local d=math.sqrt((sx-x)^2+(sy-y)^2);local off=d*z*metres
+      if(off<=M.body or d<=radius and off<=M.reach)and(not nearest or off<nearest)then nearest,depth=off,z end
      end
     end
-    if nearest and nearest<=radius then return nearest,depth,{x0,y0,z0+heights[2]}end
+    if nearest then return nearest,depth,{x0,y0,z0+heights[2]}end
    end)
-   if ok and score and(not best_score or score<best_score-4 or math.abs(score-best_score)<=4 and depth<best_depth)then
+   -- Nearest along the view wins; within half a metre, the one closer to the ray.
+   if ok and score and(not best_depth or depth<best_depth-.5 or math.abs(depth-best_depth)<=.5 and score<best_score)then
     best,best_score,best_depth={unit=unit,center=center},score,depth
    end
   end end

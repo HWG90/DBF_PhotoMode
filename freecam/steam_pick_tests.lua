@@ -38,5 +38,15 @@ assert(hit.helldiver and hit.label=='Helldiver'and hit.unit==units[1])
 assert(not picker.pick(camera,100,100,1920,1080,48),'A click away from every character picks nothing')
 units={unit('#ID[ef3a4136b21592cb]',10,0,-.9)}
 assert(assert(picker.pick(camera,960,540,1920,1080,48)).label=='Character','Hashed debug names fall back to a plain label')
+-- Far characters (kilometres away) under the pointer are never picked.
+units={unit('Distant',3000,0,-.9)}
+assert(not picker.pick(camera,960,540,1920,1080,48),'Characters beyond 200 m are ignored')
+-- A nearby character slightly off the cursor beats a farther one dead on it.
+units={unit('Far',150,0,-.9),unit('Near',8,-.3,-.9)}
+hit=assert(picker.pick(camera,960,540,1920,1080,48))
+assert(hit.label=='Near','The nearest character along the view wins: '..hit.label)
+-- At range the screen radius is limited to 1.5 m off the click ray.
+units={unit('Wide',100,-3,-.9)}
+assert(not picker.pick(camera,960,540,1920,1080,48),'A character 3 m off the ray at 100 m is not picked')
 type=real_type
-print('Scene picking: guarded unit reads, projection, nearest choice, Helldiver detection and empty clicks passed')
+print('Scene picking: guarded unit reads, projection, nearest choice, Helldiver detection, 200 m cap, nearest-first and empty clicks passed')
