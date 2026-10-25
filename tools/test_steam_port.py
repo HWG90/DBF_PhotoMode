@@ -12,7 +12,7 @@ FIXTURES=('steam_control_updates_tests.lua','steam_director_runtime_tests.lua','
           'steam_pose_bank_tests.lua','steam_subject_tests.lua','steam_subject_native_tests.lua','steam_subject_runtime_tests.lua')
 FIXTURES+=('steam_scene_sdr_tests.lua','steam_scene_resources_tests.lua','steam_scene_tests.lua','steam_focus_sampler_tests.lua','steam_scene_overlay_tests.lua','steam_required_input_tests.lua','steam_hud_tests.lua','steam_hud_runtime_tests.lua','steam_handycam_tests.lua')
 
-FIXTURES+=('steam_bindings_tests.lua','steam_engine_input_tests.lua','steam_native_library_tests.lua','steam_pick_tests.lua','steam_handoff_runtime_tests.lua','steam_native_lens_runtime_tests.lua','steam_ragdoll_runtime_tests.lua','steam_hover_pause_tests.lua','steam_hover_runtime_tests.lua','steam_hover_backend_tests.lua')
+FIXTURES+=('steam_native_diagnostics_tests.lua','steam_bindings_tests.lua','steam_engine_input_tests.lua','steam_native_library_tests.lua','steam_pick_tests.lua','steam_handoff_runtime_tests.lua','steam_native_lens_runtime_tests.lua','steam_ragdoll_runtime_tests.lua','steam_hover_pause_tests.lua','steam_hover_runtime_tests.lua','steam_hover_backend_tests.lua')
 
 FEATURE_FIXTURES=('cinema_camera_tests.lua','cinema_controls_tests.lua','cinema_hint_tests.lua',
                   'saved_camera_tests.lua','director_tests.lua','photo_lights_tests.lua','photo_light_presets_tests.lua',

@@ -66,6 +66,9 @@ local bindings=rawget(_G,'ModBindingsMenu')
 if not(type(bindings)=='table'and type(bindings.register_binding)=='function'and type(bindings.is_down)=='function'and type(bindings.binding)=='function')then bindings=nil end
 mod.host_loader={engine_input=true,input_service=mod.require('src/engine_input.lua').new(stingray,mod.log),bindings=bindings,capabilities={revision='boot-mod-loader-host.1'}}
 local state='waiting'
+-- Read-only native diagnostics at start and twice later, while subject/hover fail here.
+local diagnose_at,started_at={0,30,120}
+local function clock()local ok,t=pcall(function()return stingray.Application.time_since_launch()end);return ok and type(t)=='number'and t or os.clock()end
 local function stop(reason)
  if state~='running'then return end
  state='stopped';if reason then mod.log(reason)end
@@ -74,9 +77,14 @@ end
 local function frame(dt,...)
  if state=='waiting'then
   local ok,why=pcall(entry.on_enable)
-  if ok then state='running';mod.log('Photo Mode started on Boot Mod Loader')else state='failed';mod.log('Photo Mode did not start: '..tostring(why))end
+  if ok then state='running';started_at=clock();mod.log('Photo Mode started on Boot Mod Loader')else state='failed';mod.log('Photo Mode did not start: '..tostring(why))end
  elseif state=='running'then
   local ok,why=pcall(entry.on_update,dt);if not ok then stop('Photo Mode stopped after an error: '..tostring(why))end
+  if diagnose_at[1]and clock()-started_at>=diagnose_at[1]then
+   local label=diagnose_at[1]..' s';table.remove(diagnose_at,1)
+   local done,why=pcall(function()mod.require('src/native_diagnostics.lua').run(stingray,mod.require('src/host_native.lua'),mod.log,label)end)
+   if not done then mod.log('Native diagnostics failed: '..tostring(why))end
+  end
  end
  return ...
 end
@@ -172,6 +180,7 @@ return entry,a,b,calls,shut,table.concat(registered,'|')
             assert all(k.startswith('war_journalist.') for k in hosted) and hosted.get('war_journalist.toggle_key') == 'p' and len(hosted) >= 13, keys
             # On a bare engine the runtime starts with its native features reported unavailable.
             assert 'Photo Mode started on Boot Mod Loader' in log and 'stopped after an error' not in log and 'cleanup failed' not in log, log
+            assert 'Native diagnostics (0 s)' in log and 'Native diagnostics failed' not in log, 'The start-up native diagnostic runs'
             # LLL: its folders, and the entry handed back for LLL to drive.
             (lll / 'Native').mkdir(parents=True)
             (lll / 'Settings' / MOD_ID).mkdir(parents=True)
