@@ -476,7 +476,7 @@ function M.new(host,sr,deps,service)
  local light_sync=false;local light_revision
  local light_frame
  local refresh_setups
- local sample_sequence=0;local edges={};local controls={};local texts={};local last_time
+ local sample_sequence=0;local edges={};local hosted;local controls={};local texts={};local last_time
  local overlay_commands,overlay_revision,overlay_width,overlay_height,overlay_capture
  local grain_view,grain_commands,grain_phase,grain_width,grain_height,grain_amount,grain_size,grain_frame
  local lens_fov,lens_gameplay,lens_text
@@ -683,8 +683,17 @@ function M.new(host,sr,deps,service)
   end
   return true
  end
- local function edge(code)
-  local down=input.down(code);local value=down and not edges[code];edges[code]=down;return value
+ -- A binding id reads the loader's bindings helper when it hosts that key, else the virtual
+ -- key in our settings; a number is a raw virtual key (ESC, modifiers, other menus' keys).
+ local function held(key)
+  if type(key)=='string'then
+   if hosted and hosted.hosted(key)then return hosted.down(key)end
+   key=handle.get(key)
+  end
+  return input.down(key)
+ end
+ local function edge(key)
+  local down=held(key);local value=down and not edges[key];edges[key]=down;return value
  end
  -- Other menus (LLL manager, MCM) open over Photo Mode. Their keys are read at
  -- open; pressing one yields our captured input while camera, freeze and UI
@@ -762,7 +771,7 @@ function M.new(host,sr,deps,service)
   -- Acquisition is refused while the loader manager or MCM owns input.
   local ok=input.set_mode(self.mode=='camera'and'camera'or'menu')
   if not ok then return end
-  for code in pairs(edges)do edges[code]=input.down(code)end
+  for key in pairs(edges)do edges[key]=held(key)end
   handoff=nil;sample_sequence=sample_sequence+1;menu.suspend()
  end
  local function bookmark_context()
@@ -1035,6 +1044,9 @@ function M.new(host,sr,deps,service)
   {id='recover_input_key',type='keybind',label='Recovery key (Ctrl+Shift)',default=121},
   {id='recover_input',type='button',label='Recover gameplay input',on_activate=function()return self.close(true,nil,true)end},
   {id='runtime_status',type='text',label='Runtime: '..tostring(rawget(_G,'jit')and jit.version or _VERSION)}}
+ if deps.hosted_bindings then
+  table.insert(bindings,2,{id='keys_status',type='text',label='Keys are set in '..tostring(deps.hosted_bindings.window or'the loader\'s settings window')..'; they pause while chat is open.'})
+ end
  local movement={
   {id='speed',type='slider',label='Movement speed (m/s)',default=3,min=.1,max=50,step=.1},
   {id='wheel_step',type='slider',label='Wheel speed change (%)',default=20,min=5,max=100,step=5},
@@ -1324,6 +1336,17 @@ function M.new(host,sr,deps,service)
   if c.id then controls[c.id]=c end
   if c.type=='text'and c.id and c.id:match('_status$')then texts[c.id]=c end
  end end
+ if deps.hosted_bindings then
+  local rows={}
+  for _,c in ipairs(bindings)do
+   if c.type=='keybind'and controls[c.id]and not controls[c.id].disabled then rows[#rows+1]={id=c.id,label=c.label,default=handle.get(c.id)}end
+  end
+  hosted=deps.hosted_bindings.factory.new(deps.hosted_bindings.api,rows,deps.input.key_names,host.log)
+  for _,row in ipairs(rows)do if hosted.hosted(row.id)then
+   local control=controls[row.id];control.disabled=true;control.key_label=function()return hosted.label(row.id)end
+  end end
+  deps.legend.hosted_label=hosted.label
+ end
  if deps.decorative_overlay and controls.shader then
   controls.shader.on_change=function(value)
    decorative_fault=nil -- An explicit choice retries a parked overlay.
@@ -1657,11 +1680,11 @@ function M.new(host,sr,deps,service)
    -- font/drawability is unavailable and leave retained controls visible.
    return hud_ready and menu.hide_for_capture()==true and decorative_drawn and drawn~=false and grain_drawn~=false
   elseif self.mode=='shot'then
-   menu.draw_cinema(width,height,deps.legend.key_label(handle.get('toggle_key')),capturing or not o.cinema_notification,
+   menu.draw_cinema(width,height,deps.legend.binding_label('toggle_key',handle),capturing or not o.cinema_notification,
     sr.Application.time_since_launch()-shot.started,capture~=nil)
   else
    menu.draw(width,height,self.mode=='menu'and not handoff,capturing or o.hide_controls or o.clean_view or handoff~=nil,
-    {focus=deps.legend.key_label(handle.get('focus_key')),hide=deps.legend.key_label(handle.get('hide_controls_key')),slowmo=deps.legend.key_label(handle.get('slowmo_key'))})
+    {focus=deps.legend.binding_label('focus_key',handle),hide=deps.legend.binding_label('hide_controls_key',handle),slowmo=deps.legend.binding_label('slowmo_key',handle)})
   end
   return false
  end
@@ -1808,10 +1831,9 @@ function M.new(host,sr,deps,service)
   input.frame()
   capture_tick()
   if input.focused()and not self.focus_suspended then
-  local recovery_key=handle.get('recover_input_key')
   local recovery_modifiers=input.down(17)and input.down(16)
-  local recovery=recovery_modifiers and edge(recovery_key)
-  if not recovery_modifiers then edges[recovery_key]=false end
+  local recovery=recovery_modifiers and edge('recover_input_key')
+  if not recovery_modifiers then edges.recover_input_key=false end
   if recovery then self.close(true,nil,true);return end
   end
   if pending_cleanup then
@@ -1823,10 +1845,10 @@ function M.new(host,sr,deps,service)
   end
   -- The Photo key stays usable during a handoff unless MCM itself is open.
   if input.focused()and not self.focus_suspended and not(handoff and handoff.entry and handoff.entry.is_open())then
-  local slow_edge=edge(handle.get('slowmo_key'))
+  local slow_edge=edge('slowmo_key')
   if menu.bound_key and not input.down(menu.bound_key)then menu.bound_key=nil end
   if slow_edge and not handoff and not(menu.editing_key()or menu.editing_text()or menu.bound_key)then self.toggle_slowmo()end
-  if edge(handle.get('toggle_key'))then
+  if edge('toggle_key')then
    if self.mode=='shot'and self.active then self.reposition_shot()
    elseif self.active then self.close()else self.open()end
   end
@@ -1876,7 +1898,7 @@ function M.new(host,sr,deps,service)
     local ok,why=input.set_mode(self.mode);if not ok then notice(why);return end
     local sample,why=input.sample();if not sample or sample.pending then if why then notice(why)end;return end
    end
-   for code in pairs(edges)do edges[code]=input.down(code)end
+   for key in pairs(edges)do edges[key]=held(key)end
    self.focus_suspended=nil
    return
   end
@@ -1893,11 +1915,11 @@ function M.new(host,sr,deps,service)
    local why;sample,why=input.sample();if not sample then notice(why);yield_input(nil,now);return end
   end
   if self.mode~='shot'and handoff_pressed(now)then return end
-  if self.mode~='shot'and edge(handle.get('focus_key'))then self.focus();return end
+  if self.mode~='shot'and edge('focus_key')then self.focus();return end
   if edge(27)then if not menu.dismiss()then self.close()end;return end
-  if capture and edge(handle.get('screenshot_key'))and not(menu.editing_key()or menu.editing_text()or menu.bound_key)then self.screenshot()end
-  if self.mode~='shot'and not(capture and capture.active())and edge(handle.get('hide_controls_key'))then hide()end
-  if self.mode~='shot'and edge(handle.get('lock_camera_key'))then handle.set('lock_camera',not handle.get('lock_camera'))end
+  if capture and edge('screenshot_key')and not(menu.editing_key()or menu.editing_text()or menu.bound_key)then self.screenshot()end
+  if self.mode~='shot'and not(capture and capture.active())and edge('hide_controls_key')then hide()end
+  if self.mode~='shot'and edge('lock_camera_key')then handle.set('lock_camera',not handle.get('lock_camera'))end
   if subject_holds and not subject_pending and subject and type(subject.maintain)=='function'then
    local ok,why=subject.maintain();if not ok then sync_subject();notice(why)end
   end
@@ -1921,9 +1943,9 @@ function M.new(host,sr,deps,service)
     sequence=sample_sequence,sensitivity=handle.get('look_sensitivity'),smoothing=o.camera_smoothing,
     smoothing_time=math.max(.001,o.smoothing_strength*.003)})
    photo.forward,photo.right=f,r
-   local forward=(input.down(handle.get('forward_key'))and 1 or 0)-(input.down(handle.get('back_key'))and 1 or 0)
-   local right=(input.down(handle.get('right_key'))and 1 or 0)-(input.down(handle.get('left_key'))and 1 or 0)
-   local up=(input.down(handle.get('up_key'))and 1 or 0)-(input.down(handle.get('down_key'))and 1 or 0)
+   local forward=(held('forward_key')and 1 or 0)-(held('back_key')and 1 or 0)
+   local right=(held('right_key')and 1 or 0)-(held('left_key')and 1 or 0)
+   local up=(held('up_key')and 1 or 0)-(held('down_key')and 1 or 0)
    local direction={f[1]*forward+r[1]*right,f[2]*forward+r[2]*right,f[3]*forward+r[3]*right+up}
    local norm=math.max(1,math.sqrt(direction[1]^2+direction[2]^2+direction[3]^2))
    local step=handle.get('speed')*dt/norm
@@ -1938,7 +1960,7 @@ function M.new(host,sr,deps,service)
     photo.target=nil
     for axis=1,3 do photo.pos[axis]=photo.pos[axis]+direction[axis]*step end
    end
-   local roll=(input.down(handle.get('roll_right_key'))and 1 or 0)-(input.down(handle.get('roll_left_key'))and 1 or 0)
+   local roll=(held('roll_right_key')and 1 or 0)-(held('roll_left_key')and 1 or 0)
    if roll~=0 then photo.roll=math.max(-180,math.min(180,(photo.roll or o.roll)+roll*handle.get('roll_speed')*dt))
    else flush_roll()end
    local wheel=input.wheel()
@@ -1979,6 +2001,7 @@ function M.new(host,sr,deps,service)
   if capture and capture.busy()then return false,'Screenshot cleanup unconfirmed'end
   local retired,reason=close_decorative(true)
   if not retired then pending_cleanup=true;self.state='closing';notice(reason);return false,reason end
+  if hosted and deps.legend.hosted_label==hosted.label then deps.legend.hosted_label=nil end
   disposed=true;handle.unregister();return true
  end
  return self

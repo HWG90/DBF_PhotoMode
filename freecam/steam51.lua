@@ -22,6 +22,8 @@ return {live_lua_api=1,name='War Journalist',
    options=mod.require('src/photo_options.lua'),menu=mod.require('src/photo_menu.lua'),legend=mod.require('src/control_legend.lua'),
    composition=mod.require('src/composition.lua'),look=mod.require('src/look.lua'),lens=mod.require('src/lens.lua'),
    pick=mod.require('src/steam_pick.lua')}
+  -- A host's bindings helper (Boot Mod Loader's Mod Bindings Menu) holds our keys.
+  if loader.bindings then deps.hosted_bindings={api=loader.bindings,window=loader.bindings.window,factory=mod.require('src/steam_bindings.lua')}end
   deps.load_scene=function(sr)
    local host_native=mod.require('src/host_native.lua');local memory=host_native.memory();local bridge=host_native.open()
    local open,why=package.loadlib(host_native.library('hd2_nativeinfo_4aab2adfbc4090d6.dll'),'luaopen_hd2_nativeinfo');assert(open,why);local native=open()

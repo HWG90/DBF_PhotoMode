@@ -32,6 +32,7 @@ local function trial(backend,expected,loader_caps,subject_case,ffi_case)
   if path=='src/steam_runtime.lua'then return{new=function(host,sr,deps,input)
    assert(host==mod and sr==stingray and input==input_service)
    assert(deps.ai==nil and deps.load_ai==nil,'The Lua 5.1 build has no FFI enemy behavior')
+   assert(deps.hosted_bindings==nil,'LLL keeps our own key bindings')
    assert(ffi_imports==0,'Entry imported cffi or ffi')
    assert(type(deps.load_scene)=='function'and type(deps.load_hover)=='function','Keep the other feature factories')
    assert(deps.decorative_overlay==decorative,'Declare the optional decorative adapter in the module graph')
@@ -102,19 +103,20 @@ for _,directory in ipairs({'',false,1})do local backend=service();backend.output
 local backend=service();backend.capabilities=false;trial(backend,false)
 -- Boot Mod Loader hands in an engine host: no LLL global, engine keys, same-build Subject admission.
 do
- local input_service={};local created,policy,subject
+ local input_service,bindings={},{window='HD2 Mod Setting GUI'};local created,policy,subject,hosted
  LiveLuaLoader,DBF_PHOTO_MODE_OWNER,stingray=nil,nil,{}
- mod={log=function()end,host_loader={engine_input=true,input_service=input_service,capabilities={revision='boot-mod-loader-host.1'}},
+ mod={log=function()end,host_loader={engine_input=true,input_service=input_service,bindings=bindings,capabilities={revision='boot-mod-loader-host.1'}},
   require=function(path)
    if path=='src/steam_runtime.lua'then return{new=function(host,sr,deps,input)
     assert(input==input_service and deps.capture_backend==nil,'Engine host input, no capture service')
-    policy,subject,created=deps.input_policy,deps.load_subject,true
+    policy,subject,hosted,created=deps.input_policy,deps.load_subject,deps.hosted_bindings,true
     return{tick=function()end,dispose=function()return true end}
    end}end
    return{}
   end}
  local entry=dofile('freecam/steam51.lua');entry.on_enable()
  assert(created and policy.require_keyboard==false and type(subject)=='function','Engine host: engine keys and Subject admission')
+ assert(hosted and hosted.api==bindings and hosted.window=='HD2 Mod Setting GUI','Engine host hands in its bindings helper')
  assert(entry.on_disable()and DBF_PHOTO_MODE_OWNER==nil)
 end
 mod,stingray,LiveLuaLoader,DBF_PHOTO_MODE_OWNER=globals.mod,globals.stingray,globals.loader,globals.owner

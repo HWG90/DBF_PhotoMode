@@ -9,6 +9,8 @@ local names={[8]='backspace',[9]='tab',[13]='enter',[16]='left shift',[17]='left
 for code=48,57 do names[code]=string.char(code)end
 for code=65,90 do names[code]=string.char(code+32)end
 for code=112,135 do names[code]='f'..(code-111)end
+-- Engine key names by virtual key, for hosts that bind keys by name.
+M.key_names=names
 local mouse_bits={[1]=1,[2]=2,[4]=4,[5]=8,[6]=16}
 local modifiers={[16]={160,161},[17]={162,163},[18]={164,165}}
 local zero_mask=string.rep('\0',32)

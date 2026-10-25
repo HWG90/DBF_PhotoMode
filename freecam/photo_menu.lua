@@ -111,6 +111,7 @@ function M.new(view,actions,existing)
   local v=self.handle.get(c.id)
   if c.type=='choice'then return c.choices[v]or tostring(v)end
   if c.type=='toggle'then return v and 'ON'or 'OFF'end
+  if c.type=='keybind'and c.key_label then return c.key_label()end
   if c.type=='keybind'then local names={[0]='NONE',[9]='TAB',[13]='ENTER',[16]='SHIFT',[17]='CTRL',[18]='ALT',[19]='PAUSE',[27]='ESC',[32]='SPACE',[44]='PRINT SCREEN',[220]='\\'};return names[v]or(v>=32 and v<=126 and string.char(v)or('VK '..v))end
   if c.type=='slider'then local step=c.fine_step or c.step;return string.format(step<.01 and '%.3f'or step<1 and '%.2f'or '%.0f',v)end
   return tostring(v)

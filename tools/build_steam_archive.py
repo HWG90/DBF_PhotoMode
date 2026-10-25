@@ -62,7 +62,9 @@ local entry=mod.require('main.lua')
 if rawget(_G,'LiveLuaLoader')then return entry end
 -- Boot Mod Loader only runs this file: hand in an engine host and drive the entry from
 -- the game's update and shutdown, as LLL would.
-mod.host_loader={engine_input=true,input_service=mod.require('src/engine_input.lua').new(stingray),capabilities={revision='boot-mod-loader-host.1'}}
+local bindings=rawget(_G,'ModBindingsMenu')
+if not(type(bindings)=='table'and type(bindings.register_binding)=='function'and type(bindings.is_down)=='function'and type(bindings.binding)=='function')then bindings=nil end
+mod.host_loader={engine_input=true,input_service=mod.require('src/engine_input.lua').new(stingray),bindings=bindings,capabilities={revision='boot-mod-loader-host.1'}}
 local state='waiting'
 local function stop(reason)
  if state~='running'then return end
@@ -138,6 +140,9 @@ def verify(text, head, source_block, library_block, sources, libraries):
 local text=...
 local nop=function()end
 calls,shut=0,false
+registered={}
+ModBindingsMenu={window='HD2 Mod Setting GUI',is_down=function()return false end,binding=function()return{}end,
+ register_binding=function(id,label,slot,options)registered[#registered+1]=id..'='..options.default.button;return true end}
 update=function(dt)calls=calls+1;return 'game',dt end
 shutdown=function()shut=true end
 stingray={Gui={resolution=function()return 1920,1080 end},
@@ -147,7 +152,7 @@ stingray={Gui={resolution=function()return 1920,1080 end},
  Keyboard={button_id=function()return 0 end,button=function()return 0 end}}
 local entry=assert(loadstring(text,'@archive'))()
 local a,b=update(.5);for _=1,5 do update(1/60)end;shutdown()
-return entry,a,b,calls,shut
+return entry,a,b,calls,shut,table.concat(registered,'|')
 """
     with tempfile.TemporaryDirectory() as temp:
         game = Path(temp) / 'Roaming/Arrowhead/Helldivers2'
@@ -157,11 +162,14 @@ return entry,a,b,calls,shut
         os.environ['APPDATA'], os.environ['LOCALAPPDATA'] = str(Path(temp) / 'Roaming'), str(Path(temp) / 'Local')
         try:
             # Without LLL's folders the bridges go to the game's settings folder.
-            entry, a, b, calls, shut = LuaRuntime().execute(host, text)
+            entry, a, b, calls, shut, keys = LuaRuntime().execute(host, text)
             assert entry['live_lua_api'] == 1 and (a, b, calls, shut) == ('game', 0.5, 6, True), 'Update/shutdown wrapping'
             for name, data in libraries.items():
                 assert (game / name).read_bytes() == data, name
             log = (game / 'war_journalist_lua51.log').read_text()
+            # Boot Mod Loader's Mod Bindings Menu holds the keys once Photo Mode starts.
+            hosted = dict(item.split('=', 1) for item in keys.split('|'))
+            assert all(k.startswith('war_journalist.') for k in hosted) and hosted.get('war_journalist.toggle_key') == 'p' and len(hosted) >= 13, keys
             # On a bare engine the runtime starts with its native features reported unavailable.
             assert 'Photo Mode started on Boot Mod Loader' in log and 'stopped after an error' not in log and 'cleanup failed' not in log, log
             # LLL: its folders, and the entry handed back for LLL to drive.
@@ -230,7 +238,7 @@ def build(candidate, output):
                   'candidate_files_sha256': digest((candidate / 'FILES-SHA256.txt').read_bytes()),
                   'modules': len(sources) - 1, 'native_bridges': {name: digest(b) for name, b in libraries.items()},
                   'assets': {p.relative_to(assets).as_posix(): digest(p.read_bytes()) for p in sorted(assets.iterdir())},
-                  'verified': ['modules and bridges read back exactly', 'Boot Mod Loader: wraps update/shutdown, passes the game results through, starts, ticks and cleans up on a bare engine',
+                  'verified': ['modules and bridges read back exactly', 'Boot Mod Loader: wraps update/shutdown, passes the game results through, starts, ticks and cleans up on a bare engine, registers its keys with ModBindingsMenu',
                                'no LLL: bridges go to the game settings folder', 'LLL: returns the API 1 entry, uses LLL folders',
                                'installs missing bridges', 'refuses a differing bridge'],
                   'registered': False, 'deployed': False, 'live_acceptance': 'pending'}
