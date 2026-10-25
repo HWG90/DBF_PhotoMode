@@ -279,7 +279,7 @@ do
  local f=fixture();f.open();f.dispatch();f.cancel_pending=true;f.runtime.close();f.step(2.1)
  assert(f.capture().state()=='cleanup_blocked'and not f.capture().active(),'Cleanup grace must end in a blocked, visible state')
  local statuses,cancels=f.statuses,f.cancels
- assert(f.runtime.handle.set('enabled',false)and not f.runtime.active)
+ f.runtime.close(true);assert(not f.runtime.active)
  for _=1,100 do f.step(.016);assert(not f.runtime.dispose(),'Disposal must wait for retirement acknowledgement')end
  assert(f.statuses==statuses and f.cancels==cancels and f.issues==1,'Ordinary repeated disposal cannot retry blocked cleanup or issue a new job')
  f.cancel_pending=false

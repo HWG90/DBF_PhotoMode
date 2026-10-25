@@ -1026,7 +1026,6 @@ function M.new(host,sr,deps,service)
   end
  end
  local bindings={
-  {id='enabled',type='toggle',label='Enable Photo Mode',default=true},
   {id='toggle_key',type='keybind',label='Photo mode toggle',default=80},
   {id='focus_key',type='keybind',label='Switch camera / menu focus',default=9},
   {id='hide_controls_key',type='keybind',label='Show / hide photo controls',default=72},
@@ -1045,7 +1044,7 @@ function M.new(host,sr,deps,service)
   {id='recover_input',type='button',label='Recover gameplay input',on_activate=function()return self.close(true,nil,true)end},
   {id='runtime_status',type='text',label='Runtime: '..tostring(rawget(_G,'jit')and jit.version or _VERSION)}}
  if deps.hosted_bindings then
-  table.insert(bindings,2,{id='keys_status',type='text',label='Keys are set in '..tostring(deps.hosted_bindings.window or'the loader\'s settings window')..'; they pause while chat is open.'})
+  table.insert(bindings,1,{id='keys_status',type='text',label='Keys are set in '..tostring(deps.hosted_bindings.window or'the loader\'s settings window')..'; they pause while chat is open.'})
  end
  local movement={
   {id='speed',type='slider',label='Movement speed (m/s)',default=3,min=.1,max=50,step=.1},
@@ -1402,7 +1401,6 @@ function M.new(host,sr,deps,service)
   end end end
   sync_path()
  end
- controls.enabled.on_change=function(value)if not value then self.close(true)end end
  -- Expand coupled optical values before the core's single persistence commit.
  -- Post-commit callbacks would require a second save and can strand a preset
  -- label if that save fails. These wrappers cover UI edits, resets and batches.
@@ -1490,7 +1488,7 @@ function M.new(host,sr,deps,service)
   end or nil,
   freeze_state=simulation and function()return simulation.frozen or simulation.preparing,self.active and not pending_cleanup and self.mode~='shot',simulation.preparing end or nil,
   slowmo=simulation and function()return self.toggle_slowmo()end or nil,
-  slowmo_state=simulation and function()return simulation.slowmo_active,handle.get('enabled')and not pending_cleanup and not simulation.pending_restore end or nil,
+  slowmo_state=simulation and function()return simulation.slowmo_active,not pending_cleanup and not simulation.pending_restore end or nil,
   hud=hud and function()return handle.set('hide_hud',not handle.get('hide_hud'))end or nil})
  menu.bind(handle,core.mods.dbf_freecam.pages)
  if deps.gizmos and lighting then
@@ -1505,7 +1503,7 @@ function M.new(host,sr,deps,service)
  end
  self.handle=handle
  function self.toggle_slowmo()
-  if not simulation or not handle.get('enabled')or pending_cleanup then return false,'Slow motion unavailable'end
+  if not simulation or pending_cleanup then return false,'Slow motion unavailable'end
   local ok,why=simulation.set_slowmo(not simulation.slowmo_active,handle.get('slowmo_speed'))
   if not ok then notice(why)end;return ok,why
  end
@@ -1689,7 +1687,7 @@ function M.new(host,sr,deps,service)
   return false
  end
  local function open()
-  if disposed or self.active or pending_cleanup or not handle.get('enabled')then return false,'Photo Mode is unavailable'end
+  if disposed or self.active or pending_cleanup then return false,'Photo Mode is unavailable'end
   -- Native code may be unavailable during loader startup. Retry only at an
   -- explicit session boundary, preserving all current build/ownership guards.
   ensure_subject_backend()

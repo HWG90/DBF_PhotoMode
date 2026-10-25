@@ -30,8 +30,8 @@ do
  api.values['war_journalist.toggle_key']='';assert(hosted.label('toggle_key')=='NONE')
 end
 -- The runtime with a hosted helper: the minimal harness of steam_runtime_tests.
-local function runtime_case(api)
- local pressed={};local time=0;local stored={}
+local function runtime_case(api,saved)
+ local pressed={};local time=0;local stored=saved or{}
  local token,lease
  local raw={x=100,y=100,width=1920,height=1080,buttons=0,wheel=0,dx=0,dy=0}
  local service={version=1,capabilities={menu=true,camera=true,relative_mouse=true},
@@ -76,6 +76,7 @@ do
  for _,page in ipairs(menu().pages)do for _,c in ipairs(page.controls)do rows[c.id]=c end end
  assert(rows.keys_status and rows.keys_status.label:find('HD2 Mod Setting GUI',1,true),'The Controls page says where keys are set')
  assert(rows.toggle_key.disabled and rows.toggle_key.key_label()=='P'and not rows.speed.disabled,'Hosted rows are a disabled record showing the hosted key')
+ assert(rows.enabled==nil,'No Enable Photo Mode row: it could only be turned back on from the panel it closes')
  assert(deps.legend.binding_label('toggle_key',runtime.handle)=='P','Labels come from the helper')
  -- The engine key alone no longer opens Photo Mode; the helper's key does.
  pressed.p=true;tick();pressed.p=false;tick();assert(not runtime.active,'A hosted key ignores our stored virtual key')
@@ -93,10 +94,11 @@ do
  assert(runtime.dispose()and deps.legend.hosted_label==nil,'Dispose drops the legend hook')
 end
 do
- -- Without a helper the stored virtual keys work as before.
- local runtime,deps,pressed,tick=runtime_case(nil)
+ -- Without a helper the stored virtual keys work as before; a saved enabled=false from
+ -- older builds no longer locks Photo Mode out.
+ local runtime,deps,pressed,tick=runtime_case(nil,{enabled=false})
  assert(deps.legend.hosted_label==nil and deps.legend.binding_label('toggle_key',runtime.handle)=='P')
  pressed.p=true;tick();pressed.p=false;tick();assert(runtime.active,'Unhosted toggle opens Photo Mode')
  assert(runtime.dispose())
 end
-print('Hosted bindings: registration and defaults, refused keys stay ours, held keys and our edges, loader hold-back, labels and the unhosted path passed')
+print('Hosted bindings: registration and defaults, refused keys stay ours, held keys and our edges, loader hold-back, labels, no Enable row and the unhosted path passed')
