@@ -1,6 +1,7 @@
 -- Ordinary Lua feature graph; AI alone imports the optional private FFI adapter.
-local runtime
+local runtime,start
 local function stop()
+ start=nil
  if not runtime then return true end
  local ok,why=runtime.dispose();if not ok then return false,why end
  if rawget(_G,'DBF_PHOTO_MODE_OWNER')==runtime then rawset(_G,'DBF_PHOTO_MODE_OWNER',nil)end
@@ -107,10 +108,19 @@ return {live_lua_api=1,name='War Journalist',
    end
    return pointer_native.pointer_clip(active and 1 or 0)
   end
-  runtime=mod.require('src/steam_runtime.lua').new(mod,assert(stingray),deps,assert(loader.input_service,'Update LLL for its shared input service'))
-  rawset(_G,'DBF_PHOTO_MODE_OWNER',runtime)
-  mod.log('Photo Mode ready on '..tostring(rawget(_G,'jit')and jit.version or _VERSION))
+  local service=assert(loader.input_service,'Update LLL for its shared input service')
+  -- LLL enables MCM after this mod, so the runtime starts on the first update,
+  -- once every live mod is enabled, and finds MCM to host its settings.
+  start=function()
+   start=nil
+   deps.mcm=rawget(_G,'DBFMCM')
+   local ok,value=pcall(mod.require('src/steam_runtime.lua').new,mod,assert(stingray),deps,service)
+   if not ok then mod.log('Photo Mode startup failed; reload War Journalist to retry: '..tostring(value));return end
+   runtime=value
+   rawset(_G,'DBF_PHOTO_MODE_OWNER',runtime)
+   mod.log('Photo Mode ready on '..tostring(rawget(_G,'jit')and jit.version or _VERSION)..(runtime.settings_host=='MCM'and'; settings in MCM'or'; settings in the Photo panel'))
+  end
  end,
- on_update=function()if runtime then runtime.tick()end end,
+ on_update=function()if start then start()end;if runtime then runtime.tick()end end,
  on_disable=stop,
  on_cleanup_poll=stop}

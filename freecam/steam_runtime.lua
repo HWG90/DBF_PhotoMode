@@ -468,7 +468,12 @@ function M.new(host,sr,deps,service)
   if type(message)=='string'and(message:find('^Setting committed: ')or message:find('^Settings batch committed: '))then return end
   return host.log(message)
  end
- local core=deps.core.new(deps.store.new(host.config_dir),core_log)
+ local store=deps.store.new(host.config_dir)
+ -- An enabled MCM hosts these pages, Controls included, as in 1.2.1. Values
+ -- stay in this mod's own settings file through MCM's per-mod storage.
+ local mcm=deps.mcm
+ if not(type(mcm)=='table'and mcm.storage_per_mod==true and type(mcm.register)=='function'and type(mcm.mods)=='table')then mcm=nil end
+ local core=mcm or deps.core.new(store,core_log)
  local view=deps.view.new(sr,nil,host.log);local overlay=deps.view.new(sr,true,host.log)
  if deps.font then
  local fonts=deps.font.new();view.set_font_source(fonts);overlay.set_font_source(fonts)
@@ -1316,7 +1321,14 @@ function M.new(host,sr,deps,service)
    controls[c.id]=c
   elseif c.id and c.id:match('_status$')then texts[c.id]=c end
  end end
- handle=core.register({id='dbf_freecam',name='War Journalist',pages=pages})
+ local spec={id='dbf_freecam',name='War Journalist',pages=pages,storage=mcm and store or nil}
+ if mcm then
+  local ok,value=pcall(mcm.register,spec)
+  if ok then handle=value
+  else host.log('MCM registration failed; settings stay in the Photo panel: '..tostring(value));mcm=nil;spec.storage=nil;core=deps.core.new(store,core_log)end
+ end
+ if not mcm then handle=core.register(spec)end
+ self.settings_host=mcm and'MCM'or'Photo panel'
  controls=core.mods.dbf_freecam.controls
  screenshot_label()
  -- Registration copies definitions. Keep live status references on those
@@ -1475,7 +1487,17 @@ function M.new(host,sr,deps,service)
   ai=ai and function()local state=ai.state();return{available=state.available and self.active,status=state.status}end or nil,
   faction=ai and function()local ok,value=pcall(ai.faction);if ok and deps.options.faction_art then return deps.options.faction_art[value]end end or nil,
   hud=hud and function()return handle.set('hide_hud',not handle.get('hide_hud'))end or nil})
- menu.bind(handle,core.mods.dbf_freecam.pages)
+ -- Keys are edited in MCM when it hosts the settings: the Photo panel leaves
+ -- out the Controls page and every keybind row.
+ local panel_pages=core.mods.dbf_freecam.pages
+ if mcm then
+  panel_pages={}
+  for _,page in ipairs(core.mods.dbf_freecam.pages)do if page.id~='camera'then
+   local rows={};for _,c in ipairs(page.controls)do if c.type~='keybind'then rows[#rows+1]=c end end
+   panel_pages[#panel_pages+1]={id=page.id,name=page.name,controls=rows}
+  end end
+ end
+ menu.bind(handle,panel_pages)
  if deps.gizmos and lighting then
   menu.light_gizmos=deps.gizmos.new(light_action)
   menu.prepare_light_gizmos=function(w,h,focused,hidden)

@@ -66,6 +66,8 @@ local function trial(backend,expected,loader_caps,subject_case,ffi_case)
   return{}
  end}
  local entry=dofile('freecam/steam51.lua');entry.on_enable()
+ assert(not created and DBF_PHOTO_MODE_OWNER==nil,'Start on the first update, once MCM is enabled')
+ entry.on_update()
  assert(created and DBF_PHOTO_MODE_OWNER==runtime)
  assert((required['src/steam_capture.lua']==true)==expected,'Do not load capture on unavailable services')
  entry.on_update();assert(entry.on_disable()and disposed and DBF_PHOTO_MODE_OWNER==nil)

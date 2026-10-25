@@ -9,6 +9,11 @@ local names={[8]='backspace',[9]='tab',[13]='enter',[16]='left shift',[17]='left
 for code=48,57 do names[code]=string.char(code)end
 for code=65,90 do names[code]=string.char(code+32)end
 for code=112,135 do names[code]='f'..(code-111)end
+-- Further keys MCM can bind, by the engine's names (Keyboard index = virtual key).
+for code,name in pairs({[12]='clear',[44]='print screen',[91]='left system',[92]='right system',[93]='context menu',
+ [106]='numpad *',[107]='numpad +',[109]='numpad -',[110]='numpad .',[111]='numpad /',[144]='num lock',[145]='scroll lock',
+ [160]='left shift',[161]='right shift',[162]='left ctrl',[163]='right ctrl',[164]='left alt',[165]='right alt'})do names[code]=name end
+for code=96,105 do names[code]='numpad '..(code-96)end
 local mouse_bits={[1]=1,[2]=2,[4]=4,[5]=8,[6]=16}
 local modifiers={[16]={160,161},[17]={162,163},[18]={164,165}}
 local zero_mask=string.rep('\0',32)
