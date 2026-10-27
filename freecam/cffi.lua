@@ -2,10 +2,15 @@
 local loaded,ffi=pcall(require,'cffi')
 if not loaded then local name='ffi';ffi=require(name)end
 local native_type,native_number=type,tonumber
+-- Folder installs keep the bridge in port51/; the archive build sets mod.native_dir.
+local function bridge_path(missing)
+ local dir=mod and(mod.native_dir or mod.dir and mod.dir..'/port51')
+ return assert(dir,missing)..'/hd2_nativeinfo_f6d3465944c1aea1.dll'
+end
 local function userdata_address(value)
  local native=package.loaded.hd2_nativeinfo
  if not native or native_type(native.userdata_address)~='function'then
-  local path=assert(mod and mod.dir,'Engine userdata bridge directory unavailable')..'/port51/hd2_nativeinfo_f6d3465944c1aea1.dll'
+  local path=bridge_path('Engine userdata bridge directory unavailable')
   local open,why=package.loadlib(path,'luaopen_hd2_nativeinfo');assert(open,why)
   native=assert(open(),'Engine userdata bridge refused current host')
   assert(native_type(native.userdata_address)=='function','Engine userdata bridge API differs')
@@ -132,7 +137,7 @@ local function_reader,function_executable
 local function function_info(fn)
  local native=package.loaded.hd2_nativeinfo
  if not native and tostring(fn)=='[function]' then
-  local path=assert(mod and mod.dir,'Native binding module directory unavailable')..'/port51/hd2_nativeinfo_f6d3465944c1aea1.dll'
+  local path=bridge_path('Native binding module directory unavailable')
   local open,why=package.loadlib(path,'luaopen_hd2_nativeinfo')
   assert(open,why);native=assert(open(),'Native binding helper refused current host')
   assert(native_type(native.function_address)=='function','Native binding helper API differs')
