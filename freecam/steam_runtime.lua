@@ -1454,7 +1454,7 @@ function M.new(host,sr,deps,service)
    if not ok and subject_pending then ok,why=subject_action('recover')end
    return ok,why
   end,
-  cinema_begin=function()return self.begin_shot()end,
+  cinema_begin=function()local ok,why=self.begin_shot();if not ok and why then notice(why)end;return ok,why end,
   cinema_reposition=function()if self.mode=='shot'then return self.reposition_shot()else return self.focus()end end,
   cinema_end=function()return self.close()end,
   path_change=function(id)
@@ -2301,7 +2301,8 @@ function M.new(host,sr,deps,service)
   if slow_edge and not handoff and not(menu.editing_key()or menu.editing_text()or menu.bound_key)then self.toggle_slowmo()end
   local handycam_edge=handycam and edge('handycam_key')
   if handycam_edge and not handoff and not(menu.editing_key()or menu.editing_text()or menu.bound_key)and not(capture and capture.active())then
-   self.toggle_handycam();return
+   -- Say why Handycam did not start; a refusal must not look like an ignored key.
+   local ok,why=self.toggle_handycam();if not ok and why then notice(why)end;return
   end
   if edge('toggle_key')then
    if self.mode=='shot'and self.active then self.reposition_shot()

@@ -1,6 +1,6 @@
-# Known issues — 1.3.0 Lua rewrite
+# Known issues — 1.3.1 Lua rewrite
 
-1.3.0 is the first pass of a total Lua 5.1 rewrite. Boot Mod Loader is the only supported loader. Chef Lite is planned; whitelist approval may permit fuller compatibility, with no approval or parity guarantee.
+1.3.1 fixes Windows Photo Mode input when another program owns a Ctrl/Shift/Alt shortcut; see [1.3.1](RELEASE-1.3.1.md). 1.3.0 is the first pass of a total Lua 5.1 rewrite. Boot Mod Loader is the only supported loader. Chef Lite is planned; whitelist approval may permit fuller compatibility, with no approval or parity guarantee.
 
 - **Cape detachment still occasionally happens**, particularly during Freeze, ragdolls and pose transitions.
 - **New subject selection sometimes fails**, including automatic discovery and clicks. Session recovery is improved, not universally reliable.
@@ -12,5 +12,6 @@
 - Automatic native HUD hiding is not restored on Windows. Use your game's Toggle HUD binding; the tester used `/`.
 - Handycam ADS transitions need wider coverage; occasional camera-return/clipping and normal-aim parallax remain possible. Backward/strafe body turning is not corrected.
 - Lighting, outfits/equipment, respawns and scene changes need broader coverage. SDR is the qualified capture path; HDR capture is not promised.
+- Windows: WJL leaves a shortcut another program already owns (for example a GPU overlay's Alt+R) with that program. Photo Mode does not react to that exact combination.
 
-The final 1.3.0 bundle is being prepared. Earlier `1.3.0-bml.1` assets do not contain every later fix. See the [full changelog](RELEASE-1.3.0.md) and [release protocol](RELEASE-PROTOCOL-1.3.0.md). Historical issue text remains in Git history and older release notes.
+Reports: include `%APPDATA%\Arrowhead\Helldivers2\war_journalist_lua51.log` and `%LOCALAPPDATA%\WJL\Helldivers2\Steam\service.log`. See the [full 1.3.0 changelog](RELEASE-1.3.0.md) and [release protocol](RELEASE-PROTOCOL-1.3.0.md). Historical issue text remains in Git history and older release notes.

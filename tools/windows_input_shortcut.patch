@@ -41,13 +41,15 @@
      HANDLE thread, ready, stop, process;
      HWND target, window;
      HWINEVENTHOOK foreground_hook;
-@@ -36,14 +36,14 @@
+@@ -36,14 +36,16 @@
      DWORD pid;
      uint32_t client, generation, state, error, terminal, mask[8];
      ULONGLONG started, heartbeat, register_ms;
 -    int registrations[LLL_KEYBOARD_MAX_TUPLES];
 +    int registrations[WJL_KEYBOARD_MAX_TUPLES];
      unsigned int registration_count;
++    unsigned int shared_count; /* tuples another application already owns */
++    uint32_t shared[8];        /* the first eight: key | modifiers << 8 */
      int revoking;
 -} LLLSteamKeyboardLease;
 -typedef struct LLLSteamKeyboardRetired {
@@ -60,7 +62,7 @@
  
  /* This exact whitelist is shared with Lua. Side modifier bits are aliases:
   * requesting any member requires generic + left + right; only generic VKs
-@@ -52,69 +52,72 @@
+@@ -52,69 +54,72 @@
   * omitted. The owned-window 39-tuple W/Space/generic-modifier proof passed;
   * the complete matrix and integrated gameplay behavior remain unqualified.
   * A successful registration alone does not establish suppression. */
@@ -176,7 +178,7 @@
      if (key >= 160 && key <= 165) return 0;
      if ((modifiers & MOD_ALT) && (key == VK_TAB || key == VK_ESCAPE || key == VK_F4 ||
          key == VK_RETURN || key == VK_SPACE)) return 0;
-@@ -122,27 +125,27 @@
+@@ -122,27 +127,27 @@
      if ((modifiers & (MOD_CONTROL | MOD_ALT)) == (MOD_CONTROL | MOD_ALT) && key == VK_DELETE) return 0;
      return 1;
  }
@@ -213,7 +215,7 @@
      HANDLE file = CreateFileW(path, FILE_READ_ATTRIBUTES,
          FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, 0, NULL);
      DWORD count;
-@@ -151,7 +154,7 @@
+@@ -151,7 +156,7 @@
      CloseHandle(file);
      return count > 0 && count < 32768;
  }
@@ -222,7 +224,7 @@
      wchar_t actual[32768], canonical_actual[32768], canonical_expected[32768];
      DWORD count = 32768, error = ERROR_ACCESS_DENIED;
      FILETIME exited, kernel, user;
-@@ -162,7 +165,7 @@
+@@ -162,7 +167,7 @@
      if (!handle) return GetLastError();
      if (GetProcessTimes(handle, creation, &exited, &kernel, &user) &&
          QueryFullProcessImageNameW(handle, 0, actual, &count) &&
@@ -231,7 +233,7 @@
          CompareStringOrdinal(canonical_actual, -1, canonical_expected, -1, TRUE) == CSTR_EQUAL &&
          WaitForSingleObject(handle, 0) == WAIT_TIMEOUT) {
          *process = handle;
-@@ -171,80 +174,80 @@
+@@ -171,80 +176,80 @@
      CloseHandle(handle);
      return error;
  }
@@ -353,7 +355,7 @@
      MSG message;
      for (unsigned int count = 0; count < 64 && PeekMessageW(&message, NULL, 0, 0, PM_REMOVE); ++count) {
          if (message.message == WM_QUIT) return 0;
-@@ -253,28 +256,28 @@
+@@ -253,28 +258,36 @@
      }
      return 1;
  }
@@ -390,11 +392,19 @@
 +            if (!WJL_KB_REGISTER(lease->window, id, modifiers | MOD_NOREPEAT, key)) {
                  DWORD error = GetLastError();
 -                lll_keyboard_stop_request(LLL_KEYBOARD_FAILED, error ? error : ERROR_HOTKEY_ALREADY_REGISTERED);
++                /* Another application owns this exact shortcut (GPU overlays,
++                 * recorders, chat). Windows delivers it to that owner, never to
++                 * the game, so it is isolated already. Keep the other keys. */
++                if (error == ERROR_HOTKEY_ALREADY_REGISTERED) {
++                    if (lease->shared_count < 8) lease->shared[lease->shared_count] = key | modifiers << 8;
++                    ++lease->shared_count;
++                    continue;
++                }
 +                wjl_keyboard_stop_request(WJL_KEYBOARD_FAILED, error ? error : ERROR_HOTKEY_ALREADY_REGISTERED);
                  return 0;
              }
              lease->registrations[lease->registration_count++] = id;
-@@ -283,46 +286,46 @@
+@@ -283,46 +296,46 @@
      /* The bulk reservation is not atomic. A key pressed before its tuple was
       * reserved may already be held by the game. Never claim ACTIVE in that
       * state, and never return to ARMING with existing IDs registered. */
@@ -461,7 +471,7 @@
      if (!lease->foreground_hook) goto setup_failed;
      waits[0] = lease->stop;
      waits[1] = lease->process;
-@@ -330,71 +333,71 @@
+@@ -330,71 +343,71 @@
          uint32_t state;
          ULONGLONG now, heartbeat;
          DWORD timeout, result;
@@ -566,7 +576,7 @@
      SetEvent(lease->ready);
      return 0;
  }
-@@ -402,13 +405,13 @@
+@@ -402,13 +415,13 @@
  /* Lifecycle lock held. Never close a handle or reset storage under a live
   * worker. Keeping one retired pair makes explicit release idempotent without
   * a token history; a stale pair can never close a new lease. */
@@ -585,7 +595,7 @@
      CloseHandle(lease->thread);
      CloseHandle(lease->ready);
      CloseHandle(lease->stop);
-@@ -416,61 +419,61 @@
+@@ -416,61 +429,61 @@
      ZeroMemory(lease, sizeof(*lease));
      return 1;
  }
@@ -676,7 +686,7 @@
      error = 0;
      goto done;
  failed_setup:
-@@ -480,112 +483,112 @@
+@@ -480,112 +493,112 @@
      ZeroMemory(lease, sizeof(*lease));
  done:
      if (process) CloseHandle(process);
@@ -840,7 +850,38 @@
  }
 --- a/native/test_steam_keyboard.c
 +++ b/native/test_steam_keyboard.c
-@@ -109,20 +109,20 @@
+@@ -24,7 +24,7 @@
+ static volatile LONG test_live[2049],test_keys[256];
+ static volatile LONG test_registers,test_unregisters,test_reads,test_focus_reads,test_identifies;
+ static volatile LONG test_hooks,test_unhooks,test_failure_at,test_fake_errors,test_block_unregister,test_block_hook,test_press_after;
+-static volatile LONG test_register_thread;
++static volatile LONG test_register_thread,test_successes,test_collide[2049];
+ static volatile LONG test_visible=1;
+ static volatile LONG64 test_clock=10000;
+ static PVOID volatile test_foreground_window;
+@@ -35,16 +35,18 @@
+ #define TEST_FOREIGN ((HWND)(ULONG_PTR)0x2222u)
+ 
+ static BOOL WINAPI test_register(HWND window,int id,UINT modifiers,UINT key) {
+-    LONG call=InterlockedIncrement(&test_registers);
++    LONG call=InterlockedIncrement(&test_registers),stored;
+     DWORD thread=GetCurrentThreadId();
+     DWORD owner=(DWORD)InterlockedCompareExchange(&test_register_thread,(LONG)thread,0);
+     (void)window;
+     if (owner&&owner!=thread) InterlockedIncrement(&test_fake_errors);
+     if (call==InterlockedCompareExchange(&test_failure_at,0,0)) {
+-        SetLastError(ERROR_HOTKEY_ALREADY_REGISTERED);return FALSE;
++        SetLastError(ERROR_NOT_ENOUGH_MEMORY);return FALSE;
+     }
+     if (call<1||call>2048||id<1||id>2048) { InterlockedIncrement(&test_fake_errors);return FALSE; }
+-    test_tuples[call-1].id=id;test_tuples[call-1].modifiers=modifiers;test_tuples[call-1].key=key;
++    if (InterlockedCompareExchange(&test_collide[id],0,0)) { SetLastError(ERROR_HOTKEY_ALREADY_REGISTERED);return FALSE; }
++    stored=InterlockedIncrement(&test_successes);
++    test_tuples[stored-1].id=id;test_tuples[stored-1].modifiers=modifiers;test_tuples[stored-1].key=key;
+     if (InterlockedExchange(&test_live[id],1)) InterlockedIncrement(&test_fake_errors);
+     if (call==InterlockedCompareExchange(&test_press_after,0,0)) InterlockedExchange(&test_keys['W'],0x8000);
+     return TRUE;
+@@ -109,20 +111,20 @@
      creation->dwHighDateTime=0x01234567u;creation->dwLowDateTime=test_creation_low;
      return 0;
  }
@@ -873,7 +914,7 @@
  
  static void wait_event(HANDLE event) { CHECK(WaitForSingleObject(event,5000)==WAIT_OBJECT_0); }
  static void key_bit(uint32_t mask[8],unsigned int key) { mask[key>>5]|=1u<<(key&31); }
-@@ -130,17 +130,17 @@
+@@ -130,20 +132,21 @@
      uint32_t any=0;for (unsigned int i=0;i<8;++i) any|=keys[i];return any==0;
  }
  static uint32_t current_state(void) {
@@ -897,8 +938,13 @@
 +    ZeroMemory(&wjl_keyboard_session_creation,sizeof(wjl_keyboard_session_creation));
      ZeroMemory(test_tuples,sizeof(test_tuples));ZeroMemory(test_removed,sizeof(test_removed));
      ZeroMemory((void *)test_keys,sizeof(test_keys));
-     test_registers=test_unregisters=test_reads=test_focus_reads=test_identifies=0;
-@@ -153,41 +153,41 @@
+-    test_registers=test_unregisters=test_reads=test_focus_reads=test_identifies=0;
++    test_registers=test_unregisters=test_reads=test_focus_reads=test_identifies=test_successes=0;
++    ZeroMemory((void *)test_collide,sizeof(test_collide));
+     test_hooks=test_unhooks=test_failure_at=test_block_unregister=test_block_hook=test_press_after=test_register_thread=0;
+     test_visible=1;test_creation_low=0x12345678u;
+     InterlockedExchange64(&test_clock,10000);
+@@ -153,41 +156,41 @@
  }
  static void direct_begin(const uint32_t mask[8]) {
      reset_fixture();
@@ -957,7 +1003,7 @@
      CHECK(test_hooks==test_unhooks&&test_registers==test_unregisters);
      CHECK(!test_fake_errors);
  }
-@@ -201,30 +201,32 @@
+@@ -201,30 +204,32 @@
                                         0x000300ffu,0xfc00003fu,0xf8000001u,0x00000004u};
      const unsigned int groups[3][3]={{VK_SHIFT,VK_LSHIFT,VK_RSHIFT},{VK_CONTROL,VK_LCONTROL,VK_RCONTROL},
                                     {VK_MENU,VK_LMENU,VK_RMENU}};
@@ -1004,7 +1050,7 @@
  }
  static void test_registration_rollback(void) {
      uint32_t mask[8]={0};unsigned int full_count;
-@@ -232,224 +234,224 @@
+@@ -232,224 +237,259 @@
      /* Exhaust every possible Nth failure for this key's eight modifier tuples. */
      for (LONG nth=1;nth<=8;++nth) {
          direct_begin(mask);test_failure_at=nth;
@@ -1047,6 +1093,41 @@
 -      CHECK(released==reply.generation&&!lll_keyboard_lease.thread); }
 +      CHECK(wjl_keyboard_release(test_pid,test_expected,1,reply.generation,&released)==0);
 +      CHECK(released==reply.generation&&!wjl_keyboard_lease.thread); }
++}
++static void test_shared_shortcuts(void) {
++    uint32_t mask[8]={0};
++    const uint32_t alt_r='R'|(uint32_t)MOD_ALT<<8,control_shift_s='S'|(uint32_t)(MOD_CONTROL|MOD_SHIFT)<<8;
++    key_bit(mask,'R');key_bit(mask,'S');
++    /* Alt+R and Ctrl+Shift+S belong to another application (GPU overlay
++     * defaults). They stay with it; the other 14 tuples are reserved. */
++    direct_begin(mask);test_collide[1+'R'*8+4]=1;test_collide[1+'S'*8+3]=1;
++    CHECK(wjl_keyboard_register_worker(&wjl_keyboard_lease));
++    CHECK(current_state()==WJL_KEYBOARD_ACTIVE);
++    CHECK(test_registers==16&&wjl_keyboard_lease.registration_count==14&&test_successes==14);
++    CHECK(wjl_keyboard_lease.shared_count==2&&wjl_keyboard_lease.shared[0]==alt_r&&wjl_keyboard_lease.shared[1]==control_shift_s);
++    direct_end(14);
++    /* Every tuple of a key may be owned elsewhere; that key is simply not ours. */
++    direct_begin(mask);
++    for (unsigned int variant=0;variant<8;++variant) test_collide[1+'R'*8+variant]=1;
++    CHECK(wjl_keyboard_register_worker(&wjl_keyboard_lease));
++    CHECK(current_state()==WJL_KEYBOARD_ACTIVE&&wjl_keyboard_lease.registration_count==8&&wjl_keyboard_lease.shared_count==8);
++    direct_end(8);
++    /* More than eight: all are counted, the first eight are recorded. */
++    direct_begin(wjl_keyboard_allowed);
++    for (unsigned int key='A';key<='L';++key) test_collide[1+key*8]=1;
++    CHECK(wjl_keyboard_register_worker(&wjl_keyboard_lease));
++    CHECK(current_state()==WJL_KEYBOARD_ACTIVE&&wjl_keyboard_lease.shared_count==12&&wjl_keyboard_lease.registration_count==867);
++    CHECK(wjl_keyboard_lease.shared[0]=='A'&&wjl_keyboard_lease.shared[7]=='H');
++    direct_end(867);
++    /* Through the real worker thread: ACTIVE, then a clean release. */
++    reset_fixture();test_collide[1+'R'*8+4]=1;
++    { WJLSteamKeyboardReply reply;uint32_t released=0;
++      CHECK(wjl_keyboard_acquire(test_pid,test_expected,1,mask,&reply)==0);
++      wait_event(test_hook_seen);wait_event(wjl_keyboard_lease.ready);CHECK(current_state()==WJL_KEYBOARD_ACTIVE);
++      CHECK(wjl_keyboard_release(test_pid,test_expected,1,reply.generation,&released)==0);
++      CHECK(released==reply.generation&&!wjl_keyboard_lease.thread);
++      CHECK(test_registers==16&&test_successes==15&&test_unregisters==15&&test_hooks==test_unhooks);
++      CHECK(!test_fake_errors); }
  }
  static void test_identity_and_ownership(void) {
 -    uint32_t mask[8]={0},other[8]={0},released;LLLSteamKeyboardReply reply,next,repeat;
@@ -1353,7 +1434,7 @@
          CHECK(test_registers==registrations);finish_worker(&reply);
      }
      CHECK(GetProcessHandleCount(GetCurrentProcess(),&after));CHECK(after==baseline);
-@@ -459,9 +461,9 @@
+@@ -459,9 +499,9 @@
   * default fixture path. The reservation deadline is checked before each API
   * call; an individual Windows call cannot be preempted by this fixture. */
  static int test_real_registration(void) {
@@ -1365,7 +1446,7 @@
      unsigned int failure_key=0,failure_modifiers=0;int failure_id=0;
      DWORD setup_error=0,registration_error=0,cleanup_error=0;
      ULONGLONG opened=GetTickCount64(),begun=0,reservation_ms=0,cleanup_begun,cleanup_ms,total_ms;
-@@ -473,10 +475,10 @@
+@@ -473,10 +513,10 @@
      if (!window) { setup_error=GetLastError();goto cleanup; }
      begun=GetTickCount64();
      for (unsigned int key=0;key<256&&!registration_failed&&!budget_exhausted;++key) {
@@ -1379,7 +1460,7 @@
              if (GetTickCount64()-begun>=120) { budget_exhausted=TRUE;break; }
              ++attempts;
              if (!RegisterHotKey(window,id,modifiers|MOD_NOREPEAT,key)) {
-@@ -504,8 +506,8 @@
+@@ -504,8 +544,8 @@
          DWORD error=GetLastError();cleanup_ok=FALSE;if (!cleanup_error) cleanup_error=error;
      }
      cleanup_ms=GetTickCount64()-cleanup_begun;total_ms=GetTickCount64()-opened;
@@ -1390,9 +1471,12 @@
             "\"attempts\":%u,\"registered\":%u,\"registration_failed\":%s,\"setup_error\":%lu,"
             "\"failure_vk\":%u,\"failure_modifiers\":%u,\"failure_id\":%d,\"registration_error\":%lu,"
             "\"reservation_budget_ms\":120,\"budget_exhausted\":%s,\"reservation_ms\":%llu,"
-@@ -527,7 +529,7 @@
+@@ -525,9 +565,9 @@
+     test_async_seen=CreateEventW(NULL,TRUE,FALSE,NULL);
+     test_unregister_seen=CreateEventW(NULL,TRUE,FALSE,NULL);test_unregister_gate=CreateEventW(NULL,TRUE,FALSE,NULL);
      CHECK(test_hook_seen&&test_hook_gate&&test_async_seen&&test_unregister_seen&&test_unregister_gate);
-     reset_fixture();test_masks_and_tuples();test_registration_rollback();test_identity_and_ownership();test_counter_limits();
+-    reset_fixture();test_masks_and_tuples();test_registration_rollback();test_identity_and_ownership();test_counter_limits();
++    reset_fixture();test_masks_and_tuples();test_registration_rollback();test_shared_shortcuts();test_identity_and_ownership();test_counter_limits();
      test_press_during_registration();test_held_and_expiry();test_full_preset_sample();
 -    test_obsolete_deadline();test_focus_revocation();test_retirement_and_handles();CHECK(lll_keyboard_shutdown());
 +    test_obsolete_deadline();test_focus_revocation();test_retirement_and_handles();CHECK(wjl_keyboard_shutdown());
@@ -1482,7 +1566,7 @@
          if (fields[1]) goto header_only;
          encoded=WideCharToMultiByte(CP_UTF8,WC_ERR_INVALID_CHARS,status.output_path,-1,NULL,0,NULL,NULL);
          if (encoded<=0||strlen(status.id)!=32) { fields[1]=ERROR_INVALID_DATA;goto header_only; }
-@@ -177,24 +177,35 @@
+@@ -177,24 +177,43 @@
          (operation == 18 && extra != 8)) goto done;
      memcpy(fields, bytes + 12 + path_size, extra);
      if (operation == 16) {
@@ -1508,11 +1592,19 @@
 +        {
 +            static uint32_t last_generation, last_state;
 +            if (last_generation != keyboard.generation || last_state != keyboard.state) {
-+                char message[192]; DWORD keyboard_error;
++                char message[384]; DWORD keyboard_error; uint32_t shared_count, shared[8]; int written;
 +                AcquireSRWLockShared(&wjl_keyboard_data);
 +                keyboard_error = wjl_keyboard_lease.error;
++                shared_count = wjl_keyboard_lease.shared_count;
++                memcpy(shared, wjl_keyboard_lease.shared, sizeof(shared));
 +                ReleaseSRWLockShared(&wjl_keyboard_data);
-+                sprintf_s(message, sizeof(message), "Keyboard generation=%u state=%u error=%lu", keyboard.generation, keyboard.state, (unsigned long)keyboard_error);
++                written = sprintf_s(message, sizeof(message), "Keyboard generation=%u state=%u error=%lu shared=%u", keyboard.generation, keyboard.state, (unsigned long)keyboard_error, shared_count);
++                for (uint32_t i = 0; i < shared_count && i < 8 && written > 0; ++i) {
++                    uint32_t modifiers = shared[i] >> 8;
++                    int added = _snprintf_s(message + written, sizeof(message) - (size_t)written, _TRUNCATE, "%s%s%s%sVK 0x%02X", i ? ", " : " owned elsewhere: ",
++                        (modifiers & MOD_CONTROL) ? "Ctrl+" : "", (modifiers & MOD_SHIFT) ? "Shift+" : "", (modifiers & MOD_ALT) ? "Alt+" : "", shared[i] & 0xffu);
++                    written = added > 0 ? written + added : -1;
++                }
 +                note(message); last_generation=keyboard.generation; last_state=keyboard.state;
 +            }
 +        }
@@ -1528,7 +1620,7 @@
                  ZeroMemory(&pointer, sizeof(pointer)); ZeroMemory(keyboard.keys, sizeof(keyboard.keys));
              }
          }
-@@ -203,9 +214,9 @@
+@@ -203,9 +222,9 @@
          length = 88;
      } else {
          uint32_t generation = 0;
@@ -1540,7 +1632,7 @@
          }
      }
  done:
-@@ -267,13 +278,13 @@
+@@ -267,13 +286,13 @@
      if (path_size != sizeof(path) - 1 || size < 12 + path_size + 16 ||
          memcmp(bytes + 12, path, sizeof(path) - 1)) goto refused;
      memcpy(fields, bytes + 12 + path_size, sizeof(fields));
@@ -1558,7 +1650,7 @@
                               listing_bytes + 12, capacity, &reply[2]);
      if (reply[1]) { reply[2] = 0; goto refused; }
      memcpy(listing_bytes, reply, sizeof(reply));
-@@ -290,28 +301,28 @@
+@@ -290,28 +309,28 @@
      memcpy(&nonce,bytes,4);memcpy(&operation,bytes+4,4);memcpy(&path_size,bytes+8,4);
      if (operation==0) {
          if (size!=12 || nonce!=0 || path_size!=0) return 0;
@@ -1595,7 +1687,7 @@
          reply[0]=nonce;reply[1]=0;length=8;
          if (operation==8) {
              reply[2]=session_pid;reply[3]=watch_count;length=16+watch_count*4;
-@@ -348,7 +359,7 @@
+@@ -348,7 +367,7 @@
      }
      if (_wfopen_s(&stream,request_file,L"wb")) return 0;
      if (fwrite(bytes,1,size,stream)!=size) { fclose(stream);return 0; }
@@ -1604,7 +1696,7 @@
  }
  
  int WINAPI wWinMain(HINSTANCE instance,HINSTANCE previous,PWSTR command,int show) {
-@@ -375,7 +386,7 @@
+@@ -375,7 +394,7 @@
      initialize();  /* Establish only the transport's ordinary output paths. */
      inline_events=1;
      if (!home[0] || !response_file[0]) goto done;
@@ -1613,7 +1705,7 @@
          (unsigned long long)resource_hash((const unsigned char *)home,wcslen(home)*sizeof(wchar_t)));
      single_instance=CreateMutexW(NULL,FALSE,mutex_name);
      if (!single_instance || GetLastError()==ERROR_ALREADY_EXISTS) goto done;
-@@ -395,7 +406,7 @@
+@@ -395,7 +414,7 @@
      outgoing=CreateNamedPipeW(outgoing_name,PIPE_ACCESS_OUTBOUND|FILE_FLAG_FIRST_PIPE_INSTANCE|FILE_FLAG_OVERLAPPED,
          PIPE_TYPE_BYTE|PIPE_READMODE_BYTE|PIPE_WAIT|PIPE_REJECT_REMOTE_CLIENTS,1,65536,65536,0,NULL);
      if (incoming==INVALID_HANDLE_VALUE || outgoing==INVALID_HANDLE_VALUE) { note("Cannot create exclusive local pipes");goto done; }
@@ -1622,7 +1714,7 @@
      ready_event=CreateEventW(NULL,TRUE,FALSE,ready_name);
      if (!ready_event || !SetEvent(ready_event)) { note("Cannot signal filesystem service readiness");goto done; }
      if (!connect_pipe(incoming)||!connect_pipe(outgoing)) { note("No complete client connection within startup timeout");goto done; }
-@@ -418,13 +429,13 @@
+@@ -418,13 +437,13 @@
      if (ready_event) ResetEvent(ready_event);
      if (incoming!=INVALID_HANDLE_VALUE) { CloseHandle(incoming);incoming=INVALID_HANDLE_VALUE; }
      if (outgoing!=INVALID_HANDLE_VALUE) { CloseHandle(outgoing);outgoing=INVALID_HANDLE_VALUE; }
