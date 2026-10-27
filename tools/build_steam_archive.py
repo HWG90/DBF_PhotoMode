@@ -81,7 +81,10 @@ local input_service,input_driver
 local connected,why=pcall(function()input_service,input_driver=mod.require('src/windows_input_service.lua').connect(mod,stingray)end)
 if not connected then
  mod.log('Input helper unavailable: '..tostring(why))
- input_service=mod.require('src/engine_input.lua').new(stingray,mod.log)
+ -- Proton: the in-game keyboard bridge isolates Photo Mode's keys, as 1.3.0-bml.1 did.
+ -- Native Windows refuses that DLL, so there Photo Mode still needs the helper.
+ local function keyboard()local open,why=package.loadlib(mod.require('src/host_native.lua').library('hd2_nativeinfo_78b314de6177433d.dll'),'luaopen_hd2_nativeinfo');assert(open,why);return open()end
+ input_service=mod.require('src/engine_input.lua').new(stingray,mod.log,keyboard)
 end
 mod.host_loader={engine_input=true,require_keyboard=true,input_service=input_service,bindings=bindings,capabilities={revision='boot-mod-loader-r34-input.1'}}
 local state='waiting'
@@ -341,7 +344,7 @@ def build(candidate, output):
                    'live in LLL/Helldivers2/Settings/' + MOD_ID + ' when that folder exists, else in the game\'s settings '
                    'folder. Also runs as an LLL archive mod. Use one War Journalist at a time.')
     if manifest.get('public_release'):
-        description = 'War Journalist 1.3.0 Lua rewrite for Boot Mod Loader. Native DoF works; WJL starts automatically. AI control and depth shaders are unavailable. Cape, selection, equipment hiding and hoverpack limitations remain. See release notes.'
+        description = 'War Journalist 1.3.1: Windows and Proton input fix for the Lua rewrite for Boot Mod Loader. Native DoF, Handycam and automatic WJL startup. AI control and depth shaders are unavailable. Cape, subject selection, equipment hiding and hoverpack limitations remain; see release notes.'
     arsenal = {'Version': 1, 'Guid': GUID, 'Name': TITLE + ' ' + manifest['version'], 'Description': description,
                'Options': [{'Name': TITLE, 'Description': 'Photo Mode and its assets.', 'Include': [OPTION, 'Assets']}]}
     (folder / 'manifest.json').write_text(json.dumps(arsenal, indent=2, ensure_ascii=False) + '\n')
