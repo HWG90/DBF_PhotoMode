@@ -87,6 +87,23 @@ local function call(operation, path, bytes)
     return u32(reply, 5), reply
 end
  function P.now()return sr.Application.time_since_launch()end
+-- PNG screenshot jobs (operations 13-15, as LLL's runtime calls them): the helper captures
+-- the game window and writes the PNG itself.
+local function screenshot_reply(status,reply)
+    if status~=0 then return nil,string.format('Screenshot request refused (0x%08x)',status)end
+    assert(#reply>=36,'Truncated screenshot reply')
+    local states={'pending','succeeded','failed','cancelled'}
+    local state=states[u32(reply,9)]
+    assert(state,'Invalid screenshot state')
+    local id,at=text(reply,29)
+    local path;path,at=text(reply,at)
+    assert(at==#reply+1,'Trailing screenshot reply bytes')
+    return {state=state,error=u32(reply,13),width=u32(reply,17),height=u32(reply,21),
+        elapsed_ms=u32(reply,25),id=id,output_path=path}
+end
+function P.screenshot_request(path)return screenshot_reply(call(13,path))end
+function P.screenshot_status(id)return screenshot_reply(call(14,id))end
+function P.screenshot_cancel(id)return screenshot_reply(call(15,id))end
 local pointer={}
 local function signed(bytes,at)
     local value=u32(bytes,at)
@@ -223,9 +240,7 @@ end local acquire,snapshot,release=P.keyboard_acquire,P.keyboard_snapshot,P.keyb
  end
  return P
 end
-function M.connect(mod,sr)
- local config=mod.require('src/wjl_helper_startup.lua').config(mod,sr)
- local transport=mod.require('src/vendor/wjl_transport.lua')(config)
+local function connect(mod,sr,config,transport)
  local names=mod.require('src/steam_input.lua').key_names
  local ok,platform=pcall(M.new,sr,transport,mod.log,function()return M.hud_config(mod.game_root or '')end,names)
  if not ok then transport.close();error(platform)end
@@ -242,6 +257,53 @@ function M.connect(mod,sr)
   return restored,why
  end
  mod.log('Input: WJL keyboard service connected; process proof verified')
- return service,driver
+ -- PNG screenshots through the same helper, into a folder the caller picks.
+ local function screenshots(directory)
+  return mod.require('src/vendor/wjl_screenshots.lua').new({screenshot_directory=directory,screenshot_session=config.pipe,now=platform.now,
+   screenshot_request=platform.screenshot_request,screenshot_status=platform.screenshot_status,screenshot_cancel=platform.screenshot_cancel})
+ end
+ return service,driver,screenshots
+end
+-- How long the game keeps looking for the helper. Antivirus may hold a new unsigned
+-- EXE for a cloud check: 10 s by default, up to 60 s by policy.
+M.start_seconds=90
+-- Launcher handles of helpers that never answered. Closing one waits for cmd.exe, which
+-- may still be waiting on Windows, so they stay referenced (never collected) instead.
+local unanswered={}
+-- Starts WJL beside the game without the game waiting on it, and returns poll(). Call it
+-- once a frame: nil while the helper is starting, then the service, its driver and a
+-- screenshots(directory) factory for PNG capture.
+-- It raises once the helper has refused or has not answered within start_seconds.
+function M.start(mod,sr,clock)
+ local config=mod.require('src/wjl_helper_startup.lua').config(mod,sr)
+ local open=mod.require('src/vendor/wjl_transport.lua')
+ local began=clock()
+ local launcher=assert(io.popen(config.launcher,'r'),'Cannot start the WJL helper launcher')
+ local check_at,done=began,false
+ local function give_up(why)
+  done=true;unanswered[#unanswered+1]=launcher;launcher=nil
+  error(why,0)
+ end
+ return function()
+  assert(not done,'WJL helper start already finished')
+  -- A pipe that is not there fails at once; the service creates both before it is ready.
+  local ready,transport=pcall(open,{pipe=config.pipe})
+  if ready then
+   done=true
+   -- The service is ready, so its --launch copy has returned and cmd.exe with it.
+   pcall(launcher.close,launcher);launcher=nil
+   mod.log(string.format('WJL helper ready %.1f s after launch',clock()-began))
+   return connect(mod,sr,config,transport)
+  end
+  local now=clock()
+  if now>=check_at then
+   check_at=now+1
+   local report=config.failure()
+   if report:find('Refused',1,true)then give_up(report)end
+  end
+  if now-began>=M.start_seconds then
+   give_up(string.format('WJL helper not ready %d s after launch: %s',M.start_seconds,config.failure()))
+  end
+ end
 end
 return M

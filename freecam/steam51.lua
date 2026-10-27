@@ -105,7 +105,8 @@ entry={live_lua_api=1,name='War Journalist',
   local local_data=os.getenv('LOCALAPPDATA')
   -- Boot Mod Loader has no capture service. Where the Linux host worker runs (the one LLL
   -- uses), it writes PNGs to LLL's Screenshots folder and we issue its job tokens; anywhere
-  -- else (native Windows) the engine writes DDS itself.
+  -- else (native Windows) WJL writes PNGs of the game window, with the engine's own DDS
+  -- when that cannot work.
   if engine_host and not capture then
    local function writable(dir)
     if type(dir)~='string'then return false end
@@ -121,8 +122,18 @@ entry={live_lua_api=1,name='War Journalist',
     local profile=os.getenv('USERPROFILE');local game=os.getenv('APPDATA')
     profile=type(profile)=='string'and profile:gsub('\\','/')..'/Pictures';game=type(game)=='string'and game:gsub('\\','/')..'/Arrowhead/Helldivers2'
     local folder=writable(capture.output_directory)and capture.output_directory or writable(profile)and profile or writable(game)and game
-    capture=folder and mod.require('src/engine_capture.lua').new(stingray,folder)or nil
-    if capture then mod.log('Engine DDS capture selected: '..folder)end
+    local dds=folder and mod.require('src/engine_capture.lua').new(stingray,folder)or nil
+    local made,png=false,nil
+    if dds and type(loader.helper_screenshots)=='function'then made,png=pcall(loader.helper_screenshots,folder)end
+    if made and png then
+     local hdr_ok,hdr=pcall(stingray.Application.render_setting,'hdr_enabled')
+     capture=mod.require('src/windows_capture.lua').new(png,dds,hdr_ok and hdr==true,mod.log)
+     mod.log('WJL PNG capture selected, engine DDS when PNG cannot work: '..folder)
+    else
+     capture=dds
+     if png~=nil and not made then mod.log('WJL PNG capture unavailable: '..tostring(png))end
+     if capture then mod.log('Engine DDS capture selected: '..folder)end
+    end
    end
   end
   if capture and not engine_host and type(capture.output_directory)=='string'and type(local_data)=='string'then

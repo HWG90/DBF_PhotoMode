@@ -34,21 +34,60 @@ count=#operations;for i=1,20 do driver.begin_frame()end;assert(#operations==coun
 assert(driver.close())
 print('Windows R34 input adapter: process proof, strict lease, one sample/frame, mode switch, uncertain release, exact restore and idle passed')
 
+-- The game never waits on the helper: start() only spawns the launcher, and poll() is nil
+-- until the helper's pipe opens. The launcher is closed (which waits for cmd.exe) only
+-- once the service answered; a refused or silent helper's launcher is never closed.
 -- A rejected render graph must not make keyboard/menu startup fail.
 sr.Window=window;transport.close=function()end
+local report,ready_after,opens='No WJL helper log written',3,0
+local spawned,closed={},0
 local mod={log=function()end,require=function(name)
- if name=='src/wjl_helper_startup.lua'then return{config=function()return{pipe='fixture_input_pipe',contract_ready=function()return false end}end}end
+ if name=='src/wjl_helper_startup.lua'then return{config=function()return{pipe='fixture_input_pipe',launcher='""C:\\wjl.exe" --launch"',
+  contract_ready=function()return false end,failure=function()return report end}end}end
  if name=='src/steam_input.lua'then return dofile('freecam/steam_input.lua')end
- if name=='src/vendor/wjl_transport.lua'then return function()return transport end end
+ if name=='src/vendor/wjl_transport.lua'then return function(config)
+  assert(config.pipe=='fixture_input_pipe'and config.launcher==nil,'The transport never launches')
+  opens=opens+1;if opens<ready_after then error('WJL input service not ready')end;return transport end end
  if name=='src/vendor/wjl_capture.lua'then return dofile('freecam/vendor/wjl_capture.lua')end
  if name=='src/vendor/wjl_input_service.lua'then return dofile('freecam/vendor/wjl_input_service.lua')end
  error(name)
 end}
-local isolated,runner=adapter.connect(mod,sr)
+local old_popen=io.popen
+io.popen=function(command,mode)
+ assert(mode=='r');spawned[#spawned+1]=command
+ return{close=function()closed=closed+1;return true end,read=function()error('The launcher output is never read')end}
+end
+local now=0;local function clock()return now end
+local poll=adapter.start(mod,sr,clock)
+assert(#spawned==1 and spawned[1]=='""C:\\wjl.exe" --launch"'and closed==0,'Launch spawns cmd.exe and returns at once')
+assert(poll()==nil and poll()==nil and closed==0,'Pending frames return nil without waiting')
+local isolated,runner=poll()
+assert(isolated and closed==1,'The launcher is closed once the service answered')
 assert(mod.game_root=='C:/game'and mod.render_contract_verified==false)
 local held=assert(isolated.acquire('dbf_freecam','menu',nil,{keyboard=true}))
 runner.begin_frame();assert(isolated.snapshot(held).keyboard_active)
 assert(isolated.release(held));assert(runner.close())
+assert(not pcall(poll),'A finished start is not polled again')
+-- A refusal in the helper's log ends the start within a second, without closing the launcher.
+opens,ready_after,closed=0,math.huge,0
+poll=adapter.start(mod,sr,clock)
+assert(poll()==nil);report='Refused: installed game hashes do not match this service build'
+now=now+.5;assert(poll()==nil,'The helper log is read once a second')
+now=now+.6;local ok,why=pcall(poll)
+assert(not ok and why==report and closed==0,'Refusal reported; launcher left open')
+-- A helper that never answers: the start ends after start_seconds, launcher left open.
+report,opens,closed='No WJL helper log written',0,0
+poll=adapter.start(mod,sr,clock)
+local frames=0
+while true do
+ local done,value=pcall(poll);frames=frames+1
+ if not done then why=value;break end
+ assert(value==nil);now=now+1/60
+end
+assert(why:find('not ready '..adapter.start_seconds..' s after launch: No WJL helper log written',1,true)and closed==0,why)
+assert(frames>=adapter.start_seconds*60,'Each frame polls once')
+io.popen=old_popen
+print('Windows WJL start: launcher spawned without waiting, per-frame pipe poll, close after ready, refusal and timeout without waiting passed')
 
 -- Saved Toggle HUD bindings are excluded at acquisition; unrelated keys stay isolated.
 do
@@ -93,4 +132,41 @@ do
  assert(requested_mask==alternate and service.capabilities.keyboard_mask==alternate,'Next activation refreshes the saved binding')
  assert(service.release(token)and driver.close())
  print('HUD key passthrough: saved binding discovery, ambiguity, narrow masks, menu/camera and rebind lifecycle passed')
+end
+
+-- PNG screenshot jobs: the helper's reply layout (operations 13-15) through LLL's facade.
+do
+ local id=string.rep('ab',16)
+ local state,seen=1,{}
+ local function reply(seq,path,error_code,width,height)
+  return n(seq)..n(0)..n(state)..n(error_code or 0)..n(width or 0)..n(height or 0)..n(40)..n(32)..id..n(#path)..path
+ end
+ local helper_path
+ local t={exchange=function(bytes)
+  local seq,op,len=u(bytes,1),u(bytes,5),u(bytes,9)
+  local path=bytes:sub(13,12+len)
+  if op==13 then seen[#seen+1]='request';helper_path=path:gsub('/','\\');return reply(seq,helper_path)end
+  if op==14 then assert(path==id);seen[#seen+1]='status';return reply(seq,helper_path,0,3840,2160)end
+  if op==15 then assert(path==id);seen[#seen+1]='cancel';state=4;return reply(seq,helper_path)end
+  return transport.exchange(bytes)
+ end}
+ local clock=0
+ local p=adapter.new({Application={process_id=function()return 17 end,time_since_launch=function()return clock end}},t,function()end)
+ local folder='C:/Users/Some One/Pictures'
+ local shots=dofile('freecam/vendor/wjl_screenshots.lua').new({screenshot_directory=folder,screenshot_session='wjl_input_17_1_1',now=p.now,
+  screenshot_request=p.screenshot_request,screenshot_status=p.screenshot_status,screenshot_cancel=p.screenshot_cancel})
+ assert(shots.capabilities.format=='png'and shots.capabilities.game_window==true)
+ local token=assert(shots.new_job_token());local name='War-Journalist-20261027-180000-1-1.png'
+ local record=assert(shots.request({job_token=token,output_token=name,output_path=folder..'/'..name}))
+ assert(record.state=='pending'and not record.uncertain and seen[1]=='request',record.reason)
+ assert(shots.status(token,name).state=='pending'and #seen==1,'Status polls at most 10 times a second')
+ clock=clock+.2;state=2
+ record=shots.status(token,name)
+ assert(record.state=='succeeded'and record.width==3840 and record.height==2160 and record.output_path==folder..'/'..name and seen[2]=='status')
+ -- A refused request: no job, the helper's code in the reason.
+ local refused={exchange=function(bytes)return n(u(bytes,1))..n(0x32)end}
+ local q=adapter.new({Application={process_id=function()return 17 end,time_since_launch=function()return clock end}},
+  {exchange=function(bytes)if u(bytes,5)==13 then return refused.exchange(bytes)end;return transport.exchange(bytes)end},function()end)
+ local value,why=q.screenshot_request(folder..'/x.png');assert(value==nil and why=='Screenshot request refused (0x00000032)')
+ print('WJL PNG screenshots: request/status/cancel reply layout, facade identity, 10 Hz polling and refused requests passed')
 end

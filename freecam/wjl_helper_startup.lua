@@ -1,6 +1,11 @@
 -- One-shot helper extraction/startup. Child inherits the game's integrity level.
 local M={}
 local launch_sequence=0
+-- What earlier releases wrote beside the game's settings. A helper's name is the first 16
+-- hex digits of its SHA-256, so each changed helper left a new file; the game's Lua cannot
+-- list a folder, so these exact names are removed instead. Last, 1.3.0's PowerShell log.
+M.retired={'wjl_steam_service_28af6b376f6afcb8.exe','wjl_steam_service_f9d73353ad66d4e8.exe',
+ 'wjl_steam_service_444cacc9bdd1cada.exe','wjl_startup.log'}
 function M.config(mod,sr)
  local payload=mod.require('src/wjl_helper_payload.lua')
  assert(payload.name:match('^wjl_steam_service_%x+%.exe$')and payload.sha256:match('^%x+$')and #payload.sha256==64)
@@ -30,18 +35,23 @@ function M.config(mod,sr)
  assert(type(contract.resource)=='string'and contract.resource:match('^%x+$')and #contract.resource==16,'Invalid renderer resource')
  assert(type(contract.resource_type)=='string'and contract.resource_type:match('^%x+$')and #contract.resource_type==16,'Invalid renderer resource type')
  -- cmd.exe ships with Windows and with Wine/Proton; PowerShell does not ship with Proton
- -- and some Windows installs block it. start /wait returns once the helper's --launch
- -- copy has seen the service ready (or exit). The helper resolves the game from its
- -- process id and checks the stock renderer contract itself.
+ -- and some Windows installs block it. cmd runs the helper itself, not through start:
+ -- start hands a missing or blocked file to the shell, which shows a dialog that cmd
+ -- waits on; run directly, cmd only prints the error. The outer pair of quotes is
+ -- cmd /c's: it removes the first and last quote and runs the rest as written. The
+ -- helper's --launch copy starts the service, which resolves the game from its process
+ -- id and checks the stock renderer contract itself.
  local exe=path:gsub('/','\\')
  assert(not exe:find('[%%"\r\n]'),'The settings folder path cannot be passed to cmd.exe')
- local launcher='start "" /wait "'..exe..'" --launch --game-pid '..pid..' --pipe '..token..' --contract '..contract.id..
-  ' --contract-resource '..contract.resource..' --contract-type '..contract.resource_type..' --check '..table.concat(checks,' --check ')
+ local launcher='""'..exe..'" --launch --game-pid '..pid..' --pipe '..token..' --contract '..contract.id..
+  ' --contract-resource '..contract.resource..' --contract-type '..contract.resource_type..' --check '..table.concat(checks,' --check ')..'"'
  assert(#launcher<8000,'WJL launcher exceeds the cmd.exe command-line limit')
  -- The helper truncates its log when it starts; a missing log means it never ran.
  local local_data=os.getenv('LOCALAPPDATA')
  local service_log=local_data and local_data:gsub('\\','/')..'/WJL/Helldivers2/Steam/service.log'
  if service_log then os.remove(service_log)end
+ -- One still running (a stale service) cannot be removed; that is harmless.
+ for _,name in ipairs(M.retired)do if name~=payload.name then os.remove(directory..name)end end
  return {pipe=token,contract_id=contract.id,launcher=launcher,
   contract_ready=function()local f=io.open(directory..'wjl-render-contract-'..pid..'.txt','rb');if not f then return false end;local body=f:read(256);f:close();return body==witness end,
   failure=function()local f=service_log and io.open(service_log,'rb');if not f then return 'No WJL helper log written'end;local body=f:read(4096);f:close();return body end}

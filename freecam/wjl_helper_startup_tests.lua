@@ -14,14 +14,20 @@ local contract={id=string.rep('b',64),resource='ee6b1ba7e22d71ed',resource_type=
 local mod={require=function(name)if name=='src/engine_render_contract.lua'then return contract end;assert(name=='src/wjl_helper_payload.lua');return payload end}
 local sr={Application={process_id=function()return 1234 end}}
 local config=startup.config(mod,sr);assert(config.pipe:match('^wjl_input_1234_%d+_%d+$'))
--- cmd.exe only: no script host, no generated script file.
-assert(config.launcher=='start "" /wait "C:\\User Space\\Settings\\Arrowhead\\Helldivers2\\wjl_steam_service_0123456789abcdef.exe" --launch --game-pid 1234 --pipe '..config.pipe..
+-- cmd.exe only: no script host, no generated script file. cmd runs the helper itself
+-- (never start, whose shell fallback shows dialogs); the outer quotes are cmd /c's.
+assert(config.launcher=='""C:\\User Space\\Settings\\Arrowhead\\Helldivers2\\wjl_steam_service_0123456789abcdef.exe" --launch --game-pid 1234 --pipe '..config.pipe..
  ' --contract '..contract.id..' --contract-resource ee6b1ba7e22d71ed --contract-type 27862fe24795319c --check bundles.nxa:0:8:'..string.rep('c',64)..
- ' --check bundles.17.nxa:475061920:81198:'..string.rep('d',64),config.launcher)
-assert(not config.launcher:lower():find('powershell',1,true)and #config.launcher<8000)
+ ' --check bundles.17.nxa:475061920:81198:'..string.rep('d',64)..'"',config.launcher)
+assert(not config.launcher:lower():find('powershell',1,true)and not config.launcher:find('start',1,true)and #config.launcher<8000)
 for path in pairs(files)do assert(path:match('%.exe$'),'Only the helper is written: '..path)end
 -- A stale helper log never stands in for this launch's diagnostics.
 assert(removed[1]=='C:/User Space/Local/WJL/Helldivers2/Steam/service.log')
+-- Earlier releases' helpers and 1.3.0's PowerShell log go, by exact name; nothing else.
+assert(#removed==1+#startup.retired)
+for index,name in ipairs(startup.retired)do assert(removed[1+index]=='C:/User Space/Settings/Arrowhead/Helldivers2/'..name)end
+assert(startup.retired[#startup.retired]=='wjl_startup.log')
+for _,name in ipairs(startup.retired)do assert(name=='wjl_startup.log'or name:match('^wjl_steam_service_%x+%.exe$'))end
 assert(config.failure()=='No WJL helper log written')
 files[removed[1]]='Refused: installed game hashes do not match this service build\n'
 assert(config.failure():match('^Refused'))

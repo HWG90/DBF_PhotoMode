@@ -80,19 +80,22 @@ if rawget(_G,'LiveLuaLoader')then return entry end
 local bindings=rawget(_G,'ModBindingsMenu')
 if not(type(bindings)=='table'and type(bindings.register_binding)=='function'and type(bindings.is_down)=='function'and type(bindings.binding)=='function')then bindings=nil end
 if dev_module then bindings=dev_module.bindings(bindings)end
-local input_service,input_driver
-local connected,why=pcall(function()input_service,input_driver=mod.require('src/windows_input_service.lua').connect(mod,stingray)end)
-if not connected then
+local function clock()local ok,t=pcall(function()return stingray.Application.time_since_launch()end);return ok and type(t)=='number'and t or os.clock()end
+-- WJL starts beside the game: the game never waits on it, here or on any later frame.
+-- Photo Mode starts once the helper answers, or without it once it is known unavailable.
+local input_service,input_driver,input_pending
+local function without_helper(why)
  mod.log('Input helper unavailable: '..tostring(why))
- input_service=mod.require('src/engine_input.lua').new(stingray,mod.log)
+ return mod.require('src/engine_input.lua').new(stingray,mod.log)
 end
+local launched,why=pcall(function()input_pending=mod.require('src/windows_input_service.lua').start(mod,stingray,clock)end)
+if not launched then input_service=without_helper(why)end
 mod.host_loader={engine_input=true,require_keyboard=true,input_service=input_service,bindings=bindings,capabilities={revision='boot-mod-loader-r34-input.1'}}
 local state='waiting'
 -- Read-only native diagnostics at start and twice later, while subject/hover fail here.
 local diagnose_at,started_at=RELEASE_MODE and{}or{0,30,120}
 local hud_probe,hud_probe_at=nil,0
 if RELEASE_MODE then hud_probe=false end
-local function clock()local ok,t=pcall(function()return stingray.Application.time_since_launch()end);return ok and type(t)=='number'and t or os.clock()end
 local dev_reload=dev_module and dev_module.new(mod,entry,clock,os.clock,nil,{directory=game,pinned=dev_pinned})
 if dev_reload then mod.log('Dev reload enabled: Lua-only, explicit file requests; resident input helper retained')end
 local function stop(reason)
@@ -113,6 +116,13 @@ local function frame(dt,...)
   if paused then return ... end
  end
  if state=='waiting'then
+  if input_pending then
+   local ok,service,driver,screenshots=pcall(input_pending)
+   if ok and service==nil then return ... end
+   input_pending=nil
+   if ok then input_service,input_driver=service,driver else input_service=without_helper(service)end
+   mod.host_loader.input_service,mod.host_loader.helper_screenshots=input_service,ok and screenshots or nil
+  end
   local ok,why=pcall(entry.on_enable)
   if ok then state='running';started_at=clock();mod.log('Photo Mode started on Boot Mod Loader')else state='failed';mod.log('Photo Mode did not start: '..tostring(why))end
  elseif state=='running'then
@@ -200,18 +210,34 @@ ModBindingsMenu={window='HD2 Mod Setting GUI',is_down=function()return false end
  register_binding=function(id,label,slot,options)registered[#registered+1]=id..'='..options.default.button;return true end}
 update=function(dt)calls=calls+1;return 'game',dt end
 shutdown=function()shut=true end
+-- The WJL launcher: recorded, never run. Its helper refuses this (fake) game at once, as
+-- on an unsupported build. Closing the handle would wait for cmd.exe; the game never may.
+launches,closes={},0
+-- No helper pipes here. On Linux, opening a pipe name to write would create a stray file.
+local file_open=io.open
+io.open=function(path,mode)
+ if type(path)=='string'and path:sub(1,9)=='\\\\\\\\.\\\\pipe\\\\'then return nil,'pipe not found'end
+ return file_open(path,mode)
+end
+io.popen=function(command,mode)
+ launches[#launches+1]=command
+ local log=assert(io.open(os.getenv('LOCALAPPDATA')..'/WJL/Helldivers2/Steam/service.log','wb'))
+ log:write('Refused: installed game hashes do not match this service build\\n');log:close()
+ return{close=function()closes=closes+1;return true end}
+end
 stingray={Gui={resolution=function()return 1920,1080 end},
  Unit={alive=function()return false end,world=nop,resource_name=nop,num_scene_graph_items=nop,
   local_pose=nop,set_local_pose=nop,animation_bone_mode=nop,set_animation_bone_mode=nop,has_node=nop,node=nop},
  World={update_unit=nop},
- Application={time_since_launch=function()return os.clock()end,render_setting=function()return false end,save_render_target=nop},
+ Application={time_since_launch=function()return os.clock()end,render_setting=function()return false end,save_render_target=nop,
+  process_id=function()return 4242 end},
  Window={mouse_focus=function()return true end,show_cursor=function()return false end,clip_cursor=function()return true end,
   set_mouse_focus=nop,set_show_cursor=nop,set_clip_cursor=nop,has_focus=function()return true end},
  Mouse={axis_id=function(n)return({mouse=0,wheel=1,cursor=2})[n]end,button_id=function()return 0 end,axis=nop,button=function()return 0 end},
  Keyboard={button_id=function()return 0 end,button=function()return 0 end}}
 local entry=assert(loadstring(text,'@archive'))()
 local a,b=update(.5);for _=1,5 do update(1/60)end;shutdown()
-return entry,a,b,calls,shut,table.concat(registered,'|')
+return entry,a,b,calls,shut,table.concat(registered,'|'),table.concat(launches,'\\n'),closes
 """
     with tempfile.TemporaryDirectory() as temp:
         game = Path(temp) / 'Roaming/Arrowhead/Helldivers2'
@@ -221,9 +247,55 @@ return entry,a,b,calls,shut,table.concat(registered,'|')
         os.environ['APPDATA'], os.environ['LOCALAPPDATA'] = str(Path(temp) / 'Roaming'), str(Path(temp) / 'Local')
         os.environ['USERPROFILE'] = str(Path(temp) / 'Profile')
         try:
+            (Path(temp) / 'Local/WJL/Helldivers2/Steam').mkdir(parents=True)
+            # A helper that answers: its pipes appear two frames after the launch, as on a
+            # PC where it takes a moment. Photo Mode waits for it, then PNGs through it.
+            answering = host.replace("io.popen=function(command,mode)", r"""
+local pipes,frames_after_launch={},nil
+local real_open=io.open
+local function le(n)return string.char(n%256,math.floor(n/256)%256,math.floor(n/65536)%256,math.floor(n/16777216)%256)end
+local function word(s,i)local a,b,c,d=s:byte(i,i+3);return a+b*256+c*65536+d*16777216 end
+local queue=''
+io.open=function(path,mode)
+ if type(path)~='string'or path:sub(1,9)~='\\\\.\\pipe\\'then return real_open(path,mode)end
+ if not frames_after_launch or frames_after_launch<2 then return nil,'pipe not found'end
+ if path:match('_request$')then
+  local buffer=''
+  return{setvbuf=function()end,flush=function()return true end,close=function()end,write=function(_,...)
+   buffer=buffer..table.concat({...})
+   while #buffer>=4 and #buffer>=4+word(buffer,1)do
+    local size=word(buffer,1);local frame=buffer:sub(5,4+size);buffer=buffer:sub(5+size)
+    local seq,op=word(frame,1),word(frame,5)
+    local reply=op==0 and le(0)..le(0)..le(4242)..le(1)..'x'..le(6)..'C:/hd2'or le(seq)..le(0)..string.rep(le(0),16)
+    queue=queue..le(#reply)..reply
+   end
+   return true end}
+ end
+ return{setvbuf=function()end,close=function()end,read=function(_,count)
+  local part=queue:sub(1,count);queue=queue:sub(count+1);return part end}
+end
+local game_update=update
+update=function(dt)if frames_after_launch then frames_after_launch=frames_after_launch+1 end;return game_update(dt)end
+io.popen=function(command,mode)
+ frames_after_launch=0
+ launches[#launches+1]=command
+ return{close=function()closes=closes+1;return true end}
+end
+local unused_popen=function(command,mode)""", 1)
+            entry, a, b, calls, shut, keys, launches, closes = LuaRuntime().execute(answering, text)
+            assert (a, b, calls, shut) == ('game', 0.5, 6, True), 'Update/shutdown wrapping with a helper'
+            assert launches.startswith('""') and closes == 1, ('The launcher is closed once, after the helper answered', closes)
+            log = (game / 'war_journalist_lua51.log').read_text()
+            assert 'WJL helper ready' in log and 'Input: WJL keyboard service connected' in log, log
+            assert 'WJL PNG capture selected, engine DDS when PNG cannot work: ' + str(game).replace('\\', '/') in log, log
+            assert 'Photo Mode started on Boot Mod Loader' in log and 'Input helper unavailable' not in log, log
+            (game / 'war_journalist_lua51.log').unlink()
             # Boot Mod Loader: the Windows build, with no bridges.
-            entry, a, b, calls, shut, keys = LuaRuntime().execute(host, text)
+            entry, a, b, calls, shut, keys, launches, closes = LuaRuntime().execute(host, text)
             assert entry['live_lua_api'] == 1 and (a, b, calls, shut) == ('game', 0.5, 6, True), 'Update/shutdown wrapping'
+            # WJL starts once through cmd.exe itself (never start), and the game never waits on it.
+            assert len(launches.split('\n')) == 1 and launches.startswith('""') and '--launch' in launches, launches
+            assert 'start "' not in launches and 'powershell' not in launches.lower() and closes == 0, (launches, closes)
             # The Windows build never writes or loads an in-process bridge.
             for name in libraries:
                 assert not (game / name).exists(), 'Boot Mod Loader wrote a bridge: ' + name
@@ -234,6 +306,8 @@ return entry,a,b,calls,shut,table.concat(registered,'|')
             assert all(k.startswith('war_journalist.') for k in hosted) and hosted.get('war_journalist.toggle_key') == 'p' and len(hosted) >= 13, keys
             # On a bare engine the runtime starts with its native features reported unavailable.
             assert 'Photo Mode started on Boot Mod Loader' in log and 'stopped after an error' not in log and 'cleanup failed' not in log, log
+            # A refusing helper hands Photo Mode the engine input on the first frame.
+            assert 'Input helper unavailable: Refused: installed game hashes do not match' in log, log
             public_release = 'local RELEASE_MODE=true' in head
             if public_release:
                 assert 'Native diagnostics (' not in log and 'Windows engine namespaces:' not in log, 'Public startup must not run development inventories'
@@ -276,7 +350,7 @@ shutdown()
                 assert (game / 'wj-native-dof-selftest.request').is_file(), 'Public mode must ignore old dev markers'
                 (game / 'wj-native-dof-selftest.request').unlink()
             private_text = text.replace('local RELEASE_MODE=true', 'local RELEASE_MODE=false', 1)
-            _, a, b, reload_calls, shut, keys = LuaRuntime().execute(reload_host, private_text)
+            _, a, b, reload_calls, shut, keys, _, _ = LuaRuntime().execute(reload_host, private_text)
             assert (a, b, reload_calls, shut) == ('game', .5, 332, True)
             reload_log = (game / 'war_journalist_lua51.log').read_text()
             assert 'Dev reload: loaded fixture;' in reload_log and 'Dev reload: loaded fixture2;' in reload_log, reload_log

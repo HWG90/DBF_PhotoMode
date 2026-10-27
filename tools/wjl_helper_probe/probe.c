@@ -1,7 +1,8 @@
 /* Test-only stand-ins for tools/test_wjl_helper_launch.py. Never shipped.
  *   probe.exe sleep <pid-file>   a "game" process: writes its pid, then waits
- *   probe.exe client <token>     the Lua side's first exchange on the helper's pipes
- *   probe.exe popen <file> <out> io.popen(command):close(), as the game's Lua runs the launcher */
+ *   probe.exe client <token>     the Lua side's first exchange on the helper's pipes, once they exist
+ *   probe.exe popen <file> <out> io.popen(command):close(): how long cmd.exe runs the launcher
+ *                                (the game itself never closes it before the helper answers) */
 #include <windows.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -29,8 +30,13 @@ static int client(const char *token) {
     uint32_t size = 0, status[3] = {0}, at = 12;
     DWORD count;
     HANDLE outgoing, incoming;
-    snprintf(name, sizeof(name), "\\\\.\\pipe\\%s_request", token);
-    outgoing = CreateFileA(name, GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
+    /* The game polls for the pipes once a frame; poll every 50 ms for up to 20 s. */
+    for (int attempt = 0; attempt < 400; ++attempt) {
+        snprintf(name, sizeof(name), "\\\\.\\pipe\\%s_request", token);
+        outgoing = CreateFileA(name, GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
+        if (outgoing != INVALID_HANDLE_VALUE) break;
+        Sleep(50);
+    }
     snprintf(name, sizeof(name), "\\\\.\\pipe\\%s_response", token);
     incoming = CreateFileA(name, GENERIC_READ, 0, NULL, OPEN_EXISTING, 0, NULL);
     if (outgoing == INVALID_HANDLE_VALUE || incoming == INVALID_HANDLE_VALUE) { printf("{\"connected\":false,\"error\":%lu}\n", GetLastError()); return 3; }

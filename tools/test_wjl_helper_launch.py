@@ -3,9 +3,12 @@
 Runs the exact launcher wjl_helper_startup.lua builds through _popen, as io.popen does
 against a stand-in game process whose image is <fake root>/bin/helldivers2.exe. Once that
 process is running its file is swapped for a link to the real executable, so the helper's
-stock-hash check sees the real game. Checks: readiness through --launch, the game root
+stock-hash check sees the real game. The game never waits on the launcher; here _pclose
+times how long cmd.exe runs it. Checks: readiness through --launch, the game root
 resolved from --game-pid, the renderer-contract proof (valid, changed bundle, overriding
-patch, valid again), the first pipe exchange the Lua side makes, and a refused game.
+patch, valid again), the first pipe exchange the Lua side makes once the pipes exist, a
+refused game (the Refused line the game's poll reads), and a helper EXE removed after it
+was written, as antivirus does (cmd.exe returns; no dialog).
 Needs wine and x86_64-w64-mingw32-gcc (test stand-ins only), lupa, and an installed
 Helldivers 2 of the build the helper pins. Replaces the PowerShell-era
 test_engine_render_contract.py."""
@@ -79,11 +82,18 @@ def main():
                   env=env,stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=60)
    return config,int(outcome.read_text()),time.monotonic()-began
   def finish(config):
-   reply=wine(str(probe),'client',config['pipe'],timeout=30)
+   # The pipes appear once the service is ready; the game polls for them once a frame.
+   reply=wine(str(probe),'client',config['pipe'],timeout=60)
+   proof=bool(config['contract_ready']())
    for _ in range(200):
     if service_log.exists()and'service stopped'in service_log.read_text(errors='replace'):break
     time.sleep(.05)
-   return json.loads(reply.stdout.strip().splitlines()[-1])
+   return json.loads(reply.stdout.strip().splitlines()[-1]),proof
+  def logged(text,seconds=30):
+   for _ in range(int(seconds/.05)):
+    if service_log.exists()and text in service_log.read_text(errors='replace'):return True
+    time.sleep(.05)
+   return False
   windows_root='Z:'+str(good).replace('/','\\')
   for scenario in ['valid','changed-index','renderer-override','valid-again']:
    (data/'bundles.nxa').write_bytes(index if scenario!='changed-index'else b'changed!')
@@ -91,10 +101,8 @@ def main():
    if override.exists():override.unlink()
    if scenario=='renderer-override':override.write_bytes(patch([(0xee6b1ba7e22d71ed,0x27862fe24795319c)]))
    config,code,elapsed=launch(good_pid)
-   proof=bool(config['contract_ready']())
-   reply=finish(config)
+   reply,proof=finish(config)
    log=service_log.read_text(errors='replace')
-   assert code==0,(scenario,code,log)
    assert proof==(scenario in('valid','valid-again')),(scenario,log)
    assert reply['connected']and reply['nonce']==0 and reply['status']==0,(scenario,reply,log)
    assert reply['root'].lower()==windows_root.replace('\\','/').lower(),(reply['root'],windows_root)
@@ -133,16 +141,34 @@ def main():
   (stock/'bin/helldivers2.exe').unlink();os.symlink(args.game/'bin/helldivers2.exe',stock/'bin/helldivers2.exe')
   contract=real
   config,code,elapsed=launch(int(pid_file.read_text()))
-  proof=bool(config['contract_ready']());reply=finish(config);expected=powershell_verdict(args.game/'data')
-  assert code==0 and reply['status']==0 and proof==expected,(code,proof,expected,service_log.read_text(errors='replace'))
+  reply,proof=finish(config);expected=powershell_verdict(args.game/'data')
+  assert reply['status']==0 and proof==expected,(code,proof,expected,service_log.read_text(errors='replace'))
   results.append({'scenario':'stock-install','ready':True,'renderer_proof':proof,'matches_powershell_check':True,'launch_seconds':round(elapsed,3)})
   stock_process.kill();stock_process.wait()
-  # A game whose executable differs from the pinned build: the launcher returns at once.
+  # A game whose executable differs from the pinned build: cmd.exe returns and the helper's
+  # log says Refused, which is what the game's poll reads to stop waiting.
   config,code,elapsed=launch(refused_pid)
-  log=service_log.read_text(errors='replace')if service_log.exists()else''
-  assert code!=0 and 'Refused: installed game hashes do not match'in log and not config['contract_ready'](),(code,log)
-  assert config['failure']().startswith('Refused'),config['failure']()
+  assert logged('Refused: installed game hashes do not match'),service_log.read_text(errors='replace')if service_log.exists()else'no log'
+  log=service_log.read_text(errors='replace')
+  assert not config['contract_ready']()and config['failure']().startswith('Refused'),config['failure']()
   results.append({'scenario':'unsupported-game','ready':False,'launch_seconds':round(elapsed,3),'reported':log.strip().splitlines()[-1]})
+  # The helper EXE removed after it was written (as antivirus does): cmd.exe prints an
+  # error and returns. start would have shown a dialog and waited on it.
+  def missing_launch():
+   current=lua.table_from(contract,recursive=True)if isinstance(contract,dict)else contract
+   mod=lua.table_from({'require':lambda name:current if name=='src/engine_render_contract.lua'else payload})
+   made=startup['config'](mod,lua.table_from({'Application':lua.table_from({'process_id':lambda:good_pid})}))
+   (settings/payload['name']).unlink()
+   command=temporary/'launcher.txt';command.write_bytes(made['launcher'].encode())
+   outcome=temporary/'launcher.out'
+   if outcome.exists():outcome.unlink()
+   began=time.monotonic()
+   subprocess.run(['wine',str(probe),'popen','Z:'+str(command).replace('/','\\'),'Z:'+str(outcome).replace('/','\\')],
+                  env=env,stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=60)
+   return made,int(outcome.read_text()),time.monotonic()-began
+  config,code,elapsed=missing_launch()
+  assert code!=0 and not service_log.exists()and config['failure']()=='No WJL helper log written',(code,config['failure']())
+  results.append({'scenario':'helper-removed','ready':False,'cmd_exit':code,'launch_seconds':round(elapsed,3)})
   for process in(good_process,refused_process):process.kill();process.wait()
  return {'passed':True,'helper':lua.execute((ROOT/'freecam/wjl_helper_payload.lua').read_text())['name'],'cases':results,'powershell':False}
 
