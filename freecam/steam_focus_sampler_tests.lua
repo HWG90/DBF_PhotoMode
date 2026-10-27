@@ -50,6 +50,8 @@ local sampler=assert(factory.new(sr,nil,guard,config));assert(sampler.interval==
 assert(not sampler.sample(-1,.5)and calls==0,'Invalid UV must not trigger a readback')
 local d,why,metadata=sampler.sample(0,0);assert(d==1 and calls==1 and math.abs(metadata.capture_ms-30)<.001)
 now=.4;d,why,metadata=sampler.sample(1,1);assert(d==45 and calls==1 and metadata.cached and metadata.age>.3,'Cooldown must reuse one depth file while allowing another selected subject')
+local fresh,reason,pending=sampler.sample(1,1,true)
+assert(not fresh and pending.pending and pending.retry_at>now and calls==1,'Selection must wait instead of projecting stale depth through a current camera')
 now=1.02;assert(sampler.sample(.5,.5)==23 and calls==1,'Cooldown ends after capture completion')
 now=1.1;assert(sampler.sample(.5,.5)==23 and calls==2,'Depth must refresh after cooldown')
 assert(#paths==2 and paths[1]==paths[2],'Sampler must reuse one bounded owned file')
@@ -96,5 +98,51 @@ allowed=false;now=28.5;assert(not transitioning.sample(.5,.5)and not files[trans
 allowed=true;now=28.6;assert(not transitioning.sample(.5,.5)and calls==before+3,'Reappearing display must settle after guard unavailability')
 now=30.6;assert(transitioning.sample(.5,.5)==23 and calls==before+4)
 assert(transitioning.release()and not files[transitioning.path]and files['C:/Local/keep.dds']=='unrelated','Display pause must preserve foreign files')
+-- Use the production default median radius: an edge click must keep the
+-- clicked surface, while autofocus continues smoothing that same depth image.
+local edge_values={};for i=1,25 do edge_values[i]=50 end;edge_values[13]=1
+sr.Application.save_render_target=function(target,path)
+ assert(target=='linear_depth');calls=calls+1;files[path]=dds(5,5,edge_values)
+end
+local edge_config={now=config.now,mkdir=config.mkdir,pid=7}
+local edge_sampler=assert(factory.new(sr,nil,guard,edge_config));now=40;before=calls
+local selected,why,detail=edge_sampler.sample(.5,.5,true)
+assert(selected==1 and detail.samples==1 and calls==before+1,'Silhouette selection must use the clicked foreground pixel')
+assert(edge_sampler.sample(.5,.5)==50 and calls==before+1,'Autofocus must retain its median without another GPU readback')
+for i=1,25 do edge_values[i]=1 end;edge_values[13]=50;now=42
+selected,why,detail=edge_sampler.sample(.5,.5,true)
+assert(selected==50 and detail.samples==1 and calls==before+2,'Background click must not inherit an adjacent character depth')
+assert(edge_sampler.sample(.5,.5)==1 and calls==before+2,'Selection must not mutate the autofocus configuration')
+assert(edge_sampler.release())
+-- The engine clock can stay fixed throughout a blocking GPU readback. Its
+-- scheduler still advances between frames; operation timing must not use it.
+local measured=100;local measurement_mode='ok';now=50
+local timed_config={now=config.now,mkdir=config.mkdir,pid=7,measure=function()
+ if measurement_mode=='throw'then error('timer unavailable')end
+ if measurement_mode=='invalid'then return -1 end
+ return measured
+end}
+local timed=assert(factory.new(sr,nil,guard,timed_config));before=calls
+sr.Application.save_render_target=function(target,path)
+ calls=calls+1;files[path]=dds(5,5,5);measured=measured+.6
+end
+local value,_,detail=timed.sample(.5,.5,true)
+assert(value==5 and math.abs(detail.capture_ms-600)<.001 and detail.next_capture>51.79,'Independent timing extends cooldown despite a latched frame clock')
+now=51.5;local value,_,pending=timed.sample(.5,.5,true)
+assert(not value and pending.pending and calls==before+1,'Slow readback cannot repeat before adaptive cooldown')
+now=52;measurement_mode='invalid';value,_,detail=timed.sample(.5,.5,true)
+assert(value==5 and detail.capture_ms==-1 and timed.status:find('timing unavailable',1,true),'A failed clock is unavailable, never a fabricated zero')
+now=54;measurement_mode='throw';value,_,detail=timed.sample(.5,.5,true)
+assert(value==5 and detail.capture_ms==-1,'Clock exceptions cannot break capture ownership or cleanup')
+assert(timed.release()and not files[timed.path])
+-- One slow synchronous read must never become recurring automatic frame spikes.
+measurement_mode='ok';now=60;timed_config.auto_budget_ms=8
+local budgeted=assert(factory.new(sr,nil,guard,timed_config));before=calls
+assert(budgeted.sample(.5,.5,false,true)==5 and calls==before+1)
+for i=1,20 do now=now+2;local v,why=budgeted.sample(.5,.5,false,true);assert(not v and why:find('frame budget',1,true))end
+assert(calls==before+1 and budgeted.metrics().automatic_suspended,'Automatic retry must be idle after exceeding the budget')
+assert(budgeted.sample(.5,.5,true)==5 and calls==before+2,'Explicit clicks remain available')
+assert(budgeted.release());now=now+2
+assert(not budgeted.sample(.5,.5,false,true)and calls==before+2,'Menu reopen must not rearm expensive continuous reads')
 io.open,os.remove,os.getenv=original_open,original_remove,original_getenv
 print('Focus sampler: R32_FLOAT validation, top-origin median depth, sky rejection, bounded cleanup, adaptive cooldown and two-second stable HDR/SDR display-generation pause passed; no game process accessed')

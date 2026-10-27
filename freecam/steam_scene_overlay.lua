@@ -11,6 +11,16 @@ M.combined_scene_dof_candidate=true
 M.color_target='output_target'
 M.color_target_hash=0xa68c78a4
 M.color_encoding='pq-bt2020-resolved'
+function M.paths(contract)
+ if contract=='private-local-v1'then
+  return 'mods/dbf_photo/shaders/windows_private_depth_8994dbbab90c07c5',
+   'mods/dbf_photo/materials/windows_private_depth_8994dbbab90c07c5',
+   'mods/dbf_photo/shaders/windows_private_depth_535eeb61c686fbab',
+   'mods/dbf_photo/materials/windows_private_depth_535eeb61c686fbab'
+ end
+ assert(not contract,'Global-depth candidates withdrawn after Windows menu-open crashes')
+ return M.shader,M.material,M.sdr_shader,M.sdr_material
+end
 -- Read only the existing renderer map/cache. Calling Renderer.resource on a
 -- missing key inserts a target, so this guard deliberately never invokes it.
 local function number(value,fallback,low,high)
@@ -37,6 +47,7 @@ end
 function M.active(options)return M.uniforms(options).active end
 function M.new(sr,depth,allow_candidate,registration,verify_color)
  local self={combined_scene_dof_candidate=true,shader_dof_active=false,scene_active=false}
+ local shader_path,material_path,sdr_shader_path,sdr_material_path=M.paths(depth.binding_contract or depth.global_binding)
  local gui,world,signature,bound;local failed=false
  -- Registry/descriptor/color verification runs on any resolution, HDR or
  -- material change and at most once per second otherwise. The bound depth
@@ -60,7 +71,7 @@ function M.new(sr,depth,allow_candidate,registration,verify_color)
   local ran,registered,why=pcall(registration.present)
   if not ran or registered~=true then return false,ran and why or tostring(registered)end
   local ok,available=pcall(function()
-   return sr.Application.can_get('shader_library',M.shader)and sr.Application.can_get('material',M.material)
+   return sr.Application.can_get('shader_library',shader_path)and sr.Application.can_get('material',material_path)
   end)
   if not ok or not available then return false,'Combined scene shader or material is not available'end
   if depth.available then local done,why=depth.available();if done~=true then return false,why end end
@@ -78,13 +89,13 @@ function M.new(sr,depth,allow_candidate,registration,verify_color)
   if type(white)~='number'or white~=white or white<=0 or white>10000 then
    return false,'Renderer ui_brightness must be a finite positive number in nits'
   end
-  self.material=M.material;self.sdr=false
+  self.material=material_path;self.sdr=false
   if target.hdr_enabled==false and options and options.dof==true and options.dof_mode==2 then
-   local ok,present=pcall(function()return sr.Application.can_get('shader_library',M.sdr_shader)and sr.Application.can_get('material',M.sdr_material)end)
+   local ok,present=pcall(function()return sr.Application.can_get('shader_library',sdr_shader_path)and sr.Application.can_get('material',sdr_material_path)end)
    if ok and present then
     local ran,registered,why=pcall(registration.present,0x49a73b4c)
     if not ran or registered~=true then return false,ran and why or tostring(registered)end
-    self.material=M.sdr_material;self.sdr=true
+    self.material=sdr_material_path;self.sdr=true
    end
   end
   -- SDR uses the compositor's fixed cinema reference, not the HDR paper-white
@@ -100,7 +111,7 @@ function M.new(sr,depth,allow_candidate,registration,verify_color)
   self.shader_dof_active,self.scene_active=false,false;verified_key=nil
   if gui and present(world)then
    local ok,why=pcall(sr.World.destroy_gui,world,gui)
-   if not ok then return false,tostring(why)end
+   if not ok or why==false then return false,not ok and tostring(why)or'Scene GUI retirement refused'end
   end
   gui,world,signature,bound=nil,nil,nil,nil;self.color_binding_identity=nil;self.ui_brightness=nil;self.hdr_enabled=nil;return true
  end
@@ -125,28 +136,47 @@ function M.new(sr,depth,allow_candidate,registration,verify_color)
   local hdr_enabled=self.hdr_enabled
   local target,reason=depth.get();if not target then self.release();return false,reason,false end
   local main=sr.Application.main_world();local owner
-  for _,candidate in pairs(sr.Application.worlds()or {})do if candidate~=main then owner=candidate;break end end
-  if not owner then self.release();return false,'Photo UI world unavailable',false end
+  local scope=depth.render_world and depth.render_world()or'ui'
+  assert(scope=='ui'or scope=='main','Unknown scene GUI world scope')
+  for _,candidate in pairs(sr.Application.worlds()or {})do
+   if(scope=='main'and candidate==main)or(scope=='ui'and candidate~=main)then owner=candidate;break end
+  end
+  if not owner then self.release();return false,'Photo '..scope..' world unavailable',false end
   if not(w and h and w>0 and h>0)then self.release();return false,'Photo viewport unavailable',false end
   local key=tostring(owner)..'|'..w..'|'..h..'|'..material
   local ok,why=pcall(function()
-   if signature~=key then
+   if world~=owner or signature~=key then
     local done,err=self.release();assert(done,err)
     world=owner;gui=assert(sr.World.create_screen_gui(world,'scale',1,1))
-    bound={handle=assert(sr.Gui.material(gui,material))};signature=key
+    bound={ids={}};signature=key
+    if type(sr.Gui.create_material)=='function'then
+     bound.handle=assert(sr.Gui.create_material(gui,material))
+    else
+     -- This game build lacks create_material. A retained primitive assigns
+     -- the loaded material to our GUI before its handle may be queried.
+     -- Keep it assigned until the final quad exists; configure that final
+     -- material before returning to the native renderer.
+     local a,b,c=sr.Vector3(0,0,0),sr.Vector3(w,0,0),sr.Vector3(w,0,h)
+     bound.ids[1]=assert(sr.Gui.triangle(gui,a,b,c,M.layer,sr.Color(255,255,255,255),material,sr.Vector2(0,0),sr.Vector2(1,0),sr.Vector2(1,1)))
+     bound.handle=assert(sr.Gui.material(gui,material))
+     bound.late_binding=true
+    end
    end
-   if bound.resource~=target or bound.resource_identity~=depth.binding_identity then
+   if not bound.late_binding and(bound.resource~=target or bound.resource_identity~=depth.binding_identity)then
     if depth.bind then local done,err=depth.bind(bound.handle,'diffuse_map',target);assert(done,err)
     else sr.Material.set_resource(bound.handle,'diffuse_map',target)end
     bound.resource=target;bound.resource_identity=depth.binding_identity
    end
-   -- All names/offsets already belong to the native GUI material ABI.
-   sr.Material.set_vector4(bound.handle,'scissor_rect',sr.Vector4(unpack(uniforms.scissor)))
-   sr.Material.set_vector4(bound.handle,'atlas_scissor',sr.Vector4(unpack(uniforms.atlas)))
-   sr.Material.set_vector4(bound.handle,'clip_box',sr.Vector4(unpack(uniforms.clip)))
-   sr.Material.set_scalar(bound.handle,'scissor_mode',uniforms.mode)
-   sr.Material.set_scalar(bound.handle,'threshold_fade',uniforms.strength)
-   sr.Material.set_scalar(bound.handle,'desaturate',uniforms.fog_distance)
+   local function write_parameters()
+    -- All names/offsets already belong to the native GUI material ABI.
+    sr.Material.set_vector4(bound.handle,'scissor_rect',sr.Vector4(unpack(uniforms.scissor)))
+    sr.Material.set_vector4(bound.handle,'atlas_scissor',sr.Vector4(unpack(uniforms.atlas)))
+    sr.Material.set_vector4(bound.handle,'clip_box',sr.Vector4(unpack(uniforms.clip)))
+    sr.Material.set_scalar(bound.handle,'scissor_mode',uniforms.mode)
+    sr.Material.set_scalar(bound.handle,'threshold_fade',uniforms.strength)
+    sr.Material.set_scalar(bound.handle,'desaturate',uniforms.fog_distance)
+   end
+   if not bound.late_binding then write_parameters()end
    local fields={uniforms.mode,uniforms.strength,uniforms.fog_distance,ui_brightness,hdr_enabled and 1 or 0}
    for _,values in ipairs({uniforms.scissor,uniforms.atlas,uniforms.clip})do
     for _,value in ipairs(values)do fields[#fields+1]=value end
@@ -154,17 +184,30 @@ function M.new(sr,depth,allow_candidate,registration,verify_color)
    fields[#fields+1]=tostring(target);fields[#fields+1]=tostring(depth.binding_identity);fields[#fields+1]=tostring(color_binding_identity)
    local draw_key=table.concat(fields,'|')
    if bound.draw_key~=draw_key then
-    for _,id in ipairs(bound.ids or {})do sr.Gui.destroy_triangle(gui,id)end
+    local previous=bound.ids
+    if not bound.late_binding then for _,id in ipairs(previous)do sr.Gui.destroy_triangle(gui,id)end end
     bound.ids={}
     local a,b,c,d=sr.Vector3(0,0,0),sr.Vector3(w,0,0),sr.Vector3(w,0,h),sr.Vector3(0,0,h)
     local color=sr.Color(255,255,255,255)
     local ua,ub,uc,ud=sr.Vector2(0,0),sr.Vector2(1,0),sr.Vector2(1,1),sr.Vector2(0,1)
     bound.ids[#bound.ids+1]=assert(sr.Gui.triangle(gui,a,b,c,M.layer,color,material,ua,ub,uc))
     bound.ids[#bound.ids+1]=assert(sr.Gui.triangle(gui,a,c,d,M.layer,color,material,ua,uc,ud))
+    if bound.late_binding then
+     -- Keep at least one assigned primitive alive throughout replacement.
+     -- Bind the material that the final retained quad actually owns, after
+     -- primitive creation/deletion can initialize its local texture slots.
+     for _,id in ipairs(previous)do sr.Gui.destroy_triangle(gui,id)end
+     bound.handle=assert(sr.Gui.material(gui,material))
+     if depth.bind then local done,err=depth.bind(bound.handle,'diffuse_map',target);assert(done,err)
+     else sr.Material.set_resource(bound.handle,'diffuse_map',target)end
+     bound.resource=target;bound.resource_identity=depth.binding_identity
+     write_parameters()
+    end
     bound.draw_key=draw_key
    end
   end)
   if not ok then failed=true;self.release();return false,tostring(why),false end
+  if depth.world_applied then depth.world_applied(scope,owner)end
   self.color_binding_identity=color_binding_identity
   self.ui_brightness=ui_brightness
   self.hdr_enabled=hdr_enabled

@@ -1,0 +1,27 @@
+{
+  "repository": "https://github.com/HWG90/LLL",
+  "revision": "c123cf3b5c7f6f1171361c1648a38472286e278c",
+  "acceptance": "2026-10-20; commit c123cf3 records physical Photo Mode keyboard isolation and restoration",
+  "scope": "Scoped input service/cursor/transport; external helper remains a separate process",
+  "files": [
+    {
+      "source": "src/steam/input_service.lua",
+      "target": "freecam/vendor/wjl_input_service.lua",
+      "upstream_sha256": "359777c7d59c6b672f8dc5c7b7870af09459c72d0b17c428b3b49fbefcd8eb1f",
+      "sha256": "2d3adc74c90080affed7fd2bbb0583a255cef2ab3fd1be4c6161cda966e59f7b"
+    },
+    {
+      "source": "src/steam/capture.lua",
+      "target": "freecam/vendor/wjl_capture.lua",
+      "upstream_sha256": "b51e7f317d5c76aac49f4d4af688a8bd2db06cb129649f9760a09559e2476657",
+      "sha256": "1e85c1d2bebafba948456205401fb3718b8c77ba0da01a9a11c9c332b6d01788"
+    },
+    {
+      "source": "src/steam/transport.lua",
+      "target": "freecam/vendor/wjl_transport.lua",
+      "upstream_sha256": "4954e09e17761e52bea126e3fa708ae200200969970f58f370876614e6a77a9e",
+      "sha256": "8e4e74c9332d292f17614b410f930a1d82055c0c52aeac0afde92304158eb82c"
+    }
+  ],
+  "local_changes": "WJL filenames and runtime diagnostic branding; upstream source attribution retained"
+}

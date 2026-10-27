@@ -19,7 +19,7 @@ end
 local function clamp(v,a,b)return math.max(a,math.min(b,v))end
 -- keyboard: optional function returning the bridge (keyboard_acquire/sample/release), loaded
 -- at the first keyboard request.
-function M.new(sr,log,keyboard)
+function M.new(sr,log,keyboard,gate)
  local Mouse=sr.Mouse
  local service={version=1,capabilities={menu=true,camera=true,relative_mouse=true,keyboard=keyboard~=nil,keyboard_mask=keyboard and M.keyboard_mask or nil,
   virtual_cursor=true,coordinates='client-top-left'}}
@@ -53,10 +53,20 @@ function M.new(sr,log,keyboard)
    generation=value;note('keyboard lease requested')
   end
   lease={token={},owner=owner,mode=mode,keyboard=generation~=nil}
+  if not lease.keyboard and gate then
+   local ok,active=gate.acquire()
+   if not ok then
+    if gate.pending()then lease.releasing=true;return nil,active,lease.token end
+    lease=nil;return nil,active
+   end
+   lease.threshold_candidate=active==true and gate.kind~='native-cursor-candidate'
+   lease.cursor_candidate=active==true and gate.kind=='native-cursor-candidate'
+  end
   return lease.token
  end
  function service.owns(token)return lease~=nil and token~=nil and lease.token==token and not lease.releasing end
- function service.status()return{owner=lease and lease.owner or nil,mode=lease and lease.mode or nil,pending_restore=lease~=nil and lease.releasing==true}end
+ function service.status()return{owner=lease and lease.owner or nil,mode=lease and lease.mode or nil,pending_restore=lease~=nil and lease.releasing==true,
+  threshold_candidate=lease~=nil and lease.threshold_candidate==true,cursor_candidate=lease~=nil and lease.cursor_candidate==true}end
  function service.set_mode(token,mode)
   if not service.owns(token)or(mode~='menu'and mode~='camera')then return false,'Photo input lease revoked'end
   lease.mode=mode;return true
@@ -65,6 +75,10 @@ function M.new(sr,log,keyboard)
  -- the lease pending, and the consumer retries.
  function service.release(token)
   if not lease or lease.token~=token then return true end
+  if gate and gate.pending()then
+   lease.releasing=true
+   local done,why=gate.release();if not done then return false,why end
+  end
   if lease.keyboard then
    lease.releasing=true
    local called,done,why=pcall(bridge.keyboard_release)

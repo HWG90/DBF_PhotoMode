@@ -22,7 +22,7 @@ The new player flag was observed live through LLtM; the integrated mode passed i
 - Retain the screenshot shortcut without recapturing gameplay input, and hide the Cinema indicator in mod screenshots. Native menus, chat and focus loss block camera shortcuts.
 - Includes the completed 0.9.10 ActionCam startup and disposal guards. Offline lifecycle/render fixtures and complete package validation cover the candidate; live aiming, combat and coexistence remain unverified.
 
-Full details: [Cinema camera notes](docs/RELEASE-0.9.11.md).
+Full details: [Cinema camera notes](archive/history/docs/RELEASE-0.9.11.md).
 
 ## 0.9.10 development candidate — 2026-10-14
 
@@ -31,7 +31,7 @@ Full details: [Cinema camera notes](docs/RELEASE-0.9.11.md).
 - Separate original Photo bindings from War Journalist controls, retain gameplay restart/profile shortcuts and drain held shortcuts during handoff. Both startup orders are tested; unsupported hooks are refused without replacing them.
 - Retain the 0.9.9 closed shader registry and complete assets. 55 isolated fixture groups and all three package-only startup checks passed. Live ActionCam coexistence is still pending.
 
-Full details: [0.9.10 release notes](docs/RELEASE-0.9.10.md).
+Full details: [0.9.10 release notes](archive/history/docs/RELEASE-0.9.10.md).
 
 ## 0.9.9 — 2026-10-14
 
@@ -40,7 +40,7 @@ Full details: [0.9.10 release notes](docs/RELEASE-0.9.10.md).
 - Retained 0.9.8 runtime behavior, all shader programs, materials, lights, logos and features. This hotfix does not include deferred startup.
 - Added strict build/package checks against unbundled, missing, duplicate or reordered native shader registrations. Complete BSL, flat MDL and LLL bundles remain available.
 
-Full details: [0.9.9 release notes](docs/RELEASE-0.9.9.md).
+Full details: [0.9.9 release notes](archive/history/docs/RELEASE-0.9.9.md).
 
 ## 0.9.8 — 2026-10-13
 
@@ -50,7 +50,7 @@ Full details: [0.9.9 release notes](docs/RELEASE-0.9.9.md).
 - Retained the complete 0.9.7 UI, fixed poses/cape correction, solo AI controls, photo lights, shader compositor, curated logos and bundled assets.
 - Complete BSL, MDL and LLL bundles; MDL remains flat without nested archives. All 54 fixture groups and all three package-only startup checks passed. Lighting is **Not tested fully**; HDR/SDR and other display-setting crashes remain unresolved.
 
-Full details: [0.9.8 release notes](docs/RELEASE-0.9.8.md).
+Full details: [0.9.8 release notes](archive/history/docs/RELEASE-0.9.8.md).
 
 ## 0.9.7 — 2026-10-13
 
@@ -67,7 +67,7 @@ Public release covering all changes since 0.9.5, including the 0.9.6 development
 - Retained flat MDL packaging with no nested archives. All loader downloads include their required assets.
 - All 53 isolated fixture groups passed, including all 213 poses and cape restoration/retirement/retry cases. Lighting is **Not tested fully**; stronger blur and broader scene coverage remain open. Display-setting and HDR/SDR switching crashes remain unresolved.
 
-Full details: [0.9.7 release notes](docs/RELEASE-0.9.7.md).
+Full details: [0.9.7 release notes](archive/history/docs/RELEASE-0.9.7.md).
 
 ## 0.9.6 — 2026-10-13
 
@@ -81,7 +81,7 @@ Full details: [0.9.7 release notes](docs/RELEASE-0.9.7.md).
 - Fixed nested equipment remaining visible when its subject was hidden; the live result was accepted.
 - Added menu-close cleanup and retired-world GUI lifetime guards. Display-setting and HDR/SDR crashes remain unresolved.
 
-Full details: [0.9.6 release notes](docs/RELEASE-0.9.6.md).
+Full details: [0.9.6 release notes](archive/history/docs/RELEASE-0.9.6.md).
 
 ## 0.9.5 — 2026-10-13
 
@@ -96,4 +96,4 @@ Full details: [0.9.6 release notes](docs/RELEASE-0.9.6.md).
 - Corrected HDR PNG conversion brightness and the verified SDR capture profile's red/blue channel ordering.
 - Packaged complete BSL, MDL, and LLL downloads. AI behavior controls remain unintegrated. Broader stability, full cold-start coverage, SDR compositor parity, and all effect combinations are not claimed.
 
-Full details and installation: [0.9.5 release notes](docs/RELEASE-0.9.5.md).
+Full details and installation: [0.9.5 release notes](archive/history/docs/RELEASE-0.9.5.md).

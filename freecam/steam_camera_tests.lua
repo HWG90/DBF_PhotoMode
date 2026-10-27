@@ -119,6 +119,9 @@ do
  near(frame.forward[1],-.5,'Frame world forward X');near(frame.forward[2],math.sqrt(3)/2,'Frame world forward Y')
  local diagnostic_position=camera.position();near(diagnostic_position[1],2,'Diagnostic position stays local')
  assert(camera.write_view({13,24,11},{1,0,0},{0,0,1},.7))
+ local echo=camera.frame()
+ near(echo.aim_position[1],7,'Aim origin must not echo the submitted eye')
+ near(echo.aim_forward[1],-.5,'Aim orientation must not echo the submitted view')
  near(local_position.x,4,'Converted local X');near(local_position.y,-3,'Converted local Y');near(local_position.z,6,'Converted local Z')
  near(math.sin(yaw(local_rotation)),-1,'Converted local orientation')
  local actual=world_pose();near(actual.position.x,13,'Published world X');near(actual.position.y,24,'Published world Y');near(actual.position.z,11,'Published world Z')
@@ -153,6 +156,49 @@ do
  local_position=vector(8,9,10);local_rotation=rotation_z(.4);lens=1.3
  assert(camera.close())
  near(local_position.x,8,'Foreign local position');near(yaw(local_rotation),.4,'Foreign local rotation');near(lens,1.3,'Foreign lens')
+ -- Yield must not restore stale camera state; resume establishes a fresh cleanup baseline.
+ published=world_pose();assert(camera.open());assert(camera.write_view({13,24,11},{1,0,0},{0,0,1},.7))
+ local_position=vector(9,10,11);local_rotation=rotation_z(.5);lens=.6;published=world_pose()
+ local before=native_writes;assert(camera.yield_view());assert(camera.close());assert(native_writes==before,'ADS exit must not restore old owned values')
+ near(local_position.x,9,'Native ADS position retained');near(lens,.6,'Native ADS lens retained')
+ assert(camera.open());assert(camera.yield_view())
+ local_position=vector(10,11,12);local_rotation=rotation_z(.6);lens=1.2;published=world_pose()
+ rendered_override=pose(.8,vector(100,200,300));local resumed,why,retry=camera.resume_view()
+ assert(not resumed and retry=='pending'and native_writes==before,'Resume refuses a different rendered camera without writes and allows bounded later revalidation')
+ rendered_override=nil
+ assert(camera.resume_view());assert(native_writes==before,'Resume baseline capture performs no writes')
+ assert(camera.write_view({13,24,11},{1,0,0},{0,0,1},.7));assert(camera.close())
+ near(local_position.x,10,'Resumed baseline X');near(yaw(local_rotation),.6,'Resumed baseline rotation');near(lens,1.2,'Resumed baseline FOV')
+
+ -- ADS can start between the first near sample and its confirmation. Release
+ -- our final write back to that fresh native pose, not the initial open pose.
+ published=world_pose();assert(camera.open())
+ assert(camera.write_view({13,24,11},{1,0,0},{0,0,1},.7,true))
+ local_position=vector(11,12,13);local_rotation=rotation_z(.9);lens=.45;published=world_pose()
+ assert(camera.write_view({14,25,12},{1,0,0},{0,0,1},.7,true))
+ assert(camera.yield_view())
+ near(local_position.x,11,'Yield restores latest pre-write native position');near(yaw(local_rotation),.9,'Yield restores latest native rotation');near(lens,.45,'Yield restores native ADS zoom')
+ before=native_writes;assert(camera.close());assert(native_writes==before,'Released native state is never restored twice')
+
+ published=world_pose();assert(camera.open());assert(camera.write_view({14,25,12},{1,0,0},{0,0,1},.7,true))
+ local_position=vector(15,16,17);local_rotation=rotation_z(1.2);lens=.3;published=world_pose()
+ before=native_writes;assert(camera.yield_view());assert(native_writes==before,'Fresh native ADS values take precedence over retained baseline')
+ assert(camera.close())
+
+ -- Delayed publication of this exact held component is not a foreign camera.
+ published=world_pose();assert(camera.open());local scans=discoveries
+ local old=camera.frame(10);rendered_override=world_pose()
+ old.position[1]=999 -- Caller mutation must not alter retained scalar evidence.
+ local_position=vector(16,17,18);local_rotation=rotation_z(1.3);camera.frame(10.01)
+ local resumed,reason=camera.resume_view(10.01)
+ assert(resumed and reason=='recent held-camera publication'and native_writes==before,'Accept a recently observed own pose without setters')
+ local accepted,_,retry=camera.resume_view(10.2)
+ assert(not accepted and retry=='pending','Old observations cannot qualify a later foreign view')
+ for i=1,5 do local_position=vector(16+i,17,18);camera.frame(10.01+i*.01)end
+ assert(not camera.resume_view(10.07),'Only the last four camera observations remain eligible')
+ assert(discoveries==scans and native_writes==before,'Publication history adds no discovery or mutation')
+ assert(camera.close());rendered_override=nil
+
 end
 print('Steam camera: parent ABI, no level IDs, explicit discovery, idle work and owned cleanup passed')
 

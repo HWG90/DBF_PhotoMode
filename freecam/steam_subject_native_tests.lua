@@ -24,7 +24,7 @@ local function fixture()
   check(not r.frame or r.frame==f.frame,'Frame temporary escaped its callback');return r.value
  end
  local function call(name,read)f.calls=f.calls+1;f.log[#f.log+1]=name;if read then f.unit_reads=f.unit_reads+1 end;if f.on_call then f.on_call(name)end end
- local function unit(value)check(value==f.unit,'Wrong selected Unit')end
+ local function unit(value)check(value==f.unit or f.extra and f.extra[value],'Wrong selected Unit')end
  local function matrix(values)local out={};for i=1,12 do out[i]=float(values[i])end;return opaque('matrix',out,true)end
  f.world,f.unit,f.session=opaque('world'),opaque('unit'),opaque('session');f.current_world,f.current_session=f.world,f.session
  f.units={f.unit};f.nodes={};f.rig={resource=f.resource,node_count=107,nodes={}}
@@ -42,7 +42,7 @@ local function fixture()
   call('update_unit');f.updates=f.updates+1;check(world==f.world);unit(value)
   if f.on_update then f.on_update(f)end;if f.update_throw then error(f.update_throw,0)end;if f.update_refuse then return false,'Refresh refused',nil end
  end
- U.alive=function(value)call('alive',true);unit(value);return f.alive end
+ U.alive=function(value)call('alive',true);unit(value);return f.alive and not(f.dead and f.dead[value])end
  U.world=function(value)call('unit_world',true);unit(value);return f.unit_world or f.world end
  U.resource_name=function(value)call('resource_name',true);unit(value);return opaque('id',f.actual_resource or f.resource,true)end
  U.num_scene_graph_items=function(value)call('node_count',true);unit(value);return f.count end
@@ -71,6 +71,7 @@ local function fixture()
   if fail and fail.refuse then return false,fail.object or'Mode setter refused',nil end
  end
  setmetatable(V,{__call=function(_,x,y,z)call('vector');f.math_calls=f.math_calls+1;return opaque('vector',{float(x),float(y),float(z)},true)end})
+ U.world_position=function(value,index)call('world_position',true);unit(value);check(index==1);return V(f.positions and f.positions[value]or 0,0,0)end
  for i,name in ipairs({'x','y','z'})do local index=i;V[name]=function(value)call('vector_'..name);return data(value,'vector')[index]end end
  Q.from_elements=function(x,y,z,w)call('quaternion');f.math_calls=f.math_calls+1;return opaque('quaternion',{float(x),float(y),float(z),float(w)},true)end
  Q.to_elements=function(value)call('quaternion_elements');return unpack(data(value,'quaternion'),1,4)end
@@ -106,6 +107,21 @@ local function fixture()
  return f
 end
 -- NATIVE_FIXTURE_END: isolated source-only fixtures may reuse the prefix.
+
+do
+ local f=fixture();f.extra={};f.positions={[f.unit]=99};f.dead={};f.units={[7]=f.unit}
+ local handles={}
+ for i=1,6 do local u=newproxy();handles[i]=u;f.extra[u]=true;f.positions[u]=i;f.units[10+i*3]=u end
+ f.dead[handles[1]]=true;f.units[60]=handles[2] -- Retired and duplicate entries do not consume slots.
+ f:arm();local found,why=f.adapter.discover(f.resource,4,f.rig,{0,0,0});check(found,why);check(#found==4)
+ for i=1,4 do check(f.adapter.locate(handles[i+1])==found[i],'Nearest four valid bodies from sparse mission inventory')end
+ check(not f.adapter.locate(f.unit)and not f.adapter.locate(handles[6])and f.writes==0)
+ local calls=f.calls;for i=1,10 do f.adapter.status()end;check(f.calls==calls,'Unchanged discovery is idle')
+ f:step();check(f.adapter.valid(found[1],f.rig)==true,'Selected identities survive scratch-frame rollover')
+ f.units={};for i=1,129 do f.units[i]=f.unit end
+ local result,reason=f.adapter.discover(f.resource,4,f.rig,{0,0,0});check(result==nil and reason:find('128%-unit')and f.writes==0,'Oversized inventory fails within bounded work')
+ check(f.adapter.locate(handles[2])==found[1],'Failed discovery never publishes partial records')
+end
 
 -- New contract is explicit. Old PQS receipts and incomplete bindings cannot admit.
 do
@@ -237,6 +253,12 @@ local function controller_fixture()
  f.controller=Subject.new(f.adapter,bank,function()return true end);check(f.controller.refresh());check(f.controller.select(f.controller.choices()[1].id));return f
 end
 do
+ local f=controller_fixture();f:step();check(f.controller.hold_bone_transfer())
+ check(f.mode=='ignore'and f.writes==1 and same(f.nodes,f.original),'Mode-only trial writes no root or body pose')
+ f:step();check(f.controller.close()and f.mode=='position_and_rotation'and f.writes==2)
+ check(same(f.nodes,f.original),'Mode-only restoration never rewinds transforms')
+end
+do
  local f=controller_fixture();f:step();check(f.controller.apply('full'));check(f.writes==86,'85 whole-pose writes plus mode')
  f.q_drift=2^-23;f:step();check(f.controller.apply('upper'));check(same(f.nodes[8],f.original[8]),'Upper body retains original root raw matrix')
  f:step();check(f.controller.reset()and f.controller.status().restored and same(f.nodes,f.original),'Controller restores every original raw matrix')
@@ -267,4 +289,35 @@ for _,local_subject in ipairs({true,false})do
  check(f.adapter.set_mode(f.target,f.rig,'ignore','position_and_rotation')and f.adapter.commit(f.target,f.rig))
  check(restores==captures)
 end
+-- Windows photographic cape association is independent of native local-player
+-- ownership. Capture precedes pose writes; placement follows the commit event.
+do
+ local f=fixture();local captures,applies,restores=0,0,0;local lease={meshes={1,2,3}}
+ f.policy.selected_cape={capture=function(frame)
+  check(frame.explicit_subject and frame.root_handle==f.unit and frame.world==f.world)
+  captures=captures+1;check(f.writes==0);return lease
+ end,apply=function(record,frame)
+  check(record==lease and frame.root_handle==f.unit and f.updates>0 and f.mode=='ignore')
+  applies=applies+1;return 3
+ end,release=function(record)
+  check(record==lease and same(f.nodes,f.original)and f.mode=='position_and_rotation')
+  restores=restores+1;return true
+ end}
+ local base=f:ready().nodes[8];local desired=f:desired();f:step()
+ check(f.adapter.set_mode(f.target,f.rig,f.mode,'ignore'))
+ check(f.adapter.set_node(f.target,f.rig,8,base,desired,'ignore')and f.adapter.commit(f.target,f.rig))
+ check(captures==1 and applies==1)
+ local calls=f.calls
+ for _=1,100 do check(f.adapter.maintain(f.target,f.rig))end
+ check(applies==1 and f.calls==calls,'Unchanged Windows pose does not poll cape placement')
+ check(f.adapter.set_node(f.target,f.rig,8,desired,base,'ignore'))
+ check(f.adapter.set_mode(f.target,f.rig,'ignore','position_and_rotation')and f.adapter.commit(f.target,f.rig))
+ check(restores==1)
+end
 print('steam_subject_native_tests: '..assertions..' assertions passed (actual Lua5.1; strict matrix12; source only)')
+
+do
+ local f=fixture();local a=f:arm();check(a.session_current()==true)
+ local writes=f.writes;f.current_session=newproxy();check(a.session_current()==false and f.writes==writes,'Session predicate is read-only')
+ f.current_session=nil;local current,why=a.session_current();check(current==nil and type(why)=='string','Unavailable session is not a replacement session')
+end

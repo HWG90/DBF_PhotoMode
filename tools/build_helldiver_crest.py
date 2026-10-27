@@ -202,9 +202,8 @@ def main():
     dark = Image.new('RGBA', preview.size, (25, 28, 32, 255)); dark.alpha_composite(preview)
     dark.save(args.review / 'helldiver-crest-on-dark.png')
 
-    runtime = Path.home() / '.cache/codex-runtimes/codex-primary-runtime/dependencies/node'
-    node = args.node or (runtime / 'bin/node.exe' if (runtime / 'bin/node.exe').is_file() else Path(shutil.which('node') or 'node'))
-    env = dict(os.environ); env['NODE_PATH'] = str(runtime / 'node_modules')
+    node = args.node or Path(shutil.which('node') or 'node')
+    env = dict(os.environ)
     reference = args.review / 'helldiver-crest-svg-400pct.png'
     script = "require('sharp')(process.argv[1]).resize({width:5500,height:2200}).ensureAlpha().png().toFile(process.argv[2]).catch(e=>{console.error(e);process.exit(1)})"
     subprocess.run([str(node), '-e', script, str(args.source.resolve()), str(reference.resolve())], env=env, check=True)

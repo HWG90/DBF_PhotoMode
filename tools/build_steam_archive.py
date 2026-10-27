@@ -57,6 +57,18 @@ function mod.require(path,...)
  if not called then error(value,2)end
  if value==nil then value=true end;cache[path]=value;return value
 end
+local dev_module,dev_pinned
+if not rawget(_G,'LiveLuaLoader')then
+ local probe=io.open(game..'/wj-dev-reload.enabled','rb')
+ local armed=probe and probe:read(65);if probe then probe:close()end
+ if armed=='wjl-dev-reload-v1\n'then
+  dev_pinned={}
+  for _,name in ipairs({'windows_dev_reload.lua','windows_input_service.lua','engine_input.lua','vendor/wjl_transport.lua','vendor/wjl_capture.lua','vendor/wjl_input_service.lua','wjl_helper_payload.lua','wjl_helper_startup.lua'})do
+   local path='src/'..name;dev_pinned[path]=assert(SOURCES[path])
+  end
+  dev_module=mod.require('src/windows_dev_reload.lua')
+ end
+end
 local entry=mod.require('main.lua')
 -- Live Lua Loader runs archive entries itself (LLL API 1).
 if rawget(_G,'LiveLuaLoader')then return entry end
@@ -64,25 +76,43 @@ if rawget(_G,'LiveLuaLoader')then return entry end
 -- the game's update and shutdown, as LLL would.
 local bindings=rawget(_G,'ModBindingsMenu')
 if not(type(bindings)=='table'and type(bindings.register_binding)=='function'and type(bindings.is_down)=='function'and type(bindings.binding)=='function')then bindings=nil end
--- Keyboard isolation: the bridge reserves Photo Mode's keys in-game, as LLL's helper did (Proton;
--- native Windows refuses the DLL, and the keys then stay shared with the game).
-local function keyboard()local open,why=package.loadlib(mod.require('src/host_native.lua').library('hd2_nativeinfo_78b314de6177433d.dll'),'luaopen_hd2_nativeinfo');assert(open,why);return open()end
-mod.host_loader={engine_input=true,input_service=mod.require('src/engine_input.lua').new(stingray,mod.log,keyboard),bindings=bindings,capabilities={revision='boot-mod-loader-host.1'}}
+if dev_module then bindings=dev_module.bindings(bindings)end
+local input_service,input_driver
+local connected,why=pcall(function()input_service,input_driver=mod.require('src/windows_input_service.lua').connect(mod,stingray)end)
+if not connected then
+ mod.log('Input helper unavailable: '..tostring(why))
+ input_service=mod.require('src/engine_input.lua').new(stingray,mod.log)
+end
+mod.host_loader={engine_input=true,require_keyboard=true,input_service=input_service,bindings=bindings,capabilities={revision='boot-mod-loader-r34-input.1'}}
 local state='waiting'
 -- Read-only native diagnostics at start and twice later, while subject/hover fail here.
 local diagnose_at,started_at={0,30,120}
 local hud_probe,hud_probe_at=nil,0
 local function clock()local ok,t=pcall(function()return stingray.Application.time_since_launch()end);return ok and type(t)=='number'and t or os.clock()end
+local dev_reload=dev_module and dev_module.new(mod,entry,clock,os.clock,nil,{directory=game,pinned=dev_pinned})
+if dev_reload then mod.log('Dev reload enabled: Lua-only, explicit file requests; resident input helper retained')end
 local function stop(reason)
  if state~='running'then return end
  state='stopped';if reason then mod.log(reason)end
  local ok,why=pcall(entry.on_disable);if not ok then mod.log('Photo Mode cleanup failed: '..tostring(why))end
 end
 local function frame(dt,...)
+ -- An explicit development replacement must remain reachable after a runtime
+ -- error. Never resume the failed entry; only a fully enabled new generation.
+ if state~='waiting'and dev_reload then
+  if input_driver then input_driver.begin_frame()end
+  local previous=entry
+  local paused=dev_reload.tick();entry=dev_reload.entry()
+  if entry~=previous and dev_reload.status()=='idle'then
+   state='running';started_at=clock();mod.log('Photo Mode resumed after explicit Lua reload')
+  end
+  if paused then return ... end
+ end
  if state=='waiting'then
   local ok,why=pcall(entry.on_enable)
   if ok then state='running';started_at=clock();mod.log('Photo Mode started on Boot Mod Loader')else state='failed';mod.log('Photo Mode did not start: '..tostring(why))end
  elseif state=='running'then
+  if input_driver and not dev_reload then input_driver.begin_frame()end
   local ok,why=pcall(entry.on_update,dt);if not ok then stop('Photo Mode stopped after an error: '..tostring(why))end
   if diagnose_at[1]and clock()-started_at>=diagnose_at[1]then
    local label=diagnose_at[1]..' s';table.remove(diagnose_at,1)
@@ -101,7 +131,7 @@ local function frame(dt,...)
 end
 local game_update,game_shutdown=rawget(_G,'update'),rawget(_G,'shutdown')
 rawset(_G,'update',function(dt,...)if game_update then return frame(dt,game_update(dt,...))end;return frame(dt)end)
-rawset(_G,'shutdown',function(...)stop();if game_shutdown then return game_shutdown(...)end end)
+rawset(_G,'shutdown',function(...)stop();if input_driver then local ok,why=input_driver.close();if not ok then mod.log('Input restoration pending: '..tostring(why))end end;if game_shutdown then return game_shutdown(...)end end)
 return entry
 '''
 
@@ -158,6 +188,7 @@ def verify(text, head, source_block, library_block, sources, libraries):
     host = """
 local text=...
 local nop=function()end
+package.loadlib=function()return nil,'fixture native backend unavailable'end
 calls,shut=0,false
 registered={}
 ModBindingsMenu={window='HD2 Mod Setting GUI',is_down=function()return false end,binding=function()return{}end,
@@ -165,6 +196,9 @@ ModBindingsMenu={window='HD2 Mod Setting GUI',is_down=function()return false end
 update=function(dt)calls=calls+1;return 'game',dt end
 shutdown=function()shut=true end
 stingray={Gui={resolution=function()return 1920,1080 end},
+ Unit={alive=function()return false end,world=nop,resource_name=nop,num_scene_graph_items=nop,
+  local_pose=nop,set_local_pose=nop,animation_bone_mode=nop,set_animation_bone_mode=nop,has_node=nop,node=nop},
+ World={update_unit=nop},
  Application={time_since_launch=function()return os.clock()end,render_setting=function()return false end,save_render_target=nop},
  Window={mouse_focus=function()return true end,show_cursor=function()return false end,clip_cursor=function()return true end,
   set_mouse_focus=nop,set_show_cursor=nop,set_clip_cursor=nop,has_focus=function()return true end},
@@ -178,8 +212,9 @@ return entry,a,b,calls,shut,table.concat(registered,'|')
         game = Path(temp) / 'Roaming/Arrowhead/Helldivers2'
         lll = Path(temp) / 'Local/LLL/Helldivers2'
         game.mkdir(parents=True)
-        previous = {name: os.environ.get(name) for name in ('APPDATA', 'LOCALAPPDATA')}
+        previous = {name: os.environ.get(name) for name in ('APPDATA', 'LOCALAPPDATA', 'USERPROFILE')}
         os.environ['APPDATA'], os.environ['LOCALAPPDATA'] = str(Path(temp) / 'Roaming'), str(Path(temp) / 'Local')
+        os.environ['USERPROFILE'] = str(Path(temp) / 'Profile')
         try:
             # Without LLL's folders the bridges go to the game's settings folder.
             entry, a, b, calls, shut, keys = LuaRuntime().execute(host, text)
@@ -197,6 +232,37 @@ return entry,a,b,calls,shut,table.concat(registered,'|')
             assert log.count('HUD probe stopped: ') == 1, log
             # No LLL and no Linux worker: the engine writes DDS into the game's settings folder.
             assert 'Engine DDS capture selected: ' + str(game).replace('\\', '/') in log, log
+            # Private reload: retain the game wrapper/input host, retire and replace
+            # the complete real module graph twice without restarting the Lua VM.
+            (game / 'wj-dev-reload.enabled').write_bytes(b'wjl-dev-reload-v1\n')
+            rows = [(name, body.encode('utf-8')) for name, body in sources.items()]
+            packed = f'WJL-LUA-1\n{len(rows)}\n'.encode() + b''.join(
+                f'{name}\n{len(body)}\n'.encode() + body for name, body in rows)
+            (game / 'wj-dev-fixture.lua-pack').write_bytes(packed)
+            reload_host = host.replace('local text=...', 'local text=...;local test_clock=0')
+            reload_host = reload_host.replace('time_since_launch=function()return os.clock()end',
+                                             'time_since_launch=function()return test_clock end')
+            reload_host = reload_host.replace("local a,b=update(.5);for _=1,5 do update(1/60)end;shutdown()", r'''
+local a,b=update(.5)
+local path=os.getenv('APPDATA')..'/Arrowhead/Helldivers2/wj-dev-reload.request'
+local failures=0
+entry.on_update=function()failures=failures+1;error('fixture failed generation')end
+for _=1,11 do test_clock=test_clock+1/60;update(1/60)end
+assert(failures==1,'A failed generation must not update again before replacement')
+for _,token in ipairs({'fixture','fixture2'})do
+ local f=assert(io.open(path,'wb'));f:write(token..'\n');f:close()
+ for _=1,160 do test_clock=test_clock+1/60;update(1/60)end
+end
+shutdown()
+''')
+            (game / 'wj-dev-fixture2.lua-pack').write_bytes(packed)
+            _, a, b, reload_calls, shut, keys = LuaRuntime().execute(reload_host, text)
+            assert (a, b, reload_calls, shut) == ('game', .5, 332, True)
+            reload_log = (game / 'war_journalist_lua51.log').read_text()
+            assert 'Dev reload: loaded fixture;' in reload_log and 'Dev reload: loaded fixture2;' in reload_log, reload_log
+            assert 'fixture failed generation' in reload_log and 'Photo Mode resumed after explicit Lua reload' in reload_log, reload_log
+            assert len(keys.split('|')) == len(hosted), 'Reload duplicated hosted bindings'
+            (game / 'wj-dev-reload.enabled').unlink()
             # LLL: its folders, and the entry handed back for LLL to drive.
             (lll / 'Native').mkdir(parents=True)
             (lll / 'Settings' / MOD_ID).mkdir(parents=True)
@@ -252,8 +318,10 @@ def build(candidate, output):
     description = ('War Journalist Photo Mode for Boot Mod Loader on the Lua 5.1 game, with its assets. No FFI, so no '
                    'Enemy behavior. Its keys are set in HD2 Mod Setting GUI or the Photo panel. On Linux/Proton its native '
                    'bridges add subject poses, the native lens, hiding the game HUD and keeping Photo Mode\'s keys from the '
-                   'game; they install into LLL\'s Native folder or the game\'s settings folder on first load. Native Windows '
-                   'refuses unsigned DLLs, so there those features turn off and keys are shared with the game. Screenshots '
+                   'game; they install into LLL\'s Native folder or the game\'s settings folder on first load. On Windows, '
+                   'the bundled WJL helper starts automatically for Photo Mode input capture; no separate helper setup or '
+                   'Python is required. Native bridge features remain unavailable where DLL loading is refused. Windows '
+                   'DoF and scene effects are renderer-checked test candidates awaiting visual verification. Screenshots '
                    'are PNG through the War Journalist Linux capture worker where it runs, else DDS from the engine. Settings '
                    'live in LLL/Helldivers2/Settings/' + MOD_ID + ' when that folder exists, else in the game\'s settings '
                    'folder. Also runs as an LLL archive mod. Use one War Journalist at a time.')

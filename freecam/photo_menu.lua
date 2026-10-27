@@ -10,7 +10,11 @@ function M.new(view,actions,existing)
  local legend=M.legend_factory and M.legend_factory.new(view)
  local self=existing or{page=1,scroll=0,selection=1,size_scale=1};local nav_held={};local nav_time={};local nav_ready=false;local last_focus
  local retained_commands;local retained_state={};local layout_retry=false
- local rows={};local selected_hit;local hits={};local held=false;local drag;local resize;local scroll_drag;local move_panel;local geometry;local panel_bounds;local pointer_x,pointer_y;local pressed_key;local reveal_index;local row_scroll_max=0
+ local rows={};local selected_hit;local hits={};local held=false;local drag;local resize;local camera_drag;local camera_middle_held;local scroll_drag;local move_panel;local geometry;local panel_bounds;local pointer_x,pointer_y;local pressed_key;local reveal_index;local row_scroll_max=0
+ local function finish_camera_drag(commit)
+  if camera_drag and actions.handycam_adjust then actions.handycam_adjust(nil,commit==true)end
+  camera_drag=nil
+ end
  local layout_initialized=existing~=nil;local layout_dirty=false;local opacity_dirty=false
  local opacity_control={id='menu_opacity',type='slider',min=10,max=100,step=1,fine_step=1,default=38}
  local slowmo_control={id='slowmo_speed',type='slider',label='Slow motion speed',min=.05,max=1,step=.05,fine_step=.01}
@@ -79,8 +83,8 @@ function M.new(view,actions,existing)
   self.panel_x=stored_layout('menu_x');self.panel_y=stored_layout('menu_y');self.size_scale=stored_layout('menu_scale');layout_dirty=false;return true
  end
  local function finish_layout()if layout_dirty then layout_dirty=false;self.persist_layout()end;finish_opacity()end
- function self.close()retained_commands=nil;blur_number();finish_layout();if self.light_gizmos then self.light_gizmos.cancel()end;if legend then legend.clear()end;view.release();panel_bounds=nil;hits={};drag=nil;resize=nil;scroll_drag=nil;move_panel=nil;key_capture=nil;text_edit=nil;color_edit=nil;popup=nil;popup_close_on_release=false;self.bound_key=nil;self.editing_value=nil;self.notice=nil;nav_ready=false;held=false;right_held=nil;pointer_x,pointer_y=nil,nil;pressed_key=nil;reveal_index=nil end
- local function suspend_input()blur_number();finish_layout();if self.light_gizmos then self.light_gizmos.cancel()end;if legend then legend.clear()end;nav_ready=false;held=false;right_held=nil;drag=nil;resize=nil;scroll_drag=nil;move_panel=nil;pressed_key=nil;pointer_x,pointer_y=nil,nil end
+ function self.close()retained_commands=nil;blur_number();finish_layout();if self.light_gizmos then self.light_gizmos.cancel()end;if legend then legend.clear()end;view.release();panel_bounds=nil;hits={};drag=nil;finish_camera_drag(false);camera_middle_held=nil;resize=nil;scroll_drag=nil;move_panel=nil;key_capture=nil;text_edit=nil;color_edit=nil;popup=nil;popup_close_on_release=false;self.bound_key=nil;self.editing_value=nil;self.notice=nil;nav_ready=false;held=false;right_held=nil;pointer_x,pointer_y=nil,nil;pressed_key=nil;reveal_index=nil end
+ local function suspend_input()blur_number();finish_layout();if self.light_gizmos then self.light_gizmos.cancel()end;if legend then legend.clear()end;nav_ready=false;held=false;right_held=nil;drag=nil;finish_camera_drag(false);camera_middle_held=nil;resize=nil;scroll_drag=nil;move_panel=nil;pressed_key=nil;pointer_x,pointer_y=nil,nil end
  function self.suspend()capture_cleared=false;retained_commands=nil;suspend_input();panel_bounds=nil;view.draw({})end
  function self.hide_for_capture()
   if capture_cleared then return true end
@@ -91,7 +95,7 @@ function M.new(view,actions,existing)
   capture_cleared=true;return true
  end
  function self.bind(handle,pages)
-  if self.handle~=handle then blur_number();finish_opacity();text_edit=nil;self.editing_value=nil end;self.handle=handle;self.pages=pages;if legend then legend.bind(handle)end
+  if self.handle~=handle then finish_camera_drag(false);blur_number();finish_opacity();text_edit=nil;self.editing_value=nil end;self.handle=handle;self.pages=pages;if legend then legend.bind(handle)end
   ai_control=nil;ai_status=nil
   for _,page in ipairs(pages)do for _,c in ipairs(page.controls or{})do
    if c.id=='ai_behavior'then ai_control=c elseif c.id=='ai_status'then ai_status=c end
@@ -234,7 +238,7 @@ function M.new(view,actions,existing)
   -- retained GUI/font planes; explicit focus loss still clears via suspend().
   if focused~=last_focus then suspend_input();last_focus=focused end
   if self.prepare_light_gizmos then self.prepare_light_gizmos(w,h,focused,hidden)end
-  if hidden or not valid(w)or not valid(h)or not self.pages or #self.pages==0 then retained_commands=nil;finish_layout();if self.light_gizmos then self.light_gizmos.cancel()end;if legend then legend.clear()end;view.draw({});panel_bounds=nil;hits={};resize=nil;scroll_drag=nil;move_panel=nil;return end
+  if hidden or not valid(w)or not valid(h)or not self.pages or #self.pages==0 then retained_commands=nil;finish_camera_drag(false);camera_middle_held=nil;finish_layout();if self.light_gizmos then self.light_gizmos.cancel()end;if legend then legend.clear()end;view.draw({});panel_bounds=nil;hits={};resize=nil;scroll_drag=nil;move_panel=nil;return end
   refresh_text_cache(w,h)
   -- Recompose only when input, settings, availability or layout changes.
   -- Retained GUI submission and font/resource lifetime checks still run.
@@ -261,11 +265,11 @@ function M.new(view,actions,existing)
     end
    end
   end
-  for _,name in ipairs({'freeze_state','slowmo_state'})do if actions[name]then local ok,a,b,c=pcall(actions[name]);watch(ok);watch(a);watch(b);watch(c)end end
+  for _,name in ipairs({'freeze_state','slowmo_state','hud_binding'})do if actions[name]then local ok,a,b,c=pcall(actions[name]);watch(ok);watch(a);watch(b);watch(c)end end
   if actions.ai then local ok,v=pcall(actions.ai);watch(ok);if type(v)=='table'then watch(v.available);watch(v.status)end end
   if actions.faction then local ok,v=pcall(actions.faction);watch(ok);if type(v)=='table'then watch(v.name);watch(v.material)end end
   if retained_state.count~=slot then changed=true;retained_state.count=slot end
-  local interactive=drag or resize or scroll_drag or move_panel or popup or key_capture or text_edit or color_edit or held
+  local interactive=camera_drag or drag or resize or scroll_drag or move_panel or popup or key_capture or text_edit or color_edit or held
   local page=self.pages[self.page];local dynamic=self.light_gizmos and self.light_gizmos.revision==nil and page and(page.id=='lighting'or page.name=='Lighting')
   if retained_commands and not changed and not interactive and not dynamic then view.draw(retained_commands,retained_commands);return end
   layout_retry=false
@@ -329,6 +333,7 @@ function M.new(view,actions,existing)
    else line(5,0,4,12);line(1,4,12,4)end
   end
   local function button(label,b,action,key,selected,font,icon_id,disabled,compact)
+   disabled=disabled or type(action)~='function'
    surface(b,selected,disabled,key,false);local pad=icon_id and(compact and 23 or 28)or 9
    if icon_id then icon(icon_id,b,selected and T.gold or T.muted,compact and 4 or nil)end
    local caption=text(label,b.x+pad*s,b.y,b.w-(pad+(compact and 3 or 9))*s,b.h,font or 12,disabled and T.disabled or selected and T.gold or T.white)
@@ -337,10 +342,41 @@ function M.new(view,actions,existing)
    b.action=action;b.key=key;if not disabled then hits[#hits+1]=b end
   end
   local opacity=menu_opacity()
+  local blur=view.menu_blur_material and view.menu_blur_material()
+  if blur then
+   local backdrop=rect(x,bottom,width,top-bottom,{255,255,255},1,295,false,'photo_menu_backdrop')
+   backdrop.type='bitmap';backdrop.native_material=blur
+   local footer=rect(x,strip_bottom,width,54*s,{255,255,255},1,295,false,'photo_footer_backdrop')
+   footer.type='bitmap';footer.native_material=blur
+  end
   rect(x,bottom,width,top-bottom,T.background,opacity/100,300,false,'photo_panel')
   rect(x,top-1*s,width,1*s,T.gold,.55,303)
-  text('WAR JOURNALIST',left,top-24*s,width-210*s,22*s,14,T.white,310,nil,'title')
-  text(self.warming_up_scene and 'WARMING UP SCENE'or 'PHOTO MODE',left,top-39*s,width-210*s,14*s,10,self.warming_up_scene and T.gold or T.muted)
+  -- HUD corner brackets and registration marks are immutable retained geometry;
+  -- no animation, texture loading, state reads or hit regions are introduced.
+  local function hud(rx,ry,rw,rh,color,alpha,role)
+   return rect(rx,ry,rw*s,rh*s,color or T.white,alpha or .65,304,nil,role or 'photo_hud_frame')
+  end
+  local edge=4*s;local arm=15*s
+  for _,right in ipairs({false,true})do for _,upper in ipairs({false,true})do
+   local cx=right and x+width+edge or x-edge
+   local cy=upper and top+edge or strip_bottom-edge
+   hud(right and cx-arm or cx,cy,15,1)
+   hud(cx,upper and cy-arm or cy,1,15)
+  end end
+  -- Compact winged skull, drawn with the same block shapes as the native HUD.
+  local sx,sy=left,top-28*s
+  hud(sx+6*s,sy+6*s,10,9,T.white,1,'photo_hud_skull')
+  hud(sx+8*s,sy+3*s,6,4,T.white,1,'photo_hud_skull')
+  hud(sx+7*s,sy+9*s,3,3,T.background,1,'photo_hud_skull')
+  hud(sx+12*s,sy+9*s,3,3,T.background,1,'photo_hud_skull')
+  hud(sx,sy+10*s,5,3,T.gold,.9,'photo_hud_skull')
+  hud(sx+17*s,sy+10*s,5,3,T.gold,.9,'photo_hud_skull')
+  hud(sx+2*s,sy+6*s,3,2,T.gold,.9,'photo_hud_skull')
+  hud(sx+17*s,sy+6*s,3,2,T.gold,.9,'photo_hud_skull')
+  for i=0,2 do hud(sx+(8+i*2)*s,sy+2*s,1,3,T.background,1,'photo_hud_skull')end
+  for i=0,5 do hud(x+width-(17+i*5)*s,top+2*s,3,1,i<2 and T.gold or T.white,.5,'photo_hud_ticks')end
+  text('WAR JOURNALIST',left+30*s,top-24*s,width-240*s,22*s,14,T.white,310,nil,'title')
+  text(self.warming_up_scene and 'WARMING UP SCENE'or 'PHOTO MODE',left+30*s,top-39*s,width-240*s,14*s,10,self.warming_up_scene and T.gold or T.muted)
   text(focused and 'MENU FOCUS'or 'CAMERA FOCUS',x+width-164*s,top-39*s,148*s,14*s,10,focused and T.gold or T.muted)
   local move_bounds={x=x+4*s,y=top-42*s,w=width-188*s,h=40*s,move=true,key='move'}
   rect(move_bounds.x,move_bounds.y,move_bounds.w,move_bounds.h,T.header,over(move_bounds)and .08 or 0,308,nil,'move_handle')
@@ -419,12 +455,19 @@ function M.new(view,actions,existing)
     text(first,left+8*s,y+(second~=''and 12*s or 0),width_budget,(second~=''and 12 or 29)*s,11,T.muted)
     if second~=''then text(second,left+8*s,y,width_budget,12*s,11,T.muted)end
    else
-    local single_action=c.type=='button'and value(c)==tostring(c.label or '')
+    local camera_handle=c.id=='handycam_position_handle'
+    local single_action=not camera_handle and c.type=='button'and value(c)==tostring(c.label or '')
     local color=c.disabled and T.disabled or T.white;local label=text(c.label,left+3*s,y,single_action and width-50*s or 340*s,29*s,16,color);label.control_id=c.id
     local b={x=single_action and rb.x or left+356*s,y=y+1*s,w=single_action and rb.w or width-390*s,h=27*s,c=c,key=c,row=i};local editing=self.editing_value==c or key_capture==c or color_edit==c
     surface(b,selected or editing,c.disabled,c,true);if popup and popup.c==c then popup_anchor=b end
     local display=key_capture==c and 'Press key; Esc cancels'or text_edit and text_edit.c==c and(text_edit.text..'|')or value(c);local pad=(c.type=='toggle'or c.type=='choice')and 30 or c.type=='color'and 34 or 9;local right_pad=(c.type=='choice'or c.type=='toggle')and 30 or 9
-    if c.type~='slider'and not single_action then text(display,b.x+pad*s,b.y,b.w-(pad+right_pad)*s,b.h,16,c.disabled and T.disabled or c.type=='toggle'and self.handle.get(c.id)and T.enabled or T.white)end
+    if camera_handle then
+     local ink=c.disabled and T.disabled or T.gold;local cx,cy=b.x+18*s,b.y+b.h/2
+     rect(cx-9*s,cy-2*s,18*s,4*s,ink,1,308,false,'camera_drag_handle')
+     rect(cx-2*s,cy-9*s,4*s,18*s,ink,1,308)
+     text('Drag',b.x+38*s,b.y,b.w-44*s,b.h,16,ink)
+    end
+    if not camera_handle and c.type~='slider'and not single_action then text(display,b.x+pad*s,b.y,b.w-(pad+right_pad)*s,b.h,16,c.disabled and T.disabled or c.type=='toggle'and self.handle.get(c.id)and T.enabled or T.white)end
     if c.type=='choice'or c.type=='toggle'then text('<',b.x+8*s,b.y,16*s,b.h,14,c.disabled and T.disabled or T.muted);text('>',b.x+b.w-24*s,b.y,16*s,b.h,14,c.disabled and T.disabled or T.muted)
     elseif c.type=='slider'then
      local fraction=math.max(0,math.min(1,(self.handle.get(c.id)-c.min)/(c.max-c.min)));local ink=c.disabled and T.disabled or T.gold
@@ -459,11 +502,18 @@ function M.new(view,actions,existing)
    end
   end
   rect(x,strip_bottom,width,54*s,T.background,math.min(1,opacity/100+.02),300,false,'photo_controls_strip');rect(x,strip_bottom+54*s,width,1*s,T.border,.5,301)
-  button('Toggle HUD',{x=left,y=strip_bottom+29*s,w=120*s,h=21*s},actions.hud,'hud',false,11)
+  local hud_warning
+  if actions.hud_binding then
+   local binding;binding,hud_warning=actions.hud_binding()
+   text('Toggle HUD ['..tostring(binding)..']',left,strip_bottom+34*s,120*s,15*s,11,hud_warning and T.gold or T.muted)
+  else button('Toggle HUD',{x=left,y=strip_bottom+29*s,w=120*s,h=21*s},actions.hud,'hud',false,11)end
   button('Hide controls ['..keys.hide..']',{x=left+128*s,y=strip_bottom+29*s,w=166*s,h=21*s},actions.hide,'hide',false,11)
   button('Exit photo mode',{x=left+302*s,y=strip_bottom+29*s,w=156*s,h=21*s},actions.exit,'exit',false,11)
   local global_hint;local freeze_width=has_ai and tool_width('Resume Action',toolbar_wrap and 170 or 112)or 126*s
+  local check_width=0
+  freeze_width=freeze_width+check_width
   local slow_x,slow_width,rate_x,rate_width,lock_x,lock_width=left+134*s,134*s,left+312*s,140*s,left+508*s,216*s
+  if not has_ai then slow_x=slow_x+check_width;rate_x=rate_x+check_width;rate_width=rate_width-check_width end
   local tool_y=top-(toolbar_wrap and 131 or 103)*s-tab_extra
   if has_ai then
    slow_x=toolbar_wrap and left or left+freeze_width+8*s+tool_width('AI: Passive',140,50)+8*s
@@ -473,7 +523,9 @@ function M.new(view,actions,existing)
   end
   if actions.freeze then
    local ok,frozen,enabled,preparing=pcall(actions.freeze_state or function()return false,false end)
-   button(ok and preparing==true and 'Freezing...'or ok and frozen==true and 'Resume Action'or 'Freeze Action',{x=left+(footer_extra>0 and 0 or 470)*s,y=footer_extra>0 and top-103*s-tab_extra or strip_bottom+29*s,w=footer_extra>0 and freeze_width or 142*s,h=21*s},actions.freeze,'freeze_action',ok and frozen==true,toolbar_font,nil,not(ok and enabled==true))
+   local fy=footer_extra>0 and top-103*s-tab_extra or strip_bottom+29*s
+   button(ok and preparing==true and 'Freezing...'or ok and frozen==true and 'Resume Action'or 'Freeze Action',{x=left+(footer_extra>0 and 0 or 470)*s,y=fy,w=footer_extra>0 and freeze_width-check_width or 142*s,h=21*s},actions.freeze,'freeze_action',ok and frozen==true,toolbar_font,nil,not(ok and enabled==true))
+
   end
   if has_ai then
    local called,state=pcall(actions.ai);state=called and type(state)=='table'and state or{}
@@ -509,7 +561,7 @@ function M.new(view,actions,existing)
    local b={x=rate_x,y=tool_y-2*s,w=rate_width,h=25*s,c=slowmo_control,key='slowmo_speed'}
    local rate=tonumber(self.handle.get('slowmo_speed'))or .2;local fraction=math.max(0,math.min(1,(rate-slowmo_control.min)/(slowmo_control.max-slowmo_control.min)))
    local ink=slowmo_control.disabled and T.disabled or T.gold
-   if not has_ai then text('Speed',left+276*s,b.y,36*s,b.h,10,slowmo_control.disabled and T.disabled or T.muted)end
+   if not has_ai then text('Speed',left+276*s+check_width,b.y,36*s,b.h,10,slowmo_control.disabled and T.disabled or T.muted)end
    surface(b,false,slowmo_control.disabled,'slowmo_speed',true)
    local track=rect(b.x+6*s,b.y+11*s,b.w-(has_ai and 52 or 12)*s,3*s,T.border_hover,.85,306,false,'slowmo_speed_track');track.control_id='slowmo_speed'
    rect(track.x,track.y,track.w*fraction,track.h,ink,1,307)
@@ -520,7 +572,7 @@ function M.new(view,actions,existing)
    button(locked and 'Lock Camera: ON'or 'Lock Camera: OFF',{x=lock_x,y=tool_y,w=lock_width,h=21*s},function()return self.handle.set('lock_camera',not self.handle.get('lock_camera'))end,'lock_camera_action',locked,toolbar_font)
   end
   local hint=hovered_control or rows[self.selection];local label=hint and tostring(hint.label or '')or 'Photo settings'
-  text(global_hint or(hint and hint.disabled and 'Unavailable in this scene' or text_edit and(text_edit.error or(text_edit.typing and 'Enter / Space saves  |  Esc cancels  |  Ctrl+A replaces' or text_edit.c.fine_step and 'A/D step  |  Shift+A/D fine  |  Esc cancels' or 'Type number or A/D step  |  Enter / Space saves  |  Esc cancels'))or key_capture and 'Press the new shortcut  |  Esc cancels' or self.notice or(label..(hint and hint.type=='slider'and '  |  Shift+drag fine  |  Enter edits'or '  |  A/D changes  |  Enter edits'))),left+24*s,bottom+1*s,width-56*s,12*s,10,hint and hint.disabled and not global_hint and T.disabled or T.muted)
+  text(hud_warning or global_hint or(hint and hint.disabled and 'Unavailable in this scene' or text_edit and(text_edit.error or(text_edit.typing and 'Enter / Space saves  |  Esc cancels  |  Ctrl+A replaces' or text_edit.c.fine_step and 'A/D step  |  Shift+A/D fine  |  Esc cancels' or 'Type number or A/D step  |  Enter / Space saves  |  Esc cancels'))or key_capture and 'Press the new shortcut  |  Esc cancels' or self.notice or(label..(hint and hint.type=='slider'and '  |  Shift+drag fine  |  Enter edits'or '  |  A/D changes  |  Enter edits'))),left+24*s,bottom+1*s,width-56*s,12*s,10,hint and hint.disabled and not global_hint and T.disabled or T.muted)
   local opacity_bounds={x=x+width-116*s,y=strip_bottom+27*s,w=100*s,h=25*s,c=opacity_control,key='menu_opacity'}
   local opacity_track={x=opacity_bounds.x+6*s,y=opacity_bounds.y+3*s,w=88*s,h=3*s};opacity_bounds.track=opacity_track
   local opacity_ink=focused and(over(opacity_bounds)or drag and drag.c==opacity_control)and T.gold or T.muted
@@ -578,6 +630,45 @@ function M.new(view,actions,existing)
   if not scene_checked and self.scene_tick(input,down)then held=false;return end
   if input.x then pointer_x=input.x end;if input.y then pointer_y=input.y end
   if not input.click then finish_layout();drag=nil;scroll_drag=nil;move_panel=nil;pressed_key=nil;if popup_close_on_release then popup=nil;popup_close_on_release=false end end
+  local middle=down(4)==true;local middle_pressed=middle and camera_middle_held==false;camera_middle_held=middle
+  if camera_drag and not(camera_drag.rotate and middle or not camera_drag.rotate and input.click)then finish_camera_drag(true)end
+  local function camera_values(dx,dy,wheel,rotate,scale)
+   if dx==0 and dy==0 and(not wheel or wheel==0)then return true end
+   local values={};local fine=down(16)and .1 or 1
+   local function shift(id,delta,limit)
+    if delta==0 then return end
+    local v=math.max(-limit,math.min(limit,(self.handle.get(id)or 0)+delta))
+    v=math.floor(v*100+.5)/100;if v~=self.handle.get(id)then values[id]=v end
+   end
+   if rotate then shift('handycam_yaw_deg',-dx*.2*fine/scale,180);shift('handycam_pitch_deg',dy*.2*fine/scale,89)
+   else shift('handycam_right_cm',dx*.1*fine/scale,30);shift('handycam_up_cm',dy*.1*fine/scale,30)end
+   if wheel and wheel~=0 then shift('handycam_forward_cm',(wheel>0 and .5 or -.5)*fine,30)end
+   if next(values)then return actions.handycam_adjust(values)end
+   return true
+  end
+  if camera_drag then
+   local d=camera_drag
+   if d.c.disabled or not actions.handycam_adjust then finish_camera_drag(false);held=input.click;return end
+   if type(input.x)=='number'and type(input.y)=='number'and input.x==input.x and input.y==input.y and math.abs(input.x)<math.huge and math.abs(input.y)<math.huge then
+    local dx,dy=input.x-d.x,input.y-d.y;d.x,d.y=input.x,input.y
+    if camera_values(dx,dy,input.wheel,d.rotate,d.scale)==false then finish_camera_drag(false)end
+   end
+   held=input.click;return
+  end
+  if actions.handycam_adjust and not self.scene_input_blocked()and input.x and input.y then
+   for i=#hits,1,-1 do local b=hits[i]
+    if input.x>=b.x and input.x<=b.x+b.w and input.y>=b.y and input.y<=b.y+b.h then
+     if b.c and b.c.id=='handycam_position_handle'and not b.c.disabled then
+      if middle_pressed then
+       camera_drag={c=b.c,x=input.x,y=input.y,scale=geometry.scale,rotate=true};self.selection=b.row or self.selection;held=input.click;return
+      elseif input.wheel and input.wheel~=0 then
+       camera_values(0,0,input.wheel,false,geometry.scale);actions.handycam_adjust(nil,true);held=input.click;return
+      end
+     end
+     break
+    end
+   end
+  end
   if move_panel and input.click then
    if type(input.x)=='number'and type(input.y)=='number'and input.x==input.x and input.y==input.y and math.abs(input.x)<math.huge and math.abs(input.y)<math.huge then
     local g=move_panel.geometry;local margin=8*g.scale
@@ -659,8 +750,10 @@ function M.new(view,actions,existing)
     if b.move then move_panel={x=input.x,y=input.y,left=geometry.x,bottom=geometry.strip_bottom,geometry=geometry};drag=nil
     elseif b.resize then resize={x=input.x,y=input.y,scale=geometry.scale};drag=nil
     elseif b.action then b.action(input.x,input.y)
-    else local c=b.c;if not c.disabled then if b.row then self.selection=b.row end
-     if c.type=='slider'then
+    else local c=b.c;if c and not c.disabled then if b.row then self.selection=b.row end
+     if c.id=='handycam_position_handle'and actions.handycam_adjust then
+      camera_drag={c=c,x=input.x,y=input.y,scale=geometry.scale};self.selection=b.row or self.selection
+     elseif c.type=='slider'then
       if b.numeric and input.x>=b.numeric.x then begin_number(c)else text_edit=nil;self.editing_value=nil;begin_slider(c,input.x,b.track or b,down(16))end
      elseif c.type=='color_channel'then begin_slider(c,input.x,b,down(16))
      else text_edit=nil;self.editing_value=nil;activate(b);if key_capture then for k=1,255 do if down(k)then baseline[k]=true end end end end
@@ -674,7 +767,7 @@ function M.new(view,actions,existing)
  function self.editing_text()return text_edit~=nil end
  function self.editing_control(id)return text_edit and text_edit.c.id==id or self.editing_value and self.editing_value.id==id or false end
  function self.scene_input_blocked()
-  return popup~=nil or key_capture~=nil or text_edit~=nil or color_edit~=nil or self.editing_value~=nil or drag~=nil or resize~=nil or scroll_drag~=nil or move_panel~=nil or legend and legend.capturing_pointer()or false
+  return popup~=nil or key_capture~=nil or text_edit~=nil or color_edit~=nil or self.editing_value~=nil or camera_drag~=nil or drag~=nil or resize~=nil or scroll_drag~=nil or move_panel~=nil or legend and legend.capturing_pointer()or false
  end
  function self.scene_pointer_blocked(x,y)
   -- A modal dropdown excludes all scene picking, including its outside-click

@@ -113,6 +113,7 @@ function M.new(sr,service,recovery,policy)
    end
    return false,why
   end
+  if capture_keyboard then keyboard_contract_mask=service.capabilities.keyboard_mask end
   mode,blocked,first_sample=value,true,true;invalidate()
   return true
  end

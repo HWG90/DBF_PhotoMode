@@ -28,6 +28,7 @@ local function trial(backend,expected,loader_caps,subject_case,ffi_case)
   return avatar_session
  end}}
  mod={log=function()end,require=function(path)
+   if path=='src/windows_hover_freeze.lua'then return dofile('freecam/windows_hover_freeze.lua')end
   required[path]=true
   if path=='src/steam_runtime.lua'then return{new=function(host,sr,deps,input)
    assert(host==mod and sr==stingray and input==input_service)
@@ -103,12 +104,15 @@ for _,directory in ipairs({'',false,1})do local backend=service();backend.output
 local backend=service();backend.capabilities=false;trial(backend,false)
 -- Boot Mod Loader hands in an engine host: no LLL global, engine keys, same-build Subject admission.
 do
+ local getenv=os.getenv;os.getenv=function()return nil end -- No capture folders in this fixture, on every OS.
  local input_service,bindings={},{window='HD2 Mod Setting GUI'};local created,policy,subject,hosted
  LiveLuaLoader,DBF_PHOTO_MODE_OWNER,stingray=nil,nil,{}
  mod={log=function()end,host_loader={engine_input=true,input_service=input_service,bindings=bindings,capabilities={revision='boot-mod-loader-host.1'}},
   require=function(path)
+   if path=='src/windows_hover_freeze.lua'then return dofile('freecam/windows_hover_freeze.lua')end
    if path=='src/steam_runtime.lua'then return{new=function(host,sr,deps,input)
     assert(input==input_service and deps.capture_backend==nil,'Engine host input, no capture service')
+    assert(deps.freeze_root_hold==nil,'Withdrawn root hold must remain inactive')
     policy,subject,hosted,created=deps.input_policy,deps.load_subject,deps.hosted_bindings,true
     return{tick=function()end,dispose=function()return true end}
    end}end
@@ -118,6 +122,7 @@ do
  assert(created and policy.require_keyboard==false and type(subject)=='function','Engine host: engine keys and Subject admission')
  assert(hosted and hosted.api==bindings and hosted.window=='HD2 Mod Setting GUI','Engine host hands in its bindings helper')
  assert(entry.on_disable()and DBF_PHOTO_MODE_OWNER==nil)
+ os.getenv=getenv
 end
 -- The engine host with the Linux capture worker: its PNG backend, our job tokens, no cursor clip.
 do
@@ -128,6 +133,7 @@ do
  LiveLuaLoader,DBF_PHOTO_MODE_OWNER,stingray=nil,nil,{}
  mod={log=function()end,host_loader={engine_input=true,input_service=input_service,capabilities={revision='boot-mod-loader-host.1'}},
   require=function(path)
+   if path=='src/windows_hover_freeze.lua'then return dofile('freecam/windows_hover_freeze.lua')end
    if path=='src/linux_capture.lua'then return{new=function(root,output,issue)args={root,output,issue()};return linux_backend end}end
    if path=='src/steam_capture.lua'then return{}end
    if path=='src/steam_runtime.lua'then return{new=function(host,sr,deps,input)deps_seen,created=deps,true;return{tick=function()end,dispose=function()return true end}end}end

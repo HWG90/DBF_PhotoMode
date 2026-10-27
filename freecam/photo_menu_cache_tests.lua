@@ -1,6 +1,6 @@
 local root=rawget(_G,'DBF_PHOTO_TEST_ROOT')or'freecam/'
 local Menu=dofile(root..'photo_menu.lua')
-local function fixture(module,freeze_only)
+local function fixture(module,freeze_only,hud_binding)
  local f={values={speed=2,choice=1,enabled=true,slowmo_speed=.2,lock_camera=false,tab_layout=1},measure_calls=0,metric_calls=0,refresh_calls=0,width_factor=.75}
  local function count(label)local n=0;for _ in label:gmatch('[%z\1-\127\194-\244][\128-\191]*')do n=n+1 end;return n end
  f.measure=function(label,size)f.measure_calls=f.measure_calls+1;return count(label)*size*f.width_factor end
@@ -14,6 +14,7 @@ local function fixture(module,freeze_only)
  f.handle={get=function(id)if id=='note'then f.nonvalue_reads=f.nonvalue_reads+1;error('Text is not a registered value')end;return f.values[id]end,set=function(id,value)f.values[id]=value;return true end,activate=function()end}
  local actions={focus=function()end,hud=function()end,hide=function()end,exit=function()end,freeze=function()end,freeze_state=function()return false,true,.2 end}
  if not freeze_only then actions.slowmo=function()end;actions.slowmo_state=function()return false,true end end
+ actions.hud_binding=hud_binding
  f.menu=module.new(f.view,actions)
  f.menu.bind(f.handle,f.pages)
  function f.draw(w,h)f.menu.draw(w or 1920,h or 1080,true,false,{focus='TAB',hide='H'})end
@@ -162,3 +163,39 @@ capture.menu.draw_cinema(1920,1080,'P',true,0,false)
 assert(capture.menu.hide_for_capture()and releases==4,'Ordinary render invalidates the clear acknowledgement')
 capture.menu.suspend();capture.view.release=function()error('fixture release failed')end
 assert(not pcall(capture.menu.hide_for_capture),'A throwing release cannot acknowledge a clean frame')
+
+do
+ local label,warning='/',nil
+ local f=fixture(Menu,false,function()return label,warning end)
+ f.draw();f.find(function(c)return c.text=='Toggle HUD [/]'end)
+ for _,c in ipairs(f.commands)do assert(c.text~='Toggle HUD','Game binding display must replace the HUD button')end
+ local commands=f.commands;f.draw();assert(f.commands==commands,'Unchanged HUD binding must retain geometry')
+ label='Unbound';warning="Toggle HUD is unbound. Assign it in the game's key bindings."
+ f.draw();assert(f.commands~=commands);f.find(function(c)return c.full_text=='Toggle HUD [Unbound]'end)
+ f.find(function(c)return c.text==warning end)
+ commands=f.commands;f.draw();assert(f.commands==commands,'Unbound warning stays idle')
+ print('HUD binding menu: read-only label, unbound warning, invalidation and retained idle passed')
+end
+
+-- Blur follows each owned surface rather than covering the viewport or the
+-- gap. Moving/scaling the panel invalidates geometry; steady state is retained.
+do
+ local f=fixture(Menu);f.view.menu_blur_material=function()return 'native-menu-blur'end
+ local function check(w,h)
+  f.draw(w,h)
+  local panel=f.find(function(c)return c.ui_role=='photo_panel'end)
+  local footer=f.find(function(c)return c.ui_role=='photo_controls_strip'end)
+  local blur=f.find(function(c)return c.ui_role=='photo_menu_backdrop'end)
+  local strip=f.find(function(c)return c.ui_role=='photo_footer_backdrop'end)
+  for _,pair in ipairs({{blur,panel},{strip,footer}})do
+   local a,b=pair[1],pair[2]
+   assert(a.type=='bitmap'and a.native_material=='native-menu-blur')
+   assert(a.x==b.x and a.y==b.y and a.w==b.w and a.h==b.h and a.layer<b.layer,'Blur must exactly match its owned surface')
+   assert(a.w<w and a.h<h,'Blur cannot cover the viewport')
+  end
+  assert(strip.y+strip.h<blur.y,'Keep the footer gap unblurred')
+  local commands=f.commands;f.draw(w,h);assert(f.commands==commands,'Static decorated/blurred menu stays retained')
+ end
+ check(1920,1080);f.menu.panel_x=.1;f.menu.panel_y=.3;f.menu.size_scale=.8;check(1280,720)
+ f.menu.draw(1280,720,true,true,{focus='TAB',hide='H'});assert(#f.commands==0,'Hidden controls cannot leave a blur quad behind')
+end

@@ -23,7 +23,27 @@ local function pointer(bytes)
     if address<0x10000 or address>0x800000000000-32 then return nil end
     return address
 end
-function F.new(memory,game,at)
+-- No game binaries or font payloads are distributed by this module. The
+-- font header's atlas name can differ from the texture actually loaded by
+-- the HUD; admit only complete font/texture/material triples in this process.
+local core_sans={
+ -- Historical HUD globals, PE 6ab3b43f, recovered from the existing crash
+ -- dump with that build's documented layout. Both resources remain in the
+ -- current Latin package. Current can_get checks below are still mandatory.
+ -- a21d... is byte-identical to the former Core Sans bitmap material except
+ -- its default texture. c38a... uses the runtime-font shader and produced
+ -- visibly broken glyphs with this bitmap atlas in portable.6.
+ {font='b56d2abac5d17df2',atlas='d1ebb991c79f934b',material='a21d59a5cbcbb5c4'},
+ -- packages/localization/latin; use the current game's runtime material.
+ {font='28a718e0d452eff0',atlas='c2cffd6538624e20',material='c38a65a21fb3e8d0'},
+ {font='5e83c5f2a9b02110',atlas='82df61208dee5f66',material='c38a65a21fb3e8d0'},
+ {font='b56d2abac5d17df2',atlas='98b1ea89de621b24',material='c38a65a21fb3e8d0'},
+ {font='e01b1c60bb279a7c',atlas='039ab81e76d9bf05',material='c38a65a21fb3e8d0'},
+ {font='fbb35bee675f2295',atlas='29b689d1fb1cfad9',material='c38a65a21fb3e8d0'},
+ {font='e007454455e2d2bb',atlas='1b0106d1d0ff112f',material='47c50c5fab67ccab'},
+ {font='fca7631255290a2c',atlas='a324ffafb376edef',material='47c50c5fab67ccab'},
+}
+function F.new(memory,game,at,engine_resources,log)
     local function ensure_memory()
         if memory then return end
         local path=mod.require('src/host_native.lua').library('hd2_nativeinfo_f6d3465944c1aea1.dll')
@@ -34,7 +54,35 @@ function F.new(memory,game,at)
     end
 
     local self={}
+    local resolved,attempted
+    function self.invalidate()resolved,attempted=nil,nil end
     function self.resolve(sr)
+        if engine_resources then
+            if attempted then return resolved end
+            attempted=true
+            if not(sr and sr.Application and type(sr.Application.can_get)=='function'and sr.IdString64 and type(sr.IdString64.from_hex)=='function')then return nil end
+            -- These are runtime_font resources in the verified Latin package,
+            -- distinct from the bitmap font/texture pairs below. Inventory only:
+            -- do not hand an unqualified font type to native Gui.text.
+            if log then
+                for _,face in ipairs({'4f5bf47ac9acbc20','6cf40a417d2f6803','d2146b428bd7397a'})do
+                    local ok,present=pcall(sr.Application.can_get,'runtime_font',sr.IdString64.from_hex(face))
+                    log('Game runtime font '..face..': loaded='..tostring(ok and present==true))
+                end
+            end
+            for _,descriptor in ipairs(core_sans)do
+                local ok,loaded=pcall(function()
+                    local id=sr.IdString64.from_hex
+                    local face=sr.Application.can_get('font',id(descriptor.font))
+                    local atlas=sr.Application.can_get('texture',id(descriptor.atlas))
+                    local material=sr.Application.can_get('material',id(descriptor.material))
+                    if log then log('Game font resources '..descriptor.font..': font='..tostring(face)..' atlas='..tostring(atlas)..' material='..tostring(material))end
+                    return face and atlas and material
+                end)
+                if ok and loaded then resolved={font=descriptor.font,atlas=descriptor.atlas,material=descriptor.material};return resolved end
+            end
+            return nil
+        end
         local ready=pcall(ensure_memory);if not ready then return nil end
 
         if not memory or type(memory.read)~='function' or type(memory.address)~='function' then return nil end

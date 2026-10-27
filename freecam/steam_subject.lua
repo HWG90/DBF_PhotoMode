@@ -232,11 +232,17 @@ function M.new(adapter,bank,is_frozen)
   if not commit()then return false,status.message end
   return finish(false,foreign)
  end
- function self.refresh()
+ function self.session_current()
+  if type(adapter.session_current)~='function'then return true end
+  local called,current,why=pcall(adapter.session_current)
+  if not called then return nil,tostring(current)end
+  return current,why
+ end
+ function self.refresh(point)
   if not supported then return false,status.message end
   if lease then return false,'Reset the held pose before refreshing subjects'end
   selected=nil;pose=nil;targets,choices={},{}
-  local called,found,why=pcall(adapter.discover,resource,4,bank.rig)
+  local called,found,why=pcall(adapter.discover,resource,4,bank.rig,point)
   if not called or type(found)~='table'or #found>4 then
    state('unselected','Subject discovery unavailable',called and why or found);return false,status.message
   end
@@ -252,7 +258,8 @@ function M.new(adapter,bank,is_frozen)
   targets,choices=next_targets,next_choices;state('unselected','Choose a photographic subject explicitly')
   return true,choices
  end
- function self.select(id)
+ local explicit_selection=false
+ function self.select(id,automatic)
   if not supported then return false,status.message end
   if lease then return false,'Reset the held pose before changing subjects'end
   local candidate=targets[id];if not candidate then return false,'Refresh and explicitly select a listed subject'end
@@ -261,12 +268,24 @@ function M.new(adapter,bank,is_frozen)
    selected=nil;state(valid==false and'retired'or'unselected','Selected subject is not available',called and why or valid)
    return false,status.message
   end
-  selected=candidate;pose=nil;closing=false;state('selected','Photographic subject selected');return true
+  selected=candidate;explicit_selection=not automatic;pose=nil;closing=false;state('selected','Photographic subject selected');return true
+ end
+ function self.tracking_frame()
+  if not selected or not explicit_selection then return nil,'Select your Helldiver explicitly in Subject first'end
+  if type(adapter.tracking_frame)~='function'then return nil,'Selected-subject tracking unavailable'end
+  return adapter.tracking_frame(selected,bank.rig)
+ end
+ function self.select_camera(unit,point)
+  if lease or type(adapter.camera_target)~='function'then return false end
+  local called,target,basis=pcall(adapter.camera_target,unit,bank.rig,point)
+  if not called or not target then return false end
+  for id,candidate in pairs(targets)do if candidate==target then local ok,why=self.select(id);return ok,ok and basis or why end end
+  return false
  end
  -- Automatic choice: the listed subject nearest a world point (the camera).
  function self.select_nearest(point)
   if lease then return false,'Reset the held pose before changing subjects'end
-  if type(adapter.position)~='function'then return choices[1]and self.select(choices[1].id)or false,'No subject listed'end
+  if type(adapter.position)~='function'then return choices[1]and self.select(choices[1].id,true)or false,'No subject listed'end
   local best,best_distance
   for _,choice in ipairs(choices)do
    local called,p=pcall(adapter.position,targets[choice.id],bank.rig)
@@ -276,7 +295,7 @@ function M.new(adapter,bank,is_frozen)
    end
   end
   if not best then return false,'No listed subject is available'end
-  return self.select(best)
+  return self.select(best,true)
  end
  -- Scene choice: the listed subject that owns a picked engine unit handle.
  function self.select_unit(unit)
@@ -284,6 +303,22 @@ function M.new(adapter,bank,is_frozen)
   local target=adapter.locate(unit)
   if not target then return false,'Picked character is not a listed subject'end
   return self.select(target.identity)
+ end
+ -- Private diagnostic: freeze animation transfer without writing any pose.
+ -- It uses the same restoration ledger as authored poses, including partial
+ -- mode setters, but never rewinds a root, body node, or cloth transform.
+ function self.hold_bone_transfer()
+  if not supported or not selected or not explicit_selection then return false,'Select a photographic subject first'end
+  if lease or blocked then return false,'Release the current pose before testing bone transfer'end
+  local frozen,value=pcall(is_frozen)
+  if not frozen or value~=true then return false,'True-zero Freeze Action is required'end
+  local current,why=snapshot()
+  if not current then return false,why or'Subject snapshot unavailable'end
+  if current.mode=='ignore'then return false,'Bone transfer is already held by another owner'end
+  lease={identity=selected.identity,original=current,nodes={},commit_pending=false}
+  if not write_mode(current.mode,'ignore')then return false,status.message end
+  if not commit()then return false,status.message end
+  pose='freeze-bone-trial';state('posed','Testing frozen bone transfer');return true
  end
  function self.apply(id)
   if not supported then return false,status.message end

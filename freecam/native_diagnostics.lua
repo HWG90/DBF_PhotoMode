@@ -7,7 +7,11 @@ M.probes={{'exe','header',0},{'exe','text',0x1000},{'exe','set_mesh_visibility',
  {'exe','unit_registry',0xa06b0},{'exe','save_render_target',0x3da140},
  {'game','header',0},{'game','hover_control',0x9c6420},{'game','hover_jump',0x9c6942},{'game','hover_height',0x9c6a97}}
 M.bindings={{'Unit','set_mesh_visibility',0x3f4c80},{'World','units'},{'Application','time_since_launch'},{'Application','save_render_target',0x3da140}}
-local function hex(n)return type(n)=='number'and string.format('0x%X',n)or tostring(n)end
+local function hex(n)
+ if type(n)~='number'then return tostring(n)end
+ local high=math.floor(n/4294967296);local low=n-high*4294967296
+ return high>0 and string.format('0x%X%08X',high,low)or string.format('0x%X',low)
+end
 local function word64(s)
  if type(s)~='string'or#s<8 then return nil end
  local n=0;for i=8,1,-1 do n=n*256+s:byte(i)end;return n
@@ -29,7 +33,12 @@ function M.hud(bridge)
   near and(near:gsub('.',function(c)return string.format('%02X',c:byte())end))or'unreadable')
 end
 -- A Lua 5.1 function's GC object address, as tostring prints it.
-function M.closure(f)local s=tostring(f):match('^function: ?(%x+)$')or tostring(f):match('^function: 0x(%x+)$');return s and tonumber(s,16)end
+function M.closure(f)
+ local s=tostring(f):match('^function: ?(%x+)$')or tostring(f):match('^function: 0x(%x+)$')
+ if not s then return nil end
+ -- Windows Lua 5.1's base conversion uses a 32-bit unsigned long.
+ local n=0;for digit in s:gmatch('.')do n=n*16+tonumber(digit,16)end;return n
+end
 function M.run(sr,host_native,log,label)
  local opened,bridge=pcall(host_native.open)
  if not opened then log('Native diagnostics ('..label..'): bridge unavailable: '..tostring(bridge));return end

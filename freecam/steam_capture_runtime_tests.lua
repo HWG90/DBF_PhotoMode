@@ -15,6 +15,7 @@ local function fixture(available,configure)
   saves=0,clock_reads=0,issues=0,requests=0,statuses=0,cancels=0,camera_writes=0,rate=1,
   saved={frame=2,grid=2,logo=2,show_legend=true,hide_controls=false,clean_view=false,freeze_player=true}}
  local raw={x=100,y=100,width=1920,height=1080,buttons=0,wheel=0,dx=0,dy=0}
+ f.pointer=raw
  local service={version=1,capabilities={menu=true,camera=true,relative_mouse=true},
   acquire=function(owner)assert(owner=='dbf_freecam'and not f.lease);f.lease={};return f.lease end,
   owns=function(token)return f.lease~=nil and token==f.lease end,

@@ -18,7 +18,7 @@ local sr={Application={can_get=function(kind,name)assert(kind=='shader_library'a
  main_world=function()return 1 end,worlds=function()return {1,owner}end},
  World={create_screen_gui=function(w)assert(w==owner);created=created+1;return created end,
  destroy_gui=function(w)assert(w==owner);if fail_destroy then error('cleanup retry')end;destroyed=destroyed+1 end},
- Gui={resolution=function()return width,1080 end,material=function(_,name)assert(name==factory.material);return 33 end,
+ Gui={create_material=function()return 33 end,resolution=function()return width,1080 end,material=function(_,name)assert(name==factory.material);return 33 end,
  triangle=function(_,a,b,c,layer,_,name,ua,ub,uc)
   assert(a[2]==0 and b[2]==0 and c[2]==0 and layer==88 and name==factory.material and ua and ub and uc)
   assert(bindings>0 and vectors.scissor_rect and vectors.atlas_scissor and vectors.clip_box and scalars.desaturate and scalars.scissor_mode and scalars.threshold_fade,'Bind all uniforms/depth before draw')

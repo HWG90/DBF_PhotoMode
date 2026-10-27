@@ -53,7 +53,7 @@ def _release_files(source):
             entry = PurePosixPath(name)
             assert not entry.is_absolute() and '..' not in entry.parts and '\\' not in name and ':' not in name and not name.endswith('/'), 'Unsafe ZIP path: '+name
             lower = name.lower()
-            assert not any(token in lower for token in ('deployment-backup', '/screenshots/', 'photohoversguard', 'photohoverguard', 'minhook', 'hover-library', '.codex/')), 'Private/rejected artifact: '+name
+            assert not any(token in lower for token in ('deployment-backup', '/screenshots/', 'photohoversguard', 'photohoverguard', 'minhook', 'hover-library')), 'Private/rejected artifact: '+name
             assert not lower.endswith(('.log', '.dds', '.dmp', '.pdb', '.obj', '.exe')), 'Unexpected artifact: '+name
         files = {name: archive.read(name) for name in names}
     expected = {}
