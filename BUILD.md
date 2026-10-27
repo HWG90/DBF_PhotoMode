@@ -1,5 +1,8 @@
 # Build
 
+Chef Shared Loader rewrite: see [the port contract and preview build](docs/CHEF-LOADER-PORT.md).
+This separate source-only Lua 5.1 candidate is not a full replacement for the legacy releases below.
+
 Python 3 and a LuaJIT/Lua 5.1 compiler library are development tools, not player prerequisites. HD2_LUA51_DLL selects the compiler library; the default uses the installed game LuaJIT.
 
 Build BSL with `py -3 freecam/build.py --output dist/releases/photo-0.6`, then MDL with `py -3 tools/build_mdl.py --output dist/releases/photo-0.6`. All camera/private runtime and decorative native assets are owned under freecam/vendor and freecam/assets/shaders. No DBF-HUD, DBF-MCM, external ActionCam, installed mod package or patched game asset is read during release builds. Vendored byte identities are checked before packaging.

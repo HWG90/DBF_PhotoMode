@@ -1,0 +1,63 @@
+[center][size=6][b]WAR JOURNALIST × CHEF[/b][/size]
+[size=3]WJ 1.3.0 compatibility • Chef preview 5[/size][/center]
+
+[quote]The rewrite runs inside Chef's Lua 5.1 sandbox. No FFI, DLLs, process hooks, boot replacement or sandbox bypasses.
+
+[b]Status:[/b] 18 source test suites and 11 suites rerun from the packaged Lua passed. Engine calls are mocked in those tests; in-game behavior and performance are not yet verified.
+[b]Scope:[/b] Shader effects and AI controls are intentionally excluded.[/quote]
+
+[color=#70C98A][size=4][b]IMPLEMENTED IN THE CANDIDATE[/b][/size][/color]
+[list]
+[*][b]Camera:[/b] Movement, mouse look, speed, roll, zoom, smoothing, movement lock, reset, level horizon and portrait tilt.
+[*][b]Movement options:[/b] Wheel speed adjustment, world-up elevation and independent roll/zoom rates.
+[*][b]Lens shortcuts:[/b] 24/35/50/85/135 mm presets using native vertical FOV and a 24 mm sensor-height convention.
+[*][b]Time:[/b] Exact-zero Freeze, Resume and 0.05–1× slow motion, guarded for one visible peer.
+[*][b]Cinema:[/b] Placed and path action shots, return to placement, remembered freeze state and explicit end/cleanup.
+[*][b]Camera paths:[/b] Up to 32 points, Smooth/Cut segments, duration editing, point recall/removal and manual takeover.
+[*][b]Bookmarks:[/b] Five scene-local camera slots.
+[*][b]Lighting:[/b] Three owned point/spot lights, cone, RGB, intensity, enable/disable, color preview, markers, dragging and fine adjustment.
+[*][b]Lighting saves:[/b] Five camera-relative setups with recovery after partial replacement failure.
+[*][b]Lighting workflow:[/b] Edit at the existing anchor; restore remembered placements on same-scene reopen, without leaving units alive while closed.
+[*][b]Composition:[/b] Frame masks, guides, tint overlay, vignette, grain and clean composition.
+[*][b]Branding/UI:[/b] Curated logos with RGB/size/opacity/position controls, plus an adjustable controls legend.
+[*][b]Native switches:[/b] Bloom and game-controlled DoF on/off, with baseline restoration and bounded acknowledgement checks.
+[/list]
+
+[color=#E8C36A][size=4][b]ADAPTED TO CHEF[/b][/size][/color]
+[list]
+[*][b]Input:[/b] Rebindable clutch plus opt-in P/Backslash gameplay shortcuts. Chef's menu suppresses addon controls; native chat and gameplay still receive shared input.
+[*][b]Time on close:[/b] Optionally retain chosen slow motion after manual close. Focus/world/session/stop still request 1×.
+[*][b]External screenshot view:[/b] Hides WJ annotations and keeps artwork for an external capture key. No PNG output or game-HUD hiding is claimed.
+[*][b]Director presets:[/b] Five persistent presets relative to the opening camera, rather than a resolved player.
+[*][b]Light follow/aim/rigs:[/b] Camera follow and an explicit target distance ahead of the camera; no inferred actor tracking.
+[*][b]Studio controls:[/b] Chef's options menu replaces the legacy custom studio panel.
+[*][b]Logos:[/b] Extra artwork is prebaked into bounded rectangle spans; fine edge detail is reduced.
+[/list]
+
+[color=#E8C36A][size=4][b]EXPERIMENTAL / CONDITIONAL[/b][/size][/color]
+[list]
+[*][b]213 pose frames:[/b] Explicit selection of the known photographic rig, Freeze required, exact matrix/mode restoration and partial-write recovery. Off by default; visible pose acceptance is pending. This is not an authoritative local-player resolver.
+[*][b]Light range:[/b] Compiled 8 m default. Other ranges require a working native getter and verified readback; failed edits clean up the affected light.
+[*][b]Native DoF:[/b] Boolean switch only. Focus remains controlled by the game.
+[/list]
+
+[color=#E58B80][size=4][b]APIS STILL NEEDED FOR PARITY[/b][/size][/color]
+[list]
+[*][b]WJ PNG capture:[/b] A supported capture/output service; external Steam screenshots remain an option.
+[*][b]Gameplay input capture:[/b] A supported ownership/release contract for keyboard, mouse and cursor confinement.
+[*][b]HUD and subject/equipment visibility:[/b] Readable state and ownership-safe restoration, including attachments.
+[*][b]Handycam/player follow:[/b] An authoritative local actor/equipment resolver.
+[*][b]Cape adaptation/frozen ragdolls:[/b] Supported attachment and physics contracts.
+[*][b]Numeric DoF/autofocus:[/b] Supported focus/aperture and lens ownership APIs.
+[*][b]Stronger time isolation:[/b] A previous-policy getter and joining-peer notifications would improve restoration and early join handling.
+[/list]
+
+[color=#AEB6C2][size=4][b]OUT OF SCOPE[/b][/size][/color]
+[list]
+[*]Custom shader effects, compositor and shader bokeh.
+[*]AI/passive/enemy controls.
+[/list]
+
+[quote][b]Runtime approach:[/b] Edits use callbacks, discovery is bounded, geometry is cached, and pending cleanup retains ownership. Closed state stays idle with global shortcuts off; opting in adds two binding reads per frame. Deployed timings and transition spikes still need measurement.
+
+[b]For Chef:[/b] If there is already a supported API for one of the unavailable items, a documented call and its ownership/cleanup contract would let me revisit it without stepping outside the sandbox.[/quote]

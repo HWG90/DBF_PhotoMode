@@ -14,7 +14,9 @@ function M.new(sr)
         assert(finite(x) and finite(y) and finite(z),'Invalid camera position')
         return x,y,z
     end
-    local function numbers(v)local x,y,z=xyz(v);return{x,y,z}end
+    local function numbers(v,out)
+        local x,y,z=xyz(v);out=out or{};out[1],out[2],out[3]=x,y,z;return out
+    end
     local function direction(v)
         assert(type(v)=='table'and finite(v[1])and finite(v[2])and finite(v[3]),'Invalid camera direction')
         assert(math.abs(v[1]^2+v[2]^2+v[3]^2-1)<.02,'Camera direction is not normalized')
@@ -72,11 +74,16 @@ function M.new(sr)
         local x,y,z=xyz(C.local_position(camera,held.unit))
         return {x,y,z}
     end
-    function self.frame()
+    function self.frame(out)
         local camera,why=current();if not camera then return nil,why end
         local pose=C.world_pose(camera)
-        return{position=numbers(C.world_position(camera)),forward=numbers(B.forward(pose)),
-            right=numbers(B.right(pose)),up=numbers(B.up(pose)),fov=C.vertical_fov(camera)}
+        out=out or{}
+        out.position=numbers(C.world_position(camera),out.position)
+        out.forward=numbers(B.forward(pose),out.forward)
+        out.right=numbers(B.right(pose),out.right)
+        out.up=numbers(B.up(pose),out.up)
+        out.fov=C.vertical_fov(camera)
+        return out
     end
     local function write_position(camera,position)
         assert(type(position)=='table' and finite(position[1]) and finite(position[2]) and finite(position[3]),'Invalid camera position')

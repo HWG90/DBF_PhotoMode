@@ -2,6 +2,14 @@
 
 # War Journalist 1.2.1
 
+**Chef Shared Loader rewrite in progress:** [preview scope and build instructions](docs/CHEF-LOADER-PORT.md).
+Preview 5 compares against WJ 1.3.0 and adds same-scene light restoration, editing at
+existing light anchors, wheel speed, optional gameplay shortcuts and external screenshot view.
+It retains Cinema, camera/path tools, lighting rigs/saves, logos and experimental poses.
+Shader effects and AI controls are excluded. [The feature matrix](docs/CHEF-FEATURE-MATRIX.md)
+records the remaining native API blockers; the legacy feature list below does not describe
+that candidate. In-game behavior and performance validation are pending.
+
 A Helldivers 2 Photo Mode: free camera, a movable photo studio menu,
 Native and shader depth of field, autofocus, color grading, scene effects,
 photo lighting, Cinema action shots, camera paths, solo enemy behavior,
