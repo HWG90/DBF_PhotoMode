@@ -191,3 +191,4 @@ do
  m.close()
 end
 print('Camera handle: M1 position, wheel depth, MMB rotation, idle preview, single commit and focus-loss cancellation passed')
+

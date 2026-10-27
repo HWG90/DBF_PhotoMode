@@ -28,7 +28,7 @@ entry={live_lua_api=1,name='War Journalist',
    options=mod.require('src/photo_options.lua'),menu=mod.require('src/photo_menu.lua'),legend=mod.require('src/control_legend.lua'),
    composition=mod.require('src/composition.lua'),look=mod.require('src/look.lua'),lens=mod.require('src/lens.lua'),
    pick=mod.require('src/steam_pick.lua')}
-  deps.diagnostics=engine_host
+  deps.diagnostics=engine_host and not mod.release_mode
   deps.engine_time_only=engine_host
   if engine_host then deps.freeze_rate,deps.freeze_rate_sample=mod.require('src/windows_hover_freeze.lua').new(stingray,mod.log,true)end
   if engine_host then
@@ -175,7 +175,7 @@ entry={live_lua_api=1,name='War Journalist',
    end
    return pointer_native.pointer_clip(active and 1 or 0)
   end end
-  if engine_host then
+  if engine_host and not mod.release_mode then
    local inventory=mod.require('src/windows_api_inventory.lua')
    if type(inventory.run)=='function'then inventory.run(stingray,mod.log)end
   end
@@ -183,7 +183,8 @@ entry={live_lua_api=1,name='War Journalist',
    local skeleton=mod.require('src/windows_freeze_pose_probe.lua')
    deps.freeze_pose_hold=skeleton.new(stingray,mod.log,deps.operation_clock or os.clock,
     {continuous=true,exclude_cape=true,claim_transfer=true})
-   mod.log('Freeze skeleton transfer trial: body-only coherent hold after game render; own ignore mode until Resume; cape bones and separate cape units untouched; hoverpack fallback retained')
+   mod.log('Freeze skeleton hold: body-only coherent hold after game render; own ignore mode until Resume; cape bones and separate cape units untouched; hoverpack fallback retained')
+   if not mod.release_mode then
    local physics_probe=mod.require('src/windows_freeze_physics_probe.lua')
    if physics_probe.consume(mod.config_dir,type(stingray.Application.process_id)=='function'and stingray.Application.process_id()or 0)then
     deps.freeze_physics_probe=physics_probe.new(stingray,mod.log,deps.operation_clock or os.clock)
@@ -227,6 +228,7 @@ entry={live_lua_api=1,name='War Journalist',
     if test=='entity-owner-v1'or test=='native-override-v1'or test=='selection-depth-v1'or test=='local-depth-control-v1'or test=='local-texture-control-v1'or test=='local-world-control-v1'then readiness=function()return mod.require('src/windows_native_dof.lua').new(stingray,mod.log,'entity-getter-v1')end end
     selftest=probe.new(stingray,mod.log,test,readiness);deps.store=selftest.store(deps.store)
    end
+  end
   end
   runtime=mod.require('src/steam_runtime.lua').new(mod,assert(stingray),deps,assert(loader.input_service,'Update LLL for its shared input service'))
   rawset(_G,'DBF_PHOTO_MODE_OWNER',runtime)

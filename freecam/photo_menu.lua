@@ -334,6 +334,7 @@ function M.new(view,actions,existing)
   end
   local function button(label,b,action,key,selected,font,icon_id,disabled,compact)
    disabled=disabled or type(action)~='function'
+   if actions.hide_unavailable and disabled then return end
    surface(b,selected,disabled,key,false);local pad=icon_id and(compact and 23 or 28)or 9
    if icon_id then icon(icon_id,b,selected and T.gold or T.muted,compact and 4 or nil)end
    local caption=text(label,b.x+pad*s,b.y,b.w-(pad+(compact and 3 or 9))*s,b.h,font or 12,disabled and T.disabled or selected and T.gold or T.white)
@@ -408,7 +409,7 @@ function M.new(view,actions,existing)
    if type(c.photo_section)=='string'and c.photo_section~=''then pending_section=c.photo_section end
    local neutral_status=c.type=='text'and((c.status_only and(c.label or '')=='')or(c.id=='shader_status'and c.label=='Shader overlay: none'))
    local global_ai=has_ai and(c.photo_global_ai or c.id=='ai_behavior'or c.id=='ai_reset'or c.id=='ai_status'or c.id=='ai_hint'or c.id=='ai_limits')
-   if c.id~='controls'and not(actions.freeze and c.id=='freeze_player')and not(actions.slowmo and(c.id=='slowmo_speed'or c.id=='lock_camera'))and not global_ai and not c.layout_storage and not neutral_status then rows[#rows+1]=c;row_sections[#rows]=pending_section;pending_section=nil end
+   if(not actions.hide_unavailable or not c.disabled)and c.id~='controls'and not(actions.freeze and c.id=='freeze_player')and not(actions.slowmo and(c.id=='slowmo_speed'or c.id=='lock_camera'))and not global_ai and not c.layout_storage and not neutral_status then rows[#rows+1]=c;row_sections[#rows]=pending_section;pending_section=nil end
   end
   self.selection=math.max(1,math.min(#rows,self.selection));if not selectable(rows[self.selection])then for i,c in ipairs(rows)do if selectable(c)then self.selection=i;break end end end
   if self.editing_value and self.editing_value.disabled then self.editing_value=nil;text_edit=nil end;if popup and popup.c.disabled then popup=nil end
@@ -558,6 +559,7 @@ function M.new(view,actions,existing)
    local ok,active,enabled=pcall(actions.slowmo_state or function()return false,false end)
    slowmo_control.disabled=not(ok and enabled==true)
    button(ok and active==true and 'Slow Motion: ON'or 'Slow Motion: OFF',{x=slow_x,y=tool_y,w=slow_width,h=21*s},actions.slowmo,'slowmo_action',ok and active==true,toolbar_font,nil,slowmo_control.disabled)
+   if not actions.hide_unavailable or not slowmo_control.disabled then
    local b={x=rate_x,y=tool_y-2*s,w=rate_width,h=25*s,c=slowmo_control,key='slowmo_speed'}
    local rate=tonumber(self.handle.get('slowmo_speed'))or .2;local fraction=math.max(0,math.min(1,(rate-slowmo_control.min)/(slowmo_control.max-slowmo_control.min)))
    local ink=slowmo_control.disabled and T.disabled or T.gold
@@ -568,6 +570,7 @@ function M.new(view,actions,existing)
    rect(track.x+math.max(0,track.w-4*s)*fraction,track.y-4*s,4*s,11*s,ink,1,308)
    local label=text(string.format('%.0f%%',rate*100),has_ai and b.x+b.w-42*s or left+458*s,b.y,42*s,b.h,has_ai and toolbar_font or 12,ink,310,nil,'slowmo_speed_value');label.control_id='slowmo_speed'
    b.track={x=track.x,y=b.y,w=track.w,h=b.h};if focused and not slowmo_control.disabled then hits[#hits+1]=b end
+   end
    local locked=self.handle.get('lock_camera')==true
    button(locked and 'Lock Camera: ON'or 'Lock Camera: OFF',{x=lock_x,y=tool_y,w=lock_width,h=21*s},function()return self.handle.set('lock_camera',not self.handle.get('lock_camera'))end,'lock_camera_action',locked,toolbar_font)
   end

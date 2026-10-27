@@ -83,3 +83,4 @@ do
  f.position={.17,0,0};b.observe(f,head,.603);b.observe(f,head,.604)
  assert(not b.suspended,'Expired input window remains idle on native near samples')
 end
+

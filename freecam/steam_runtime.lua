@@ -1728,7 +1728,7 @@ function M.new(host,sr,deps,service)
   return ok,why
  end
  deps.menu.legend_factory=deps.legend
- menu=deps.menu.new(view,{focus=self.focus,hide=hide,exit=self.close,
+ menu=deps.menu.new(view,{focus=self.focus,hide=hide,exit=self.close,hide_unavailable=deps.engine_time_only==true,
   handycam_adjust=function(values,finish)
    if not values then
     local saved=self.handycam_drag_values;self.handycam_drag_values=nil;options_revision=nil

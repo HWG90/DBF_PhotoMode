@@ -1,6 +1,6 @@
 local root=rawget(_G,'DBF_PHOTO_TEST_ROOT')or'freecam/'
 local Menu=dofile(root..'photo_menu.lua')
-local function fixture(module,freeze_only,hud_binding)
+local function fixture(module,freeze_only,hud_binding,hide_unavailable)
  local f={values={speed=2,choice=1,enabled=true,slowmo_speed=.2,lock_camera=false,tab_layout=1},measure_calls=0,metric_calls=0,refresh_calls=0,width_factor=.75}
  local function count(label)local n=0;for _ in label:gmatch('[%z\1-\127\194-\244][\128-\191]*')do n=n+1 end;return n end
  f.measure=function(label,size)f.measure_calls=f.measure_calls+1;return count(label)*size*f.width_factor end
@@ -14,7 +14,7 @@ local function fixture(module,freeze_only,hud_binding)
  f.handle={get=function(id)if id=='note'then f.nonvalue_reads=f.nonvalue_reads+1;error('Text is not a registered value')end;return f.values[id]end,set=function(id,value)f.values[id]=value;return true end,activate=function()end}
  local actions={focus=function()end,hud=function()end,hide=function()end,exit=function()end,freeze=function()end,freeze_state=function()return false,true,.2 end}
  if not freeze_only then actions.slowmo=function()end;actions.slowmo_state=function()return false,true end end
- actions.hud_binding=hud_binding
+ actions.hud_binding=hud_binding;actions.hide_unavailable=hide_unavailable
  f.menu=module.new(f.view,actions)
  f.menu.bind(f.handle,f.pages)
  function f.draw(w,h)f.menu.draw(w or 1920,h or 1080,true,false,{focus='TAB',hide='H'})end
@@ -199,3 +199,14 @@ do
  check(1920,1080);f.menu.panel_x=.1;f.menu.panel_y=.3;f.menu.size_scale=.8;check(1280,720)
  f.menu.draw(1280,720,true,true,{focus='TAB',hide='H'});assert(#f.commands==0,'Hidden controls cannot leave a blur quad behind')
 end
+
+-- User release omits unavailable rows, while registration and dynamic recovery
+-- remain intact. Disabled-state changes already invalidate retained geometry.
+do
+ local f=fixture(Menu,nil,nil,true);f.controls[1].disabled=true;f.draw()
+ for _,c in ipairs(f.commands)do assert(c.control_id~='speed','Disabled control leaked into the release menu')end
+ local commands=f.commands;f.draw();assert(f.commands==commands,'Hidden unavailable rows stay retained')
+ f.controls[1].disabled=false;f.draw();f.find(function(c)return c.control_id=='speed'and c.type=='text'end)
+ assert(f.commands~=commands,'Recovered native control must become visible')
+end
+print('User menu: disabled rows hidden, registrations retained, available controls return and unchanged geometry stays cached passed')

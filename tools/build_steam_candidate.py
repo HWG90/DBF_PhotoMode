@@ -50,6 +50,7 @@ def build(output,release=False):
     manifest={'id':MOD_ID,'name':'War Journalist (Lua 5.1)','version':version,'author':'Goose',
               'lll':{'entry':'main.lua','defaults':'config/defaults.cfg','modules':['src/'+name for name in MODULES],
                      'restart_only':False,'retain_until_exit':False}}
+    manifest['public_release']=bool(release)
     manifest['license_files']=['LICENSE-Link.txt','LICENSE-Bingus.txt']
     manifest['native_libraries']=list(NATIVE_LIBRARIES)
     files={'main.lua':(ROOT/'freecam/steam51.lua').read_bytes(),'manifest.json':(json.dumps(manifest,indent=2)+'\n').encode(),

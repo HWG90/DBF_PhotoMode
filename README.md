@@ -5,8 +5,7 @@
 Photo Mode for Helldivers 2: compose shots with a free camera, lighting,
 subject poses, camera paths and first-person Handycam.
 
-**1.3.0 is in development.** Existing `1.3.0-bml.1` downloads are earlier test
-builds. This source update does not publish a new release.
+**[Download War Journalist 1.3.0 for Boot Mod Loader](https://github.com/HWG90/DBF_PhotoMode/releases/tag/v1.3.0).** This is the first pass of a total Lua rewrite with incomplete parity. Import the complete ZIP into HD2 Arsenal, enable War Journalist and Assets, deploy with the game closed, then launch normally. No manual helper or Python setup is required.
 
 ## Current runtime
 
@@ -33,13 +32,11 @@ Cape detachment and rare ragdoll issues remain. Hoverpack pause uses a near-zero
 fallback. Handycam body turning, aim parallax, and drifting native world HUD
 markers remain unresolved. Automatic native HUD hiding is unavailable on Windows;
 use the game's own Toggle HUD binding. Enemy AI controls are unavailable.
-Depth shaders and numeric shader DoF remain disabled pending visual validation.
+Native camera DoF works, including focus and aperture. Inverted depth, Thermal depth, Depth contours, Depth fog and Shader DoF are removed because depth shaders do not currently work. Unavailable controls are omitted from the normal-user menu; developer reload, inventories and test activations are disabled.
 
 ## Chef preview
 
-The separate [Chef Shared Loader preview](docs/CHEF-LOADER-PORT.md) remains under
-active development in `freecam/chef/`. It has its own capability limits and is not
-a replacement for the current BML version.
+Boot Mod Loader is the only supported loader at present. A Lite version for Chef's Shared Loader is planned. Whitelist approval may permit fuller compatibility; neither approval nor full compatibility is guaranteed.
 
 ## Development
 

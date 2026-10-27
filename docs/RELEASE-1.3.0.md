@@ -8,7 +8,7 @@ Stop the action. Find your angle. Build the shot.
 
 **Boot Mod Loader is the only supported loader at the moment.** A **Lite version for Chef's Shared Loader is planned**. Whitelist approval may allow fuller compatibility; neither approval nor full compatibility is guaranteed. Old BSL, MDL and LLL downloads are historical builds for the previous runtime.
 
-**Release preparation:** the final 1.3.0 bundle is not published yet. The existing `1.3.0-bml.1` download is an earlier testing build and does not contain all the changes below. These notes cover current development; final-package acceptance is tracked in the [release protocol](../archive/research/docs/RELEASE-PROTOCOL-1.3.0.md).
+**1.3.0 BML release.** The complete ZIP includes assets and automatic WJL startup. This is a normal-user build: development reload, inventories and test activations are disabled. Unavailable menu controls are omitted.
 
 ## Known issues and removed features
 
@@ -42,15 +42,12 @@ Stop the action. Find your angle. Build the shot.
 - Reduced repeated UI/discovery work with retained state, explicit invalidation and bounded discovery. No universal FPS claim.
 - Restored native Bloom toggling. Removed the crashing color CPU-readback path. Experimental depth bindings are not presented as a working shader feature.
 
-- The HUD toolbar displays the game's assigned Toggle HUD key and warns when unbound. The key passes through Photo Mode input capture.
-
 ### Freeze, poses and lighting
 
 - Restored Freeze/Resume and Slow Motion through engine time controls, preserving the selected slow-motion rate across relevant transitions.
 - Reworked frozen-body holding: capture a coherent skeleton before exact zero, hold the body after the saved render callback, and restore animation transfer before positive time. Cape bones/separate cape units are not forcibly moved by this hold.
 - Removed failed smooth-freeze and forced body/cape transform experiments after live regressions. Rare spin and cape problems remain listed above.
 - Retained the user-tested hoverpack near-zero fallback, with its collision/ragdoll and detection limitations disclosed above.
-- Apply Pose resets the previous pose before applying. Changing a held pose resets and applies the new selection in one action; failed restoration blocks the next pose.
 - Restored Lua subject poses and Reset on tested Helldivers. The catalogue contains sampled action frames/variants; every outfit, cape and ragdoll transition is not verified.
 - Fixed the reported photo-light spawn crash; retained point/spot lights, presets, draggable markers, saved rigs and camera-follow support. Lighting remains **Not tested fully** across scenes.
 
@@ -69,17 +66,17 @@ Stop the action. Find your angle. Build the shot.
 
 - Added automatic nearby-Helldiver discovery, bounded inventories and recovery when the game session changes.
 - Added reversible mesh visibility so supported helmet, torso, cape, body and equipment meshes restore their prior state instead of forcing every mesh visible.
-- Added a separate Hide carried weapons control and full-skeleton attachment discovery beyond the original outfit list. Expanded recognized weapon/accessory relationships, including tested pistol parts. Full equipment hiding remains incomplete: the latest test still leaves a holstered rifle and accessories visible; restoration succeeds.
+- Added a separate Hide carried weapons control and full-skeleton attachment discovery beyond the original outfit list. Expanded recognized weapon/accessory relationships, including tested pistol parts. Fixed the reported holstered-rifle miss by adding its actual render variant and resolving its offset root to the selected sling bone. The user confirmed it now hides and restores. Matching accessories are acquired incrementally and owned equipment visibility is maintained after the game callback. Wider equipment/Hide-option coverage remains incomplete.
 - Preserved Cinema action shots, scene-local camera paths, saved Director positions, composition guides, frames, logos, vignette and grain where supported by the new runtime.
 
 ## Install and upgrade
 
-When the final bundle is published, import the complete **BML ZIP** into HD2 Arsenal, enable with [Boot Mod Loader](https://github.com/pat-pat-patrick/boot-mod-loader), Deploy, then restart. Disable previous War Journalist runtimes; run one copy at a time. Keep settings, presets and screenshots. WJL is bundled and starts automatically on Windows.
+Import the complete **BML ZIP** into HD2 Arsenal, enable with [Boot Mod Loader](https://www.nexusmods.com/helldivers2/mods/17754), Deploy, then restart. Disable previous War Journalist runtimes; run one copy at a time. Keep settings, presets and screenshots. WJL is bundled and starts automatically on Windows.
 
 Use the controls shown in the panel; saved bindings take priority. F11 toggles Handycam. Tab changes camera/menu focus. Use the game's Toggle HUD binding when a clean native HUD is needed.
 
 ## Testing scope
 
-Windows development has live acceptance for the menu, font, native focus/aperture, poses, Handycam offsets/drag/persistence and tested POV visibility. The accepted Freeze improved ragdolls and cape attachment, with rare spinning explicitly reported. Fixtures, package audits, fresh startup and live acceptance are separate. The final ZIP needs its own checks; a live reload does not validate a different archive.
+Windows development has live acceptance for the menu, font, native focus/aperture, poses, Handycam offsets/drag/persistence and tested POV visibility. The accepted Freeze improved ragdolls and cape attachment, with rare spinning explicitly reported. Fixtures, package audits, fresh startup and live acceptance are separate. The final ZIP passed isolated Lua fixtures, embedded-source/asset checks, CRC and packaged startup/shutdown checks. The exact final archive has not received another cold-start gameplay test; live acceptance above comes from its development lineage.
 
 For reports include loader/version, scene, equipment and reproduction steps. The Lua log is `%APPDATA%\Arrowhead\Helldivers2\war_journalist_lua51.log`. Remove private information before sharing it.
