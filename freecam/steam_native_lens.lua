@@ -13,14 +13,15 @@ function M.new(sr,host,model,lens,bridge_name)
  local bridge=open();assert(type(bridge.profile_float)=='function','Numeric lens bridge unavailable')
  local mem=host.memory();local exe=mem.exe
  local function read(a,n)return mem.read(a,n)end
+ local function code(a,bytes)if mem.code then return mem.code(a,bytes)end;return read(a,#bytes)==bytes end
  local function u32(a)return word(read(a,4),1)end
  local function ptr(a)local s=read(a,8);local n=word(s,1)+word(s,5)*4294967296;assert(n>=65536 and n<2^47,'Lens pointer unavailable');return n end
  local function float(a)
   local v=u32(a);local sign=v>=2147483648 and -1 or 1;local e=math.floor(v/8388608)%256;local m=v%8388608
   assert(e~=255,'Nonfinite lens field');return sign*(e==0 and m*2^-149 or(1+m/8388608)*2^(e-127))
  end
- assert(read(exe+0x3d4129,7)=='\072\139\005\184\088\003\002','Lens renderer global differs')
- assert(read(exe+0x104a23,7)=='\068\057\131\000\022\000\000','Lens world binding differs')
+ assert(code(exe+0x3d4129,'\072\139\005\184\088\003\002'),'Lens renderer global differs')
+ assert(code(exe+0x104a23,'\068\057\131\000\022\000\000'),'Lens world binding differs')
  local self={ready=false,message='Native lens waits for Depth of field'}
  local observer,previous_update,observer_switch
  local current,selected,observed,observed_at,last_revision,next_attach,next_observe,history,next_check,mismatch,mismatch_at,last_seen

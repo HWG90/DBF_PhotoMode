@@ -1,6 +1,6 @@
 -- Stored photo controls; existing movement and toggle ids remain stable.
 local M={}
-M.defaults={fov=0,focal_preset=1,roll=0,roll_preset=1,saved_camera_radius=60,lock_camera=false,camera_smoothing=false,smoothing_strength=50,action_camera_mode=1,handycam_intensity=50,handycam_lag_ms=0,handycam_forward_cm=14,handycam_up_cm=7,handycam_right_cm=0,handycam_yaw_deg=0,handycam_pitch_deg=0,cinema_notification=false,dof=false,dof_mode=1,dof_quality=1,dof_strength=4,bokeh_shape=1,focus_mode=1,focus_distance=5,aperture=5.6,
+M.defaults={fov=0,focal_preset=1,roll=0,roll_preset=1,saved_camera_radius=60,lock_camera=false,camera_smoothing=false,smoothing_strength=50,action_camera_mode=1,handycam_intensity=50,handycam_lag_ms=0,handycam_forward_cm=14,handycam_up_cm=7,handycam_right_cm=0,handycam_yaw_deg=0,handycam_pitch_deg=0,handycam_aim=true,cinema_notification=false,dof=false,dof_mode=1,dof_quality=1,dof_strength=4,bokeh_shape=1,focus_mode=1,focus_distance=5,aperture=5.6,
  filter=1,filter_strength=25,exposure=0,saturation=100,contrast=100,bloom=true,
  shader=1,shader_opacity=10,shader_scale=1,shader_animate=true,scene_shader=1,scene_strength=100,fog_distance=25,fog_density=50,scene_depth_range=100,vignette=0,vignette_width=18,grain=0,grain_size=1.5,
  frame=1,grid=1,logo=1,logo_size=100,logo_x=90,logo_y=8,logo_opacity=85,logo_color='#FFFFFF',clean_view=false,hide_hud=true,hide_controls=false,
@@ -176,6 +176,7 @@ function M.pages(reset,recenter,catalog,saved_actions)
  slider('handycam_right_cm','POV camera left / right (cm)',-30,30,1),
  slider('handycam_yaw_deg','POV camera yaw (degrees)',-180,180,1),
  slider('handycam_pitch_deg','POV camera pitch (degrees)',-89,89,1),
+ toggle('handycam_aim','Aim lock: center the view on your point of impact'),
  director_action('handycam_position_handle','Drag camera position','handycam_position_handle'),
  {id='handycam_drag_hint',type='text',label='Handle: M1 drag moves. Wheel: forward/back. MMB drag: yaw/pitch. Shift: fine.'},
  subject_control('handycam_hide_helmet','Hide helmet (POV)'),
@@ -227,7 +228,7 @@ function M.pages(reset,recenter,catalog,saved_actions)
   {'Logo','logo','logo_size','logo_color','logo_opacity','logo_x','logo_y'},
   {'Controls legend','show_legend','legend_open','legend_docked','legend_tab_y','legend_columns','legend_size','legend_x','legend_y'},
   {'Menu layout','tab_layout','menu_x','menu_y','menu_scale','menu_opacity'}},
- director={{'Action shots','cinema_begin','action_camera_mode','handycam_intensity','handycam_lag_ms','handycam_forward_cm','handycam_up_cm','handycam_right_cm','handycam_position_handle','handycam_yaw_deg','handycam_pitch_deg','handycam_drag_hint','handycam_hide_helmet','handycam_hide_torso','handycam_hide_cape','handycam_pov_status','handycam_hint','cinema_reposition','cinema_end','cinema_status','cinema_notification','cinema_hint'},
+ director={{'Action shots','cinema_begin','action_camera_mode','handycam_intensity','handycam_lag_ms','handycam_forward_cm','handycam_up_cm','handycam_right_cm','handycam_position_handle','handycam_yaw_deg','handycam_pitch_deg','handycam_aim','handycam_drag_hint','handycam_hide_helmet','handycam_hide_torso','handycam_hide_cape','handycam_pov_status','handycam_hint','cinema_reposition','cinema_end','cinema_status','cinema_notification','cinema_hint'},
   {'Camera path','path_point','path_add','path_remove','path_duration','path_transition','path_play','path_clear','path_status','path_hint'},
   {'Saved shots','director_slot','director_recall','director_save','director_clear','director_status','director_hint'}},
  subject={{'Pose','subject_pose','subject_pose_play','subject_pose_stop','subject_pose_status','subject_pose_hint'},

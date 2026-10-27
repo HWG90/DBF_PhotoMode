@@ -14,8 +14,15 @@ for code,name in pairs({[12]='clear',[44]='print screen',[91]='left system',[92]
  [106]='numpad *',[107]='numpad +',[109]='numpad -',[110]='numpad .',[111]='numpad /',[144]='num lock',[145]='scroll lock',
  [160]='left shift',[161]='right shift',[162]='left ctrl',[163]='right ctrl',[164]='left alt',[165]='right alt'})do names[code]=name end
 for code=96,105 do names[code]='numpad '..(code-96)end
--- Engine key names by virtual key, for hosts that bind keys by name.
-M.key_names=names
+-- Engine key names by virtual key, for hosts that bind keys by name. A name
+-- maps back to one key: where a left-hand key repeats a generic modifier's
+-- name, the generic (lower) code keeps it, independent of table order.
+M.key_names={}
+do
+ local first={}
+ for code,name in pairs(names)do if not first[name]or code<first[name]then first[name]=code end end
+ for name,code in pairs(first)do M.key_names[code]=name end
+end
 local mouse_bits={[1]=1,[2]=2,[4]=4,[5]=8,[6]=16}
 local modifiers={[16]={160,161},[17]={162,163},[18]={164,165}}
 local zero_mask=string.rep('\0',32)

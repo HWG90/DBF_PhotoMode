@@ -15,7 +15,7 @@ FIXTURES+=('steam_scene_sdr_tests.lua','steam_scene_resources_tests.lua','steam_
 FIXTURES+=('steam_engine_capture_tests.lua','steam_native_diagnostics_tests.lua','steam_bindings_tests.lua','steam_engine_input_tests.lua','steam_native_library_tests.lua','steam_pick_tests.lua','steam_handoff_runtime_tests.lua','steam_native_lens_runtime_tests.lua','steam_ragdoll_runtime_tests.lua','steam_hover_pause_tests.lua','steam_hover_runtime_tests.lua','steam_hover_backend_tests.lua','steam_bml_degraded_tests.lua','steam_mcm_host_tests.lua')
 
 FIXTURES+=('engine_input_gate_tests.lua','windows_hover_freeze_tests.lua','windows_hover_activity_tests.lua',)
-FIXTURES+=('steam_pick_runtime_tests.lua',)
+FIXTURES+=('steam_pick_runtime_tests.lua','steam_handycam_aim_tests.lua')
 FIXTURES+=('esc_state_observer_tests.lua',)
 FIXTURES+=('windows_native_fog_probe_tests.lua',)
 FIXTURES+=('engine_cursor_gate_tests.lua',)

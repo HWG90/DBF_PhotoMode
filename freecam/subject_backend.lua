@@ -3,6 +3,14 @@
 -- Ownership layout follows the maintained Epic LUT avatar/Unit identity adapter.
 local M={pause_gate=true}
 local function native_memory()return mod.require('src/host_native.lua').memory()end
+-- Little-endian IEEE-754 single from bytes; infinities and NaN read as NaN.
+function M.f32(s,at)
+ local a,b,c,d=s:byte(at+1,at+4)
+ local sign=d>=128 and -1 or 1;local exponent=(d%128)*2+math.floor(c/128);local mantissa=(c%128)*65536+b*256+a
+ if exponent==255 then return 0/0 end
+ if exponent==0 then return sign*math.ldexp(mantissa,-149)end
+ return sign*math.ldexp(mantissa+8388608,exponent-150)
+end
 
 function M.new(sr,memory)
  memory=memory or native_memory();local game,exe=memory.game,memory.exe
@@ -10,6 +18,8 @@ function M.new(sr,memory)
   assert(address>=65536 and address<2^47 and size>0 and size<=256,'Subject read bounds changed')
   local bytes=memory.read(address,size);assert(type(bytes)=='string'and#bytes==size,'Subject read unavailable');return bytes
  end
+ -- Code witnesses tolerate packed pages of this hash-verified build (host_native).
+ local function code(address,bytes)if memory.code then return memory.code(address,bytes)end;return read(address,#bytes)==bytes end
  local function word(address)local s=read(address,4);return s:byte(1)+s:byte(2)*256+s:byte(3)*65536+s:byte(4)*16777216 end
  local function ptr(address)local s=read(address,8);local low=s:byte(1)+s:byte(2)*256+s:byte(3)*65536+s:byte(4)*16777216;local high=s:byte(5)+s:byte(6)*256+s:byte(7)*65536+s:byte(8)*16777216;return low+high*4294967296 end
  local function image(base,stamp)
@@ -17,13 +27,13 @@ function M.new(sr,memory)
  end
  image(game,0x6ad7c05d);image(exe,0x6ad78c0d)
  assert(sr.Application and sr.World and sr.Unit and type(sr.World.units)=='function','Subject Unit API unavailable')
- assert(memory.function_address(sr.Unit.set_mesh_visibility)==exe+0x3f4c80 and read(exe+0x3f4c80,8)=='\072\139\209\233\168\248\255\255','Subject visibility binding changed')
- assert(read(exe+0x51fe50,14)=='\064\087\072\131\236\048\068\015\182\137\220\000\000\000','Subject mesh visibility layout changed')
- assert(read(exe+0xa06b0,22)=='\072\137\092\036\008\072\137\116\036\016\087\072\131\236\032\072\139\053\050\112\161\001','Subject Unit registry changed')
+ assert(memory.function_address(sr.Unit.set_mesh_visibility)==exe+0x3f4c80 and code(exe+0x3f4c80,'\072\139\209\233\168\248\255\255'),'Subject visibility binding changed')
+ assert(code(exe+0x51fe50,'\064\087\072\131\236\048\068\015\182\137\220\000\000\000'),'Subject mesh visibility layout changed')
+ assert(code(exe+0xa06b0,'\072\137\092\036\008\072\137\116\036\016\087\072\131\236\032\072\139\053\050\112\161\001'),'Subject Unit registry changed')
  -- Verified Unit children getter: first child +1D8, next sibling +1E0.
  -- Read the list directly; the game's Lua is_child binding drops its result.
- assert(read(exe+0x28e6e0,17)=='\072\137\092\036\016\087\072\131\236\032\072\141\185\216\001\000\000'
-  and read(exe+0x28e745,12)=='\072\139\063\139\019\072\129\199\224\001\000\000','Subject attachment layout changed')
+ assert(code(exe+0x28e6e0,'\072\137\092\036\016\087\072\131\236\032\072\141\185\216\001\000\000')
+  and code(exe+0x28e745,'\072\139\063\139\019\072\129\199\224\001\000\000'),'Subject attachment layout changed')
  local function lookup(owner,offset,key,limit)
   local data=ptr(owner+offset);local cap=word(owner+offset+8);local empty=word(owner+offset+12);local seed=word(owner+offset+16)
   assert(cap>0 and cap<=4194304,'Subject owner map bounds changed')
@@ -135,16 +145,16 @@ function M.new(sr,memory)
   -- independent TwoPointChain Units owned by two carried equipment entities.
   local manager=ptr(game+0x2ce1d48)
   if manager==0 then return end
-  assert(read(game+0x8d76ba,7)=='\072\139\029\135\166\064\002'
-   and read(game+0x8d76e3,20)=='\068\139\067\012\015\087\192\051\201\073\105\192\156\000\000\000\072\003\067\056'
-   and read(game+0x8d7736,22)=='\072\139\067\048\015\071\075\004\137\075\004\072\141\075\024\074\137\060\192\139\087\008'
+  assert(code(game+0x8d76ba,'\072\139\029\135\166\064\002')
+   and code(game+0x8d76e3,'\068\139\067\012\015\087\192\051\201\073\105\192\156\000\000\000\072\003\067\056')
+   and code(game+0x8d7736,'\072\139\067\048\015\071\075\004\137\075\004\072\141\075\024\074\137\060\192\139\087\008')
    ,'Subject chain constructor layout changed')
   assert(manager>=65536 and manager<2^47,'Subject chain manager unavailable')
   local capacity,count=word(manager),word(manager+8)
   assert(capacity>0 and capacity<=384 and count<=capacity,'Subject chain bounds changed')
   if count==0 then return manager,count end
-  assert(read(game+0x8c6eb9,25)=='\068\139\073\032\068\139\081\040\068\015\175\210\065\141\121\255\069\133\201\116\051\076\139\089\024'
-   and read(game+0x8c567f,4)=='\065\137\095\004','Subject chain layout changed')
+  assert(code(game+0x8c6eb9,'\068\139\073\032\068\139\081\040\068\015\175\210\065\141\121\255\069\133\201\116\051\076\139\089\024')
+   and code(game+0x8c567f,'\065\137\095\004'),'Subject chain layout changed')
   assert(manager>=65536 and manager<2^47,'Subject chain manager unavailable')
   local capacity,count=word(manager),word(manager+8)
   assert(capacity>0 and capacity<=384 and count<=capacity,'Subject chain bounds changed')
@@ -256,7 +266,7 @@ function M.new(sr,memory)
  -- The public bone-mode getter dereferences Unit+168 without a null check.
  -- This is distinct from the animation state machine at Unit+178.
  local function pose_component(unit)
-  assert(ptr(ptr(unit)+0x1a8)==exe+0x28d4d0 and read(exe+0x28d4d0,8)=='\072\139\129\104\001\000\000\195','Subject bone component layout changed')
+  assert(ptr(ptr(unit)+0x1a8)==exe+0x28d4d0 and code(exe+0x28d4d0,'\072\139\129\104\001\000\000\195'),'Subject bone component layout changed')
   local component=ptr(unit+0x168)
   assert(component>=65536 and component<2^47,'Subject bone component unavailable')
   assert(word(component+0x164)<=7,'Subject bone transfer mode changed')
@@ -266,8 +276,8 @@ function M.new(sr,memory)
   local frame=self.frame();local unit=native(frame.root_ref)
   assert(memory.function_address(sr.Unit.animation_bone_mode)==exe+0x3f1c30
    and memory.function_address(sr.Unit.set_animation_bone_mode)==exe+0x3f1f50
-   and read(exe+0x3f1c89,8)=='\139\136\100\001\000\000\133\201'
-   and read(exe+0x3f1f40,6)=='\137\184\100\001\000\000','Subject bone mode binding changed')
+   and code(exe+0x3f1c89,'\139\136\100\001\000\000\133\201')
+   and code(exe+0x3f1f40,'\137\184\100\001\000\000'),'Subject bone mode binding changed')
   frame.native=unit;frame.component=pose_component(unit);frame.world_native=ptr(unit+0x18)
   assert(frame.owner_key==owner_key(owner()),'Subject pose owner changed during lookup');return frame
  end
@@ -287,11 +297,11 @@ function M.new(sr,memory)
  function self.ragdoll_frame()
   -- Native avatar telemetry names this exact bit avatar_ragdoll_active.
   -- Validate lazily so unrelated subject controls do not depend on this layout.
-  assert(read(game+0x8f3b01,7)=='\076\139\061\216\227\062\002'
-   and read(game+0x8f3c40,4)=='\076\107\225\120'
-   and read(game+0x8f3e14,5)=='\185\180\130\118\252'
-   and read(game+0x8f3e1e,8)=='\075\139\140\060\128\120\084\000'
-   and read(game+0x8f3e2f,7)=='\072\193\233\036\131\225\001','Subject ragdoll layout changed')
+  assert(code(game+0x8f3b01,'\076\139\061\216\227\062\002')
+   and code(game+0x8f3c40,'\076\107\225\120')
+   and code(game+0x8f3e14,'\185\180\130\118\252')
+   and code(game+0x8f3e1e,'\075\139\140\060\128\120\084\000')
+   and code(game+0x8f3e2f,'\072\193\233\036\131\225\001'),'Subject ragdoll layout changed')
   local frame=self.pose_frame();local current=owner()
   assert(frame.owner_key==owner_key(current),'Subject ragdoll owner changed during lookup')
   local avatars=ptr(game+0x2ce1ee0)
@@ -315,6 +325,28 @@ function M.new(sr,memory)
   frame.ragdoll=active;frame.ragdoll_active=active
   frame.avatar_manager=avatars;frame.avatar_index=index;frame.ragdoll_descriptor=descriptor
   return frame
+ end
+ -- The local avatar's aim point as the game caches it for the weapon: the aim
+ -- query writes it at game+0x837e3a and the weapon copies it at 0x78d9aa. Three
+ -- floats in the avatar's 0x78-byte record at manager+0x5478a8, beside the
+ -- ragdoll flags (+0x547880). Read-only; nothing here feeds back into aiming.
+ local aim_layout;local f32=M.f32
+ -- Whether a stock Unit handle is the local avatar's root (no handle equality assumed).
+ function self.is_local_unit(handle)return type(handle)=='userdata'and memory.handle_ref(handle)==owner().root end
+ function self.aim_target()
+  if not aim_layout then
+   assert(code(game+0x78d99f,'\072\107\193\120')
+    and code(game+0x78d9aa,'\242\066\015\016\132\008\168\120\084\000\066\139\132\008\176\120\084\000')
+    and code(game+0x837e20,'\073\129\192\168\120\084\000\077\003\199'),'Aim target layout changed')
+   aim_layout=true
+  end
+  local current=owner();local avatars=ptr(game+0x2ce1ee0)
+  assert(avatars>=65536 and avatars<2^47,'Aim avatar manager unavailable')
+  local capacity=word(avatars+0x6c);assert(capacity>0 and capacity<=4096,'Aim avatar bounds changed')
+  local index=assert(lookup(avatars,0xf8,current.avatar,capacity),'Aim avatar unavailable')
+  local bytes=read(avatars+0x5478a8+index*0x78,12);local point={f32(bytes,0),f32(bytes,4),f32(bytes,8)}
+  for i=1,3 do assert(point[i]==point[i]and math.abs(point[i])<1e6,'Aim target invalid')end
+  return point
  end
  function self.resolve()
   local local_player=owner();local players,player,game_ref,entities,avatar,root=local_player.players,local_player.player,local_player.game_ref,local_player.entities,local_player.avatar,local_player.root

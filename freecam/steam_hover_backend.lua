@@ -63,8 +63,10 @@ function M.new(sr,memory,completed_update)
   assert(not size or u32(base+pe+80)==size,'Hover game image changed')
  end
  image(memory.game,L.game_stamp,L.game_size);image(memory.exe,L.exe_stamp)
- for _,fp in ipairs(M.fingerprints)do assert(read(memory.game+fp[1],#fp[2]/2)==unhex(fp[2]),'Hover control fingerprint changed')end
- assert(read(memory.exe+0xa06b0,22)=='\072\137\092\036\008\072\137\116\036\016\087\072\131\236\032\072\139\053\050\112\161\001','Hover Unit registry changed')
+ -- Code witnesses tolerate packed pages of this hash-verified build (host_native).
+ local function code(at,bytes)if memory.code then return memory.code(at,bytes)end;return read(at,#bytes)==bytes end
+ for _,fp in ipairs(M.fingerprints)do assert(code(memory.game+fp[1],unhex(fp[2])),'Hover control fingerprint changed')end
+ assert(code(memory.exe+0xa06b0,'\072\137\092\036\008\072\137\116\036\016\087\072\131\236\032\072\139\053\050\112\161\001'),'Hover Unit registry changed')
  local function map(header,key,limit)
   local s=read(header,24);local data,cap,empty,seed=address(s,0),word(s,8),word(s,12),word(s,16)
   assert(data>=65536 and data<2^47 and data%4==0 and cap>0 and cap<=4194304 and power_two(cap),

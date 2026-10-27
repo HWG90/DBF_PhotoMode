@@ -1561,7 +1561,7 @@ function M.new(host,sr,deps,service)
   cinema_begin=true,cinema_reposition=true,cinema_end=true,cinema_notification=true,action_camera_mode=true}
  if deps.decorative_overlay then for _,id in ipairs({'shader','shader_opacity','shader_scale','shader_animate'})do supported[id]=true end end
  if deps.load_native_lens or deps.engine_shader_lens then supported.focus_distance=true;supported.aperture=true end
- if handycam then supported.handycam_intensity=true;supported.handycam_lag_ms=true;supported.handycam_forward_cm=true;supported.handycam_up_cm=true;supported.handycam_right_cm=true;supported.handycam_yaw_deg=true;supported.handycam_pitch_deg=true;supported.handycam_position_handle=true end
+ if handycam then supported.handycam_intensity=true;supported.handycam_lag_ms=true;supported.handycam_forward_cm=true;supported.handycam_up_cm=true;supported.handycam_right_cm=true;supported.handycam_yaw_deg=true;supported.handycam_pitch_deg=true;supported.handycam_position_handle=true;supported.handycam_aim=deps.subject_backend~=nil end
  if self.pov_visibility then if self.pov_visibility.queue_player then supported.hide_player=true end;if self.pov_visibility.queue_weapons then supported.hide_weapons=true end;supported.handycam_hide_helmet=true;supported.handycam_hide_torso=true;supported.handycam_hide_cape=true end
  if visibility then for _,id in ipairs({'hide_player','hide_armour','hide_weapons','hide_cape'})do supported[id]=true end end
  if director then for _,id in ipairs({'director_slot','director_save','director_recall','director_clear'})do supported[id]=true end end
@@ -1939,7 +1939,21 @@ function M.new(host,sr,deps,service)
      local enabled=self.mode=='shot'and self.movement_probe_ready==true
      local accepted,why=deps.movement_probe.tick(head,enabled,sr.Application.time_since_launch(),frame.forward);assert(accepted,why)
     end
-    local p,f,r,roll=handycam.step(head.head,frame.forward,sr.Application.time_since_launch(),o)
+    -- Aim lock reads the game's own aim point; it belongs to the local avatar
+    -- only, so a Handycam following someone else keeps the manual offsets.
+    local aim
+    if o.handycam_aim and subject_backend and subject_backend.aim_target and not self.aim_fault then
+     if not shot.aim_checked_at or now-shot.aim_checked_at>1 or now<shot.aim_checked_at then
+      shot.aim_checked_at=now
+      local called,is_local=pcall(subject_backend.is_local_unit,head.root_handle)
+      shot.aim_local=called and is_local==true
+     end
+     if shot.aim_local then
+      local called,value=pcall(subject_backend.aim_target)
+      if called then aim=value else self.aim_fault=tostring(value);host.log('Handycam aim lock unavailable: '..self.aim_fault)end
+     end
+    end
+    local p,f,r,roll=handycam.step(head.head,frame.forward,sr.Application.time_since_launch(),o,aim)
     photo.pos,photo.forward,photo.right,photo.handy_roll=p,f,r,roll
    end)
    if not ok then notice(reason);self.close(true);return end
@@ -2078,7 +2092,7 @@ function M.new(host,sr,deps,service)
   if disposed or self.active or pending_cleanup then return false,'Photo Mode is unavailable'end
   -- Native code may be unavailable during loader startup. Retry only at an
   -- explicit session boundary, preserving all current build/ownership guards.
-  ensure_subject_backend()
+  ensure_subject_backend();self.aim_fault=nil
   if not hover and deps.load_hover then
    local ok,value,why=pcall(deps.load_hover,sr)
    if ok and type(value)=='table'then
