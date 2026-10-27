@@ -678,8 +678,8 @@ function M.new(host,sr,deps,service)
   controls.subject_recover.disabled=not subject_pending
   if texts.subject_pose_status then texts.subject_pose_status.label=(picked_label and picked_label..'  |  'or'')..subject_message end
  end
- local function subject_call(method,value)
-  local called,ok,why=pcall(subject[method],value)
+ local function subject_call(method,value,preferred)
+  local called,ok,why=pcall(subject[method],value,preferred)
   if not called then subject_fault='Subject '..method..' failed';why=ok;ok=false
   elseif ok==true then subject_fault=nil end
   local listed,choices=pcall(subject.choices)
@@ -732,7 +732,7 @@ function M.new(host,sr,deps,service)
   end
   return not subject_holds,subject_message
  end
- local function subject_action(method,value)
+ local function subject_action(method,value,preferred)
   if not subject then return false,'Refresh subjects first'end
   if method~='recover'and(not subject_opt_in or not self.active or pending_cleanup or self.mode=='shot'or shot and shot.handycam)then
    return false,'Subject controls are unavailable'
@@ -752,7 +752,7 @@ function M.new(host,sr,deps,service)
    local reset,reason=subject_call('reset')
    if not reset then return false,reason end
   end
-  local ok,why=subject_call(method,value)
+  local ok,why=subject_call(method,value,preferred)
   if method=='recover'and ok and not subject_opt_in then close_subject(false)end
   if method=='recover'and ok and pending_cleanup then self.close(nil,true)end
   return ok,why
@@ -817,7 +817,7 @@ function M.new(host,sr,deps,service)
   local message=hit.label..string.format(' selected (%.1f m)',hit.distance)
   if hit.helldiver and subject and type(subject.select_unit)=='function'then
    if subject_holds then message=message..'; reset the held pose to pose it'
-   elseif subject_action('refresh',hit.center)then
+   elseif subject_action('refresh',hit.center,hit.unit)then
     local ok,reason=subject_call('select_unit',hit.unit);if not ok then message=message..'; '..tostring(reason)end
    end
   elseif not hit.helldiver then message=message..' for focus and lighting; poses need a Helldiver'end

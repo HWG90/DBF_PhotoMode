@@ -37,8 +37,8 @@ local function fixture()
  local function valid(target)
   return f.validation=='valid'and target.epoch==f.epoch
  end
- adapter.discover=function(resource,limit,authored)
-  count();f.discoveries=f.discoveries+1
+ adapter.discover=function(resource,limit,authored,point,preferred)
+  count();f.discoveries=f.discoveries+1;f.discovery_point,f.discovery_preferred=point,preferred
   assert(resource==rig.resource and limit==4 and authored==rig)
   if f.discover_error then error(f.discover_error)end
   return f.candidates or{a,b}
@@ -99,6 +99,14 @@ local function fixture()
   for i=1,107 do if i<8 or i>92 then assert(same(b.nodes[i],f.original.nodes[i]),'Scene anchors must not be written')end end
  end
  return f
+end
+
+do
+ local f=fixture();local point={1,2,3};local clicked=newproxy()
+ assert(f.controller.refresh(point,clicked))
+ assert(f.discovery_point==point and f.discovery_preferred==clicked,'Forward an explicit click to bounded discovery in the same call')
+ assert(f.controller.refresh(point)and f.discovery_preferred==nil,'Automatic/manual refresh must not retain the previous click')
+ assert(f.node_writes==0 and f.mode_writes==0,'Discovery priority must not mutate subject poses')
 end
 do
  local f=fixture();local c=f.controller;local status,choices=c.status(),c.choices()

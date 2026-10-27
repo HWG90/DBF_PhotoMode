@@ -285,10 +285,11 @@ local function factory(sr,policy,preview)
  function self.session_current()
   return result(function()ready();return one(pack(N.game_session()),'userdata','Game session')==session end)
  end
- function self.discover(wanted,limit,rig,point)
+ function self.discover(wanted,limit,rig,point,preferred)
   return result(function()
    local began=type(policy.measure)=='function'and policy.measure()
    ready();check(wanted==resource and limit==4,'Bounded exact-resource subject discovery required')
+   check(preferred==nil or type(preferred)=='userdata','Explicit subject handle unavailable')
    for _,r in pairs(records)do check(not next(r.nodes)and not r.mode and not r.scene_dirty and not r.cape,'Retire owned subjects before refreshing')end
    check(one(pack(N.game_session()),'userdata','Game session')==session,'Qualified session changed')
    local topology_copy=rig_copy(rig);local world=one(pack(A.main_world()),'userdata','Main world')
@@ -311,9 +312,13 @@ local function factory(sr,policy,preview)
       if point then local p=xyz(one(pack(U.world_position(unit,1)),'userdata','Unit.world_position'))
        for j=1,3 do distance=distance+(p[j]-point[j])^2 end
       end
-      local at=#candidates+1
-      for j,row in ipairs(candidates)do if distance<row.distance or distance==row.distance and key<row.key then at=j;break end end
-      if at<=limit then table.insert(candidates,at,{unit=unit,distance=distance,key=key});if #candidates>limit then table.remove(candidates)end end
+      -- Only an explicitly picked handle gains priority, and only after the
+      -- same exact-resource inventory/lifetime filters as every other body.
+      -- Ragdoll roots need not be near the clicked body joints.
+      local priority=unit==preferred and 0 or 1;local at=#candidates+1
+      for j,row in ipairs(candidates)do if priority<row.priority or priority==row.priority and
+       (distance<row.distance or distance==row.distance and key<row.key)then at=j;break end end
+      if at<=limit then table.insert(candidates,at,{unit=unit,distance=distance,key=key,priority=priority});if #candidates>limit then table.remove(candidates)end end
      end
     end
    end

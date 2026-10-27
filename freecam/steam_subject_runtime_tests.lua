@@ -57,11 +57,12 @@ local function configure(f,deps,sr)
   local adapter={version=1}
   local qualified_session=f.session
   adapter.session_current=function()f.session_checks=(f.session_checks or 0)+1;return f.session==qualified_session end
-  adapter.discover=function(resource,limit,rig)
-   count();f.discoveries=f.discoveries+1;assert(resource==data.rig.resource and limit==4 and rig==data.rig)
+  adapter.discover=function(resource,limit,rig,point,preferred)
+   count();f.discoveries=f.discoveries+1;f.discovery_preferred=preferred;assert(resource==data.rig.resource and limit==4 and rig==data.rig)
    if f.discovery_error then return nil,f.discovery_error end
    return f.sole and{f.b}or{f.a,f.b}
   end
+  adapter.locate=function(unit)if f.pick_unit and unit==f.pick_unit then return f.b end end
   adapter.valid=function(t)count();if f.unknown then return nil,'Identity unavailable'end;return valid(t)end
   adapter.snapshot=function(t)
    count();f.snapshots=f.snapshots+1;assert(valid(t))
@@ -498,4 +499,24 @@ do
  assert(f.node_writes==writes,'A settled pose does not repeatedly reset or reapply')
  assert(f.action('subject_pose_stop'));f.restored();f.finish()
  print('Pose replacement: reset before Apply, automatic held-pose changes, refused reset and idle passed')
+end
+
+-- Real menu click -> runtime action -> subject controller -> bounded discovery.
+do
+ local f=fixture(function(f,deps)
+  f.pick_unit=newproxy()
+  deps.pick={new=function()return{pick=function()
+   return{unit=f.pick_unit,helldiver=true,label='Helldiver',distance=2,center={2,0,0}}
+  end}end}
+ end)
+ f.enable();if f.runtime.mode~='menu'then f.runtime.focus()end
+ f.menu.contains_pointer=function()return false end;f.pointer.x=960;f.pointer.y=540
+ local before=f.discoveries
+ for i=1,2 do f.pointer.buttons=1;f.step(.03);f.pointer.buttons=0;f.step(.03)end
+ assert(f.discoveries==before+1 and f.discovery_preferred==f.pick_unit,'The clicked Unit must reach discovery without being replaced by nearest roots')
+ assert(f.subject.status().selected=='Helldiver B','The clicked qualified body becomes the selected photographic subject')
+ for i=1,60 do f.step(.016,1)end
+ assert(f.discoveries==before+1 and f.node_writes==0 and f.mode_writes==0,'Explicit click adds no idle discovery or pose writes')
+ f.finish()
+ print('Click subject priority: actual double-click handoff, qualified selection and idle passed')
 end

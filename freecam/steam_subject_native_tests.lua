@@ -123,6 +123,21 @@ do
  check(f.adapter.locate(handles[2])==found[1],'Failed discovery never publishes partial records')
 end
 
+-- A click is an exact unit choice, not a request to pick four nearer roots.
+do
+ local f=fixture();f.extra={};f.positions={[f.unit]=99};f.units={[7]=f.unit};local handles={}
+ for i=1,6 do local u=newproxy();handles[i]=u;f.extra[u]=true;f.positions[u]=i;f.units[10+i*3]=u end
+ f:arm();local found=assert(f.adapter.discover(f.resource,4,f.rig,{0,0,0},f.unit))
+ check(#found==4 and f.adapter.locate(f.unit)==found[1],'An explicitly clicked body must survive the four-subject root-distance cutoff')
+ for i=1,3 do check(f.adapter.locate(handles[i])==found[i+1],'The other slots retain nearest-root ordering')end
+ check(not f.adapter.locate(handles[4])and f.writes==0,'Priority neither expands the menu nor writes a transform')
+ local stranger=newproxy();found=assert(f.adapter.discover(f.resource,4,f.rig,{0,0,0},stranger))
+ check(not f.adapter.locate(stranger)and not f.adapter.locate(f.unit),'An unlisted preferred handle must not manufacture a candidate')
+ for i=1,4 do check(f.adapter.locate(handles[i])==found[i],'Unknown click retains the qualified inventory')end
+ local rejected=f.adapter.discover(f.resource,4,f.rig,{0,0,0},false)
+ check(rejected==nil and f.writes==0,'Malformed explicit unit refuses before publishing new identities')
+end
+
 -- New contract is explicit. Old PQS receipts and incomplete bindings cannot admit.
 do
  local f=fixture();check(Native.new(f.sr)==nil and f.calls==0)

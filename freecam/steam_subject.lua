@@ -238,11 +238,11 @@ function M.new(adapter,bank,is_frozen)
   if not called then return nil,tostring(current)end
   return current,why
  end
- function self.refresh(point)
+ function self.refresh(point,preferred)
   if not supported then return false,status.message end
   if lease then return false,'Reset the held pose before refreshing subjects'end
   selected=nil;pose=nil;targets,choices={},{}
-  local called,found,why=pcall(adapter.discover,resource,4,bank.rig,point)
+  local called,found,why=pcall(adapter.discover,resource,4,bank.rig,point,preferred)
   if not called or type(found)~='table'or #found>4 then
    state('unselected','Subject discovery unavailable',called and why or found);return false,status.message
   end
