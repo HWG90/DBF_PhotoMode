@@ -175,6 +175,37 @@ assert(h.menu.handle.get('handycam_hide_helmet')and h.controls.handycam_hide_hel
 assert(h.runtime.close()and not h.pov_hidden);assert(not h.menu.handle.get('handycam_hide_helmet'),'Shot override must not persist into saved choice');h.finish()
 print('Windows POV: explicit target correspondence, ambiguity/layout guards, idle state, restoration and Handycam menu/exit lifecycle passed')
 
+-- Proton: the native local-avatar visibility loaded beside stock-API POV. The
+-- native reader owns the Subject hide toggles; POV keeps only the Handycam
+-- groups; starting Handycam hides the helmet, never the whole body.
+do
+ local n=fixture_runtime(false,function(n,deps)
+  n.native={}
+  deps.prefer_tracking=true
+  deps.handycam=dofile('freecam/steam_handycam.lua');deps.subject_backend={new=function()return{}end}
+  deps.subject_visibility={new=function()return{ready=function()return true end,
+   refresh=function()return true,'Subject visibility ready',{hide_player=true,hide_armour=true,hide_weapons=true,hide_cape=true}end,
+   queue=function(values)n.native[#n.native+1]=values end,flush=function()return true end,release=function()return true end}end}
+  deps.subject_tracking={new=function()return{head_frame=function()return{identity='body',head={0,0,2}}end}end}
+  deps.mesh_visibility={};deps.pov_visibility={new=function()return{
+   queue_player=function(value)n.pov_player=value end,queue_weapons=function(value)n.pov_weapons=value end,
+   queue=function(group,v)n.pov_desired=n.pov_desired or{};n.pov_desired[group]=v end,selection_changed=function()end,
+   flush=function()n.pov_hidden=n.pov_desired and(n.pov_desired.helmet or n.pov_desired.torso or n.pov_desired.cape);return true end,release=function()n.pov_hidden=false;return true end}end}
+ end)
+ n.open();n.step(.016)
+ assert(n.runtime.pov_owns_hides()==false,'The native reader owns the Subject hides')
+ local queued=#n.native
+ assert(n.menu.handle.set('hide_player',true));assert(n.pov_player==nil,'POV never takes the Subject hide from the native reader')
+ assert(#n.native>queued and n.native[#n.native].hide_player==true,'The native reader receives the committed hide')
+ assert(n.menu.handle.set('hide_player',false))
+ n.menu.handle.set('action_camera_mode',2);local before=#n.native
+ assert(n.runtime.begin_shot());n.step(.016)
+ for i=before+1,#n.native do local v=n.native[i];assert(not(v.hide_player and v.hide_armour and v.hide_weapons and v.hide_cape),'Handycam must not hide the whole body')end
+ assert(n.pov_hidden,'Handycam hides the helmet through POV')
+ assert(n.runtime.close()and not n.pov_hidden);n.finish()
+end
+print('Windows POV beside native visibility: one owner per hide, Handycam helmet-only POV passed')
+
 -- Observed 40-node primary variant and two legitimate magazine/scope slots.
 do
  local function variant()

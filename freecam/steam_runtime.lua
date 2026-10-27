@@ -471,10 +471,7 @@ function M.new(host,sr,deps,service)
   if not subject_backend and deps.subject_backend and deps.subject_visibility then
    local ok,value=pcall(deps.subject_backend.new,sr)
    if ok then
-    -- With tracking preferred the native backend keeps ragdoll and freeze checks
-    -- only; stock-API POV visibility stays the single visibility owner.
-    subject_backend=value
-    if not deps.prefer_tracking then visibility=deps.subject_visibility.new(value,host.log)end
+    subject_backend=value;visibility=deps.subject_visibility.new(value,host.log)
     handycam=handycam or deps.handycam and deps.handycam.new()
     if backend_error then host.log('Subject backend ready (it was unavailable: '..backend_error..')')end
     backend_error=nil
@@ -501,6 +498,11 @@ function M.new(host,sr,deps,service)
  end
  self.ai=deps.ai and deps.ai.new(deps.load_ai,sr.Application.time_since_launch,host.log)
  local scene,scene_enabled,autofocus_write
+ -- One owner per mesh. The native local-avatar visibility (exact equipment
+ -- ownership) owns the Subject hide toggles whenever it loaded; stock-API POV
+ -- visibility then keeps only the Handycam helmet/torso/cape groups, and owns
+ -- the Subject toggles itself only without the native reader.
+ function self.pov_owns_hides()return self.pov_visibility~=nil and visibility==nil end
  if self.tracking_backend and deps.pov_visibility and type(deps.pov_visibility.new)=='function'and deps.mesh_visibility then
   self.pov_visibility=deps.pov_visibility.new(sr,function()
    if subject and type(subject.tracking_frame)=='function'then return subject.tracking_frame()end
@@ -806,8 +808,10 @@ function M.new(host,sr,deps,service)
   end
   subject_opt_in=true;subject_close_started=false;subject_cleanup_attempted=false;sync_subject()
   if self.pov_visibility then
-   self.pov_visibility.queue_player(handle.get('hide_player'))
-   if self.pov_visibility.queue_weapons then self.pov_visibility.queue_weapons(handle.get('hide_weapons'))end
+   if self.pov_owns_hides()then
+    self.pov_visibility.queue_player(handle.get('hide_player'))
+    if self.pov_visibility.queue_weapons then self.pov_visibility.queue_weapons(handle.get('hide_weapons'))end
+   end
    for _,group in ipairs({'helmet','torso','cape'})do self.pov_visibility.queue(group,handle.get('handycam_hide_'..group))end
   end
   return true
@@ -1321,7 +1325,7 @@ function M.new(host,sr,deps,service)
    if continuing and head.identity~=shot.player_identity then
     local why='Handycam subject changed';notice(why);self.close(true);return false,why
    end
-   if visibility then local ready,why=visibility.ready();if not ready then notice(why);return false,why end end
+   if visibility and not self.pov_visibility then local ready,why=visibility.ready();if not ready then notice(why);return false,why end end
   end
   if play_path and(not path or path.count()<2)then notice('Record at least two camera points');return false,self.reason end
   if not stop_path()then return false,self.reason end
@@ -1347,7 +1351,9 @@ function M.new(host,sr,deps,service)
   end
   if handheld and not continuing then
    handycam.reset()
-   if visibility then
+   -- The 1.3.0 POV (helmet hidden, arms and weapon kept) replaces the 1.2
+   -- whole-body hide whenever stock-API POV visibility is available.
+   if visibility and not self.pov_visibility then
     visibility.queue({hide_player=true,hide_armour=true,hide_weapons=true,hide_cape=true})
     local hidden,reason=visibility.flush(0)
     if not hidden then notice(reason);self.close(true);return false,reason end
@@ -1459,11 +1465,11 @@ function M.new(host,sr,deps,service)
   director_recall=function()return director_action('recall')end,
   director_clear=function()return director_action('clear')end,
   subject_change=function(id,value)
-   if id=='hide_weapons'and self.pov_visibility and self.pov_visibility.queue_weapons then
+   if id=='hide_weapons'and self.pov_owns_hides()and self.pov_visibility.queue_weapons then
     if self.active then self.pov_visibility.queue_weapons(value)end
     return
    end
-   if id=='hide_player'and self.pov_visibility and self.pov_visibility.queue_player then
+   if id=='hide_player'and self.pov_owns_hides()and self.pov_visibility.queue_player then
     if self.active then
      self.pov_visibility.queue_player(value)
      if value and self.tracking_backend and self.tracking_backend.request_inventory then self.tracking_backend.request_inventory(true)end
@@ -2158,8 +2164,8 @@ function M.new(host,sr,deps,service)
   end
   self.active=true;self.mode='menu';self.state='active';self.reason=nil
   if self.pov_visibility then
-   if self.pov_visibility.queue_player then self.pov_visibility.queue_player(handle.get('hide_player'))end
-   if self.pov_visibility.queue_weapons then self.pov_visibility.queue_weapons(handle.get('hide_weapons'))end
+   if self.pov_owns_hides()and self.pov_visibility.queue_player then self.pov_visibility.queue_player(handle.get('hide_player'))end
+   if self.pov_owns_hides()and self.pov_visibility.queue_weapons then self.pov_visibility.queue_weapons(handle.get('hide_weapons'))end
    for _,group in ipairs({'helmet','torso','cape'})do self.pov_visibility.queue(group,handle.get('handycam_hide_'..group))end
   end
   subject_close_started=false;begin_session();screenshot_label()
@@ -2527,8 +2533,8 @@ function M.new(host,sr,deps,service)
     notice(why)
     if shot and shot.handycam then self.close(true);return end
     for _,group in ipairs({'helmet','torso','cape'})do local id='handycam_hide_'..group;if handle.get(id)then handle.set(id,false)end end
-    if self.pov_visibility.queue_player and handle.get('hide_player')then handle.set('hide_player',false)end
-    if self.pov_visibility.queue_weapons and handle.get('hide_weapons')then handle.set('hide_weapons',false)end
+    if self.pov_owns_hides()and self.pov_visibility.queue_player and handle.get('hide_player')then handle.set('hide_player',false)end
+    if self.pov_owns_hides()and self.pov_visibility.queue_weapons and handle.get('hide_weapons')then handle.set('hide_weapons',false)end
    end
   end
   if lighting then
