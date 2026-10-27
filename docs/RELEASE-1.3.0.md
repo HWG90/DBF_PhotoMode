@@ -1,40 +1,82 @@
-# War Journalist 1.3.0 — Steam Lua 5.1
+# War Journalist 1.3.0 — The Lua rewrite
 
-War Journalist is back on the current Steam build through Live Lua Loader's
-Lua 5.1 runtime. Requires LLL Steam preview `R34-steam-lua51-preview.1`.
+Stop the action. Find your angle. Build the shot.
 
-## Working
+**A HUGE THANK YOU to everyone sharing photos, testing builds and reporting bugs.** Getting this working again has taken a lot of testing. Your shots make it worth it. Keep them coming!
 
-- Free camera: movement, look, lens/focal presets, roll, smoothing, lock.
-- Menu, shared mouse, Tab between menu and camera, close/reopen.
-- Cinema: camera points, path preview, placed and path action shots with
-  gameplay input released and refreeze on return.
-- Photo lights: presets, aim, five saved rigs, marker drag (Shift for
-  precision), camera-follow and reopen restoration.
-- Freeze Action / Resume, slow motion, gameplay Backslash toggle.
-- Screenshot button and Pause key: clean SDR PNG without the Photo UI.
-- Composition: frames, filters, vignette, animated grain, logos, guides.
-- Native Bloom on/off.
+**1.3.0 is the first pass of a total rewrite for the game's Lua 5.1 runtime.** Much of the old native/FFI implementation has been replaced with game-Lua implementations. Those replacements have limitations; this release does not have complete feature parity with 1.2.1.
 
-## Not yet restored on Steam
+**Boot Mod Loader is the only supported loader at the moment.** A **Lite version for Chef's Shared Loader is planned**. Whitelist approval may allow fuller compatibility; neither approval nor full compatibility is guaranteed. Old BSL, MDL and LLL downloads are historical builds for the previous runtime.
 
-Passive AI, Subject poses/visibility/cape, Handycam, HUD hiding (the native
-gameplay HUD stays in screenshots), numeric depth of field,
-exposure/contrast/saturation, HDR screenshots and decorative shader overlays.
-Passive AI has no current-build route without native access.
+**1.3.0 BML release.** The complete ZIP includes assets and automatic WJL startup. This is a normal-user build: development reload, inventories and test activations are disabled. Unavailable menu controls are omitted.
 
-## Notes
+## Known issues and removed features
 
-- Screenshot needs Windows HDR off for the game display.
-- Light range is fixed; the current runtime ignores falloff changes.
-- Copy `GameData` only if no other mod already provides
-  `9ba626afa44a3aa3.patch_1`.
+- **Cape detachment still occasionally happens**, especially around Freeze, ragdolls and pose transitions. The new hold improves tested cases; it is not a universal cape fix.
+- **The new subject selection sometimes fails.** Automatic player selection and click selection can miss the intended subject or find none. Session recovery has improved; reliability is still being worked on.
+- **Some Hide options do not work fully.** Helmet, torso and cape controls work on tested outfits; Hide entire player can leave holstered weapons, scopes, magazines, backpack/support-weapon parts or other accessories floating.
+- **AI control is no longer possible with the current implementation.** Passive, Dummy and no-aggro are unavailable. World Freeze is separate from AI control.
+- **Depth shaders currently do not work.** Inverted depth, Thermal depth, Depth contours, Depth fog and Shader DoF/bokeh are removed from the 1.3.0 menu. **Native camera DoF is working**, including focus distance and aperture. Public scene effects stay disabled until visually verified.
+- **Rare frozen-ragdoll spinning can still occur.** Cape attachment and hold/resume were accepted in live tests, with this remaining exception.
+- **Hoverpack Freeze uses a near-zero-time workaround.** Active-hover pause/resume worked in the reported test, but this is not a thrust-only fix. Detection can also include dropped packs; ragdoll/collision Resume launching has been reported. Exact-zero hover safety is not established.
+- **Handycam transitions need wider coverage.** ADS handoff/recovery is improved, but intermittent return/clipping problems and normal-aim parallax remain possible. Moving the POV camera changes its relationship to the weapon's point of impact. Stock backward/strafe body turning is not corrected.
+- **Automatic native HUD hiding is not restored on Windows.** Use the game's Toggle HUD binding; the tester used `/`. Your binding may differ.
+- **Lighting, equipment variants, respawns and scene transitions need broader testing.** SDR capture is the qualified path; HDR capture is not promised by this rewrite.
 
-## Build
+## Full 1.3.0 changelog
 
-`py -3.14 tools/build_steam_release.py` packages the 21 modules accepted in
-game on October 20 (`r34-keyboard-deployment-v1`), pinned by SHA256, and the
-owned light unit rebuilt from source. The ongoing Subject work in
-`freecam/steam_runtime.lua` is excluded; the accepted runtime is kept in
-`freecam/steam_release/`. All 31 Lua 5.1 fixture groups pass for the current
-source tree.
+### Loader, input and recovery
+
+- Ported Photo Mode to Boot Mod Loader and Lua 5.1, replacing Windows features that depended on unavailable native DLL access.
+- Added the bundled **WJL helper** and automatic startup, removing the need to manually launch it for each session. Helper names now use WJL.
+- Restored Windows gameplay-input blocking while Photo Mode owns input, with release/restoration on close and focus/menu handoffs. Displaying a cursor alone was insufficient; the Windows helper supplies the working path.
+- Fixed menu-open crashes encountered during the port; made cleanup/recovery more resilient when operations are refused or resources change.
+- Added opt-in development Lua reload for supported Lua changes. Archive/native/asset changes still require deployment and restart; this is not a promise that every mod change hot-reloads.
+
+### Native lens and presentation
+
+- Restored **Native camera DoF**, manual focus distance and aperture through current renderer profiles. Focus/aperture changes were visually confirmed on Windows.
+- Retained lens presets, focal length, roll, camera lock and center-focus sampling. Improved depth-assisted picking; a focus depth sample does not mean shader access to the depth buffer works.
+- Restored the game font and corrected material/atlas initialization after the port.
+- Retained the movable/resizable panel, saved opacity and controls drawer. Added HUD-style frame details and native background blur within the panel/footer bounds.
+- Reduced repeated UI/discovery work with retained state, explicit invalidation and bounded discovery. No universal FPS claim.
+- Restored native Bloom toggling. Removed the crashing color CPU-readback path. Experimental depth bindings are not presented as a working shader feature.
+
+### Freeze, poses and lighting
+
+- Restored Freeze/Resume and Slow Motion through engine time controls, preserving the selected slow-motion rate across relevant transitions.
+- Reworked frozen-body holding: capture a coherent skeleton before exact zero, hold the body after the saved render callback, and restore animation transfer before positive time. Cape bones/separate cape units are not forcibly moved by this hold.
+- Removed failed smooth-freeze and forced body/cape transform experiments after live regressions. Rare spin and cape problems remain listed above.
+- Retained the user-tested hoverpack near-zero fallback, with its collision/ragdoll and detection limitations disclosed above.
+- Restored Lua subject poses and Reset on tested Helldivers. The catalogue contains sampled action frames/variants; every outfit, cape and ragdoll transition is not verified.
+- Fixed the reported photo-light spawn crash; retained point/spot lights, presets, draggable markers, saved rigs and camera-follow support. Lighting remains **Not tested fully** across scenes.
+
+### Handycam / POV
+
+- Added **F11** to start/end Handycam, automatic player discovery and selected-subject fallback.
+- Handycam stays attached when Photo Mode is reopened or settings change, until explicitly ended.
+- Added configurable **Movement lag** next to Intensity for a tighter camera or intentional trailing movement.
+- Added forward/up/left-right offsets and yaw/pitch adjustment. Updated defaults from the tested framing.
+- Added **Drag camera position**: M1 drag for position, mouse wheel for forward/back, held MMB drag for yaw/pitch. Framing persists after release.
+- Split POV visibility into independent helmet, torso and cape switches. Handycam always hides the helmet.
+- Added first-person ADS yielding/reacquisition while retaining POV visibility. ADS means the first-person sight view entered with MMB while aiming; normal aim is a separate state.
+- Improved camera return after ADS, including while aim stays held and around dives. Remaining transition limitations are disclosed above.
+
+### Subjects and visibility
+
+- Added automatic nearby-Helldiver discovery, bounded inventories and recovery when the game session changes.
+- Added reversible mesh visibility so supported helmet, torso, cape, body and equipment meshes restore their prior state instead of forcing every mesh visible.
+- Added a separate Hide carried weapons control and full-skeleton attachment discovery beyond the original outfit list. Expanded recognized weapon/accessory relationships, including tested pistol parts. Fixed the reported holstered-rifle miss by adding its actual render variant and resolving its offset root to the selected sling bone. The user confirmed it now hides and restores. Matching accessories are acquired incrementally and owned equipment visibility is maintained after the game callback. Wider equipment/Hide-option coverage remains incomplete.
+- Preserved Cinema action shots, scene-local camera paths, saved Director positions, composition guides, frames, logos, vignette and grain where supported by the new runtime.
+
+## Install and upgrade
+
+Import the complete **BML ZIP** into HD2 Arsenal, enable with [Boot Mod Loader](https://www.nexusmods.com/helldivers2/mods/17754), Deploy, then restart. Disable previous War Journalist runtimes; run one copy at a time. Keep settings, presets and screenshots. WJL is bundled and starts automatically on Windows.
+
+Use the controls shown in the panel; saved bindings take priority. F11 toggles Handycam. Tab changes camera/menu focus. Use the game's Toggle HUD binding when a clean native HUD is needed.
+
+## Testing scope
+
+Windows development has live acceptance for the menu, font, native focus/aperture, poses, Handycam offsets/drag/persistence and tested POV visibility. The accepted Freeze improved ragdolls and cape attachment, with rare spinning explicitly reported. Fixtures, package audits, fresh startup and live acceptance are separate. The final ZIP passed isolated Lua fixtures, embedded-source/asset checks, CRC and packaged startup/shutdown checks. The exact final archive has not received another cold-start gameplay test; live acceptance above comes from its development lineage.
+
+For reports include loader/version, scene, equipment and reproduction steps. The Lua log is `%APPDATA%\Arrowhead\Helldivers2\war_journalist_lua51.log`. Remove private information before sharing it.

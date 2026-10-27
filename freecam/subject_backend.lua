@@ -1,4 +1,3 @@
-local PORT51={kind=type,number=tonumber}
 
 -- Exact local avatar render references; never fabricate engine Unit arguments.
 -- Ownership layout follows the maintained Epic LUT avatar/Unit identity adapter.
@@ -9,7 +8,7 @@ function M.new(sr,memory)
  memory=memory or native_memory();local game,exe=memory.game,memory.exe
  local function read(address,size)
   assert(address>=65536 and address<2^47 and size>0 and size<=256,'Subject read bounds changed')
-  local bytes=memory.read(address,size);assert(PORT51.kind(bytes)=='string'and#bytes==size,'Subject read unavailable');return bytes
+  local bytes=memory.read(address,size);assert(type(bytes)=='string'and#bytes==size,'Subject read unavailable');return bytes
  end
  local function word(address)local s=read(address,4);return s:byte(1)+s:byte(2)*256+s:byte(3)*65536+s:byte(4)*16777216 end
  local function ptr(address)local s=read(address,8);local low=s:byte(1)+s:byte(2)*256+s:byte(3)*65536+s:byte(4)*16777216;local high=s:byte(5)+s:byte(6)*256+s:byte(7)*65536+s:byte(8)*16777216;return low+high*4294967296 end
@@ -17,7 +16,7 @@ function M.new(sr,memory)
   local pe=word(base+60);assert(pe>=64 and pe<1048576 and read(base+pe,4)=='PE\0\0'and word(base+pe+8)==stamp,'Subject game build unsupported')
  end
  image(game,0x6ad7c05d);image(exe,0x6ad78c0d)
- assert(sr.Application and sr.World and sr.Unit and PORT51.kind(sr.World.units)=='function','Subject Unit API unavailable')
+ assert(sr.Application and sr.World and sr.Unit and type(sr.World.units)=='function','Subject Unit API unavailable')
  assert(memory.function_address(sr.Unit.set_mesh_visibility)==exe+0x3f4c80 and read(exe+0x3f4c80,8)=='\072\139\209\233\168\248\255\255','Subject visibility binding changed')
  assert(read(exe+0x51fe50,14)=='\064\087\072\131\236\048\068\015\182\137\220\000\000\000','Subject mesh visibility layout changed')
  assert(read(exe+0xa06b0,22)=='\072\137\092\036\008\072\137\116\036\016\087\072\131\236\032\072\139\053\050\112\161\001','Subject Unit registry changed')
@@ -35,7 +34,7 @@ function M.new(sr,memory)
   end
  end
  local function native(ref)
-  assert(PORT51.kind(ref)=='number'and ref>0 and ref<4294967295,'Subject render reference invalid')
+  assert(type(ref)=='number'and ref>0 and ref<4294967295,'Subject render reference invalid')
   local registry=ptr(exe+0x1ab76f8);local index=ref%4194304;local generation=math.floor(ref/4194304)
   assert(index<word(registry+0x98)and read(ptr(registry+0xa0)+index,1):byte()==generation,'Subject Unit generation retired')
   local unit=ptr(ptr(registry+0x88)+index*8);local vt=ptr(unit)
@@ -73,7 +72,7 @@ function M.new(sr,memory)
   local object=assert(locate(part,mesh),'Subject mesh retired');return read(object+0xdc,1):byte()
  end
  function self.write(part,mesh,value)
-  assert(mesh>=1 and mesh<=part.mesh_count and PORT51.kind(value)=='boolean','Subject visibility owner changed')
+  assert(mesh>=1 and mesh<=part.mesh_count and type(value)=='boolean','Subject visibility owner changed')
   local object,index=locate(part,mesh);assert(object and index,'Subject mesh retired')
   if not value then assert(self.owned(part),'Subject attachment ownership changed')end
   sr.Unit.set_mesh_visibility(part.handle,index,value)
@@ -197,25 +196,25 @@ function M.new(sr,memory)
   return table.concat(key,'|')
  end
  function self.unchanged(context)
-  return PORT51.kind(context)=='table'and context._parts~=nil and context._topology==topology(context._parts)
+  return type(context)=='table'and context._parts~=nil and context._topology==topology(context._parts)
  end
  function self.frame()
   local local_player=owner();local ref=local_player.root;local world=sr.Application.main_world();assert(world,'Local player world unavailable')
   local world_native=memory.world_address(world);local unit=native(ref);assert(ptr(unit+0x18)==world_native,'Local player world changed')
   local identity=table.concat({local_player.players,local_player.player,local_player.game_ref,local_player.avatar,world_native,ref},':')
   if not root_cache or root_cache.identity~=identity or root_cache.native~=unit then
-   local handle;local units=sr.World.units(world);assert(PORT51.kind(units)=='table'and #units<=131072,'Local player Unit list changed')
+   local handle;local units=sr.World.units(world);assert(type(units)=='table'and #units<=131072,'Local player Unit list changed')
    for _,candidate in ipairs(units)do
     local ok,value=pcall(memory.handle_ref,candidate)
     if ok and value==ref then assert(not handle,'Local player Unit reference ambiguous');handle=candidate end
    end
    root_cache={identity=identity,native=unit,handle=assert(handle,'Local player render handle unavailable')}
   end
-  assert(PORT51.kind(sr.Unit.world_pose)=='function'and sr.Matrix4x4 and sr.Vector3,'Local player transform API unavailable')
+  assert(type(sr.Unit.world_pose)=='function'and sr.Matrix4x4 and sr.Vector3,'Local player transform API unavailable')
   local pose=sr.Unit.world_pose(root_cache.handle,1);local point=sr.Matrix4x4.translation(pose);local forward=sr.Matrix4x4.forward(pose)
   local V=sr.Vector3;local x,y=V.x(forward),V.y(forward);assert(x*x+y*y>.000001,'Local player facing unavailable')
   local position={V.x(point),V.y(point),V.z(point)}
-  for i=1,3 do assert(PORT51.kind(position[i])=='number'and position[i]==position[i]and math.abs(position[i])<1e8,'Local player transform invalid')end
+  for i=1,3 do assert(type(position[i])=='number'and position[i]==position[i]and math.abs(position[i])<1e8,'Local player transform invalid')end
   assert(native(ref)==unit and ptr(unit+0x18)==world_native,'Local player retired during transform read')
   return{local_owner=true,identity=identity,owner_key=owner_key(local_player),position=position,yaw=math.atan2(y,x),root_ref=ref,root_handle=root_cache.handle,world=world}
  end
@@ -247,10 +246,10 @@ function M.new(sr,memory)
   assert(self.unit_lifetime(handle,frame.world),'Handycam player lifetime changed')
   assert(sr.Unit.has_node(handle,'head'),'Handycam head attachment unavailable')
   local node=sr.Unit.node(handle,'head');local count=sr.Unit.num_scene_graph_items(handle)
-  assert(PORT51.kind(node)=='number'and node%1==0 and node>=1 and node<=count,'Handycam head node invalid')
+  assert(type(node)=='number'and node%1==0 and node>=1 and node<=count,'Handycam head node invalid')
   local p=sr.Unit.world_position(handle,node);local V=sr.Vector3
   frame.head={V.x(p),V.y(p),V.z(p)}
-  for i=1,3 do assert(PORT51.kind(frame.head[i])=='number'and frame.head[i]==frame.head[i]and math.abs(frame.head[i])<1e8,'Handycam head transform invalid')end
+  for i=1,3 do assert(type(frame.head[i])=='number'and frame.head[i]==frame.head[i]and math.abs(frame.head[i])<1e8,'Handycam head transform invalid')end
   assert(self.unit_lifetime(handle,frame.world) and frame.owner_key==owner_key(owner()),'Handycam player changed during read')
   return frame
  end
@@ -382,7 +381,7 @@ function M.new(sr,memory)
   assert(owner_key(owner())==owner_key(local_player),'Subject local owner changed during lookup')
   local keys={};for ref in pairs(refs)do keys[#keys+1]=ref end;table.sort(keys)
   local identity=table.concat({players,player,game_ref,avatar,world_native,table.concat(keys,',')},':')
-  local units=sr.World.units(world);assert(PORT51.kind(units)=='table'and #units<=131072,'Subject world Unit list changed');local handles={}
+  local units=sr.World.units(world);assert(type(units)=='table'and #units<=131072,'Subject world Unit list changed');local handles={}
   for _,handle in ipairs(units)do
    local ok,value=pcall(memory.handle_ref,handle)
    if ok and refs[value]then assert(not handles[value],'Subject Unit reference ambiguous');handles[value]=handle end
@@ -398,7 +397,7 @@ function M.new(sr,memory)
   -- Reuse the already bounded, ownership-verified attachment inventory. Cape
   -- rig discovery adds no world scan or new polling path.
   groups.hide_cape={}
-  if PORT51.kind(sr.Unit.has_node)=='function'then
+  if type(sr.Unit.has_node)=='function'then
    for _,ref in ipairs(groups.hide_player)do
     local part=parts[ref]
     if ref~=root and sr.Unit.has_node(part.handle,'cape1')then groups.hide_cape[#groups.hide_cape+1]=ref end

@@ -1,10 +1,9 @@
-local PORT51={kind=type,number=tonumber}
 
 -- Renderer-only subject visibility. Backends must prove exact local ownership
 -- and expose the actual mesh pass mask before any proper engine setter runs.
 local M={}
 function M.new(backend,log,reuse)
- if reuse then assert(PORT51.kind(reuse)=='table'and PORT51.kind(reuse.count)=='function'and reuse.count()==0 and not reuse.pending,'Subject refresh requires restored, idle ownership')end
+ if reuse then assert(type(reuse)=='table'and type(reuse.count)=='function'and reuse.count()==0 and not reuse.pending,'Subject refresh requires restored, idle ownership')end
  local self=reuse or{};self.status='Subject controls are waiting for a verified player';self.capabilities={};self.pending=false;self.available=false
  local owned={};local last_context;local identity;local queued;local desired;local refresh_elapsed=.5;local hold_elapsed=0
  log=log or function()end
@@ -34,14 +33,14 @@ function M.new(backend,log,reuse)
   if not backend then return false,'Subject renderer backend unavailable' end
   local ok,context,why=pcall(backend.resolve)
   if not ok or not context then self.status=tostring(ok and why or context or 'Local subject unavailable');return false,self.status end
-  assert(context.local_owner==true and context.identity and PORT51.kind(context.groups)=='table','Subject ownership proof required')
+  assert(context.local_owner==true and context.identity and type(context.groups)=='table','Subject ownership proof required')
   for name,parts in pairs(context.groups)do
-   local available=PORT51.kind(parts)=='table'and #parts>0;local total=0
+   local available=type(parts)=='table'and #parts>0;local total=0
    if available then
     for _,part in ipairs(parts)do
      if not backend.valid(part)then available=false;break end
      local count=part.mesh_count
-     if PORT51.kind(count)~='number'or count<0 or count>512 or count%1~=0 then available=false;break end
+     if type(count)~='number'or count<0 or count>512 or count%1~=0 then available=false;break end
      total=total+count
      for mesh=1,count do
       local mask=backend.read(part,mesh)
@@ -55,11 +54,11 @@ function M.new(backend,log,reuse)
   last_context=context;self.status='Subject visibility ready';return true,self.status,self.capabilities,context
  end
  local function unchanged()
-  if not last_context or not backend or PORT51.kind(backend.unchanged)~='function'then return false end
+  if not last_context or not backend or type(backend.unchanged)~='function'then return false end
   local ok,value=pcall(backend.unchanged,last_context);return ok and value==true
  end
  function self.refresh(dt)
-  refresh_elapsed=refresh_elapsed+math.max(.001,math.min(.1,PORT51.number(dt)or 0))
+  refresh_elapsed=refresh_elapsed+math.max(.001,math.min(.1,tonumber(dt)or 0))
   if refresh_elapsed<.5 then return self.available,self.status,self.capabilities end
   refresh_elapsed=0
   if unchanged()then return self.available,self.status,self.capabilities end
@@ -105,7 +104,7 @@ function M.new(backend,log,reuse)
   self.status=next(owned)and 'Selected subject parts hidden'or'Subject visibility restored';return true
  end
  function self.queue(options)
-  if options~=nil and PORT51.kind(options)~='table'then return false,'Invalid subject visibility options'end
+  if options~=nil and type(options)~='table'then return false,'Invalid subject visibility options'end
   queued={};for key,value in pairs(options or{})do queued[key]=value==true end
   if options==nil then queued.release=true end
   self.pending=true;return true
@@ -121,7 +120,7 @@ function M.new(backend,log,reuse)
   if hiding then
    -- Capability polling must not reset the update-time attachment refresh.
    -- A new mesh can appear even when every original mesh was already hidden.
-   hold_elapsed=hold_elapsed+math.max(.001,math.min(.1,PORT51.number(dt)or 0))
+   hold_elapsed=hold_elapsed+math.max(.001,math.min(.1,tonumber(dt)or 0))
    if hold_elapsed>=.5 then hold_elapsed=0;if unchanged()then return true end;local request=desired;local ok,why=self.apply(request);desired=request;return ok,why end
   end
   return true

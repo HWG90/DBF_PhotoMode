@@ -6,6 +6,12 @@
 -- a separate finite driver owns selection, true-zero, focus, budget and cleanup.
 -- No ticks, polling, Math boxes, Unit IDs, engine hooks or automatic arming.
 local M={}
+function M.choose_tracking(nearby)
+ table.sort(nearby,function(a,b)return a.distance<b.distance end)
+ if nearby[1]and nearby[1].distance<=6 and(not nearby[2]or nearby[2].distance-nearby[1].distance>=.75)then
+  return nearby[1].target,string.format('nearest head %.2f m from gameplay camera',nearby[1].distance)
+ end
+end
 local resource='4d1c334d294dfa97'
 local function pack(...)return{n=select('#',...),...}end
 -- Diagnostics keep exact slot counts/scalars, never unexpected Math/ID userdata.
@@ -228,11 +234,22 @@ local function factory(sr,policy,preview)
  -- Reuse the maintained local-avatar cape attachment solver. Discovery of
  -- photographic subjects grants no ownership of another player's attachments.
  local cape_reader=policy.cape_reader
+ local selected_cape=policy.selected_cape
  local cape=type(policy.cape_factory)=='function'and cape_reader and policy.cape_factory(sr,cape_reader,function(frame,owned)
   local valid,why=cape_reader.pose_valid(frame,owned);check(valid==true,why or'Cape body owner unavailable')
  end)or nil
  local function capture_cape(r)
-  if not cape or r.cape_capture_done then return end
+  if r.cape_capture_done then return end
+  if selected_cape then
+   r.cape_capture_done=true
+   local frame={explicit_subject=true,identity=r.identity,root_handle=r.unit,world=r.world}
+   local ok,lease=pcall(selected_cape.capture,frame)
+   status.cape=ok and #lease.meshes or tostring(lease)
+   if ok then r.cape={frame=frame,selected=lease}end
+   if type(policy.log)=='function'then pcall(policy.log,'Authored pose cape capture: '..tostring(status.cape))end
+   return
+  end
+  if not cape then return end
   r.cape_capture_done=true
   local ok,frame=pcall(cape_reader.pose_frame)
   if not ok or frame.root_handle~=r.unit or frame.world~=r.world then status.cape='No proven local cape owner';return end
@@ -241,41 +258,78 @@ local function factory(sr,policy,preview)
   if records and #records>0 then r.cape={frame=frame,capes=records}end
  end
  local function restore_cape(r)
-  if r.cape then cape.restore(r.cape);r.cape=nil end
+  if r.cape then
+   if r.cape.selected then check(selected_cape.release(r.cape.selected),'Selected cape restoration refused')
+   else cape.restore(r.cape)end
+   r.cape=nil
+  end
   r.cape_capture_done=nil
+ end
+ local function apply_cape(r)
+  if r.cape.selected then
+   local writes=selected_cape.apply(r.cape.selected,r.cape.frame)
+   if type(policy.log)=='function'then pcall(policy.log,'Authored pose cape placement: writes='..writes)end
+  else cape.apply(r.cape)end
  end
  function self.maintain(target,rig)
   return result(function()
    local r=record(target,rig)
-   if not r.cape then return true end
+   -- Selected Windows placement is applied by the body commit event. It needs
+   -- no extra per-frame lookup or rewrite while the authored pose is unchanged.
+   if not r.cape or r.cape.selected then return true end
    current(r,nil,'ignore')
    local valid,why=cape_reader.pose_valid(r.cape.frame,true);check(valid==true,why or'Cape owner changed')
    cape.apply(r.cape);return true
   end)
  end
- function self.discover(wanted,limit,rig)
+ function self.session_current()
+  return result(function()ready();return one(pack(N.game_session()),'userdata','Game session')==session end)
+ end
+ function self.discover(wanted,limit,rig,point)
   return result(function()
+   local began=type(policy.measure)=='function'and policy.measure()
    ready();check(wanted==resource and limit==4,'Bounded exact-resource subject discovery required')
    for _,r in pairs(records)do check(not next(r.nodes)and not r.mode and not r.scene_dirty and not r.cape,'Retire owned subjects before refreshing')end
    check(one(pack(N.game_session()),'userdata','Game session')==session,'Qualified session changed')
    local topology_copy=rig_copy(rig);local world=one(pack(A.main_world()),'userdata','Main world')
    local id=one(pack(I.from_hex(resource)),'userdata','IdString64.from_hex')
    local units=one(pack(W.units_by_resource(world,id)),'table','World.units_by_resource')
-   local count,key=0,nil
-   for _=1,5 do local next_key=next(units,key);if next_key==nil then break end;key=next_key;count=count+1
-    check(count<=4 and type(key)=='number'and key%1==0 and key>=1 and key<=4,'Subject inventory is not a bounded dense array')
+   -- Four is the menu capacity, not a limit on live bodies/corpses in a mission.
+   -- Refresh is explicit: inspect one exact-resource inventory, retain only the
+   -- nearest four, and validate their complete rig before exposing any target.
+   if point~=nil then point=vector(point,3);check(type(U.world_position)=='function','Subject position getter unavailable')end
+   local candidates,seen={},{};local key;local scanned=0
+   for index=1,129 do
+    local unit;key,unit=next(units,key);if key==nil then break end
+    check(index<=128,'Subject inventory exceeds the 128-unit discovery budget')
+    scanned=index
+    check(finite(key)and key%1==0 and key>=1 and type(unit)=='userdata','Subject inventory entry shape changed')
+    if not seen[unit]then
+     seen[unit]=true
+     if one(pack(U.alive(unit)),'boolean','Unit.alive')and U.world(unit)==world and U.num_scene_graph_items(unit)==107 then
+      local distance=0
+      if point then local p=xyz(one(pack(U.world_position(unit,1)),'userdata','Unit.world_position'))
+       for j=1,3 do distance=distance+(p[j]-point[j])^2 end
+      end
+      local at=#candidates+1
+      for j,row in ipairs(candidates)do if distance<row.distance or distance==row.distance and key<row.key then at=j;break end end
+      if at<=limit then table.insert(candidates,at,{unit=unit,distance=distance,key=key});if #candidates>limit then table.remove(candidates)end end
+     end
+    end
    end
    check(generation<4294967295,'Subject discovery generation exhausted');local next_generation=generation+1
-   local found,next_records,seen={},{},{}
-   for i=1,count do
-    local unit=rawget(units,i);check(type(unit)=='userdata'and not seen[unit],'Subject handle missing or duplicated');seen[unit]=true
+   local found,next_records={},{}
+   for i,row in ipairs(candidates)do
+    local unit=row.unit
     local identity='photographic-subject-'..next_generation..'-'..i;local label='Photographic subject '..i
     local target={identity=identity,label=label,resource=resource,node_count=107}
     local r={identity=identity,label=label,unit=unit,world=world,rig=rig,topology=topology_copy,nodes={},refresh_nodes={}}
     lifetime(r);for node=1,107 do topology(r,node)end
     found[i]=target;next_records[target]=r
    end
-   generation=next_generation;records=next_records;return found
+   generation=next_generation;records=next_records
+   if began and type(policy.log)=='function'then pcall(policy.log,string.format('Subject discovery: scanned=%d listed=%d elapsed_ms=%.3f',scanned,#found,(policy.measure()-began)*1000))end
+   return found
   end)
  end
  -- Read-only helpers for automatic and scene (double-click) selection. They
@@ -284,11 +338,51 @@ local function factory(sr,policy,preview)
  function self.locate(unit)
   for target,r in pairs(records)do if not r.retired and r.unit==unit then return target end end
  end
+ -- Read-only camera association for photographic tracking, not gameplay authority.
+ -- Prefer a unique authored camera-anchor match. Otherwise use a clearly
+ -- closest head near the gameplay camera; never call this local-player proof.
+ function self.camera_target(camera_unit,rig,view_position)
+  return result(function()
+   check(U.alive(camera_unit)==true and U.num_cameras(camera_unit)==1,'Camera unit unavailable')
+   local world=U.world(camera_unit);local camera_pose=matrix_values(U.world_pose(camera_unit,1))
+   local found;local nearby={}
+   if view_position~=nil then view_position=vector(view_position,3)end
+   for target,r in pairs(records)do
+    if not r.retired and r.world==world then
+     record(target,rig);lifetime(r);topology(r,7)
+     local anchor=matrix_values(U.world_pose(r.unit,7));local same=true
+     for i=1,12 do if math.abs(anchor[i]-camera_pose[i])>.0001 then same=false;break end end
+     if same then check(not found,'Camera anchor is ambiguous');found=target end
+     if view_position and U.has_node(r.unit,'head')==true then
+      local node=U.node(r.unit,'head');check(finite(node)and node%1==0 and node>=1 and node<=107,'Head bounds changed')
+      local p=xyz(U.world_position(r.unit,node));local d=0
+      for i=1,3 do d=d+(p[i]-view_position[i])^2 end
+      nearby[#nearby+1]={target=target,distance=math.sqrt(d)}
+     end
+    end
+   end
+   if found then return found,'unique camera-anchor match'end
+   return M.choose_tracking(nearby)
+  end)
+ end
  function self.position(target,rig)
   return result(function()
    local r=record(target,rig);lifetime(r)
    local getter=rawget(U,'world_position');check(type(getter)=='function','Unit.world_position unavailable')
    return xyz(one(pack(getter(r.unit,1)),'userdata','Unit.world_position'))
+  end)
+ end
+ -- A selected photographic subject is not an authoritative local-player ID.
+ function self.tracking_frame(target,rig)
+  return result(function()
+   local r=record(target,rig);lifetime(r)
+   check(U.has_node(r.unit,'head')==true,'Selected subject head unavailable')
+   local head=U.node(r.unit,'head');check(finite(head)and head%1==0 and head>=1 and head<=107,'Selected head bounds')
+   local pose=U.world_pose(r.unit,1);local forward=xyz(B.forward(pose))
+   local frame={explicit_subject=true,identity=r.identity,root_handle=r.unit,world=r.world,rig_nodes=rig.nodes,
+    position=xyz(U.world_position(r.unit,1)),head=xyz(U.world_position(r.unit,head)),
+    yaw=math.atan2(forward[2],forward[1])}
+   lifetime(r);return frame
   end)
  end
  function self.valid(target,rig)
@@ -428,7 +522,7 @@ local function factory(sr,policy,preview)
    current(r,nil,actual_mode)
    for index,expected in pairs(expected_nodes)do topology(r,index);check(equal(read_node(r.unit,index),expected),'Subject changed during scene refresh')end
    if r.cape then
-    if next(r.nodes)or r.mode then cape.apply(r.cape)else restore_cape(r)end
+    if next(r.nodes)or r.mode then apply_cape(r)else restore_cape(r)end
    elseif not next(r.nodes)and not r.mode then r.cape_capture_done=nil end
    r.refresh_expected=nil;r.refresh_nodes={};r.scene_dirty=false;return true
   end)

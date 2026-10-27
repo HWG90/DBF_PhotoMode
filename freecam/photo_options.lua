@@ -1,12 +1,14 @@
 -- Stored photo controls; existing movement and toggle ids remain stable.
 local M={}
-M.defaults={fov=0,focal_preset=1,roll=0,roll_preset=1,saved_camera_radius=60,lock_camera=false,camera_smoothing=false,smoothing_strength=50,action_camera_mode=1,handycam_intensity=50,cinema_notification=false,dof=false,dof_mode=1,dof_quality=1,dof_strength=4,bokeh_shape=1,focus_mode=1,focus_distance=5,aperture=5.6,
+M.defaults={fov=0,focal_preset=1,roll=0,roll_preset=1,saved_camera_radius=60,lock_camera=false,camera_smoothing=false,smoothing_strength=50,action_camera_mode=1,handycam_intensity=50,handycam_lag_ms=0,handycam_forward_cm=14,handycam_up_cm=7,handycam_right_cm=0,handycam_yaw_deg=0,handycam_pitch_deg=0,cinema_notification=false,dof=false,dof_mode=1,dof_quality=1,dof_strength=4,bokeh_shape=1,focus_mode=1,focus_distance=5,aperture=5.6,
  filter=1,filter_strength=25,exposure=0,saturation=100,contrast=100,bloom=true,
  shader=1,shader_opacity=10,shader_scale=1,shader_animate=true,scene_shader=1,scene_strength=100,fog_distance=25,fog_density=50,scene_depth_range=100,vignette=0,vignette_width=18,grain=0,grain_size=1.5,
  frame=1,grid=1,logo=1,logo_size=100,logo_x=90,logo_y=8,logo_opacity=85,logo_color='#FFFFFF',clean_view=false,hide_hud=true,hide_controls=false,
  light_selected=1,light_preset=1,light_setup_slot=1,light_kind=1,light_enabled=true,light_intensity=3,light_color='#FFFFFF',light_range=8,light_cone=45,light_right=0,light_forward=1,light_up=0,light_follow=false,light_follow_player=false,
- hide_player=false,hide_armour=false,hide_weapons=false,hide_cape=false,subject_pose=1,director_slot=1,ai_behavior=1,path_point=1,path_duration=3,path_transition=1,
+ hide_player=false,hide_armour=false,hide_weapons=false,hide_cape=false,handycam_hide_helmet=false,handycam_hide_torso=false,handycam_hide_cape=false,subject_pose=1,director_slot=1,path_point=1,path_duration=3,path_transition=1,
  show_legend=true,legend_open=true,legend_docked=true,legend_tab_y=75,legend_columns=2,legend_x=2,legend_y=2,legend_size=38}
+-- Enemy behavior is stored only when its rows exist (FFI AI backend; see pages).
+M.ai_defaults={ai_behavior=1}
 M.ai_modes={'normal','passive','dummy'}
 M.subject_poses={'salute','wave','taunt'}
 M.subject_pose_labels={'Salute','Wave','Taunt'}
@@ -45,7 +47,7 @@ function M.focal_length(radians)
  local tangent=math.tan(radians/2);if tangent<1e-9 then return nil end;return 12/tangent
 end
 function M.pages(reset,recenter,catalog,saved_actions)
- local function slider(id,label,min,max,step)return {id=id,type='slider',label=label,default=M.defaults[id],min=min,max=max,step=step,commit_on_blur=true,fine_step=(id=='focus_distance'or id=='fov')and .001 or nil,disabled=({focus_distance=true,aperture=true,exposure=true,saturation=true,contrast=true,scene_strength=true,fog_distance=true,fog_density=true,scene_depth_range=true})[id]}end
+ local function slider(id,label,min,max,step)return {id=id,type='slider',label=label,default=M.defaults[id],min=min,max=max,step=step,commit_on_blur=true,fine_step=(id=='focus_distance'or id=='fov')and .001 or (id=='handycam_forward_cm'or id=='handycam_up_cm'or id=='handycam_right_cm'or id=='handycam_yaw_deg'or id=='handycam_pitch_deg')and .01 or nil,disabled=({focus_distance=true,aperture=true,exposure=true,saturation=true,contrast=true,scene_strength=true,fog_distance=true,fog_density=true,scene_depth_range=true})[id]}end
  local function choice(id,label,choices)return {id=id,type='choice',label=label,default=M.defaults[id],choices=choices,presentation='dropdown',disabled=id=='scene_shader'or id=='subject_pose'or nil}end
  local function toggle(id,label)return {id=id,type='toggle',label=label,default=M.defaults[id]}end
  local function layout_setting(id,label,min,max,step)return{id=id,type='slider',label=label,default=M.menu_layout_defaults[id],min=min,max=max,step=step or .000001,layout_storage=true,commit_on_blur=true}end
@@ -75,7 +77,7 @@ function M.pages(reset,recenter,catalog,saved_actions)
   return control
  end
  local function ai_control()
-  local control=choice('ai_behavior','Enemy behavior',{'Normal','Passive','Dummy'});control.disabled=true
+  local control=choice('ai_behavior','Enemy behavior',{'Normal','Passive','Dummy'});control.disabled=true;control.default=M.ai_defaults.ai_behavior
   control.on_change=function(value)if saved_actions and saved_actions.ai_change then saved_actions.ai_change(value)end end
   return control
  end
@@ -90,11 +92,14 @@ function M.pages(reset,recenter,catalog,saved_actions)
  -- Move the existing controller-owned movement/pause definitions intact. Their
  -- IDs, defaults and callbacks remain shared with MCM and saved settings.
  for _,control in ipairs(saved_actions and saved_actions.camera_controls or{})do camera_controls[#camera_controls+1]=control end
- for _,control in ipairs({ai_control(),director_action('ai_reset','Reset AI to Normal','ai_reset'),
-  {id='ai_status',type='text',label='Enemy behavior unavailable: waiting for a verified solo mission'},
-  {id='ai_hint',type='text',label='Solo only. Persists after Photo Mode exits; joining players reset behavior to Normal.'},
-  {id='ai_limits',type='text',label='Passive allows movement; Dummy also stops voluntary movement. Physics, damage and active attacks can continue.'}})do
-  control.photo_global_ai=true;camera_controls[#camera_controls+1]=control
+ -- Enemy behavior needs the FFI AI backend; runtimes without one omit the rows.
+ if not(saved_actions and saved_actions.without_ai)then
+  for _,control in ipairs({ai_control(),director_action('ai_reset','Reset AI to Normal','ai_reset'),
+   {id='ai_status',type='text',label='Enemy behavior unavailable: waiting for a verified solo mission'},
+   {id='ai_hint',type='text',label='Solo only. Persists after Photo Mode exits; joining players reset behavior to Normal.'},
+   {id='ai_limits',type='text',label='Passive allows movement; Dummy also stops voluntary movement. Physics, damage and active attacks can continue.'}})do
+   control.photo_global_ai=true;camera_controls[#camera_controls+1]=control
+  end
  end
  camera_controls[#camera_controls+1]={id='reset_photo',type='button',label='Reset photo adjustments',button_label='Reset',on_activate=reset}
  local definition={
@@ -112,7 +117,7 @@ function M.pages(reset,recenter,catalog,saved_actions)
  lens_control(choice('roll_preset','Tilt shortcut',{'Custom','Level (0)','Portrait (+90)','Portrait (-90)'})),
  choice('dof_quality','Shader blur quality',{'Standard','Smoother'}),slider('dof_strength','Shader blur strength',1,8,.25),choice('bokeh_shape','Bokeh shape',{'Round','Hexagonal'}),
  {id='lens_status',type='text',label='Depth-aware focus and aperture'},
- {id='known_issues',type='text',label='Manual native focus/aperture unavailable; use Shader preview.'}}},
+ {id='known_issues',type='text',label='Native lens availability is shown above. Shader preview depth remains unverified.'}}},
  {id='color',name='Color',require_confirmation=false,controls={
  {id='color_status',type='text',label='Color grading: awaiting scene'},
  choice('filter','Filter',catalog and catalog.filter_names or {'Original','Warm film','Cool film','Sepia tint','Emerald','Crimson'}),
@@ -165,7 +170,19 @@ function M.pages(reset,recenter,catalog,saved_actions)
  {id='cinema_status',type='text',label='Place a camera, then begin an action shot'},
  choice('action_camera_mode','Action camera mode',{'Placed camera','First-person handycam'}),
  slider('handycam_intensity','Handycam shake intensity (%)',0,100,1),
- {id='handycam_hint',type='text',label='Handycam follows your head with gameplay controls. Hides the avatar and equipment for a clear recording view.'},
+ slider('handycam_lag_ms','Handycam movement lag (ms)',0,500,5),
+ slider('handycam_forward_cm','POV camera forward (cm)',-30,30,1),
+ slider('handycam_up_cm','POV camera up (cm)',-30,30,1),
+ slider('handycam_right_cm','POV camera left / right (cm)',-30,30,1),
+ slider('handycam_yaw_deg','POV camera yaw (degrees)',-180,180,1),
+ slider('handycam_pitch_deg','POV camera pitch (degrees)',-89,89,1),
+ director_action('handycam_position_handle','Drag camera position','handycam_position_handle'),
+ {id='handycam_drag_hint',type='text',label='Handle: M1 drag moves. Wheel: forward/back. MMB drag: yaw/pitch. Shift: fine.'},
+ subject_control('handycam_hide_helmet','Hide helmet (POV)'),
+ subject_control('handycam_hide_torso','Hide torso (POV)'),
+ subject_control('handycam_hide_cape','Hide cape (POV)'),
+ {id='handycam_pov_status',type='text',label='POV visibility off'},
+ {id='handycam_hint',type='text',label='Handycam follows your selected subject. POV hiding keeps arms and weapons visible.'},
  toggle('cinema_notification','Show Cinema camera notification'),
  {id='cinema_hint',type='text',label='The camera stays placed while you move and fight. Your Photo Mode key returns to placement; Screenshot still works.'},
  path_control(choice('path_point','Recorded camera point',{'No recorded points'})),
@@ -210,11 +227,25 @@ function M.pages(reset,recenter,catalog,saved_actions)
   {'Logo','logo','logo_size','logo_color','logo_opacity','logo_x','logo_y'},
   {'Controls legend','show_legend','legend_open','legend_docked','legend_tab_y','legend_columns','legend_size','legend_x','legend_y'},
   {'Menu layout','tab_layout','menu_x','menu_y','menu_scale','menu_opacity'}},
- director={{'Action shots','cinema_begin','action_camera_mode','handycam_intensity','handycam_hint','cinema_reposition','cinema_end','cinema_status','cinema_notification','cinema_hint'},
+ director={{'Action shots','cinema_begin','action_camera_mode','handycam_intensity','handycam_lag_ms','handycam_forward_cm','handycam_up_cm','handycam_right_cm','handycam_position_handle','handycam_yaw_deg','handycam_pitch_deg','handycam_drag_hint','handycam_hide_helmet','handycam_hide_torso','handycam_hide_cape','handycam_pov_status','handycam_hint','cinema_reposition','cinema_end','cinema_status','cinema_notification','cinema_hint'},
   {'Camera path','path_point','path_add','path_remove','path_duration','path_transition','path_play','path_clear','path_status','path_hint'},
   {'Saved shots','director_slot','director_recall','director_save','director_clear','director_status','director_hint'}},
  subject={{'Pose','subject_pose','subject_pose_play','subject_pose_stop','subject_pose_status','subject_pose_hint'},
   {'Visibility','hide_player','hide_armour','hide_weapons','hide_cape','subject_status','subject_hint'}}}
+ if saved_actions and saved_actions.without_depth_shaders then
+  local removed={dof_quality=true,dof_strength=true,bokeh_shape=true,scene_depth_range=true,fog_distance=true,fog_density=true}
+  for _,page in ipairs(definition)do
+   local controls={}
+   for _,control in ipairs(page.controls)do if not removed[control.id]then
+    if control.id=='dof_mode'then control.choices={'Native camera'}
+    elseif control.id=='scene_shader'then
+     local names={};for i=1,math.min(6,#control.choices)do names[i]=control.choices[i]end;control.choices=names
+    elseif control.id=='known_issues'then control.label='Native camera DoF is supported. Depth shaders are unavailable in this Lua rewrite.'end
+    controls[#controls+1]=control
+   end end
+   page.controls=controls
+  end
+ end
  for _,page in ipairs(definition)do
   local indexed,ordered,used={},{},{}
   for _,control in ipairs(page.controls)do indexed[control.id]=control end
@@ -230,8 +261,8 @@ function M.pages(reset,recenter,catalog,saved_actions)
  end
  return definition
 end
-function M.read(handle)
- local values={};for key in pairs(M.defaults)do values[key]=handle.get(key)end;return values
+function M.read(handle,controls)
+ local values={};for key,value in pairs(M.defaults)do if controls and not controls[key]then values[key]=value else values[key]=handle.get(key)end end;return values
 end
 -- Recover the transient hidden menu on a new runtime. Photo adjustments,
 -- bindings, main-menu layout and controls-drawer preferences stay saved.
@@ -242,6 +273,9 @@ function M.reset_menu(handle)
  for key,value in pairs(values)do local ok,why=handle.set(key,value);if ok==false then return false,why end end
  return true
 end
-function M.reset(handle,controls)for key,value in pairs(M.defaults)do if not controls or not controls[key]or not controls[key].disabled then handle.set(key,value)end end end
+function M.reset(handle,controls)
+ for key,value in pairs(M.defaults)do if not controls or not controls[key]or not controls[key].disabled then handle.set(key,value)end end
+ for key,value in pairs(M.ai_defaults)do if controls and controls[key]and not controls[key].disabled then handle.set(key,value)end end
+end
 return M
 

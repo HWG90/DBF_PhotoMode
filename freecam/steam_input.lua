@@ -14,6 +14,8 @@ for code,name in pairs({[12]='clear',[44]='print screen',[91]='left system',[92]
  [106]='numpad *',[107]='numpad +',[109]='numpad -',[110]='numpad .',[111]='numpad /',[144]='num lock',[145]='scroll lock',
  [160]='left shift',[161]='right shift',[162]='left ctrl',[163]='right ctrl',[164]='left alt',[165]='right alt'})do names[code]=name end
 for code=96,105 do names[code]='numpad '..(code-96)end
+-- Engine key names by virtual key, for hosts that bind keys by name.
+M.key_names=names
 local mouse_bits={[1]=1,[2]=2,[4]=4,[5]=8,[6]=16}
 local modifiers={[16]={160,161},[17]={162,163},[18]={164,165}}
 local zero_mask=string.rep('\0',32)
@@ -116,6 +118,7 @@ function M.new(sr,service,recovery,policy)
    end
    return false,why
   end
+  if capture_keyboard then keyboard_contract_mask=service.capabilities.keyboard_mask end
   mode,blocked,first_sample=value,true,true;invalidate()
   return true
  end

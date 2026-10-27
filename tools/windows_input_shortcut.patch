@@ -1,0 +1,1643 @@
+--- a/native/steam_keyboard.c
++++ b/native/steam_keyboard.c
+@@ -11,24 +11,24 @@
+ #include <string.h>
+ #include <wchar.h>
+ 
+-#define LLL_KEYBOARD_VERSION 1u
+-#define LLL_KEYBOARD_ARMING 1u
+-#define LLL_KEYBOARD_ACTIVE 2u
+-#define LLL_KEYBOARD_REVOKED 3u
+-#define LLL_KEYBOARD_CLOSING 4u
+-#define LLL_KEYBOARD_FAILED 5u
+-#define LLL_KEYBOARD_TTL_MS 2000u
+-#define LLL_KEYBOARD_ARM_MS 2000u
+-#define LLL_KEYBOARD_COMMAND_MS 1000u
+-#define LLL_KEYBOARD_MAX_TUPLES 2048u
+-
+-typedef struct LLLSteamKeyboardReply {
++#define WJL_KEYBOARD_VERSION 1u
++#define WJL_KEYBOARD_ARMING 1u
++#define WJL_KEYBOARD_ACTIVE 2u
++#define WJL_KEYBOARD_REVOKED 3u
++#define WJL_KEYBOARD_CLOSING 4u
++#define WJL_KEYBOARD_FAILED 5u
++#define WJL_KEYBOARD_TTL_MS 2000u
++#define WJL_KEYBOARD_ARM_MS 2000u
++#define WJL_KEYBOARD_COMMAND_MS 1000u
++#define WJL_KEYBOARD_MAX_TUPLES 2048u
++
++typedef struct WJLSteamKeyboardReply {
+     uint32_t version, client, generation, state, mask[8];
+-} LLLSteamKeyboardReply;
+-typedef struct LLLSteamKeyboardSample {
++} WJLSteamKeyboardReply;
++typedef struct WJLSteamKeyboardSample {
+     uint32_t version, generation, state, keys[8];
+-} LLLSteamKeyboardSample;
+-typedef struct LLLSteamKeyboardLease {
++} WJLSteamKeyboardSample;
++typedef struct WJLSteamKeyboardLease {
+     HANDLE thread, ready, stop, process;
+     HWND target, window;
+     HWINEVENTHOOK foreground_hook;
+@@ -36,14 +36,14 @@
+     DWORD pid;
+     uint32_t client, generation, state, error, terminal, mask[8];
+     ULONGLONG started, heartbeat, register_ms;
+-    int registrations[LLL_KEYBOARD_MAX_TUPLES];
++    int registrations[WJL_KEYBOARD_MAX_TUPLES];
+     unsigned int registration_count;
+     int revoking;
+-} LLLSteamKeyboardLease;
+-typedef struct LLLSteamKeyboardRetired {
++} WJLSteamKeyboardLease;
++typedef struct WJLSteamKeyboardRetired {
+     DWORD pid;
+     uint32_t client, generation;
+-} LLLSteamKeyboardRetired;
++} WJLSteamKeyboardRetired;
+ 
+ /* This exact whitelist is shared with Lua. Side modifier bits are aliases:
+  * requesting any member requires generic + left + right; only generic VKs
+@@ -52,69 +52,72 @@
+  * omitted. The owned-window 39-tuple W/Space/generic-modifier proof passed;
+  * the complete matrix and integrated gameplay behavior remain unqualified.
+  * A successful registration alone does not establish suppression. */
+-static const uint32_t lll_keyboard_allowed[8] = {
++static const uint32_t wjl_keyboard_allowed[8] = {
+     0x081f3300u, 0x03ffe1ffu, 0x27fffffeu, 0xf7ffffffu,
+     0x000300ffu, 0xfc00003fu, 0xf8000001u, 0x00000004u
+ };
+-static SRWLOCK lll_keyboard_lifecycle = SRWLOCK_INIT;
+-static SRWLOCK lll_keyboard_data = SRWLOCK_INIT;
+-static LLLSteamKeyboardLease lll_keyboard_lease;
+-static LLLSteamKeyboardRetired lll_keyboard_retired;
+-static uint32_t lll_keyboard_highest_client, lll_keyboard_last_generation;
+-static DWORD lll_keyboard_session_pid;
+-static FILETIME lll_keyboard_session_creation;
+-static const wchar_t lll_keyboard_class[] = L"LLLSteamExternalKeyboard";
++static SRWLOCK wjl_keyboard_lifecycle = SRWLOCK_INIT;
++static SRWLOCK wjl_keyboard_data = SRWLOCK_INIT;
++static WJLSteamKeyboardLease wjl_keyboard_lease;
++static WJLSteamKeyboardRetired wjl_keyboard_retired;
++static uint32_t wjl_keyboard_highest_client, wjl_keyboard_last_generation;
++static DWORD wjl_keyboard_session_pid;
++static FILETIME wjl_keyboard_session_creation;
++static const wchar_t wjl_keyboard_class[] = L"WJLSteamExternalKeyboard";
+ 
+ /* Production uses direct Win32 calls. Tests substitute deterministic fakes
+  * at compilation; no mutable function table is exposed by the service. */
+-#ifndef LLL_KB_REGISTER
+-#define LLL_KB_REGISTER RegisterHotKey
+-#endif
+-#ifndef LLL_KB_UNREGISTER
+-#define LLL_KB_UNREGISTER UnregisterHotKey
+-#endif
+-#ifndef LLL_KB_ASYNC
+-#define LLL_KB_ASYNC GetAsyncKeyState
+-#endif
+-#ifndef LLL_KB_FOREGROUND
+-#define LLL_KB_FOREGROUND GetForegroundWindow
+-#endif
+-#ifndef LLL_KB_WINDOW_PID
+-#define LLL_KB_WINDOW_PID GetWindowThreadProcessId
+-#endif
+-#ifndef LLL_KB_VISIBLE
+-#define LLL_KB_VISIBLE IsWindowVisible
+-#endif
+-#ifndef LLL_KB_NOW
+-#define LLL_KB_NOW GetTickCount64
+-#endif
+-#ifndef LLL_KB_HOOK
+-#define LLL_KB_HOOK SetWinEventHook
+-#endif
+-#ifndef LLL_KB_UNHOOK
+-#define LLL_KB_UNHOOK UnhookWinEvent
+-#endif
+-
+-static int lll_keyboard_bit(const uint32_t mask[8], unsigned int key) {
++#ifndef WJL_KB_REGISTER
++#define WJL_KB_REGISTER RegisterHotKey
++#endif
++#ifndef WJL_KB_UNREGISTER
++#define WJL_KB_UNREGISTER UnregisterHotKey
++#endif
++#ifndef WJL_KB_ASYNC
++#define WJL_KB_ASYNC GetAsyncKeyState
++#endif
++#ifndef WJL_KB_FOREGROUND
++#define WJL_KB_FOREGROUND GetForegroundWindow
++#endif
++#ifndef WJL_KB_WINDOW_PID
++#define WJL_KB_WINDOW_PID GetWindowThreadProcessId
++#endif
++#ifndef WJL_KB_VISIBLE
++#define WJL_KB_VISIBLE IsWindowVisible
++#endif
++#ifndef WJL_KB_NOW
++#define WJL_KB_NOW GetTickCount64
++#endif
++#ifndef WJL_KB_HOOK
++#define WJL_KB_HOOK SetWinEventHook
++#endif
++#ifndef WJL_KB_UNHOOK
++#define WJL_KB_UNHOOK UnhookWinEvent
++#endif
++
++static int wjl_keyboard_bit(const uint32_t mask[8], unsigned int key) {
+     return (mask[key >> 5] & (1u << (key & 31))) != 0;
+ }
+-static int lll_keyboard_mask_valid(const uint32_t mask[8]) {
++static int wjl_keyboard_mask_valid(const uint32_t mask[8]) {
+     uint32_t any = 0;
+     static const unsigned int groups[3][3] = {{16,160,161},{17,162,163},{18,164,165}};
+     if (!mask) return 0;
+     for (unsigned int i = 0; i < 8; ++i) {
+-        if (mask[i] & ~lll_keyboard_allowed[i]) return 0;
++        if (mask[i] & ~wjl_keyboard_allowed[i]) return 0;
+         any |= mask[i];
+     }
+     if (!any) return 0;
+     for (unsigned int i = 0; i < 3; ++i) {
+-        int bits = lll_keyboard_bit(mask, groups[i][0]) + lll_keyboard_bit(mask, groups[i][1]) +
+-                   lll_keyboard_bit(mask, groups[i][2]);
++        int bits = wjl_keyboard_bit(mask, groups[i][0]) + wjl_keyboard_bit(mask, groups[i][1]) +
++                   wjl_keyboard_bit(mask, groups[i][2]);
+         if (bits && bits != 3) return 0;
+     }
+     return 1;
+ }
+-static int lll_keyboard_tuple(unsigned int key, unsigned int modifiers) {
++static int wjl_keyboard_tuple(unsigned int key, unsigned int modifiers) {
++    /* Preserve the desktop's Ctrl+Shift+Space shortcut. It is already owned
++     * on this Windows host; a single collision otherwise aborts all gameplay keys. */
++    if (key == VK_SPACE && modifiers == (MOD_CONTROL | MOD_SHIFT)) return 0;
+     if (key >= 160 && key <= 165) return 0;
+     if ((modifiers & MOD_ALT) && (key == VK_TAB || key == VK_ESCAPE || key == VK_F4 ||
+         key == VK_RETURN || key == VK_SPACE)) return 0;
+@@ -122,27 +125,27 @@
+     if ((modifiers & (MOD_CONTROL | MOD_ALT)) == (MOD_CONTROL | MOD_ALT) && key == VK_DELETE) return 0;
+     return 1;
+ }
+-static unsigned int lll_keyboard_modifiers(unsigned int index) {
++static unsigned int wjl_keyboard_modifiers(unsigned int index) {
+     return ((index & 1) ? MOD_SHIFT : 0u) | ((index & 2) ? MOD_CONTROL : 0u) |
+            ((index & 4) ? MOD_ALT : 0u);
+ }
+-static int lll_keyboard_foreground(const LLLSteamKeyboardLease *lease) {
++static int wjl_keyboard_foreground(const WJLSteamKeyboardLease *lease) {
+     DWORD pid = 0;
+-    HWND window = LLL_KB_FOREGROUND();
+-    if (!window || window != lease->target || !LLL_KB_VISIBLE(window)) return 0;
+-    LLL_KB_WINDOW_PID(window, &pid);
++    HWND window = WJL_KB_FOREGROUND();
++    if (!window || window != lease->target || !WJL_KB_VISIBLE(window)) return 0;
++    WJL_KB_WINDOW_PID(window, &pid);
+     return pid == lease->pid;
+ }
+-static int lll_keyboard_held(const uint32_t mask[8]) {
++static int wjl_keyboard_held(const uint32_t mask[8]) {
+     for (unsigned int key = 0; key < 256; ++key)
+-        if (lll_keyboard_bit(mask, key) && (LLL_KB_ASYNC((int)key) & 0x8000)) return 1;
++        if (wjl_keyboard_bit(mask, key) && (WJL_KB_ASYNC((int)key) & 0x8000)) return 1;
+     return 0;
+ }
+ 
+ /* Read-only identity proof: an ordinary query handle, exact canonical stock
+  * executable path, and process creation time. No target VM permissions. */
+-#ifndef LLL_KB_IDENTIFY
+-static int lll_keyboard_canonical(const wchar_t *path, wchar_t result[32768]) {
++#ifndef WJL_KB_IDENTIFY
++static int wjl_keyboard_canonical(const wchar_t *path, wchar_t result[32768]) {
+     HANDLE file = CreateFileW(path, FILE_READ_ATTRIBUTES,
+         FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, 0, NULL);
+     DWORD count;
+@@ -151,7 +154,7 @@
+     CloseHandle(file);
+     return count > 0 && count < 32768;
+ }
+-static DWORD lll_keyboard_identify(DWORD pid, const wchar_t *expected, HANDLE *process, FILETIME *creation) {
++static DWORD wjl_keyboard_identify(DWORD pid, const wchar_t *expected, HANDLE *process, FILETIME *creation) {
+     wchar_t actual[32768], canonical_actual[32768], canonical_expected[32768];
+     DWORD count = 32768, error = ERROR_ACCESS_DENIED;
+     FILETIME exited, kernel, user;
+@@ -162,7 +165,7 @@
+     if (!handle) return GetLastError();
+     if (GetProcessTimes(handle, creation, &exited, &kernel, &user) &&
+         QueryFullProcessImageNameW(handle, 0, actual, &count) &&
+-        lll_keyboard_canonical(actual, canonical_actual) && lll_keyboard_canonical(expected, canonical_expected) &&
++        wjl_keyboard_canonical(actual, canonical_actual) && wjl_keyboard_canonical(expected, canonical_expected) &&
+         CompareStringOrdinal(canonical_actual, -1, canonical_expected, -1, TRUE) == CSTR_EQUAL &&
+         WaitForSingleObject(handle, 0) == WAIT_TIMEOUT) {
+         *process = handle;
+@@ -171,80 +174,80 @@
+     CloseHandle(handle);
+     return error;
+ }
+-#define LLL_KB_IDENTIFY lll_keyboard_identify
+-#endif
+-
+-static void lll_keyboard_reply_locked(LLLSteamKeyboardReply *out) {
+-    out->version = LLL_KEYBOARD_VERSION;
+-    out->client = lll_keyboard_lease.client;
+-    out->generation = lll_keyboard_lease.generation;
+-    AcquireSRWLockShared(&lll_keyboard_data);
+-    out->state = lll_keyboard_lease.state;
+-    memcpy(out->mask, lll_keyboard_lease.mask, sizeof(out->mask));
+-    ReleaseSRWLockShared(&lll_keyboard_data);
++#define WJL_KB_IDENTIFY wjl_keyboard_identify
++#endif
++
++static void wjl_keyboard_reply_locked(WJLSteamKeyboardReply *out) {
++    out->version = WJL_KEYBOARD_VERSION;
++    out->client = wjl_keyboard_lease.client;
++    out->generation = wjl_keyboard_lease.generation;
++    AcquireSRWLockShared(&wjl_keyboard_data);
++    out->state = wjl_keyboard_lease.state;
++    memcpy(out->mask, wjl_keyboard_lease.mask, sizeof(out->mask));
++    ReleaseSRWLockShared(&wjl_keyboard_data);
+ }
+ /* Only the message thread calls this function. Failed removal is retained as
+  * FAILED until the actual thread has retired (thread exit frees its hotkeys). */
+-static int lll_keyboard_unregister_worker(LLLSteamKeyboardLease *lease) {
++static int wjl_keyboard_unregister_worker(WJLSteamKeyboardLease *lease) {
+     int clean = 1;
+     while (lease->registration_count) {
+         int id = lease->registrations[--lease->registration_count];
+-        if (!LLL_KB_UNREGISTER(lease->window, id)) clean = 0;
++        if (!WJL_KB_UNREGISTER(lease->window, id)) clean = 0;
+     }
+     if (!clean) {
+-        AcquireSRWLockExclusive(&lll_keyboard_data);
++        AcquireSRWLockExclusive(&wjl_keyboard_data);
+         lease->error = ERROR_BUSY;
+-        lease->terminal = LLL_KEYBOARD_FAILED;
+-        ReleaseSRWLockExclusive(&lll_keyboard_data);
++        lease->terminal = WJL_KEYBOARD_FAILED;
++        ReleaseSRWLockExclusive(&wjl_keyboard_data);
+     }
+     return clean;
+ }
+-static void lll_keyboard_stop_request(uint32_t terminal, DWORD error) {
+-    AcquireSRWLockExclusive(&lll_keyboard_data);
+-    if (lll_keyboard_lease.state == LLL_KEYBOARD_ARMING || lll_keyboard_lease.state == LLL_KEYBOARD_ACTIVE) {
+-        lll_keyboard_lease.state = LLL_KEYBOARD_CLOSING;
+-        lll_keyboard_lease.terminal = terminal;
+-        lll_keyboard_lease.error = error;
+-    }
+-    ReleaseSRWLockExclusive(&lll_keyboard_data);
+-    if (lll_keyboard_lease.stop) SetEvent(lll_keyboard_lease.stop);
++static void wjl_keyboard_stop_request(uint32_t terminal, DWORD error) {
++    AcquireSRWLockExclusive(&wjl_keyboard_data);
++    if (wjl_keyboard_lease.state == WJL_KEYBOARD_ARMING || wjl_keyboard_lease.state == WJL_KEYBOARD_ACTIVE) {
++        wjl_keyboard_lease.state = WJL_KEYBOARD_CLOSING;
++        wjl_keyboard_lease.terminal = terminal;
++        wjl_keyboard_lease.error = error;
++    }
++    ReleaseSRWLockExclusive(&wjl_keyboard_data);
++    if (wjl_keyboard_lease.stop) SetEvent(wjl_keyboard_lease.stop);
+ }
+ /* Checking/renewing the deadline and changing its state use the same lock.
+  * A snapshot cannot revive an expired lease, and a worker using an earlier
+  * deadline cannot revoke a heartbeat that has just renewed it. */
+-static uint32_t lll_keyboard_deadline(int renew) {
+-    LLLSteamKeyboardLease *lease = &lll_keyboard_lease;
++static uint32_t wjl_keyboard_deadline(int renew) {
++    WJLSteamKeyboardLease *lease = &wjl_keyboard_lease;
+     uint32_t state;
+     int expired = 0;
+-    AcquireSRWLockExclusive(&lll_keyboard_data);
+-    if (lease->state == LLL_KEYBOARD_ACTIVE) {
+-        ULONGLONG now = LLL_KB_NOW();
+-        if (now - lease->heartbeat >= LLL_KEYBOARD_TTL_MS) {
+-            lease->state = LLL_KEYBOARD_CLOSING;
+-            lease->terminal = LLL_KEYBOARD_REVOKED;
++    AcquireSRWLockExclusive(&wjl_keyboard_data);
++    if (lease->state == WJL_KEYBOARD_ACTIVE) {
++        ULONGLONG now = WJL_KB_NOW();
++        if (now - lease->heartbeat >= WJL_KEYBOARD_TTL_MS) {
++            lease->state = WJL_KEYBOARD_CLOSING;
++            lease->terminal = WJL_KEYBOARD_REVOKED;
+             lease->error = ERROR_TIMEOUT;
+             expired = 1;
+         } else if (renew) lease->heartbeat = now;
+     }
+     state = lease->state;
+-    ReleaseSRWLockExclusive(&lll_keyboard_data);
++    ReleaseSRWLockExclusive(&wjl_keyboard_data);
+     if (expired) SetEvent(lease->stop);
+     return state;
+ }
+-static void CALLBACK lll_keyboard_foreground_event(HWINEVENTHOOK hook, DWORD event, HWND window,
++static void CALLBACK wjl_keyboard_foreground_event(HWINEVENTHOOK hook, DWORD event, HWND window,
+                                                   LONG object, LONG child, DWORD thread, DWORD time) {
+-    LLLSteamKeyboardLease *lease = &lll_keyboard_lease;
++    WJLSteamKeyboardLease *lease = &wjl_keyboard_lease;
+     (void)hook; (void)object; (void)child; (void)thread; (void)time;
+     if (event != EVENT_SYSTEM_FOREGROUND || window == lease->target || lease->revoking) return;
+     lease->revoking = 1;
+-    lll_keyboard_stop_request(LLL_KEYBOARD_REVOKED, ERROR_CANCELLED);
+-    lll_keyboard_unregister_worker(lease);
+-}
+-static LRESULT CALLBACK lll_keyboard_proc(HWND window, UINT message, WPARAM wp, LPARAM lp) {
++    wjl_keyboard_stop_request(WJL_KEYBOARD_REVOKED, ERROR_CANCELLED);
++    wjl_keyboard_unregister_worker(lease);
++}
++static LRESULT CALLBACK wjl_keyboard_proc(HWND window, UINT message, WPARAM wp, LPARAM lp) {
+     if (message == WM_HOTKEY) return 0;
+     return DefWindowProcW(window, message, wp, lp);
+ }
+-static int lll_keyboard_messages(void) {
++static int wjl_keyboard_messages(void) {
+     MSG message;
+     for (unsigned int count = 0; count < 64 && PeekMessageW(&message, NULL, 0, 0, PM_REMOVE); ++count) {
+         if (message.message == WM_QUIT) return 0;
+@@ -253,28 +256,28 @@
+     }
+     return 1;
+ }
+-static int lll_keyboard_register_worker(LLLSteamKeyboardLease *lease) {
+-    ULONGLONG started = LLL_KB_NOW();
++static int wjl_keyboard_register_worker(WJLSteamKeyboardLease *lease) {
++    ULONGLONG started = WJL_KB_NOW();
+     for (unsigned int key = 0; key < 256; ++key) {
+-        if (!lll_keyboard_bit(lease->mask, key) || (key >= 160 && key <= 165)) continue;
++        if (!wjl_keyboard_bit(lease->mask, key) || (key >= 160 && key <= 165)) continue;
+         for (unsigned int variant = 0; variant < 8; ++variant) {
+-            unsigned int modifiers = lll_keyboard_modifiers(variant);
++            unsigned int modifiers = wjl_keyboard_modifiers(variant);
+             int id = 1 + (int)(key * 8 + variant);
+-            if (!lll_keyboard_tuple(key, modifiers)) continue;
++            if (!wjl_keyboard_tuple(key, modifiers)) continue;
+             /* Registration is a bounded transition; foreground notifications
+              * are dispatched between tuples rather than queued until the end. */
+-            if (!lll_keyboard_messages() || WaitForSingleObject(lease->stop, 0) != WAIT_TIMEOUT ||
+-                !lll_keyboard_foreground(lease) || WaitForSingleObject(lease->process, 0) != WAIT_TIMEOUT) {
+-                lll_keyboard_stop_request(LLL_KEYBOARD_REVOKED, ERROR_CANCELLED);
++            if (!wjl_keyboard_messages() || WaitForSingleObject(lease->stop, 0) != WAIT_TIMEOUT ||
++                !wjl_keyboard_foreground(lease) || WaitForSingleObject(lease->process, 0) != WAIT_TIMEOUT) {
++                wjl_keyboard_stop_request(WJL_KEYBOARD_REVOKED, ERROR_CANCELLED);
+                 return 0;
+             }
+-            if (LLL_KB_NOW() - started >= LLL_KEYBOARD_COMMAND_MS) {
+-                lll_keyboard_stop_request(LLL_KEYBOARD_FAILED, ERROR_TIMEOUT);
++            if (WJL_KB_NOW() - started >= WJL_KEYBOARD_COMMAND_MS) {
++                wjl_keyboard_stop_request(WJL_KEYBOARD_FAILED, ERROR_TIMEOUT);
+                 return 0;
+             }
+-            if (!LLL_KB_REGISTER(lease->window, id, modifiers | MOD_NOREPEAT, key)) {
++            if (!WJL_KB_REGISTER(lease->window, id, modifiers | MOD_NOREPEAT, key)) {
+                 DWORD error = GetLastError();
+-                lll_keyboard_stop_request(LLL_KEYBOARD_FAILED, error ? error : ERROR_HOTKEY_ALREADY_REGISTERED);
++                wjl_keyboard_stop_request(WJL_KEYBOARD_FAILED, error ? error : ERROR_HOTKEY_ALREADY_REGISTERED);
+                 return 0;
+             }
+             lease->registrations[lease->registration_count++] = id;
+@@ -283,46 +286,46 @@
+     /* The bulk reservation is not atomic. A key pressed before its tuple was
+      * reserved may already be held by the game. Never claim ACTIVE in that
+      * state, and never return to ARMING with existing IDs registered. */
+-    if (lll_keyboard_held(lease->mask)) {
+-        lll_keyboard_stop_request(LLL_KEYBOARD_FAILED, ERROR_BUSY);
++    if (wjl_keyboard_held(lease->mask)) {
++        wjl_keyboard_stop_request(WJL_KEYBOARD_FAILED, ERROR_BUSY);
+         return 0;
+     }
+-    if (LLL_KB_NOW() - started >= LLL_KEYBOARD_COMMAND_MS) {
+-        lll_keyboard_stop_request(LLL_KEYBOARD_FAILED, ERROR_TIMEOUT);
++    if (WJL_KB_NOW() - started >= WJL_KEYBOARD_COMMAND_MS) {
++        wjl_keyboard_stop_request(WJL_KEYBOARD_FAILED, ERROR_TIMEOUT);
+         return 0;
+     }
+-    if (WaitForSingleObject(lease->stop, 0) != WAIT_TIMEOUT || !lll_keyboard_foreground(lease) ||
++    if (WaitForSingleObject(lease->stop, 0) != WAIT_TIMEOUT || !wjl_keyboard_foreground(lease) ||
+         WaitForSingleObject(lease->process, 0) != WAIT_TIMEOUT) {
+-        lll_keyboard_stop_request(LLL_KEYBOARD_REVOKED, ERROR_CANCELLED);
++        wjl_keyboard_stop_request(WJL_KEYBOARD_REVOKED, ERROR_CANCELLED);
+         return 0;
+     }
+-    AcquireSRWLockExclusive(&lll_keyboard_data);
+-    lease->register_ms = LLL_KB_NOW() - started;
+-    if (lease->state == LLL_KEYBOARD_ARMING) {
+-        lease->heartbeat = LLL_KB_NOW();
+-        lease->state = LLL_KEYBOARD_ACTIVE;
+-    }
+-    ReleaseSRWLockExclusive(&lll_keyboard_data);
++    AcquireSRWLockExclusive(&wjl_keyboard_data);
++    lease->register_ms = WJL_KB_NOW() - started;
++    if (lease->state == WJL_KEYBOARD_ARMING) {
++        lease->heartbeat = WJL_KB_NOW();
++        lease->state = WJL_KEYBOARD_ACTIVE;
++    }
++    ReleaseSRWLockExclusive(&wjl_keyboard_data);
+     return 1;
+ }
+-static DWORD WINAPI lll_keyboard_thread(void *unused) {
+-    LLLSteamKeyboardLease *lease = &lll_keyboard_lease;
++static DWORD WINAPI wjl_keyboard_thread(void *unused) {
++    WJLSteamKeyboardLease *lease = &wjl_keyboard_lease;
+     HINSTANCE instance = GetModuleHandleW(NULL);
+     WNDCLASSW type;
+     HANDLE waits[2];
+     int owns_class = 0;
+     (void)unused;
+     ZeroMemory(&type, sizeof(type));
+-    type.lpfnWndProc = lll_keyboard_proc;
++    type.lpfnWndProc = wjl_keyboard_proc;
+     type.hInstance = instance;
+-    type.lpszClassName = lll_keyboard_class;
++    type.lpszClassName = wjl_keyboard_class;
+     if (!RegisterClassW(&type)) goto setup_failed;
+     owns_class = 1;
+-    lease->window = CreateWindowExW(0, lll_keyboard_class, L"", 0, 0, 0, 0, 0,
++    lease->window = CreateWindowExW(0, wjl_keyboard_class, L"", 0, 0, 0, 0, 0,
+                                    HWND_MESSAGE, NULL, instance, NULL);
+     if (!lease->window) goto setup_failed;
+-    lease->foreground_hook = LLL_KB_HOOK(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, NULL,
+-        lll_keyboard_foreground_event, 0, 0, WINEVENT_OUTOFCONTEXT);
++    lease->foreground_hook = WJL_KB_HOOK(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, NULL,
++        wjl_keyboard_foreground_event, 0, 0, WINEVENT_OUTOFCONTEXT);
+     if (!lease->foreground_hook) goto setup_failed;
+     waits[0] = lease->stop;
+     waits[1] = lease->process;
+@@ -330,71 +333,71 @@
+         uint32_t state;
+         ULONGLONG now, heartbeat;
+         DWORD timeout, result;
+-        AcquireSRWLockShared(&lll_keyboard_data);
++        AcquireSRWLockShared(&wjl_keyboard_data);
+         state = lease->state;
+         heartbeat = lease->heartbeat;
+-        ReleaseSRWLockShared(&lll_keyboard_data);
+-        now = LLL_KB_NOW();
+-        if (state != LLL_KEYBOARD_ARMING && state != LLL_KEYBOARD_ACTIVE) break;
+-        if (state == LLL_KEYBOARD_ARMING) {
+-            if (!lll_keyboard_foreground(lease)) {
+-                lll_keyboard_stop_request(LLL_KEYBOARD_REVOKED, ERROR_CANCELLED); break;
+-            }
+-            if (now - lease->started >= LLL_KEYBOARD_ARM_MS) {
+-                lll_keyboard_stop_request(LLL_KEYBOARD_FAILED, ERROR_TIMEOUT); break;
++        ReleaseSRWLockShared(&wjl_keyboard_data);
++        now = WJL_KB_NOW();
++        if (state != WJL_KEYBOARD_ARMING && state != WJL_KEYBOARD_ACTIVE) break;
++        if (state == WJL_KEYBOARD_ARMING) {
++            if (!wjl_keyboard_foreground(lease)) {
++                wjl_keyboard_stop_request(WJL_KEYBOARD_REVOKED, ERROR_CANCELLED); break;
++            }
++            if (now - lease->started >= WJL_KEYBOARD_ARM_MS) {
++                wjl_keyboard_stop_request(WJL_KEYBOARD_FAILED, ERROR_TIMEOUT); break;
+             }
+             /* No raw sink is registered. This finite qualification is the only
+              * timed key sampling: at most 2 seconds, then no idle retry/rearm. */
+-            if (!lll_keyboard_held(lease->mask)) {
+-                if (!lll_keyboard_register_worker(lease)) break;
++            if (!wjl_keyboard_held(lease->mask)) {
++                if (!wjl_keyboard_register_worker(lease)) break;
+                 SetEvent(lease->ready);
+                 continue;
+             }
+-            now = LLL_KB_NOW();
+-            if (now - lease->started >= LLL_KEYBOARD_ARM_MS) {
+-                lll_keyboard_stop_request(LLL_KEYBOARD_FAILED, ERROR_TIMEOUT); break;
+-            }
+-            timeout = LLL_KEYBOARD_ARM_MS - (DWORD)(now - lease->started);
++            now = WJL_KB_NOW();
++            if (now - lease->started >= WJL_KEYBOARD_ARM_MS) {
++                wjl_keyboard_stop_request(WJL_KEYBOARD_FAILED, ERROR_TIMEOUT); break;
++            }
++            timeout = WJL_KEYBOARD_ARM_MS - (DWORD)(now - lease->started);
+             if (timeout > 16) timeout = 16;
+         } else {
+             ULONGLONG elapsed = now - heartbeat;
+-            if (elapsed >= LLL_KEYBOARD_TTL_MS) {
+-                if (lll_keyboard_deadline(0) != LLL_KEYBOARD_ACTIVE) break;
++            if (elapsed >= WJL_KEYBOARD_TTL_MS) {
++                if (wjl_keyboard_deadline(0) != WJL_KEYBOARD_ACTIVE) break;
+                 continue;
+             }
+-            timeout = LLL_KEYBOARD_TTL_MS - (DWORD)elapsed;
++            timeout = WJL_KEYBOARD_TTL_MS - (DWORD)elapsed;
+         }
+         result = MsgWaitForMultipleObjectsEx(2, waits, timeout, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+         if (result == WAIT_OBJECT_0) break;
+         if (result == WAIT_OBJECT_0 + 1) {
+-            lll_keyboard_stop_request(LLL_KEYBOARD_REVOKED, ERROR_PROCESS_ABORTED); break;
++            wjl_keyboard_stop_request(WJL_KEYBOARD_REVOKED, ERROR_PROCESS_ABORTED); break;
+         }
+         if (result == WAIT_OBJECT_0 + 2) {
+-            if (!lll_keyboard_messages()) { lll_keyboard_stop_request(LLL_KEYBOARD_REVOKED, ERROR_CANCELLED); break; }
++            if (!wjl_keyboard_messages()) { wjl_keyboard_stop_request(WJL_KEYBOARD_REVOKED, ERROR_CANCELLED); break; }
+         } else if (result != WAIT_TIMEOUT) {
+-            lll_keyboard_stop_request(LLL_KEYBOARD_FAILED, GetLastError()); break;
++            wjl_keyboard_stop_request(WJL_KEYBOARD_FAILED, GetLastError()); break;
+         }
+         /* A heartbeat does not wake this thread. At the previous deadline the
+          * next loop recomputes the remaining TTL without key/foreground reads. */
+     }
+     goto done;
+ setup_failed:
+-    { DWORD error = GetLastError(); lll_keyboard_stop_request(LLL_KEYBOARD_FAILED, error ? error : ERROR_NOT_READY); }
++    { DWORD error = GetLastError(); wjl_keyboard_stop_request(WJL_KEYBOARD_FAILED, error ? error : ERROR_NOT_READY); }
+ done:
+-    lll_keyboard_unregister_worker(lease);
+-    if (lease->foreground_hook && !LLL_KB_UNHOOK(lease->foreground_hook)) {
+-        AcquireSRWLockExclusive(&lll_keyboard_data);
+-        lease->terminal = LLL_KEYBOARD_FAILED;
++    wjl_keyboard_unregister_worker(lease);
++    if (lease->foreground_hook && !WJL_KB_UNHOOK(lease->foreground_hook)) {
++        AcquireSRWLockExclusive(&wjl_keyboard_data);
++        lease->terminal = WJL_KEYBOARD_FAILED;
+         lease->error = ERROR_BUSY;
+-        ReleaseSRWLockExclusive(&lll_keyboard_data);
++        ReleaseSRWLockExclusive(&wjl_keyboard_data);
+     }
+     lease->foreground_hook = NULL;
+     if (lease->window) DestroyWindow(lease->window);
+     lease->window = NULL;
+-    if (owns_class) UnregisterClassW(lll_keyboard_class, instance);
+-    AcquireSRWLockExclusive(&lll_keyboard_data);
+-    lease->state = lease->terminal ? lease->terminal : LLL_KEYBOARD_REVOKED;
+-    ReleaseSRWLockExclusive(&lll_keyboard_data);
++    if (owns_class) UnregisterClassW(wjl_keyboard_class, instance);
++    AcquireSRWLockExclusive(&wjl_keyboard_data);
++    lease->state = lease->terminal ? lease->terminal : WJL_KEYBOARD_REVOKED;
++    ReleaseSRWLockExclusive(&wjl_keyboard_data);
+     SetEvent(lease->ready);
+     return 0;
+ }
+@@ -402,13 +405,13 @@
+ /* Lifecycle lock held. Never close a handle or reset storage under a live
+  * worker. Keeping one retired pair makes explicit release idempotent without
+  * a token history; a stale pair can never close a new lease. */
+-static int lll_keyboard_reap_locked(DWORD timeout) {
+-    LLLSteamKeyboardLease *lease = &lll_keyboard_lease;
++static int wjl_keyboard_reap_locked(DWORD timeout) {
++    WJLSteamKeyboardLease *lease = &wjl_keyboard_lease;
+     if (!lease->thread) return 1;
+     if (WaitForSingleObject(lease->thread, timeout) != WAIT_OBJECT_0) return 0;
+-    lll_keyboard_retired.pid = lease->pid;
+-    lll_keyboard_retired.client = lease->client;
+-    lll_keyboard_retired.generation = lease->generation;
++    wjl_keyboard_retired.pid = lease->pid;
++    wjl_keyboard_retired.client = lease->client;
++    wjl_keyboard_retired.generation = lease->generation;
+     CloseHandle(lease->thread);
+     CloseHandle(lease->ready);
+     CloseHandle(lease->stop);
+@@ -416,61 +419,61 @@
+     ZeroMemory(lease, sizeof(*lease));
+     return 1;
+ }
+-static int lll_keyboard_same_session(DWORD pid, const FILETIME *creation) {
+-    return !lll_keyboard_session_pid || (pid == lll_keyboard_session_pid &&
+-        CompareFileTime(creation, &lll_keyboard_session_creation) == 0);
+-}
+-
+-DWORD lll_keyboard_acquire(DWORD pid, const wchar_t *expected, uint32_t client,
+-                           const uint32_t mask[8], LLLSteamKeyboardReply *out) {
+-    LLLSteamKeyboardLease *lease = &lll_keyboard_lease;
++static int wjl_keyboard_same_session(DWORD pid, const FILETIME *creation) {
++    return !wjl_keyboard_session_pid || (pid == wjl_keyboard_session_pid &&
++        CompareFileTime(creation, &wjl_keyboard_session_creation) == 0);
++}
++
++DWORD wjl_keyboard_acquire(DWORD pid, const wchar_t *expected, uint32_t client,
++                           const uint32_t mask[8], WJLSteamKeyboardReply *out) {
++    WJLSteamKeyboardLease *lease = &wjl_keyboard_lease;
+     HANDLE process = NULL;
+     FILETIME creation;
+     DWORD error = ERROR_INVALID_PARAMETER, foreground_pid = 0;
+     HWND foreground;
+-    if (!out || !client || !lll_keyboard_mask_valid(mask)) return ERROR_INVALID_PARAMETER;
++    if (!out || !client || !wjl_keyboard_mask_valid(mask)) return ERROR_INVALID_PARAMETER;
+     ZeroMemory(out, sizeof(*out));
+-    AcquireSRWLockExclusive(&lll_keyboard_lifecycle);
+-    lll_keyboard_reap_locked(0);
++    AcquireSRWLockExclusive(&wjl_keyboard_lifecycle);
++    wjl_keyboard_reap_locked(0);
+     if (lease->thread) {
+         if (pid == lease->pid && client == lease->client && !memcmp(mask, lease->mask, sizeof(lease->mask))) {
+-            lll_keyboard_reply_locked(out); error = 0;
++            wjl_keyboard_reply_locked(out); error = 0;
+         } else error = ERROR_BUSY;
+         goto done;
+     }
+-    if (client <= lll_keyboard_highest_client || lll_keyboard_last_generation == UINT32_MAX) goto done;
+-    error = LLL_KB_IDENTIFY(pid, expected, &process, &creation);
++    if (client <= wjl_keyboard_highest_client || wjl_keyboard_last_generation == UINT32_MAX) goto done;
++    error = WJL_KB_IDENTIFY(pid, expected, &process, &creation);
+     if (error) goto done;
+-    if (!lll_keyboard_same_session(pid, &creation)) { error = ERROR_ACCESS_DENIED; goto done; }
+-    foreground = LLL_KB_FOREGROUND();
+-    if (foreground) LLL_KB_WINDOW_PID(foreground, &foreground_pid);
+-    if (!foreground || foreground_pid != pid || !LLL_KB_VISIBLE(foreground)) { error = ERROR_NOT_READY; goto done; }
++    if (!wjl_keyboard_same_session(pid, &creation)) { error = ERROR_ACCESS_DENIED; goto done; }
++    foreground = WJL_KB_FOREGROUND();
++    if (foreground) WJL_KB_WINDOW_PID(foreground, &foreground_pid);
++    if (!foreground || foreground_pid != pid || !WJL_KB_VISIBLE(foreground)) { error = ERROR_NOT_READY; goto done; }
+     lease->ready = CreateEventW(NULL, TRUE, FALSE, NULL);
+     if (!lease->ready) { error = GetLastError(); goto failed_setup; }
+     lease->stop = CreateEventW(NULL, TRUE, FALSE, NULL);
+     if (!lease->stop) { error = GetLastError(); goto failed_setup; }
+     lease->pid = pid; lease->target = foreground; lease->process = process; process = NULL;
+     lease->creation = creation; lease->client = client;
+-    lease->generation = ++lll_keyboard_last_generation;
+-    lease->state = LLL_KEYBOARD_ARMING;
+-    lease->terminal = LLL_KEYBOARD_REVOKED;
++    lease->generation = ++wjl_keyboard_last_generation;
++    lease->state = WJL_KEYBOARD_ARMING;
++    lease->terminal = WJL_KEYBOARD_REVOKED;
+     memcpy(lease->mask, mask, sizeof(lease->mask));
+-    lease->started = lease->heartbeat = LLL_KB_NOW();
++    lease->started = lease->heartbeat = WJL_KB_NOW();
+     /* Accepted ownership is recorded BEFORE a worker can register anything.
+      * A lost reply can therefore always be rolled back by exact client/gen0. */
+-    lll_keyboard_highest_client = client;
+-    lll_keyboard_session_pid = pid;
+-    lll_keyboard_session_creation = creation;
+-    lease->thread = CreateThread(NULL, 0, lll_keyboard_thread, NULL, 0, NULL);
++    wjl_keyboard_highest_client = client;
++    wjl_keyboard_session_pid = pid;
++    wjl_keyboard_session_creation = creation;
++    lease->thread = CreateThread(NULL, 0, wjl_keyboard_thread, NULL, 0, NULL);
+     if (!lease->thread) {
+         error = GetLastError();
+-        lll_keyboard_retired.pid = pid; lll_keyboard_retired.client = client;
+-        lll_keyboard_retired.generation = lease->generation;
++        wjl_keyboard_retired.pid = pid; wjl_keyboard_retired.client = client;
++        wjl_keyboard_retired.generation = lease->generation;
+         goto failed_setup;
+     }
+     /* Do not wait on UI activation. ARMING is an accepted lease, never a
+      * promise that keys are suppressed; a later explicit sample sees ACTIVE. */
+-    lll_keyboard_reply_locked(out);
++    wjl_keyboard_reply_locked(out);
+     error = 0;
+     goto done;
+ failed_setup:
+@@ -480,112 +483,112 @@
+     ZeroMemory(lease, sizeof(*lease));
+ done:
+     if (process) CloseHandle(process);
+-    ReleaseSRWLockExclusive(&lll_keyboard_lifecycle);
++    ReleaseSRWLockExclusive(&wjl_keyboard_lifecycle);
+     return error;
+ }
+ 
+-DWORD lll_keyboard_snapshot(DWORD pid, uint32_t client, uint32_t generation, LLLSteamKeyboardSample *out) {
+-    LLLSteamKeyboardLease *lease = &lll_keyboard_lease;
++DWORD wjl_keyboard_snapshot(DWORD pid, uint32_t client, uint32_t generation, WJLSteamKeyboardSample *out) {
++    WJLSteamKeyboardLease *lease = &wjl_keyboard_lease;
+     DWORD error = ERROR_NOT_FOUND;
+     uint32_t state;
+     if (!out || !client || !generation) return ERROR_INVALID_PARAMETER;
+     ZeroMemory(out, sizeof(*out));
+-    AcquireSRWLockShared(&lll_keyboard_lifecycle);
++    AcquireSRWLockShared(&wjl_keyboard_lifecycle);
+     if (!lease->thread || pid != lease->pid || client != lease->client || generation != lease->generation) goto done;
+-    out->version = LLL_KEYBOARD_VERSION; out->generation = generation;
+-    state = lll_keyboard_deadline(0);
+-    if (state == LLL_KEYBOARD_ACTIVE) {
+-        if (!lll_keyboard_foreground(lease) || WaitForSingleObject(lease->process, 0) != WAIT_TIMEOUT) {
+-            lll_keyboard_stop_request(LLL_KEYBOARD_REVOKED, ERROR_CANCELLED);
++    out->version = WJL_KEYBOARD_VERSION; out->generation = generation;
++    state = wjl_keyboard_deadline(0);
++    if (state == WJL_KEYBOARD_ACTIVE) {
++        if (!wjl_keyboard_foreground(lease) || WaitForSingleObject(lease->process, 0) != WAIT_TIMEOUT) {
++            wjl_keyboard_stop_request(WJL_KEYBOARD_REVOKED, ERROR_CANCELLED);
+         } else {
+             /* One physical read per captured key, only on an explicit active
+              * sample. The high bit is current state; the low bit is ignored.
+              * No engine keyboard reader is replaced or modified. */
+             for (unsigned int key = 0; key < 256; ++key)
+-                if (lll_keyboard_bit(lease->mask, key) && (LLL_KB_ASYNC((int)key) & 0x8000))
++                if (wjl_keyboard_bit(lease->mask, key) && (WJL_KB_ASYNC((int)key) & 0x8000))
+                     out->keys[key >> 5] |= 1u << (key & 31);
+-            if (!lll_keyboard_foreground(lease)) {
++            if (!wjl_keyboard_foreground(lease)) {
+                 ZeroMemory(out->keys, sizeof(out->keys));
+-                lll_keyboard_stop_request(LLL_KEYBOARD_REVOKED, ERROR_CANCELLED);
++                wjl_keyboard_stop_request(WJL_KEYBOARD_REVOKED, ERROR_CANCELLED);
+             } else {
+-                lll_keyboard_deadline(1);
++                wjl_keyboard_deadline(1);
+             }
+         }
+     }
+-    AcquireSRWLockShared(&lll_keyboard_data);
++    AcquireSRWLockShared(&wjl_keyboard_data);
+     out->state = lease->state;
+-    ReleaseSRWLockShared(&lll_keyboard_data);
+-    if (out->state != LLL_KEYBOARD_ACTIVE) ZeroMemory(out->keys, sizeof(out->keys));
++    ReleaseSRWLockShared(&wjl_keyboard_data);
++    if (out->state != WJL_KEYBOARD_ACTIVE) ZeroMemory(out->keys, sizeof(out->keys));
+     error = 0;
+ done:
+-    ReleaseSRWLockShared(&lll_keyboard_lifecycle);
++    ReleaseSRWLockShared(&wjl_keyboard_lifecycle);
+     return error;
+ }
+ 
+ /* Final fence after the service takes its single pointer sample. This does
+  * not read keys or renew the heartbeat, and cannot revive an expired lease. */
+-uint32_t lll_keyboard_confirm(DWORD pid, uint32_t client, uint32_t generation) {
+-    LLLSteamKeyboardLease *lease = &lll_keyboard_lease;
+-    uint32_t state = LLL_KEYBOARD_FAILED;
+-    AcquireSRWLockShared(&lll_keyboard_lifecycle);
++uint32_t wjl_keyboard_confirm(DWORD pid, uint32_t client, uint32_t generation) {
++    WJLSteamKeyboardLease *lease = &wjl_keyboard_lease;
++    uint32_t state = WJL_KEYBOARD_FAILED;
++    AcquireSRWLockShared(&wjl_keyboard_lifecycle);
+     if (!lease->thread || pid != lease->pid || client != lease->client || generation != lease->generation) goto done;
+-    state = lll_keyboard_deadline(0);
+-    if (state == LLL_KEYBOARD_ACTIVE && (!lll_keyboard_foreground(lease) ||
++    state = wjl_keyboard_deadline(0);
++    if (state == WJL_KEYBOARD_ACTIVE && (!wjl_keyboard_foreground(lease) ||
+         WaitForSingleObject(lease->process, 0) != WAIT_TIMEOUT)) {
+-        lll_keyboard_stop_request(LLL_KEYBOARD_REVOKED, ERROR_CANCELLED);
+-        AcquireSRWLockShared(&lll_keyboard_data);
++        wjl_keyboard_stop_request(WJL_KEYBOARD_REVOKED, ERROR_CANCELLED);
++        AcquireSRWLockShared(&wjl_keyboard_data);
+         state = lease->state;
+-        ReleaseSRWLockShared(&lll_keyboard_data);
++        ReleaseSRWLockShared(&wjl_keyboard_data);
+     }
+ done:
+-    ReleaseSRWLockShared(&lll_keyboard_lifecycle);
++    ReleaseSRWLockShared(&wjl_keyboard_lifecycle);
+     return state;
+ }
+ 
+-DWORD lll_keyboard_release(DWORD pid, const wchar_t *expected, uint32_t client, uint32_t generation,
++DWORD wjl_keyboard_release(DWORD pid, const wchar_t *expected, uint32_t client, uint32_t generation,
+                            uint32_t *released_generation) {
+-    LLLSteamKeyboardLease *lease = &lll_keyboard_lease;
++    WJLSteamKeyboardLease *lease = &wjl_keyboard_lease;
+     DWORD error = ERROR_NOT_FOUND;
+     HANDLE process = NULL;
+     FILETIME creation;
+     if (!client || !released_generation) return ERROR_INVALID_PARAMETER;
+     *released_generation = 0;
+-    AcquireSRWLockExclusive(&lll_keyboard_lifecycle);
++    AcquireSRWLockExclusive(&wjl_keyboard_lifecycle);
+     /* A matching current pair is preferred over any retired acknowledgement. */
+     if (lease->thread && pid == lease->pid && client == lease->client &&
+         (!generation || generation == lease->generation)) {
+         uint32_t owned_generation = lease->generation;
+-        lll_keyboard_stop_request(LLL_KEYBOARD_REVOKED, ERROR_CANCELLED);
+-        if (!lll_keyboard_reap_locked(LLL_KEYBOARD_COMMAND_MS)) { error = ERROR_TIMEOUT; goto done; }
++        wjl_keyboard_stop_request(WJL_KEYBOARD_REVOKED, ERROR_CANCELLED);
++        if (!wjl_keyboard_reap_locked(WJL_KEYBOARD_COMMAND_MS)) { error = ERROR_TIMEOUT; goto done; }
+         *released_generation = owned_generation; error = 0; goto done;
+     }
+-    if (pid == lll_keyboard_retired.pid && client == lll_keyboard_retired.client &&
+-        (!generation || generation == lll_keyboard_retired.generation)) {
+-        *released_generation = lll_keyboard_retired.generation; error = 0; goto done;
++    if (pid == wjl_keyboard_retired.pid && client == wjl_keyboard_retired.client &&
++        (!generation || generation == wjl_keyboard_retired.generation)) {
++        *released_generation = wjl_keyboard_retired.generation; error = 0; goto done;
+     }
+     /* Never-owned rollback after an explicit refusal/lost request. Serialized
+      * authenticated pipe requests cannot later accept this old request. This
+      * acknowledgement changes neither a current lease nor the retired pair. */
+-    if (!generation && client > lll_keyboard_highest_client) {
+-        error = LLL_KB_IDENTIFY(pid, expected, &process, &creation);
+-        if (!error && !lll_keyboard_same_session(pid, &creation)) error = ERROR_ACCESS_DENIED;
++    if (!generation && client > wjl_keyboard_highest_client) {
++        error = WJL_KB_IDENTIFY(pid, expected, &process, &creation);
++        if (!error && !wjl_keyboard_same_session(pid, &creation)) error = ERROR_ACCESS_DENIED;
+     }
+ done:
+     if (process) CloseHandle(process);
+-    ReleaseSRWLockExclusive(&lll_keyboard_lifecycle);
++    ReleaseSRWLockExclusive(&wjl_keyboard_lifecycle);
+     return error;
+ }
+ 
+-void lll_keyboard_cancel_all(void) {
+-    AcquireSRWLockShared(&lll_keyboard_lifecycle);
+-    if (lll_keyboard_lease.thread) lll_keyboard_stop_request(LLL_KEYBOARD_REVOKED, ERROR_CANCELLED);
+-    ReleaseSRWLockShared(&lll_keyboard_lifecycle);
+-}
+-int lll_keyboard_shutdown(void) {
++void wjl_keyboard_cancel_all(void) {
++    AcquireSRWLockShared(&wjl_keyboard_lifecycle);
++    if (wjl_keyboard_lease.thread) wjl_keyboard_stop_request(WJL_KEYBOARD_REVOKED, ERROR_CANCELLED);
++    ReleaseSRWLockShared(&wjl_keyboard_lifecycle);
++}
++int wjl_keyboard_shutdown(void) {
+     int clean;
+-    AcquireSRWLockExclusive(&lll_keyboard_lifecycle);
+-    if (lll_keyboard_lease.thread) lll_keyboard_stop_request(LLL_KEYBOARD_REVOKED, ERROR_CANCELLED);
+-    clean = lll_keyboard_reap_locked(LLL_KEYBOARD_COMMAND_MS);
+-    ReleaseSRWLockExclusive(&lll_keyboard_lifecycle);
++    AcquireSRWLockExclusive(&wjl_keyboard_lifecycle);
++    if (wjl_keyboard_lease.thread) wjl_keyboard_stop_request(WJL_KEYBOARD_REVOKED, ERROR_CANCELLED);
++    clean = wjl_keyboard_reap_locked(WJL_KEYBOARD_COMMAND_MS);
++    ReleaseSRWLockExclusive(&wjl_keyboard_lifecycle);
+     return clean;
+ }
+--- a/native/test_steam_keyboard.c
++++ b/native/test_steam_keyboard.c
+@@ -109,20 +109,20 @@
+     creation->dwHighDateTime=0x01234567u;creation->dwLowDateTime=test_creation_low;
+     return 0;
+ }
+-#define LLL_KB_REGISTER test_register
+-#define LLL_KB_UNREGISTER test_unregister
+-#define LLL_KB_ASYNC test_async
+-#define LLL_KB_FOREGROUND test_foreground
+-#define LLL_KB_WINDOW_PID test_window_pid
+-#define LLL_KB_VISIBLE test_is_visible
+-#define LLL_KB_NOW test_now
+-#define LLL_KB_HOOK test_hook
+-#define LLL_KB_UNHOOK test_unhook
+-#define LLL_KB_IDENTIFY test_identify
++#define WJL_KB_REGISTER test_register
++#define WJL_KB_UNREGISTER test_unregister
++#define WJL_KB_ASYNC test_async
++#define WJL_KB_FOREGROUND test_foreground
++#define WJL_KB_WINDOW_PID test_window_pid
++#define WJL_KB_VISIBLE test_is_visible
++#define WJL_KB_NOW test_now
++#define WJL_KB_HOOK test_hook
++#define WJL_KB_UNHOOK test_unhook
++#define WJL_KB_IDENTIFY test_identify
+ #include "steam_keyboard.c"
+ 
+-_Static_assert(sizeof(LLLSteamKeyboardReply)==48,"keyboard reply ABI");
+-_Static_assert(sizeof(LLLSteamKeyboardSample)==44,"keyboard sample ABI");
++_Static_assert(sizeof(WJLSteamKeyboardReply)==48,"keyboard reply ABI");
++_Static_assert(sizeof(WJLSteamKeyboardSample)==44,"keyboard sample ABI");
+ 
+ static void wait_event(HANDLE event) { CHECK(WaitForSingleObject(event,5000)==WAIT_OBJECT_0); }
+ static void key_bit(uint32_t mask[8],unsigned int key) { mask[key>>5]|=1u<<(key&31); }
+@@ -130,17 +130,17 @@
+     uint32_t any=0;for (unsigned int i=0;i<8;++i) any|=keys[i];return any==0;
+ }
+ static uint32_t current_state(void) {
+-    uint32_t state;AcquireSRWLockShared(&lll_keyboard_data);state=lll_keyboard_lease.state;
+-    ReleaseSRWLockShared(&lll_keyboard_data);return state;
++    uint32_t state;AcquireSRWLockShared(&wjl_keyboard_data);state=wjl_keyboard_lease.state;
++    ReleaseSRWLockShared(&wjl_keyboard_data);return state;
+ }
+ static void reset_fixture(void) {
+-    CHECK(lll_keyboard_shutdown());
+-    CHECK(!lll_keyboard_lease.thread&&!lll_keyboard_lease.ready&&!lll_keyboard_lease.stop&&!lll_keyboard_lease.process);
++    CHECK(wjl_keyboard_shutdown());
++    CHECK(!wjl_keyboard_lease.thread&&!wjl_keyboard_lease.ready&&!wjl_keyboard_lease.stop&&!wjl_keyboard_lease.process);
+     CHECK(!InterlockedCompareExchange(&test_fake_errors,0,0));
+     for (unsigned int i=0;i<2049;++i) CHECK(!test_live[i]);
+-    ZeroMemory(&lll_keyboard_retired,sizeof(lll_keyboard_retired));
+-    lll_keyboard_highest_client=lll_keyboard_last_generation=0;lll_keyboard_session_pid=0;
+-    ZeroMemory(&lll_keyboard_session_creation,sizeof(lll_keyboard_session_creation));
++    ZeroMemory(&wjl_keyboard_retired,sizeof(wjl_keyboard_retired));
++    wjl_keyboard_highest_client=wjl_keyboard_last_generation=0;wjl_keyboard_session_pid=0;
++    ZeroMemory(&wjl_keyboard_session_creation,sizeof(wjl_keyboard_session_creation));
+     ZeroMemory(test_tuples,sizeof(test_tuples));ZeroMemory(test_removed,sizeof(test_removed));
+     ZeroMemory((void *)test_keys,sizeof(test_keys));
+     test_registers=test_unregisters=test_reads=test_focus_reads=test_identifies=0;
+@@ -153,41 +153,41 @@
+ }
+ static void direct_begin(const uint32_t mask[8]) {
+     reset_fixture();
+-    lll_keyboard_lease.target=TEST_TARGET;lll_keyboard_lease.window=TEST_TARGET;lll_keyboard_lease.pid=test_pid;
+-    lll_keyboard_lease.state=LLL_KEYBOARD_ARMING;lll_keyboard_lease.terminal=LLL_KEYBOARD_REVOKED;
+-    lll_keyboard_lease.stop=CreateEventW(NULL,TRUE,FALSE,NULL);CHECK(lll_keyboard_lease.stop!=NULL);
++    wjl_keyboard_lease.target=TEST_TARGET;wjl_keyboard_lease.window=TEST_TARGET;wjl_keyboard_lease.pid=test_pid;
++    wjl_keyboard_lease.state=WJL_KEYBOARD_ARMING;wjl_keyboard_lease.terminal=WJL_KEYBOARD_REVOKED;
++    wjl_keyboard_lease.stop=CreateEventW(NULL,TRUE,FALSE,NULL);CHECK(wjl_keyboard_lease.stop!=NULL);
+     CHECK(DuplicateHandle(GetCurrentProcess(),GetCurrentProcess(),GetCurrentProcess(),
+-                          &lll_keyboard_lease.process,SYNCHRONIZE,FALSE,0));
+-    memcpy(lll_keyboard_lease.mask,mask,sizeof(lll_keyboard_lease.mask));
++                          &wjl_keyboard_lease.process,SYNCHRONIZE,FALSE,0));
++    memcpy(wjl_keyboard_lease.mask,mask,sizeof(wjl_keyboard_lease.mask));
+ }
+ static void direct_end(unsigned int successful) {
+-    CHECK(lll_keyboard_unregister_worker(&lll_keyboard_lease));
+-    CHECK(lll_keyboard_lease.registration_count==0);
++    CHECK(wjl_keyboard_unregister_worker(&wjl_keyboard_lease));
++    CHECK(wjl_keyboard_lease.registration_count==0);
+     CHECK((unsigned int)test_unregisters==successful);
+     for (unsigned int i=0;i<successful;++i) CHECK(test_removed[i]==test_tuples[successful-1-i].id);
+     for (unsigned int i=0;i<2049;++i) CHECK(!test_live[i]);
+-    CHECK(CloseHandle(lll_keyboard_lease.stop));CHECK(CloseHandle(lll_keyboard_lease.process));
+-    ZeroMemory(&lll_keyboard_lease,sizeof(lll_keyboard_lease));
++    CHECK(CloseHandle(wjl_keyboard_lease.stop));CHECK(CloseHandle(wjl_keyboard_lease.process));
++    ZeroMemory(&wjl_keyboard_lease,sizeof(wjl_keyboard_lease));
+     CHECK(!test_fake_errors);
+ }
+-static LLLSteamKeyboardReply start_worker(uint32_t client,const uint32_t mask[8],int held) {
+-    LLLSteamKeyboardReply reply;
++static WJLSteamKeyboardReply start_worker(uint32_t client,const uint32_t mask[8],int held) {
++    WJLSteamKeyboardReply reply;
+     /* A new owned worker may have a new ID; each lease's unregisters must
+      * still run on the exact thread that made that lease's first register. */
+     InterlockedExchange(&test_register_thread,0);
+     if (held) InterlockedExchange(&test_keys['W'],0x8000);
+-    CHECK(lll_keyboard_acquire(test_pid,test_expected,client,mask,&reply)==0);
++    CHECK(wjl_keyboard_acquire(test_pid,test_expected,client,mask,&reply)==0);
+     CHECK(reply.version==1&&reply.client==client&&reply.generation!=0);
+     wait_event(test_hook_seen);
+-    if (held) { wait_event(test_async_seen);CHECK(current_state()==LLL_KEYBOARD_ARMING);CHECK(test_registers==0); }
+-    else { wait_event(lll_keyboard_lease.ready);CHECK(current_state()==LLL_KEYBOARD_ACTIVE); }
++    if (held) { wait_event(test_async_seen);CHECK(current_state()==WJL_KEYBOARD_ARMING);CHECK(test_registers==0); }
++    else { wait_event(wjl_keyboard_lease.ready);CHECK(current_state()==WJL_KEYBOARD_ACTIVE); }
+     return reply;
+ }
+-static void finish_worker(const LLLSteamKeyboardReply *reply) {
++static void finish_worker(const WJLSteamKeyboardReply *reply) {
+     uint32_t released=0;
+-    CHECK(lll_keyboard_release(test_pid,test_expected,reply->client,reply->generation,&released)==0);
++    CHECK(wjl_keyboard_release(test_pid,test_expected,reply->client,reply->generation,&released)==0);
+     CHECK(released==reply->generation);
+-    CHECK(!lll_keyboard_lease.thread&&!lll_keyboard_lease.ready&&!lll_keyboard_lease.stop&&!lll_keyboard_lease.process);
++    CHECK(!wjl_keyboard_lease.thread&&!wjl_keyboard_lease.ready&&!wjl_keyboard_lease.stop&&!wjl_keyboard_lease.process);
+     CHECK(test_hooks==test_unhooks&&test_registers==test_unregisters);
+     CHECK(!test_fake_errors);
+ }
+@@ -201,30 +201,32 @@
+                                        0x000300ffu,0xfc00003fu,0xf8000001u,0x00000004u};
+     const unsigned int groups[3][3]={{VK_SHIFT,VK_LSHIFT,VK_RSHIFT},{VK_CONTROL,VK_LCONTROL,VK_RCONTROL},
+                                    {VK_MENU,VK_LMENU,VK_RMENU}};
+-    CHECK(!lll_keyboard_mask_valid(NULL));CHECK(!lll_keyboard_mask_valid(mask));
++    CHECK(!wjl_keyboard_mask_valid(NULL));CHECK(!wjl_keyboard_mask_valid(mask));
+     for (unsigned int key=0;key<256;++key) {
+-        if (lll_keyboard_bit(lll_keyboard_allowed,key)) {
++        if (wjl_keyboard_bit(wjl_keyboard_allowed,key)) {
+             ++allowed;
+             if (!((key>=16&&key<=18)||(key>=160&&key<=165))) {
+-                key_bit(mask,key);CHECK(lll_keyboard_mask_valid(mask));ZeroMemory(mask,sizeof(mask));
++                key_bit(mask,key);CHECK(wjl_keyboard_mask_valid(mask));ZeroMemory(mask,sizeof(mask));
+             }
+         }
+-        else { key_bit(mask,key);CHECK(!lll_keyboard_mask_valid(mask));ZeroMemory(mask,sizeof(mask)); }
++        else { key_bit(mask,key);CHECK(!wjl_keyboard_mask_valid(mask));ZeroMemory(mask,sizeof(mask)); }
+     }
+     for (unsigned int i=0;i<sizeof(excluded)/sizeof(excluded[0]);++i)
+-        CHECK(!lll_keyboard_bit(lll_keyboard_allowed,excluded[i]));
+-    CHECK(allowed==119);CHECK(!memcmp(lll_keyboard_allowed,expected_allowed,sizeof(expected_allowed)));
+-    CHECK(lll_keyboard_mask_valid(lll_keyboard_allowed));
++        CHECK(!wjl_keyboard_bit(wjl_keyboard_allowed,excluded[i]));
++    CHECK(allowed==119);CHECK(!memcmp(wjl_keyboard_allowed,expected_allowed,sizeof(expected_allowed)));
++    CHECK(wjl_keyboard_mask_valid(wjl_keyboard_allowed));
+     for (unsigned int group=0;group<3;++group) for (unsigned int combination=1;combination<8;++combination) {
+         ZeroMemory(mask,sizeof(mask));key_bit(mask,'W');
+         for (unsigned int bit=0;bit<3;++bit) if (combination&(1u<<bit)) key_bit(mask,groups[group][bit]);
+-        CHECK(lll_keyboard_mask_valid(mask)==(combination==7));
+-    }
+-    CHECK(!lll_keyboard_tuple(VK_TAB,MOD_ALT));CHECK(!lll_keyboard_tuple(VK_ESCAPE,MOD_CONTROL));
+-    CHECK(!lll_keyboard_tuple(VK_F4,MOD_ALT));CHECK(!lll_keyboard_tuple(VK_RETURN,MOD_ALT));
+-    CHECK(!lll_keyboard_tuple(VK_SPACE,MOD_ALT));CHECK(!lll_keyboard_tuple(VK_DELETE,MOD_ALT|MOD_CONTROL));
+-    for (unsigned int key=VK_LSHIFT;key<=VK_RMENU;++key) CHECK(!lll_keyboard_tuple(key,0));
+-    for (unsigned int variant=0;variant<8;++variant) CHECK(lll_keyboard_tuple('W',lll_keyboard_modifiers(variant)));
++        CHECK(wjl_keyboard_mask_valid(mask)==(combination==7));
++    }
++    CHECK(!wjl_keyboard_tuple(VK_TAB,MOD_ALT));CHECK(!wjl_keyboard_tuple(VK_ESCAPE,MOD_CONTROL));
++    CHECK(!wjl_keyboard_tuple(VK_F4,MOD_ALT));CHECK(!wjl_keyboard_tuple(VK_RETURN,MOD_ALT));
++    CHECK(!wjl_keyboard_tuple(VK_SPACE,MOD_CONTROL|MOD_SHIFT));
++    CHECK(wjl_keyboard_tuple(VK_SPACE,0));
++    CHECK(!wjl_keyboard_tuple(VK_SPACE,MOD_ALT));CHECK(!wjl_keyboard_tuple(VK_DELETE,MOD_ALT|MOD_CONTROL));
++    for (unsigned int key=VK_LSHIFT;key<=VK_RMENU;++key) CHECK(!wjl_keyboard_tuple(key,0));
++    for (unsigned int variant=0;variant<8;++variant) CHECK(wjl_keyboard_tuple('W',wjl_keyboard_modifiers(variant)));
+ }
+ static void test_registration_rollback(void) {
+     uint32_t mask[8]={0};unsigned int full_count;
+@@ -232,224 +234,224 @@
+     /* Exhaust every possible Nth failure for this key's eight modifier tuples. */
+     for (LONG nth=1;nth<=8;++nth) {
+         direct_begin(mask);test_failure_at=nth;
+-        CHECK(!lll_keyboard_register_worker(&lll_keyboard_lease));
+-        CHECK(test_registers==nth&&lll_keyboard_lease.registration_count==(unsigned int)(nth-1));
+-        CHECK(current_state()==LLL_KEYBOARD_CLOSING&&lll_keyboard_lease.terminal==LLL_KEYBOARD_FAILED);
++        CHECK(!wjl_keyboard_register_worker(&wjl_keyboard_lease));
++        CHECK(test_registers==nth&&wjl_keyboard_lease.registration_count==(unsigned int)(nth-1));
++        CHECK(current_state()==WJL_KEYBOARD_CLOSING&&wjl_keyboard_lease.terminal==WJL_KEYBOARD_FAILED);
+         direct_end((unsigned int)(nth-1));
+     }
+-    direct_begin(lll_keyboard_allowed);CHECK(lll_keyboard_register_worker(&lll_keyboard_lease));
+-    full_count=lll_keyboard_lease.registration_count;CHECK(full_count==880);
++    direct_begin(wjl_keyboard_allowed);CHECK(wjl_keyboard_register_worker(&wjl_keyboard_lease));
++    full_count=wjl_keyboard_lease.registration_count;CHECK(full_count==879);
+     for (unsigned int i=0;i<full_count;++i) {
+         const TestTuple *tuple=&test_tuples[i];UINT modifiers=tuple->modifiers&~MOD_NOREPEAT;
+         CHECK(tuple->modifiers&MOD_NOREPEAT);CHECK(!(tuple->modifiers&~(MOD_SHIFT|MOD_CONTROL|MOD_ALT|MOD_NOREPEAT)));
+-        CHECK(lll_keyboard_bit(lll_keyboard_allowed,tuple->key));CHECK(!(tuple->key>=160&&tuple->key<=165));
+-        CHECK(lll_keyboard_tuple(tuple->key,modifiers));
++        CHECK(wjl_keyboard_bit(wjl_keyboard_allowed,tuple->key));CHECK(!(tuple->key>=160&&tuple->key<=165));
++        CHECK(wjl_keyboard_tuple(tuple->key,modifiers));
+     }
+     direct_end(full_count);
+     /* Roll back a long prefix, including its final successful tuple. */
+-    direct_begin(lll_keyboard_allowed);test_failure_at=(LONG)full_count;
+-    CHECK(!lll_keyboard_register_worker(&lll_keyboard_lease));direct_end(full_count-1);
++    direct_begin(wjl_keyboard_allowed);test_failure_at=(LONG)full_count;
++    CHECK(!wjl_keyboard_register_worker(&wjl_keyboard_lease));direct_end(full_count-1);
+     /* Also exercise the actual worker's failure cleanup, not just the core. */
+     reset_fixture();test_failure_at=4;
+-    { LLLSteamKeyboardReply reply;uint32_t released;
+-      CHECK(lll_keyboard_acquire(test_pid,test_expected,1,mask,&reply)==0);
+-      wait_event(lll_keyboard_lease.thread);CHECK(current_state()==LLL_KEYBOARD_FAILED);
++    { WJLSteamKeyboardReply reply;uint32_t released;
++      CHECK(wjl_keyboard_acquire(test_pid,test_expected,1,mask,&reply)==0);
++      wait_event(wjl_keyboard_lease.thread);CHECK(current_state()==WJL_KEYBOARD_FAILED);
+       CHECK(test_registers==4&&test_unregisters==3&&test_hooks==1&&test_unhooks==1);
+-      CHECK(lll_keyboard_release(test_pid,test_expected,1,reply.generation,&released)==0);
+-      CHECK(released==reply.generation&&!lll_keyboard_lease.thread); }
++      CHECK(wjl_keyboard_release(test_pid,test_expected,1,reply.generation,&released)==0);
++      CHECK(released==reply.generation&&!wjl_keyboard_lease.thread); }
+ }
+ static void test_identity_and_ownership(void) {
+-    uint32_t mask[8]={0},other[8]={0},released;LLLSteamKeyboardReply reply,next,repeat;
+-    LLLSteamKeyboardSample sample;LONG registrations,reads,identifies;HANDLE owned_thread;
++    uint32_t mask[8]={0},other[8]={0},released;WJLSteamKeyboardReply reply,next,repeat;
++    WJLSteamKeyboardSample sample;LONG registrations,reads,identifies;HANDLE owned_thread;
+     key_bit(mask,'W');key_bit(other,'A');reset_fixture();
+-    CHECK(lll_keyboard_acquire(test_pid,L"wrong.exe",1,mask,&reply)==ERROR_ACCESS_DENIED);
+-    CHECK(!lll_keyboard_lease.thread&&test_registers==0);
+-    reply=start_worker(10,mask,0);owned_thread=lll_keyboard_lease.thread;
++    CHECK(wjl_keyboard_acquire(test_pid,L"wrong.exe",1,mask,&reply)==ERROR_ACCESS_DENIED);
++    CHECK(!wjl_keyboard_lease.thread&&test_registers==0);
++    reply=start_worker(10,mask,0);owned_thread=wjl_keyboard_lease.thread;
+     registrations=test_registers;identifies=test_identifies;
+-    CHECK(lll_keyboard_acquire(test_pid,test_expected,10,mask,&repeat)==0);
++    CHECK(wjl_keyboard_acquire(test_pid,test_expected,10,mask,&repeat)==0);
+     CHECK(repeat.generation==reply.generation&&test_identifies==identifies&&test_registers==registrations);
+-    CHECK(lll_keyboard_acquire(test_pid,test_expected,11,mask,&repeat)==ERROR_BUSY);
+-    CHECK(lll_keyboard_acquire(test_pid,test_expected,10,other,&repeat)==ERROR_BUSY);
+-    CHECK(lll_keyboard_acquire(test_pid+1,test_expected,10,mask,&repeat)==ERROR_BUSY);
++    CHECK(wjl_keyboard_acquire(test_pid,test_expected,11,mask,&repeat)==ERROR_BUSY);
++    CHECK(wjl_keyboard_acquire(test_pid,test_expected,10,other,&repeat)==ERROR_BUSY);
++    CHECK(wjl_keyboard_acquire(test_pid+1,test_expected,10,mask,&repeat)==ERROR_BUSY);
+     reads=test_reads;
+-    CHECK(lll_keyboard_snapshot(test_pid,11,reply.generation,&sample)==ERROR_NOT_FOUND);
+-    CHECK(lll_keyboard_snapshot(test_pid+1,10,reply.generation,&sample)==ERROR_NOT_FOUND);
+-    CHECK(lll_keyboard_snapshot(test_pid,10,reply.generation+1,&sample)==ERROR_NOT_FOUND);
+-    CHECK(lll_keyboard_snapshot(test_pid,10,0,&sample)==ERROR_INVALID_PARAMETER);
+-    CHECK(lll_keyboard_release(test_pid,test_expected,10,reply.generation+1,&released)==ERROR_NOT_FOUND);
++    CHECK(wjl_keyboard_snapshot(test_pid,11,reply.generation,&sample)==ERROR_NOT_FOUND);
++    CHECK(wjl_keyboard_snapshot(test_pid+1,10,reply.generation,&sample)==ERROR_NOT_FOUND);
++    CHECK(wjl_keyboard_snapshot(test_pid,10,reply.generation+1,&sample)==ERROR_NOT_FOUND);
++    CHECK(wjl_keyboard_snapshot(test_pid,10,0,&sample)==ERROR_INVALID_PARAMETER);
++    CHECK(wjl_keyboard_release(test_pid,test_expected,10,reply.generation+1,&released)==ERROR_NOT_FOUND);
+     CHECK(released==0&&test_reads==reads);
+-    CHECK(lll_keyboard_release(test_pid,test_expected,11,0,&released)==0&&released==0);
+-    CHECK(lll_keyboard_highest_client==10&&lll_keyboard_lease.thread==owned_thread&&current_state()==LLL_KEYBOARD_ACTIVE);
+-    CHECK(lll_keyboard_release(test_pid,L"wrong.exe",12,0,&released)==ERROR_ACCESS_DENIED);
++    CHECK(wjl_keyboard_release(test_pid,test_expected,11,0,&released)==0&&released==0);
++    CHECK(wjl_keyboard_highest_client==10&&wjl_keyboard_lease.thread==owned_thread&&current_state()==WJL_KEYBOARD_ACTIVE);
++    CHECK(wjl_keyboard_release(test_pid,L"wrong.exe",12,0,&released)==ERROR_ACCESS_DENIED);
+     /* gen0 is rollback of this exact accepted client, never an arbitrary lease. */
+-    CHECK(lll_keyboard_release(test_pid,test_expected,10,0,&released)==0&&released==reply.generation);
+-    CHECK(!lll_keyboard_lease.thread&&test_registers==test_unregisters);
+-    CHECK(lll_keyboard_release(test_pid,test_expected,10,reply.generation,&released)==0&&released==reply.generation);
++    CHECK(wjl_keyboard_release(test_pid,test_expected,10,0,&released)==0&&released==reply.generation);
++    CHECK(!wjl_keyboard_lease.thread&&test_registers==test_unregisters);
++    CHECK(wjl_keyboard_release(test_pid,test_expected,10,reply.generation,&released)==0&&released==reply.generation);
+     ++test_creation_low;
+-    CHECK(lll_keyboard_acquire(test_pid,test_expected,11,mask,&repeat)==ERROR_ACCESS_DENIED);
++    CHECK(wjl_keyboard_acquire(test_pid,test_expected,11,mask,&repeat)==ERROR_ACCESS_DENIED);
+     --test_creation_low;
+-    ResetEvent(test_hook_seen);next=start_worker(11,mask,0);owned_thread=lll_keyboard_lease.thread;
++    ResetEvent(test_hook_seen);next=start_worker(11,mask,0);owned_thread=wjl_keyboard_lease.thread;
+     CHECK(next.generation==reply.generation+1);
+-    CHECK(lll_keyboard_release(test_pid,test_expected,10,reply.generation,&released)==0);
+-    CHECK(lll_keyboard_lease.thread==owned_thread&&current_state()==LLL_KEYBOARD_ACTIVE);
++    CHECK(wjl_keyboard_release(test_pid,test_expected,10,reply.generation,&released)==0);
++    CHECK(wjl_keyboard_lease.thread==owned_thread&&current_state()==WJL_KEYBOARD_ACTIVE);
+     finish_worker(&next);
+-    CHECK(lll_keyboard_release(test_pid,test_expected,10,reply.generation,&released)==ERROR_NOT_FOUND);
+-    CHECK(lll_keyboard_release(test_pid,test_expected,10,0,&released)==ERROR_NOT_FOUND);
+-    CHECK(lll_keyboard_acquire(test_pid,test_expected,10,mask,&repeat)==ERROR_INVALID_PARAMETER);
++    CHECK(wjl_keyboard_release(test_pid,test_expected,10,reply.generation,&released)==ERROR_NOT_FOUND);
++    CHECK(wjl_keyboard_release(test_pid,test_expected,10,0,&released)==ERROR_NOT_FOUND);
++    CHECK(wjl_keyboard_acquire(test_pid,test_expected,10,mask,&repeat)==ERROR_INVALID_PARAMETER);
+ }
+ static void test_counter_limits(void) {
+-    uint32_t mask[8]={0},released=0;LLLSteamKeyboardReply reply,refused;LONG identifies;
+-    key_bit(mask,'W');reset_fixture();lll_keyboard_last_generation=UINT32_MAX-1;
++    uint32_t mask[8]={0},released=0;WJLSteamKeyboardReply reply,refused;LONG identifies;
++    key_bit(mask,'W');reset_fixture();wjl_keyboard_last_generation=UINT32_MAX-1;
+     reply=start_worker(1,mask,0);CHECK(reply.generation==UINT32_MAX);finish_worker(&reply);
+     identifies=test_identifies;
+-    CHECK(lll_keyboard_acquire(test_pid,test_expected,2,mask,&refused)==ERROR_INVALID_PARAMETER);
+-    CHECK(lll_keyboard_last_generation==UINT32_MAX&&!lll_keyboard_lease.thread&&test_identifies==identifies);
++    CHECK(wjl_keyboard_acquire(test_pid,test_expected,2,mask,&refused)==ERROR_INVALID_PARAMETER);
++    CHECK(wjl_keyboard_last_generation==UINT32_MAX&&!wjl_keyboard_lease.thread&&test_identifies==identifies);
+     reset_fixture();reply=start_worker(UINT32_MAX,mask,0);CHECK(reply.client==UINT32_MAX);finish_worker(&reply);
+     identifies=test_identifies;
+-    CHECK(lll_keyboard_acquire(test_pid,test_expected,1,mask,&refused)==ERROR_INVALID_PARAMETER);
+-    CHECK(lll_keyboard_acquire(test_pid,test_expected,UINT32_MAX,mask,&refused)==ERROR_INVALID_PARAMETER);
+-    CHECK(lll_keyboard_release(test_pid,test_expected,1,0,&released)==ERROR_NOT_FOUND&&released==0);
+-    CHECK(lll_keyboard_highest_client==UINT32_MAX&&!lll_keyboard_lease.thread&&test_identifies==identifies);
++    CHECK(wjl_keyboard_acquire(test_pid,test_expected,1,mask,&refused)==ERROR_INVALID_PARAMETER);
++    CHECK(wjl_keyboard_acquire(test_pid,test_expected,UINT32_MAX,mask,&refused)==ERROR_INVALID_PARAMETER);
++    CHECK(wjl_keyboard_release(test_pid,test_expected,1,0,&released)==ERROR_NOT_FOUND&&released==0);
++    CHECK(wjl_keyboard_highest_client==UINT32_MAX&&!wjl_keyboard_lease.thread&&test_identifies==identifies);
+ }
+ static void test_press_during_registration(void) {
+     uint32_t mask[8]={0};const LONG points[]={1,8};
+     key_bit(mask,'W');
+     for (unsigned int i=0;i<sizeof(points)/sizeof(points[0]);++i) {
+-        LLLSteamKeyboardReply reply;uint32_t released=0;
++        WJLSteamKeyboardReply reply;uint32_t released=0;
+         reset_fixture();test_press_after=points[i];
+-        CHECK(lll_keyboard_acquire(test_pid,test_expected,1,mask,&reply)==0);
+-        CHECK(reply.state!=LLL_KEYBOARD_ACTIVE);
+-        wait_event(lll_keyboard_lease.ready);CHECK(current_state()==LLL_KEYBOARD_FAILED);
+-        wait_event(lll_keyboard_lease.thread);
+-        CHECK(lll_keyboard_lease.error==ERROR_BUSY&&lll_keyboard_lease.registration_count==0);
++        CHECK(wjl_keyboard_acquire(test_pid,test_expected,1,mask,&reply)==0);
++        CHECK(reply.state!=WJL_KEYBOARD_ACTIVE);
++        wait_event(wjl_keyboard_lease.ready);CHECK(current_state()==WJL_KEYBOARD_FAILED);
++        wait_event(wjl_keyboard_lease.thread);
++        CHECK(wjl_keyboard_lease.error==ERROR_BUSY&&wjl_keyboard_lease.registration_count==0);
+         CHECK(test_registers==8&&test_unregisters==8&&test_hooks==1&&test_unhooks==1);
+-        CHECK(lll_keyboard_confirm(test_pid,1,reply.generation)==LLL_KEYBOARD_FAILED);
++        CHECK(wjl_keyboard_confirm(test_pid,1,reply.generation)==WJL_KEYBOARD_FAILED);
+         for (unsigned int id=0;id<2049;++id) CHECK(!test_live[id]);
+         InterlockedExchange(&test_keys['W'],0);
+-        CHECK(lll_keyboard_release(test_pid,test_expected,1,reply.generation,&released)==0&&released==reply.generation);
+-        CHECK(!lll_keyboard_lease.thread&&!test_fake_errors);
++        CHECK(wjl_keyboard_release(test_pid,test_expected,1,reply.generation,&released)==0&&released==reply.generation);
++        CHECK(!wjl_keyboard_lease.thread&&!test_fake_errors);
+     }
+ }
+ static void test_held_and_expiry(void) {
+-    uint32_t mask[8]={0};LLLSteamKeyboardReply reply;LLLSteamKeyboardSample sample;
++    uint32_t mask[8]={0};WJLSteamKeyboardReply reply;WJLSteamKeyboardSample sample;
+     LONG registrations,reads;ULONGLONG heartbeat;
+     key_bit(mask,'W');reset_fixture();reply=start_worker(1,mask,1);
+     InterlockedExchange64(&test_clock,10100);InterlockedExchange(&test_keys['W'],0);
+-    CHECK(PostMessageW(lll_keyboard_lease.window,WM_NULL,0,0));wait_event(lll_keyboard_lease.ready);
+-    CHECK(current_state()==LLL_KEYBOARD_ACTIVE&&test_registers==8);registrations=test_registers;
++    CHECK(PostMessageW(wjl_keyboard_lease.window,WM_NULL,0,0));wait_event(wjl_keyboard_lease.ready);
++    CHECK(current_state()==WJL_KEYBOARD_ACTIVE&&test_registers==8);registrations=test_registers;
+     InterlockedExchange(&test_keys['W'],0x8001);InterlockedExchange(&test_keys['A'],1);
+     reads=test_reads;
+     for (unsigned int i=0;i<8;++i) {
+-        CHECK(lll_keyboard_snapshot(test_pid,1,reply.generation,&sample)==0&&sample.state==LLL_KEYBOARD_ACTIVE);
+-        CHECK(lll_keyboard_bit(sample.keys,'W')&&!lll_keyboard_bit(sample.keys,'A'));
++        CHECK(wjl_keyboard_snapshot(test_pid,1,reply.generation,&sample)==0&&sample.state==WJL_KEYBOARD_ACTIVE);
++        CHECK(wjl_keyboard_bit(sample.keys,'W')&&!wjl_keyboard_bit(sample.keys,'A'));
+     }
+     CHECK(test_reads-reads==8&&test_registers==registrations&&test_unregisters==0);
+     InterlockedExchange(&test_keys['W'],1);reads=test_reads;
+-    CHECK(lll_keyboard_snapshot(test_pid,1,reply.generation,&sample)==0&&sample.state==LLL_KEYBOARD_ACTIVE);
++    CHECK(wjl_keyboard_snapshot(test_pid,1,reply.generation,&sample)==0&&sample.state==WJL_KEYBOARD_ACTIVE);
+     CHECK(zero_keys(sample.keys)&&test_reads-reads==1);
+-    heartbeat=lll_keyboard_lease.heartbeat;reads=test_reads;
++    heartbeat=wjl_keyboard_lease.heartbeat;reads=test_reads;
+     InterlockedExchange64(&test_clock,(LONG64)(heartbeat+100));
+-    CHECK(lll_keyboard_confirm(test_pid,1,reply.generation)==LLL_KEYBOARD_ACTIVE);
+-    CHECK(test_reads==reads&&lll_keyboard_lease.heartbeat==heartbeat);
+-    InterlockedExchange64(&test_clock,(LONG64)(heartbeat+LLL_KEYBOARD_TTL_MS));
+-    CHECK(lll_keyboard_snapshot(test_pid,1,reply.generation,&sample)==0);
+-    CHECK(sample.state!=LLL_KEYBOARD_ACTIVE&&zero_keys(sample.keys)&&test_reads==reads);
+-    CHECK(lll_keyboard_lease.heartbeat==heartbeat);
+-    wait_event(lll_keyboard_lease.thread);
+-    CHECK(current_state()==LLL_KEYBOARD_REVOKED&&lll_keyboard_lease.error==ERROR_TIMEOUT);
+-    InterlockedExchange64(&test_clock,(LONG64)(heartbeat+LLL_KEYBOARD_TTL_MS+100));
+-    CHECK(lll_keyboard_snapshot(test_pid,1,reply.generation,&sample)==0&&sample.state==LLL_KEYBOARD_REVOKED);
++    CHECK(wjl_keyboard_confirm(test_pid,1,reply.generation)==WJL_KEYBOARD_ACTIVE);
++    CHECK(test_reads==reads&&wjl_keyboard_lease.heartbeat==heartbeat);
++    InterlockedExchange64(&test_clock,(LONG64)(heartbeat+WJL_KEYBOARD_TTL_MS));
++    CHECK(wjl_keyboard_snapshot(test_pid,1,reply.generation,&sample)==0);
++    CHECK(sample.state!=WJL_KEYBOARD_ACTIVE&&zero_keys(sample.keys)&&test_reads==reads);
++    CHECK(wjl_keyboard_lease.heartbeat==heartbeat);
++    wait_event(wjl_keyboard_lease.thread);
++    CHECK(current_state()==WJL_KEYBOARD_REVOKED&&wjl_keyboard_lease.error==ERROR_TIMEOUT);
++    InterlockedExchange64(&test_clock,(LONG64)(heartbeat+WJL_KEYBOARD_TTL_MS+100));
++    CHECK(wjl_keyboard_snapshot(test_pid,1,reply.generation,&sample)==0&&sample.state==WJL_KEYBOARD_REVOKED);
+     CHECK(zero_keys(sample.keys)&&test_reads==reads&&test_registers==registrations);
+     finish_worker(&reply);
+     /* An initially held key becoming released exactly at the deadline cannot arm. */
+     reset_fixture();InterlockedExchange(&test_block_hook,1);InterlockedExchange(&test_keys['W'],0x8000);
+-    CHECK(lll_keyboard_acquire(test_pid,test_expected,1,mask,&reply)==0);wait_event(test_hook_seen);
+-    CHECK(current_state()==LLL_KEYBOARD_ARMING&&test_registers==0);
+-    InterlockedExchange64(&test_clock,10000+LLL_KEYBOARD_ARM_MS);InterlockedExchange(&test_keys['W'],0);
+-    CHECK(SetEvent(test_hook_gate));wait_event(lll_keyboard_lease.thread);
+-    CHECK(current_state()==LLL_KEYBOARD_FAILED&&lll_keyboard_lease.error==ERROR_TIMEOUT&&test_registers==0);
++    CHECK(wjl_keyboard_acquire(test_pid,test_expected,1,mask,&reply)==0);wait_event(test_hook_seen);
++    CHECK(current_state()==WJL_KEYBOARD_ARMING&&test_registers==0);
++    InterlockedExchange64(&test_clock,10000+WJL_KEYBOARD_ARM_MS);InterlockedExchange(&test_keys['W'],0);
++    CHECK(SetEvent(test_hook_gate));wait_event(wjl_keyboard_lease.thread);
++    CHECK(current_state()==WJL_KEYBOARD_FAILED&&wjl_keyboard_lease.error==ERROR_TIMEOUT&&test_registers==0);
+     finish_worker(&reply);
+     /* The final pointer fence independently revokes at the same exact TTL. */
+-    reset_fixture();reply=start_worker(1,mask,0);reads=test_reads;heartbeat=lll_keyboard_lease.heartbeat;
+-    InterlockedExchange64(&test_clock,(LONG64)(heartbeat+LLL_KEYBOARD_TTL_MS));
+-    CHECK(lll_keyboard_confirm(test_pid,1,reply.generation)!=LLL_KEYBOARD_ACTIVE);
+-    CHECK(test_reads==reads&&lll_keyboard_lease.heartbeat==heartbeat);finish_worker(&reply);
++    reset_fixture();reply=start_worker(1,mask,0);reads=test_reads;heartbeat=wjl_keyboard_lease.heartbeat;
++    InterlockedExchange64(&test_clock,(LONG64)(heartbeat+WJL_KEYBOARD_TTL_MS));
++    CHECK(wjl_keyboard_confirm(test_pid,1,reply.generation)!=WJL_KEYBOARD_ACTIVE);
++    CHECK(test_reads==reads&&wjl_keyboard_lease.heartbeat==heartbeat);finish_worker(&reply);
+ }
+ static void test_full_preset_sample(void) {
+-    LLLSteamKeyboardReply reply;LLLSteamKeyboardSample sample;LONG reads,registrations;
+-    reset_fixture();reply=start_worker(1,lll_keyboard_allowed,0);reads=test_reads;registrations=test_registers;
++    WJLSteamKeyboardReply reply;WJLSteamKeyboardSample sample;LONG reads,registrations;
++    reset_fixture();reply=start_worker(1,wjl_keyboard_allowed,0);reads=test_reads;registrations=test_registers;
+     InterlockedExchange(&test_keys['W'],0x8001);InterlockedExchange(&test_keys['A'],1);
+-    CHECK(lll_keyboard_snapshot(test_pid,1,reply.generation,&sample)==0&&sample.state==LLL_KEYBOARD_ACTIVE);
++    CHECK(wjl_keyboard_snapshot(test_pid,1,reply.generation,&sample)==0&&sample.state==WJL_KEYBOARD_ACTIVE);
+     CHECK(test_reads-reads==119&&test_registers==registrations);
+-    CHECK(lll_keyboard_bit(sample.keys,'W')&&!lll_keyboard_bit(sample.keys,'A'));finish_worker(&reply);
++    CHECK(wjl_keyboard_bit(sample.keys,'W')&&!wjl_keyboard_bit(sample.keys,'A'));finish_worker(&reply);
+ }
+ static void test_obsolete_deadline(void) {
+     uint32_t mask[8]={0};LONG reads;
+-    key_bit(mask,'W');direct_begin(mask);CHECK(lll_keyboard_register_worker(&lll_keyboard_lease));reads=test_reads;
++    key_bit(mask,'W');direct_begin(mask);CHECK(wjl_keyboard_register_worker(&wjl_keyboard_lease));reads=test_reads;
+     /* A snapshot renews just before the worker's previously computed deadline.
+      * At that old deadline the same locked helper must preserve the fresh lease. */
+-    InterlockedExchange64(&test_clock,11999);CHECK(lll_keyboard_deadline(1)==LLL_KEYBOARD_ACTIVE);
+-    CHECK(lll_keyboard_lease.heartbeat==11999);
+-    InterlockedExchange64(&test_clock,12000);CHECK(lll_keyboard_deadline(0)==LLL_KEYBOARD_ACTIVE);
+-    CHECK(WaitForSingleObject(lll_keyboard_lease.stop,0)==WAIT_TIMEOUT&&test_reads==reads);
+-    InterlockedExchange64(&test_clock,13999);CHECK(lll_keyboard_deadline(1)==LLL_KEYBOARD_CLOSING);
+-    CHECK(lll_keyboard_lease.heartbeat==11999&&WaitForSingleObject(lll_keyboard_lease.stop,0)==WAIT_OBJECT_0);
+-    InterlockedExchange64(&test_clock,14000);CHECK(lll_keyboard_deadline(1)==LLL_KEYBOARD_CLOSING);
+-    CHECK(lll_keyboard_lease.heartbeat==11999&&test_reads==reads);direct_end(8);
++    InterlockedExchange64(&test_clock,11999);CHECK(wjl_keyboard_deadline(1)==WJL_KEYBOARD_ACTIVE);
++    CHECK(wjl_keyboard_lease.heartbeat==11999);
++    InterlockedExchange64(&test_clock,12000);CHECK(wjl_keyboard_deadline(0)==WJL_KEYBOARD_ACTIVE);
++    CHECK(WaitForSingleObject(wjl_keyboard_lease.stop,0)==WAIT_TIMEOUT&&test_reads==reads);
++    InterlockedExchange64(&test_clock,13999);CHECK(wjl_keyboard_deadline(1)==WJL_KEYBOARD_CLOSING);
++    CHECK(wjl_keyboard_lease.heartbeat==11999&&WaitForSingleObject(wjl_keyboard_lease.stop,0)==WAIT_OBJECT_0);
++    InterlockedExchange64(&test_clock,14000);CHECK(wjl_keyboard_deadline(1)==WJL_KEYBOARD_CLOSING);
++    CHECK(wjl_keyboard_lease.heartbeat==11999&&test_reads==reads);direct_end(8);
+ }
+ static void test_focus_revocation(void) {
+-    uint32_t mask[8]={0};LLLSteamKeyboardReply reply;LLLSteamKeyboardSample sample;LONG reads;
++    uint32_t mask[8]={0};WJLSteamKeyboardReply reply;WJLSteamKeyboardSample sample;LONG reads;
+     key_bit(mask,'W');reset_fixture();reply=start_worker(1,mask,0);reads=test_reads;
+     InterlockedExchangePointer(&test_foreground_window,TEST_FOREIGN);
+-    CHECK(lll_keyboard_snapshot(test_pid,1,reply.generation,&sample)==0);
+-    CHECK(sample.state!=LLL_KEYBOARD_ACTIVE&&zero_keys(sample.keys)&&test_reads==reads);
+-    wait_event(lll_keyboard_lease.thread);InterlockedExchangePointer(&test_foreground_window,TEST_TARGET);
+-    CHECK(lll_keyboard_confirm(test_pid,1,reply.generation)==LLL_KEYBOARD_REVOKED);
++    CHECK(wjl_keyboard_snapshot(test_pid,1,reply.generation,&sample)==0);
++    CHECK(sample.state!=WJL_KEYBOARD_ACTIVE&&zero_keys(sample.keys)&&test_reads==reads);
++    wait_event(wjl_keyboard_lease.thread);InterlockedExchangePointer(&test_foreground_window,TEST_TARGET);
++    CHECK(wjl_keyboard_confirm(test_pid,1,reply.generation)==WJL_KEYBOARD_REVOKED);
+     CHECK(test_registers==8&&test_unregisters==8);finish_worker(&reply);
+     /* Direct worker-core callback test: unregister immediately and only once. */
+-    direct_begin(mask);CHECK(lll_keyboard_register_worker(&lll_keyboard_lease));
+-    lll_keyboard_foreground_event(NULL,EVENT_SYSTEM_FOREGROUND,TEST_TARGET,0,0,0,0);
+-    CHECK(test_unregisters==0&&current_state()==LLL_KEYBOARD_ACTIVE);
+-    lll_keyboard_foreground_event(NULL,EVENT_SYSTEM_FOREGROUND,TEST_FOREIGN,0,0,0,0);
+-    CHECK(test_unregisters==8&&lll_keyboard_lease.registration_count==0&&current_state()==LLL_KEYBOARD_CLOSING);
+-    CHECK(WaitForSingleObject(lll_keyboard_lease.stop,0)==WAIT_OBJECT_0);
+-    lll_keyboard_foreground_event(NULL,EVENT_SYSTEM_FOREGROUND,TEST_FOREIGN,0,0,0,0);
++    direct_begin(mask);CHECK(wjl_keyboard_register_worker(&wjl_keyboard_lease));
++    wjl_keyboard_foreground_event(NULL,EVENT_SYSTEM_FOREGROUND,TEST_TARGET,0,0,0,0);
++    CHECK(test_unregisters==0&&current_state()==WJL_KEYBOARD_ACTIVE);
++    wjl_keyboard_foreground_event(NULL,EVENT_SYSTEM_FOREGROUND,TEST_FOREIGN,0,0,0,0);
++    CHECK(test_unregisters==8&&wjl_keyboard_lease.registration_count==0&&current_state()==WJL_KEYBOARD_CLOSING);
++    CHECK(WaitForSingleObject(wjl_keyboard_lease.stop,0)==WAIT_OBJECT_0);
++    wjl_keyboard_foreground_event(NULL,EVENT_SYSTEM_FOREGROUND,TEST_FOREIGN,0,0,0,0);
+     CHECK(test_unregisters==8);direct_end(8);
+ }
+ static DWORD WINAPI test_shutdown_thread(void *result) {
+-    *(int *)result=lll_keyboard_shutdown();return 0;
++    *(int *)result=wjl_keyboard_shutdown();return 0;
+ }
+ static void test_retirement_and_handles(void) {
+-    uint32_t mask[8]={0};LLLSteamKeyboardReply reply,other;HANDLE worker,ready,stop,process,shutdown_thread;
++    uint32_t mask[8]={0};WJLSteamKeyboardReply reply,other;HANDLE worker,ready,stop,process,shutdown_thread;
+     DWORD baseline=0,after=0;int shutdown_result=0;uint32_t released=UINT32_MAX;ULONGLONG begun,elapsed;
+     key_bit(mask,'W');reset_fixture();reply=start_worker(1,mask,0);
+-    worker=lll_keyboard_lease.thread;ready=lll_keyboard_lease.ready;stop=lll_keyboard_lease.stop;process=lll_keyboard_lease.process;
+-    InterlockedExchange(&test_block_unregister,1);lll_keyboard_cancel_all();wait_event(test_unregister_seen);
++    worker=wjl_keyboard_lease.thread;ready=wjl_keyboard_lease.ready;stop=wjl_keyboard_lease.stop;process=wjl_keyboard_lease.process;
++    InterlockedExchange(&test_block_unregister,1);wjl_keyboard_cancel_all();wait_event(test_unregister_seen);
+     CHECK(WaitForSingleObject(worker,0)==WAIT_TIMEOUT);
+-    AcquireSRWLockExclusive(&lll_keyboard_lifecycle);CHECK(!lll_keyboard_reap_locked(0));
+-    ReleaseSRWLockExclusive(&lll_keyboard_lifecycle);
+-    CHECK(lll_keyboard_lease.thread==worker&&lll_keyboard_lease.ready==ready&&lll_keyboard_lease.stop==stop&&lll_keyboard_lease.process==process);
++    AcquireSRWLockExclusive(&wjl_keyboard_lifecycle);CHECK(!wjl_keyboard_reap_locked(0));
++    ReleaseSRWLockExclusive(&wjl_keyboard_lifecycle);
++    CHECK(wjl_keyboard_lease.thread==worker&&wjl_keyboard_lease.ready==ready&&wjl_keyboard_lease.stop==stop&&wjl_keyboard_lease.process==process);
+     begun=GetTickCount64();
+-    CHECK(lll_keyboard_release(test_pid,test_expected,reply.client,reply.generation,&released)==ERROR_TIMEOUT);
++    CHECK(wjl_keyboard_release(test_pid,test_expected,reply.client,reply.generation,&released)==ERROR_TIMEOUT);
+     elapsed=GetTickCount64()-begun;CHECK(elapsed>=900&&elapsed<5000&&released==0);
+-    CHECK(lll_keyboard_lease.thread==worker&&lll_keyboard_lease.ready==ready&&lll_keyboard_lease.stop==stop&&lll_keyboard_lease.process==process);
+-    CHECK(lll_keyboard_lease.client==reply.client&&lll_keyboard_lease.generation==reply.generation);
++    CHECK(wjl_keyboard_lease.thread==worker&&wjl_keyboard_lease.ready==ready&&wjl_keyboard_lease.stop==stop&&wjl_keyboard_lease.process==process);
++    CHECK(wjl_keyboard_lease.client==reply.client&&wjl_keyboard_lease.generation==reply.generation);
+     CHECK(WaitForSingleObject(worker,0)==WAIT_TIMEOUT);
+-    CHECK(lll_keyboard_acquire(test_pid,test_expected,2,mask,&other)==ERROR_BUSY);
++    CHECK(wjl_keyboard_acquire(test_pid,test_expected,2,mask,&other)==ERROR_BUSY);
+     CHECK(SetEvent(test_unregister_gate));wait_event(worker);finish_worker(&reply);
+     reset_fixture();reply=start_worker(1,mask,0);InterlockedExchange(&test_block_unregister,1);
+     shutdown_thread=CreateThread(NULL,0,test_shutdown_thread,&shutdown_result,0,NULL);CHECK(shutdown_thread!=NULL);
+     wait_event(test_unregister_seen);CHECK(WaitForSingleObject(shutdown_thread,0)==WAIT_TIMEOUT);
+-    CHECK(lll_keyboard_lease.thread&&lll_keyboard_lease.ready&&lll_keyboard_lease.stop&&lll_keyboard_lease.process);
++    CHECK(wjl_keyboard_lease.thread&&wjl_keyboard_lease.ready&&wjl_keyboard_lease.stop&&wjl_keyboard_lease.process);
+     CHECK(SetEvent(test_unregister_gate));wait_event(shutdown_thread);CHECK(CloseHandle(shutdown_thread));
+-    CHECK(shutdown_result==1&&!lll_keyboard_lease.thread&&!lll_keyboard_lease.ready&&!lll_keyboard_lease.stop&&!lll_keyboard_lease.process);
++    CHECK(shutdown_result==1&&!wjl_keyboard_lease.thread&&!wjl_keyboard_lease.ready&&!wjl_keyboard_lease.stop&&!wjl_keyboard_lease.process);
+     /* Warm window/message initialization before comparing per-job handle use. */
+     reset_fixture();reply=start_worker(1,mask,0);finish_worker(&reply);
+     CHECK(GetProcessHandleCount(GetCurrentProcess(),&baseline));
+     for (uint32_t client=2;client<18;++client) {
+-        LLLSteamKeyboardSample sample;LONG registrations;
++        WJLSteamKeyboardSample sample;LONG registrations;
+         ResetEvent(test_hook_seen);reply=start_worker(client,mask,0);registrations=test_registers;
+-        CHECK(lll_keyboard_snapshot(test_pid,client,reply.generation,&sample)==0&&sample.state==LLL_KEYBOARD_ACTIVE);
++        CHECK(wjl_keyboard_snapshot(test_pid,client,reply.generation,&sample)==0&&sample.state==WJL_KEYBOARD_ACTIVE);
+         CHECK(test_registers==registrations);finish_worker(&reply);
+     }
+     CHECK(GetProcessHandleCount(GetCurrentProcess(),&after));CHECK(after==baseline);
+@@ -459,9 +461,9 @@
+  * default fixture path. The reservation deadline is checked before each API
+  * call; an individual Windows call cannot be preempted by this fixture. */
+ static int test_real_registration(void) {
+-    const wchar_t name[]=L"LLLSteamKeyboardReservationFixture";
++    const wchar_t name[]=L"WJLSteamKeyboardReservationFixture";
+     HINSTANCE instance=GetModuleHandleW(NULL);WNDCLASSW type={0};HWND window=NULL;
+-    int ids[LLL_KEYBOARD_MAX_TUPLES];unsigned int successful=0,attempts=0,unregister_calls=0,unregister_failures=0;
++    int ids[WJL_KEYBOARD_MAX_TUPLES];unsigned int successful=0,attempts=0,unregister_calls=0,unregister_failures=0;
+     unsigned int failure_key=0,failure_modifiers=0;int failure_id=0;
+     DWORD setup_error=0,registration_error=0,cleanup_error=0;
+     ULONGLONG opened=GetTickCount64(),begun=0,reservation_ms=0,cleanup_begun,cleanup_ms,total_ms;
+@@ -473,10 +475,10 @@
+     if (!window) { setup_error=GetLastError();goto cleanup; }
+     begun=GetTickCount64();
+     for (unsigned int key=0;key<256&&!registration_failed&&!budget_exhausted;++key) {
+-        if (!lll_keyboard_bit(lll_keyboard_allowed,key)||(key>=160&&key<=165)) continue;
++        if (!wjl_keyboard_bit(wjl_keyboard_allowed,key)||(key>=160&&key<=165)) continue;
+         for (unsigned int variant=0;variant<8;++variant) {
+-            unsigned int modifiers=lll_keyboard_modifiers(variant);int id=1+(int)(key*8+variant);
+-            if (!lll_keyboard_tuple(key,modifiers)) continue;
++            unsigned int modifiers=wjl_keyboard_modifiers(variant);int id=1+(int)(key*8+variant);
++            if (!wjl_keyboard_tuple(key,modifiers)) continue;
+             if (GetTickCount64()-begun>=120) { budget_exhausted=TRUE;break; }
+             ++attempts;
+             if (!RegisterHotKey(window,id,modifiers|MOD_NOREPEAT,key)) {
+@@ -504,8 +506,8 @@
+         DWORD error=GetLastError();cleanup_ok=FALSE;if (!cleanup_error) cleanup_error=error;
+     }
+     cleanup_ms=GetTickCount64()-cleanup_begun;total_ms=GetTickCount64()-opened;
+-    complete=owns_class&&window&&!setup_error&&!registration_failed&&!budget_exhausted&&successful==880&&cleanup_ok;
+-    printf("{\"mode\":\"real-register\",\"complete\":%s,\"allowed_keys\":119,\"expected_tuples\":880,"
++    complete=owns_class&&window&&!setup_error&&!registration_failed&&!budget_exhausted&&successful==879&&cleanup_ok;
++    printf("{\"mode\":\"real-register\",\"complete\":%s,\"allowed_keys\":119,\"expected_tuples\":879,"
+            "\"attempts\":%u,\"registered\":%u,\"registration_failed\":%s,\"setup_error\":%lu,"
+            "\"failure_vk\":%u,\"failure_modifiers\":%u,\"failure_id\":%d,\"registration_error\":%lu,"
+            "\"reservation_budget_ms\":120,\"budget_exhausted\":%s,\"reservation_ms\":%llu,"
+@@ -527,7 +529,7 @@
+     CHECK(test_hook_seen&&test_hook_gate&&test_async_seen&&test_unregister_seen&&test_unregister_gate);
+     reset_fixture();test_masks_and_tuples();test_registration_rollback();test_identity_and_ownership();test_counter_limits();
+     test_press_during_registration();test_held_and_expiry();test_full_preset_sample();
+-    test_obsolete_deadline();test_focus_revocation();test_retirement_and_handles();CHECK(lll_keyboard_shutdown());
++    test_obsolete_deadline();test_focus_revocation();test_retirement_and_handles();CHECK(wjl_keyboard_shutdown());
+     CHECK(!test_fake_errors);CHECK(CloseHandle(test_hook_seen));CHECK(CloseHandle(test_hook_gate));CHECK(CloseHandle(test_async_seen));
+     CHECK(CloseHandle(test_unregister_seen));CHECK(CloseHandle(test_unregister_gate));
+     printf("PASS %u offline keyboard checks; no real hotkey/WinEvent registration or input\n",checks);
+--- a/native/steam_files.c
++++ b/native/steam_files.c
+@@ -14,8 +14,8 @@
+ 
+ #define MAX_WATCHES 256
+ #define MAX_REQUEST (64u * 1024u * 1024u)
+-static const char EXE_SHA[] = "2ce8b3d74c5573088e4211b060ced0963f1fc1e74526e2645399780b8fb13ff7";
+-static const char GAME_SHA[] = "a457433f0eb766fbe15a6de5a16f0fbbb1fd3c840c5607a5f0b2ebf53b112949";
++static const char EXE_SHA[] = "0acc07debe04714ae04281e1a66bd2eb9d3d85232953e32a93c8a3dd0874eabe";
++static const char GAME_SHA[] = "6d1d4d3bc6fc84801d9f8f1b310e13a603d07409f3d9495d74b42e1d0bb1c08f";
+ static wchar_t home[MAX_PATH], request_file[MAX_PATH], response_file[MAX_PATH], events_file[MAX_PATH];
+ static wchar_t executable[32768], game_root[32768];
+ static int initialized, supported;
+@@ -74,7 +74,7 @@
+     initialized = 1;
+     length = GetEnvironmentVariableW(L"LOCALAPPDATA", home, MAX_PATH);
+     if (!length || length + 48 >= MAX_PATH) return;
+-    wcscat_s(home, MAX_PATH, L"\\LLL"); CreateDirectoryW(home, NULL);
++    wcscat_s(home, MAX_PATH, L"\\WJL"); CreateDirectoryW(home, NULL);
+     wcscat_s(home, MAX_PATH, L"\\Helldivers2"); CreateDirectoryW(home, NULL);
+     wcscat_s(home, MAX_PATH, L"\\Steam"); CreateDirectoryW(home, NULL);
+     swprintf_s(request_file, MAX_PATH, L"%s\\request.bin", home);
+@@ -143,7 +143,7 @@
+     }
+ }
+ 
+-__declspec(dllexport) int lll_steam_boot(void *unused) {
++__declspec(dllexport) int wjl_steam_boot(void *unused) {
+     FILE *stream;
+     (void)unused; initialize();
+     stream = reply_begin(response_file);
+@@ -156,7 +156,7 @@
+     return 0;
+ }
+ 
+-__declspec(dllexport) int lll_steam_poll(void *unused) {
++__declspec(dllexport) int wjl_steam_poll(void *unused) {
+     uint32_t index;
+     int changed = 0;
+     (void)unused;
+@@ -178,7 +178,7 @@
+     return 0;
+ }
+ 
+-__declspec(dllexport) int lll_steam_close(void *unused) {
++__declspec(dllexport) int wjl_steam_close(void *unused) {
+     uint32_t index;
+     (void)unused;
+     for (index = 0; index < watch_count; ++index) {
+@@ -190,7 +190,7 @@
+     return 0;
+ }
+ 
+-__declspec(dllexport) int lll_steam_request(void *unused) {
++__declspec(dllexport) int wjl_steam_request(void *unused) {
+     FILE *input = NULL, *output = NULL;
+     unsigned char *bytes = NULL;
+     wchar_t *path = NULL;
+--- a/native/steam_service.c
++++ b/native/steam_service.c
+@@ -131,7 +131,7 @@
+ }
+ 
+ static int send_screenshot(uint32_t nonce,uint32_t operation,const wchar_t *path,HANDLE outgoing) {
+-    LLLScreenshotJobStatus status;
++    WJLScreenshotJobStatus status;
+     uint32_t fields[8]={nonce,ERROR_INVALID_DATA,0},length=8,path_size;
+     int encoded;
+     if (!path) goto header_only;
+@@ -143,11 +143,11 @@
+         path_size=(uint32_t)encoded-1;length=68+path_size;
+         fields[1]=listing_reserve(length+1);if (fields[1]) goto header_only;
+         if (WideCharToMultiByte(CP_UTF8,WC_ERR_INVALID_CHARS,path,-1,(char*)listing_bytes+68,encoded,NULL,NULL)!=encoded) { fields[1]=ERROR_INVALID_DATA;goto header_only; }
+-        fields[1]=lll_screenshot_job_request(session_pid,executable,path,&status);
++        fields[1]=wjl_screenshot_job_request(session_pid,executable,path,&status);
+         if (fields[1]) goto header_only;
+         if (strlen(status.id)!=32) return 0; /* Accepted: transport-uncertain, never a false rejection. */
+     } else {
+-        fields[1]=operation==14?lll_screenshot_job_status(path,&status):lll_screenshot_job_cancel(path,&status);
++        fields[1]=operation==14?wjl_screenshot_job_status(path,&status):wjl_screenshot_job_cancel(path,&status);
+         if (fields[1]) goto header_only;
+         encoded=WideCharToMultiByte(CP_UTF8,WC_ERR_INVALID_CHARS,status.output_path,-1,NULL,0,NULL,NULL);
+         if (encoded<=0||strlen(status.id)!=32) { fields[1]=ERROR_INVALID_DATA;goto header_only; }
+@@ -177,24 +177,35 @@
+         (operation == 18 && extra != 8)) goto done;
+     memcpy(fields, bytes + 12 + path_size, extra);
+     if (operation == 16) {
+-        LLLSteamKeyboardReply accepted;
+-        if (fields[0] != LLL_KEYBOARD_VERSION) { reply[1] = ERROR_REVISION_MISMATCH; goto done; }
+-        reply[1] = lll_keyboard_acquire(session_pid, executable, fields[1], fields + 2, &accepted);
++        WJLSteamKeyboardReply accepted;
++        if (fields[0] != WJL_KEYBOARD_VERSION) { reply[1] = ERROR_REVISION_MISMATCH; goto done; }
++        reply[1] = wjl_keyboard_acquire(session_pid, executable, fields[1], fields + 2, &accepted);
+         if (!reply[1]) { memcpy(reply + 2, &accepted, sizeof(accepted)); length = 56; }
+     } else if (operation == 17) {
+-        LLLSteamKeyboardSample keyboard;
+-        LLLSteamPointerSample pointer;
++        WJLSteamKeyboardSample keyboard;
++        WJLSteamPointerSample pointer;
+         if (fields[2] > 1) { reply[1] = ERROR_INVALID_PARAMETER; goto done; }
+         ZeroMemory(&pointer, sizeof(pointer));
+-        reply[1] = lll_keyboard_snapshot(session_pid, fields[0], fields[1], &keyboard);
++        reply[1] = wjl_keyboard_snapshot(session_pid, fields[0], fields[1], &keyboard);
+         if (reply[1]) goto done;
+-        if (keyboard.state == LLL_KEYBOARD_ACTIVE) {
+-            if (!lll_pointer_start(session_pid) || !lll_pointer_snapshot_extended(&pointer)) {
++        {
++            static uint32_t last_generation, last_state;
++            if (last_generation != keyboard.generation || last_state != keyboard.state) {
++                char message[192]; DWORD keyboard_error;
++                AcquireSRWLockShared(&wjl_keyboard_data);
++                keyboard_error = wjl_keyboard_lease.error;
++                ReleaseSRWLockShared(&wjl_keyboard_data);
++                sprintf_s(message, sizeof(message), "Keyboard generation=%u state=%u error=%lu", keyboard.generation, keyboard.state, (unsigned long)keyboard_error);
++                note(message); last_generation=keyboard.generation; last_state=keyboard.state;
++            }
++        }
++        if (keyboard.state == WJL_KEYBOARD_ACTIVE) {
++            if (!wjl_pointer_start(session_pid) || !wjl_pointer_snapshot_extended(&pointer)) {
+                 reply[1] = ERROR_NOT_READY; goto done;
+             }
+             if (!fields[2]) { pointer.dx = 0; pointer.dy = 0; }
+-            keyboard.state = lll_keyboard_confirm(session_pid, fields[0], fields[1]);
+-            if (keyboard.state != LLL_KEYBOARD_ACTIVE) {
++            keyboard.state = wjl_keyboard_confirm(session_pid, fields[0], fields[1]);
++            if (keyboard.state != WJL_KEYBOARD_ACTIVE) {
+                 ZeroMemory(&pointer, sizeof(pointer)); ZeroMemory(keyboard.keys, sizeof(keyboard.keys));
+             }
+         }
+@@ -203,9 +214,9 @@
+         length = 88;
+     } else {
+         uint32_t generation = 0;
+-        reply[1] = lll_keyboard_release(session_pid, executable, fields[0], fields[1], &generation);
++        reply[1] = wjl_keyboard_release(session_pid, executable, fields[0], fields[1], &generation);
+         if (!reply[1]) {
+-            reply[2] = LLL_KEYBOARD_VERSION; reply[3] = fields[0]; reply[4] = generation; length = 20;
++            reply[2] = WJL_KEYBOARD_VERSION; reply[3] = fields[0]; reply[4] = generation; length = 20;
+         }
+     }
+ done:
+@@ -267,13 +278,13 @@
+     if (path_size != sizeof(path) - 1 || size < 12 + path_size + 16 ||
+         memcmp(bytes + 12, path, sizeof(path) - 1)) goto refused;
+     memcpy(fields, bytes + 12 + path_size, sizeof(fields));
+-    if (fields[0] != LLL_CODEC_VERSION) { reply[1] = ERROR_REVISION_MISMATCH; goto refused; }
++    if (fields[0] != WJL_CODEC_VERSION) { reply[1] = ERROR_REVISION_MISMATCH; goto refused; }
+     payload = size - 12 - path_size - 16;
+-    if (payload > LLL_CODEC_MAX_PACKED || fields[3] > LLL_CODEC_MAX_RAW) { reply[1] = ERROR_INVALID_PARAMETER; goto refused; }
+-    capacity = lll_codec_capacity(fields[1], payload, fields[3]);
++    if (payload > WJL_CODEC_MAX_PACKED || fields[3] > WJL_CODEC_MAX_RAW) { reply[1] = ERROR_INVALID_PARAMETER; goto refused; }
++    capacity = wjl_codec_capacity(fields[1], payload, fields[3]);
+     reply[1] = listing_reserve(12 + capacity);
+     if (reply[1]) goto refused;
+-    reply[1] = lll_codec_run(fields[1], fields[2], bytes + 12 + path_size + 16, payload, fields[3],
++    reply[1] = wjl_codec_run(fields[1], fields[2], bytes + 12 + path_size + 16, payload, fields[3],
+                              listing_bytes + 12, capacity, &reply[2]);
+     if (reply[1]) { reply[2] = 0; goto refused; }
+     memcpy(listing_bytes, reply, sizeof(reply));
+@@ -290,28 +301,28 @@
+     memcpy(&nonce,bytes,4);memcpy(&operation,bytes+4,4);memcpy(&path_size,bytes+8,4);
+     if (operation==0) {
+         if (size!=12 || nonce!=0 || path_size!=0) return 0;
+-        lll_steam_boot(NULL);return 1;
++        wjl_steam_boot(NULL);return 1;
+     }
+     if (operation==10 || operation==11 || operation==12) {
+         uint32_t reply[11]={0},length=8;
+         reply[0]=nonce;
+         if (operation==11) {
+-            if (!lll_pointer_release()) reply[1]=ERROR_BUSY;
++            if (!wjl_pointer_release()) reply[1]=ERROR_BUSY;
+         } else if (operation==10) {
+-            LLLSteamPointerSnapshot snapshot;
+-            if (!lll_pointer_start(session_pid) || !lll_pointer_snapshot(&snapshot)) reply[1]=ERROR_NOT_READY;
++            WJLSteamPointerSnapshot snapshot;
++            if (!wjl_pointer_start(session_pid) || !wjl_pointer_snapshot(&snapshot)) reply[1]=ERROR_NOT_READY;
+             else { memcpy(reply+2,&snapshot,sizeof(snapshot));length=8+(uint32_t)sizeof(snapshot); }
+         } else {
+-            LLLSteamPointerSample snapshot;
+-            if (!lll_pointer_start(session_pid) || !lll_pointer_snapshot_extended(&snapshot)) reply[1]=ERROR_NOT_READY;
++            WJLSteamPointerSample snapshot;
++            if (!wjl_pointer_start(session_pid) || !wjl_pointer_snapshot_extended(&snapshot)) reply[1]=ERROR_NOT_READY;
+             else { memcpy(reply+2,&snapshot,sizeof(snapshot));length=8+(uint32_t)sizeof(snapshot); }
+         }
+         return transfer(outgoing,&length,4,1)&&transfer(outgoing,reply,length,1) ? 2 : 0;
+     }
+     if (operation==8 || operation==9) {
+         uint32_t reply[MAX_WATCHES+4],length;
+-        if (operation==8) lll_steam_poll(NULL);
+-        else { lll_keyboard_cancel_all();lll_screenshot_jobs_cancel_all();lll_pointer_release();lll_keyboard_shutdown();lll_steam_close(NULL); }
++        if (operation==8) wjl_steam_poll(NULL);
++        else { wjl_keyboard_cancel_all();wjl_screenshot_jobs_cancel_all();wjl_pointer_release();wjl_keyboard_shutdown();wjl_steam_close(NULL); }
+         reply[0]=nonce;reply[1]=0;length=8;
+         if (operation==8) {
+             reply[2]=session_pid;reply[3]=watch_count;length=16+watch_count*4;
+@@ -348,7 +359,7 @@
+     }
+     if (_wfopen_s(&stream,request_file,L"wb")) return 0;
+     if (fwrite(bytes,1,size,stream)!=size) { fclose(stream);return 0; }
+-    fclose(stream);lll_steam_request(NULL);return 1;
++    fclose(stream);wjl_steam_request(NULL);return 1;
+ }
+ 
+ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE previous,PWSTR command,int show) {
+@@ -375,7 +386,7 @@
+     initialize();  /* Establish only the transport's ordinary output paths. */
+     inline_events=1;
+     if (!home[0] || !response_file[0]) goto done;
+-    swprintf_s(mutex_name,96,L"Local\\LLL_Steam_FS_%016llx",
++    swprintf_s(mutex_name,96,L"Local\\WJL_Steam_FS_%016llx",
+         (unsigned long long)resource_hash((const unsigned char *)home,wcslen(home)*sizeof(wchar_t)));
+     single_instance=CreateMutexW(NULL,FALSE,mutex_name);
+     if (!single_instance || GetLastError()==ERROR_ALREADY_EXISTS) goto done;
+@@ -395,7 +406,7 @@
+     outgoing=CreateNamedPipeW(outgoing_name,PIPE_ACCESS_OUTBOUND|FILE_FLAG_FIRST_PIPE_INSTANCE|FILE_FLAG_OVERLAPPED,
+         PIPE_TYPE_BYTE|PIPE_READMODE_BYTE|PIPE_WAIT|PIPE_REJECT_REMOTE_CLIENTS,1,65536,65536,0,NULL);
+     if (incoming==INVALID_HANDLE_VALUE || outgoing==INVALID_HANDLE_VALUE) { note("Cannot create exclusive local pipes");goto done; }
+-    swprintf_s(ready_name,160,L"Local\\LLL_Steam_Ready_%s",token);
++    swprintf_s(ready_name,160,L"Local\\WJL_Steam_Ready_%s",token);
+     ready_event=CreateEventW(NULL,TRUE,FALSE,ready_name);
+     if (!ready_event || !SetEvent(ready_event)) { note("Cannot signal filesystem service readiness");goto done; }
+     if (!connect_pipe(incoming)||!connect_pipe(outgoing)) { note("No complete client connection within startup timeout");goto done; }
+@@ -418,13 +429,13 @@
+     if (ready_event) ResetEvent(ready_event);
+     if (incoming!=INVALID_HANDLE_VALUE) { CloseHandle(incoming);incoming=INVALID_HANDLE_VALUE; }
+     if (outgoing!=INVALID_HANDLE_VALUE) { CloseHandle(outgoing);outgoing=INVALID_HANDLE_VALUE; }
+-    lll_keyboard_cancel_all();
+-    lll_keyboard_shutdown();
+-    lll_screenshot_jobs_shutdown();
+-    lll_pointer_release();
++    wjl_keyboard_cancel_all();
++    wjl_keyboard_shutdown();
++    wjl_screenshot_jobs_shutdown();
++    wjl_pointer_release();
+     free(listing_bytes);
+     if (ready_event) { ResetEvent(ready_event);CloseHandle(ready_event); }
+-    lll_steam_close(NULL);
++    wjl_steam_close(NULL);
+     if (incoming!=INVALID_HANDLE_VALUE) CloseHandle(incoming);
+     if (outgoing!=INVALID_HANDLE_VALUE) CloseHandle(outgoing);
+     if (io_event) CloseHandle(io_event);

@@ -17,7 +17,7 @@ local sr={Application={can_get=function(kind,name)assert(kind=='shader_library'a
  main_world=function()return 1 end,worlds=function()return {1,owner}end},
  World={create_screen_gui=function(w)assert(w==owner);created=created+1;return created end,
  destroy_gui=function(w)assert(w==owner);if fail_destroy then error('cleanup retry')end;destroyed=destroyed+1 end},
- Gui={resolution=function()return width,1080 end,material=function(_,name)assert(name==factory.material);return 33 end,
+ Gui={create_material=function()return 33 end,resolution=function()return width,1080 end,material=function(_,name)assert(name==factory.material);return 33 end,
  triangle=function(_,a,b,c,layer,_,name,ua,ub,uc)
   assert(a[2]==0 and b[2]==0 and c[2]==0 and layer==88 and name==factory.material and ua and ub and uc)
   assert(bindings>0 and vectors.scissor_rect and vectors.atlas_scissor and vectors.clip_box and scalars.desaturate and scalars.scissor_mode and scalars.threshold_fade,'Bind all uniforms/depth before draw')
@@ -91,3 +91,84 @@ do
  width=1920;assert(cached.release());sr.Application.time_since_launch=nil
 end
 print('Combined scene/DoF: exact shared uniforms, Native/Shader/DoF-off composition, registration/resource/depth/full-color guards, fresh fullsize format/backing verification, draw-before-native-suppression signal, retained draw/rebinding/resize, retired world and cleanup failure passed; no game accessed')
+
+-- Actual Windows ABI: the first retained primitive assigns a cold material.
+local assigned=false;local cold_created,cold_removed,cold_bound,live_primitives=0,0,0,0
+local bound_depth;local cold_target={}
+sr.Gui.create_material=nil
+sr.Gui.material=function()assert(assigned and live_primitives>0,'Never query an unassigned material');return 33 end
+sr.Gui.triangle=function()
+ assigned=true;cold_created=cold_created+1;live_primitives=live_primitives+1
+ -- Model a GUI assigning its default local texture during primitive creation.
+ bound_depth=nil
+ return cold_created
+end
+sr.Gui.destroy_triangle=function()
+ cold_removed=cold_removed+1;live_primitives=live_primitives-1
+ assert(live_primitives>0,'Replacement must never retire the last assigned primitive')
+end
+sr.World.destroy_gui=function()live_primitives=0 end
+local cold_depth={binding_identity='cold',available=function()return true end,get=function()return cold_target end,
+ bind=function(_,_,target)assert(live_primitives==2,'Bind after the final quad is assigned');cold_bound=cold_bound+1;bound_depth=target;return true end}
+owner=2;width=1920;color_available=true;color_format=19;color_width=nil
+local cold=factory.new(sr,cold_depth,true,registration,verify_color)
+assert(cold.apply(o,.9));assert(cold_created==3 and cold_removed==1 and cold_bound==1)
+assert(bound_depth==cold_target,'Final primitive initialization must not erase the depth binding')
+for i=1,30 do assert(cold.apply(o,.9))end
+assert(cold_created==3 and cold_bound==1,'Unchanged Windows material stays idle')
+o.focus_distance=2;assert(cold.apply(o,.9));assert(cold_created==5 and cold_removed==3 and cold_bound==2 and bound_depth==cold_target)
+assert(cold.release(),'Cold GUI remains owned and releasable')
+print('Windows scene GUI: final material binding, no empty assignment lifetime, no idle writes, slider replacement and cleanup passed')
+
+local global_depth={global_binding=true,binding_identity='global',available=function()return true end,get=function()return token end}
+local before=cold_created
+assert(not pcall(factory.new,sr,global_depth,true,registration,verify_color),'Withdrawn binding must refuse before creating native GUI state')
+assert(cold_created==before)
+print('Windows global depth: withdrawn candidate refuses before native GUI work')
+
+assert(not pcall(factory.paths,'indexed-global-v2'),'Portable.8 global binding must stay withdrawn')
+
+-- Explicit local diagnostic changes only the GUI's owning world. Each switch
+-- retires the old GUI; unchanged scopes reuse their retained draw and binding.
+do
+ local scope='ui';local main_present=true;local live={};local created_scopes={};local retired={};local next_gui=100
+ local old_worlds=sr.Application.worlds
+ sr.Application.worlds=function()return main_present and {1,2}or{2}end
+ sr.World.create_screen_gui=function(w)
+  assert(w==1 or w==2);next_gui=next_gui+1;live[next_gui]=w;created_scopes[#created_scopes+1]=w;return next_gui
+ end
+ sr.World.destroy_gui=function(w,g)assert(live[g]==w);live[g]=nil;retired[#retired+1]=w;live_primitives=0 end
+ cold_depth.render_world=function()return scope end
+ local scoped=factory.new(sr,cold_depth,true,registration,verify_color)
+ assert(scoped.apply(o,.9));assert(created_scopes[1]==2)
+ scope='main';assert(scoped.apply(o,.9));assert(retired[1]==2 and created_scopes[2]==1)
+ local writes=cold_bound
+ for _=1,100 do assert(scoped.apply(o,.9))end
+ assert(#created_scopes==2 and #retired==1 and cold_bound==writes,'No idle rebuild or rebind in the selected world')
+ scope='ui';assert(scoped.apply(o,.9));assert(retired[2]==1 and created_scopes[3]==2)
+ assert(scoped.release()and retired[3]==2 and next(live)==nil)
+ scope='main';main_present=false
+ assert(not scoped.apply(o,.9)and #created_scopes==3,'Missing main world cannot silently substitute a UI world')
+ sr.Application.worlds=old_worlds;cold_depth.render_world=nil
+end
+print('Local GUI scope: UI/main/UI retires exact owners, stays idle, and refuses missing worlds')
+
+-- Engine userdata may share a display string. Cache ownership must use object
+-- equality, never that display string, including when scope stays unchanged.
+do
+ local function world_object()local x=newproxy(true);getmetatable(x).__tostring=function()return 'World'end;return x end
+ local first,second=world_object(),world_object();local selected=first;local main=world_object();local scope='ui'
+ local live={};local n=1000;local creates,retirements=0,0
+ sr.Application.main_world=function()return main end
+ sr.Application.worlds=function()return {main,selected}end
+ sr.World.create_screen_gui=function(w)n=n+1;live[n]=w;creates=creates+1;return n end
+ sr.World.destroy_gui=function(w,g)assert(live[g]==w);live[g]=nil;retirements=retirements+1;live_primitives=0 end
+ cold_depth.render_world=function()return scope end
+ local seen={};cold_depth.world_applied=function(s,w)seen[#seen+1]={s,w}end
+ local scoped=factory.new(sr,cold_depth,true,registration,verify_color)
+ assert(scoped.apply(o,.9));assert(seen[#seen][2]==first)
+ scope='main';assert(scoped.apply(o,.9));assert(creates==2 and retirements==1 and seen[#seen][2]==main)
+ scope='ui';selected=second;assert(scoped.apply(o,.9));assert(creates==3 and retirements==2 and seen[#seen][2]==second)
+ assert(scoped.release()and retirements==3 and next(live)==nil)
+end
+print('Scene world identity: equal userdata display strings cannot reuse a foreign GUI')

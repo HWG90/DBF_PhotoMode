@@ -10,11 +10,14 @@ function M.key_label(v)
  if v and(v>=48 and v<=57 or v>=65 and v<=90)then return string.char(v)end
  return 'VK '..tostring(v)
 end
+-- A binding's label: the key a loader's bindings helper holds for it (hosted_label, set by the
+-- runtime), else our stored virtual key.
+function M.binding_label(id,handle)return M.hosted_label and M.hosted_label(id)or M.key_label(handle and handle.get(id))end
 function M.new(view)
  local self={};local handle;local geometry;local gesture;local held=false;local visible=false;local owning=false;local pointer_x,pointer_y
  local function get(id,default)local v=handle and handle.get(id);if v==nil then return default end;return v end
  local function num(id,default)local v=get(id,default);return type(v)=='number'and v==v and math.abs(v)<math.huge and v or default end
- local function key(id,fallback)return M.key_label(get(id,fallback))end
+ local function key(id,fallback)return M.hosted_label and M.hosted_label(id)or M.key_label(get(id,fallback))end
  function self.bind(value)if handle~=value then self.clear()end;handle=value end
  function self.clear()gesture=nil;held=false;visible=false;owning=false;geometry=nil;pointer_x,pointer_y=nil,nil end
  local function persist(g)
@@ -73,7 +76,7 @@ function M.new(view)
    {'W / S','Menu up / down'},{'A / D','Value / option'}, {'Q / E','Menu tabs'},
    {'ENTER / SPACE','Edit / save'},{'SHIFT + A / D','Fine focus step'},{'RIGHT CLICK','Reset value'},
    {'ESC','Cancel / return'},{key('focus_key',9),'Return to camera'},
-   {key('toggle_key',80),'Photo on / off'},{key('hide_controls_key',72),'Show / hide controls'}
+   {key('toggle_key',80),'Photo on / off'},{key('handycam_key',122),'Start / end Handycam'},{key('hide_controls_key',72),'Show / hide controls'}
   }or {
    {key('forward_key',87)..' / '..key('back_key',83),'Forward / back'},
    {key('left_key',65)..' / '..key('right_key',68),'Left / right'},
@@ -82,7 +85,7 @@ function M.new(view)
    {key('roll_left_key',81)..' / '..key('roll_right_key',69),'Roll camera'},
    {key('lock_camera_key',76),'Lock camera'},{key('slowmo_key',220),'Solo slow motion'},
    {key('focus_key',9),'Edit photo menu'},{key('toggle_key',80),'Photo on / off'},
-   {key('hide_controls_key',72),'Show / hide controls'},{'ESC','Exit photo mode'}}
+   {key('handycam_key',122),'Start / end Handycam'},{key('hide_controls_key',72),'Show / hide controls'},{'ESC','Exit photo mode'}}
   if focused and get('focus_mode',1)==2 then entries[#entries+1]={'DOUBLE-CLICK','Focus scene subject'}end
   local columns=get('legend_columns',2)==1 and 2 or 3;local rows=math.ceil(#entries/columns)
   local colw=(size-2*pad)/columns;local usable=size-header-stripe-34*s;local rowh=usable/rows

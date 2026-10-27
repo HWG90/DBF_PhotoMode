@@ -482,4 +482,29 @@ do
  assert(not f.controller.recover()and f.node_writes==writes)
  f.adapter.snapshot=snapshot;assert(f.controller.recover());f.matrix_original()
 end
+do
+ local f=fixture();local reads=0
+ f.adapter.tracking_frame=function(target)reads=reads+1;return{identity=target.identity}end
+ assert(f.controller.refresh());assert(f.controller.select_nearest({0,0,0}))
+ assert(f.controller.tracking_frame()==nil and reads==0,'Nearest suggestion is not a tracking selection')
+ assert(f.controller.select('subject-b'));assert(f.controller.tracking_frame().identity=='subject-b')
+ f.adapter.camera_target=function()return f.a end
+ assert(f.controller.select_camera({}));assert(f.controller.tracking_frame().identity=='subject-a')
+ assert(f.controller.close());assert(f.controller.tracking_frame()==nil)
+end
+do
+ local f=fixture();f.select();f.frozen=false
+ assert(not f.controller.hold_bone_transfer()and f.mode_writes==0)
+ f.frozen=true;assert(f.controller.hold_bone_transfer()and f.b.mode=='ignore')
+ assert(f.node_writes==0 and f.controller.status().pose=='freeze-bone-trial')
+ assert(not f.controller.hold_bone_transfer()and f.mode_writes==1)
+ assert(f.controller.resume()and f.node_writes==0 and f.mode_writes==2);f.original_body()
+ assert(f.controller.hold_bone_transfer());f.b.mode='rotation'
+ local writes=f.mode_writes;assert(f.controller.close()and f.b.mode=='rotation'and f.mode_writes==writes,'Foreign mode is never overwritten by trial cleanup')
+end
+for _,throw in ipairs({false,true})do
+ local f=fixture();f.select();f.fail_mode=true;f.effect='all';f.throw=throw
+ assert(not f.controller.hold_bone_transfer()and f.controller.status().pending and f.b.mode=='ignore')
+ f.fail_mode=nil;assert(f.controller.recover());f.original_body();assert(f.node_writes==0)
+end
 print('Steam selected subject: explicit selection, zero idle work, exact PQS/matrix12 ownership, anchors, foreign/partial guards and recovery passed')

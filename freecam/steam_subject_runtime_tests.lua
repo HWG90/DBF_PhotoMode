@@ -55,8 +55,11 @@ local function configure(f,deps,sr)
   local function count()f.subject_native=f.subject_native+1 end
   local function valid(t)return t.alive and t.world==f.world end
   local adapter={version=1}
+  local qualified_session=f.session
+  adapter.session_current=function()f.session_checks=(f.session_checks or 0)+1;return f.session==qualified_session end
   adapter.discover=function(resource,limit,rig)
    count();f.discoveries=f.discoveries+1;assert(resource==data.rig.resource and limit==4 and rig==data.rig)
+   if f.discovery_error then return nil,f.discovery_error end
    return f.sole and{f.b}or{f.a,f.b}
   end
   adapter.valid=function(t)count();if f.unknown then return nil,'Identity unavailable'end;return valid(t)end
@@ -120,7 +123,9 @@ local function fixture(extra)
   assert(f.action('subject_select_2'));assert(f.subject.status().selected=='Helldiver B')
  end
  function f.pose(index)
-  assert(f.runtime.handle.set('subject_pose',index or 1));assert(f.action('subject_pose_play'))
+  local before=f.decodes
+  assert(f.runtime.handle.set('subject_pose',index or 1))
+  if f.decodes==before then assert(f.action('subject_pose_play'))end
   assert(f.subject.status().state=='posed')
  end
  function f.restored()
@@ -132,8 +137,38 @@ local function fixture(extra)
  end
  return f
 end
+do
+ local messages={}
+ local f=fixture(function(f)f.discovery_error='Fixture inventory changed\nreason';f.log=function(s)messages[#messages+1]=s end end)
+ f.open()
+ for i=1,3 do assert(not f.action('subject_refresh'))end
+ local function count()local n=0;for _,s in ipairs(messages)do if s=='Subject discovery detail: Fixture inventory changed reason'then n=n+1 end end;return n end
+ assert(count()==1,'Repeated explicit failures log the same bounded reason only once')
+ f.discovery_error=nil;assert(f.action('subject_refresh'))
+ f.discovery_error='Fixture inventory changed\nreason';assert(not f.action('subject_refresh'))
+ assert(count()==2,'A recovered discovery allows a subsequent failure to be diagnosed')
+end
 local function index_of(events,value)
  for i,item in ipairs(events)do if item==value then return i end end
+end
+do
+ local f=fixture(function(f,deps)
+  f.root_held=false;f.root_renders=0
+  deps.freeze_root_hold={tick=function(enabled)f.root_held=enabled end,
+   render=function(enabled)if enabled then f.root_renders=f.root_renders+1 end end,
+   release=function()f.root_held=false;return true end}
+  local load=deps.load_subject
+  deps.load_subject=function(...)
+   local subject=load(...);local apply=subject.apply
+   subject.apply=function(...)assert(not f.root_held,'Manual pose must release root hold before applying');return apply(...)end
+   return subject
+  end
+ end)
+ f.enable();f.select();f.step(.016,1);assert(f.root_held)
+ f.pose(2);local renders=f.root_renders;f.step(.016,1)
+ assert(not f.root_held and f.root_renders==renders,'Root hold yields while manual pose owns subject')
+ assert(f.action('subject_pose_stop'));f.step(.016,1);assert(f.root_held,'Reset pose permits fresh root capture')
+ f.finish();assert(not f.root_held)
 end
 do
  local f=fixture()
@@ -319,5 +354,148 @@ for _,failure in ipairs({'nil','throw'})do
   'Explicit cleanup retries once and retires the acknowledged captured lease')
  f.restored();assert(f.rate==1);f.finish()
 end
+do
+ local f=fixture(function(f,deps)
+  deps.freeze_bone_probe=dofile('freecam/windows_freeze_bone_probe.lua').new(function()end,function()return f.time end)
+ end)
+ f.enable();f.select()
+ f.subject.tracking_frame=function()return{identity='Helldiver B',position={1,2,3},head={1,2,5},yaw=0}end
+ assert(f.controls.subject_freeze_bone_test.disabled==false,'Diagnostic button must be admitted by the supported-control list')
+ assert(f.runtime.handle.activate('subject_freeze_bone_test')and f.b.mode=='ignore'and f.node_writes==0,'Actual UI activation must start the trial')
+ f.step(6.1);assert(f.b.mode=='position_and_rotation'and f.node_writes==0);f.restored()
+ assert(f.action('subject_freeze_bone_test'));f.events={}
+ assert(f.runtime.handle.set('freeze_player',false)and f.rate==1)
+ assert(index_of(f.events,'mode:position_and_rotation')<index_of(f.events,'time:1'),'Bone trial restores before releasing zero time')
+ f.step(.01);f.restored();assert(f.node_writes==0)
+ assert(f.runtime.handle.set('freeze_player',true));assert(f.action('subject_freeze_bone_test'))
+ assert(f.runtime.close(true));f.restored();f.finish()
+end
+do
+ local active=false;local physics_pending=false;local physics_calls=0
+ local f=fixture(function(f,deps)
+  deps.freeze_physics_probe={active=function()return active end,start=function(frame)assert(frame.explicit_subject);active=true;return true end,
+   tick=function()return true end,release=function(_,retry)
+    if active then
+     if physics_pending and retry~=true then return false,'Enable pending'end
+     physics_calls=physics_calls+1
+     if f.physics_fail then physics_pending=true;return false,'Enable pending'end
+     f.events[#f.events+1]='physics-enable';active=false;physics_pending=false
+    end;return true end}
+ end)
+ f.enable();f.select();f.subject.tracking_frame=function()return{explicit_subject=true}end
+ assert(f.controls.subject_freeze_physics_test.disabled==false)
+ assert(f.runtime.handle.activate('subject_freeze_physics_test')and active)
+ f.events={};assert(f.runtime.handle.set('freeze_player',false))
+ assert(index_of(f.events,'physics-enable')<index_of(f.events,'time:1')and not active,'Off/on trial enables before resuming time')
+ assert(f.runtime.handle.set('freeze_player',true));assert(f.runtime.handle.activate('subject_freeze_physics_test')and active)
+ assert(f.action('subject_refresh')and not active,'Changing discovery ends the physics trial first')
+ f.select();assert(f.runtime.handle.activate('subject_freeze_physics_test')and active)
+ f.physics_fail=true;assert(not f.runtime.close(true)and active and f.rate==0,'Failed enable prevents nonzero time while normal close can release input')
+ local calls=physics_calls
+ for i=1,100 do assert(not f.runtime.close(true,true))end
+ assert(physics_calls==calls,'Automatic close does not retry failed physics cleanup')
+ for i=1,100 do assert(not f.runtime.dispose())end
+ assert(physics_calls==calls+1,'A reload gets one explicit cleanup retry, not one per cleanup poll')
+ f.physics_fail=nil;assert(f.runtime.close(true,nil,true)and not active);f.finish()
+end
+do
+ local active,pending,calls,renders=false,false,0,0
+ local f=fixture(function(f,deps)
+  deps.freeze_pose_probe={active=function()return active end,start=function(subject)
+   assert(subject==f.subject);active=true;return true end,
+   tick=function(enabled)if active then assert(enabled or not f.foreground)end;return true end,
+   render=function(enabled)assert(enabled and active and f.rate==0);renders=renders+1;return true end,
+   release=function(_,retry)
+    if active then
+     if pending and retry~=true then return false,'Bone cleanup pending'end
+     calls=calls+1
+     if f.pose_cleanup_fail then pending=true;return false,'Bone cleanup pending'end
+     f.events[#f.events+1]='pose-release';active=false;pending=false
+    end;return true end}
+ end)
+ f.enable();f.select()
+ assert(f.controls.subject_freeze_pose_test.disabled==false,'Actual menu supports the private skeleton button')
+ assert(f.runtime.handle.activate('subject_freeze_pose_test')and active);f.step(.016,1);assert(renders>0)
+ f.events={};assert(f.runtime.handle.set('freeze_player',false))
+ assert(index_of(f.events,'pose-release')<index_of(f.events,'time:1')and not active,'Skeleton releases before nonzero time')
+ assert(not f.action('subject_freeze_pose_test')and not active,'Running simulation cannot start a skeleton hold')
+ assert(f.runtime.handle.set('freeze_player',true));assert(f.runtime.handle.activate('subject_freeze_pose_test'))
+ assert(f.action('subject_refresh')and not active,'Subject discovery releases the old skeleton first')
+ f.select();assert(f.runtime.handle.activate('subject_freeze_pose_test'))
+ f.pose_cleanup_fail=true;assert(not f.runtime.close(true)and active and f.rate==0)
+ local count=calls
+ for i=1,100 do assert(not f.runtime.close(true,true))end
+ assert(calls==count,'Automatic close cannot hammer failed skeleton cleanup')
+ for i=1,100 do assert(not f.runtime.dispose())end
+ assert(calls==count+1,'Reload gets one explicit retry across all cleanup polls')
+ f.pose_cleanup_fail=false;assert(f.runtime.close(true,nil,true)and not active);f.finish()
+end
+do
+ local active,captures,renders=false,0,0
+ local f=fixture(function(f,deps)
+  deps.engine_time_only=true
+  deps.freeze_pose_hold={active=function()return active end,prepare=function(subject)
+   assert(subject==f.subject and f.rate>0,'Capture must precede the zero-time request')
+   f.events[#f.events+1]='skeleton-capture';captures=captures+1;active=true;return true end,
+   tick=function(enabled)assert(not active or enabled);return true end,
+   render=function(enabled)assert(enabled and active and f.rate==0);renders=renders+1;return true end,
+   release=function()if active then f.events[#f.events+1]='skeleton-release';active=false end;return true end}
+ end)
+ f.enable();assert(active and captures==1 and renders>0)
+ assert(index_of(f.events,'skeleton-capture')<index_of(f.events,'time:0'),'Open captures the selected body before freezing')
+ assert(f.controls.subject_freeze_pose_test==nil,'Integrated hold does not expose the temporary test button')
+ f.foreground=false;f.step(.016,1);assert(active,'Focus loss preserves the zero-time skeleton hold')
+ f.foreground=true;f.events={};assert(f.runtime.handle.set('freeze_player',false))
+ assert(index_of(f.events,'skeleton-release')<index_of(f.events,'time:1'))
+ assert(f.runtime.handle.set('freeze_player',true));assert(captures==2 and active)
+ assert(f.action('subject_pose_play')and not active,'Authored poses acquire the skeleton after hold release')
+ f.finish()
+end
+do
+ local flips=0
+ local f=fixture(function(f,deps)
+  deps.freeze_root_flip=true
+  deps.freeze_root_hold={tick=function()return true end,render=function()return true end,release=function()return true end,
+   flip_body=function(frame)assert(frame.explicit_subject and f.rate==0);flips=flips+1;return true,'Flipped'end}
+ end)
+ f.enable();f.select();f.subject.tracking_frame=function()return{explicit_subject=true}end
+ assert(f.controls.subject_freeze_body_flip.disabled==false,'Body flip is available through the actual menu')
+ assert(f.runtime.handle.activate('subject_freeze_body_flip')and flips==1)
+ assert(f.runtime.handle.set('freeze_player',false))
+ assert(not f.action('subject_freeze_body_flip')and flips==1,'Running gameplay cannot queue a root flip')
+ f.finish()
+end
 os.time=original_clock
 print('Steam subject runtime: lazy session UI, explicit selection/apply, zero idle, exact cleanup before time/action, independent input/UI and explicit recovery passed')
+
+-- Explicit refresh and subsequent entry rebuild a stale session adapter without
+-- idle polling or discarding pending ownership.
+do
+ local f=fixture();f.enable();local first=f.subject;local checks=f.session_checks
+ for i=1,100 do f.step(.016,1)end
+ assert(f.session_checks==checks,'Subject session does not poll while idle')
+ f.session={};assert(f.action('subject_refresh'))
+ assert(f.factories==2 and f.subject~=first and f.subject.status().selected==nil,'Explicit refresh rebuilds for the new session')
+ assert(f.action('subject_select_2')and f.subject.status().selected=='Helldiver B')
+ assert(f.runtime.close(true));f.session={};f.open()
+ assert(f.factories==3 and f.subject.status().selected~=nil,'New session entry rebuilds and auto-selects')
+ f.finish()
+end
+print('Subject session lifecycle: no idle polling, explicit refresh requalification and fresh entry selection passed')
+
+do
+ local f=fixture();f.enable();f.select();f.pose(2);f.events={}
+ assert(f.action('subject_pose_play'))
+ assert(index_of(f.events,'mode:position_and_rotation')<index_of(f.events,'mode:ignore'),'Apply resets before reapplying the selected pose')
+ f.events={};local before=f.decodes
+ assert(f.runtime.handle.set('subject_pose',3))
+ assert(f.decodes==before+1 and index_of(f.events,'mode:position_and_rotation')<index_of(f.events,'mode:ignore'),'Changing a held pose resets and applies in one action')
+ local writes=f.node_writes;local reset=f.subject.reset
+ f.subject.reset=function()return false,'Fixture restoration refused'end
+ assert(not f.action('subject_pose_play')and f.node_writes==writes,'Failed reset must prevent the next pose write')
+ f.subject.reset=reset
+ writes=f.node_writes;for _=1,60 do f.step(.016,1)end
+ assert(f.node_writes==writes,'A settled pose does not repeatedly reset or reapply')
+ assert(f.action('subject_pose_stop'));f.restored();f.finish()
+ print('Pose replacement: reset before Apply, automatic held-pose changes, refused reset and idle passed')
+end

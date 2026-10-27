@@ -1,93 +1,52 @@
 ![War Journalist](docs/artwork/war-journalist-0.9.7-cover.png)
 
-# War Journalist 1.2.1
+# War Journalist 1.3.0
 
-A Helldivers 2 Photo Mode: free camera, a movable photo studio menu,
-Native and shader depth of field, autofocus, color grading, scene effects,
-photo lighting, Cinema action shots, camera paths, solo enemy behavior,
-213 fixed subject pose frames, subject visibility and PNG capture.
+Photo Mode for Helldivers 2: compose shots with a free camera, lighting,
+subject poses, camera paths and first-person Handycam.
 
-[Download on Nexus](https://www.nexusmods.com/helldivers2/mods/17248?tab=files) ·
-[GitHub downloads](https://github.com/HWG90/DBF_PhotoMode/releases) ·
-[1.2.1 release notes](docs/RELEASE-1.2.1.md)
+**[Download War Journalist 1.3.0 for Boot Mod Loader](https://github.com/HWG90/DBF_PhotoMode/releases/tag/v1.3.0).** This is the first pass of a total Lua rewrite with incomplete parity. Import the complete ZIP into HD2 Arsenal, enable War Journalist and Assets, deploy with the game closed, then launch normally. No manual helper or Python setup is required.
 
-**A huge thank-you to everyone sharing their photos, testing builds, and reporting bugs.**
-Seeing the shots you are making with War Journalist has been the best part of building it.
-Keep them coming!
+## Current runtime
 
-## New in 1.2.1
+The Lua 5.1 rewrite targets [Boot Mod Loader](https://github.com/pat-pat-patrick/boot-mod-loader). The Windows WJL helper starts
+automatically and provides keyboard/mouse isolation while Photo Mode owns input.
+The source includes the camera and menu improvements, native lens controls,
+subject selection, independent visibility options, screenshots, Freeze/Resume,
+slow motion, lighting, and Handycam ADS handoffs.
 
-Fixed the regular Photo Mode panel/control-legend hitches confirmed during live testing.
-Unchanged panel layout and legend commands are retained, equivalent choice lists no longer
-force rebuilds, and renderer/lens validation uses reusable buffers. Camera discovery no
-longer enumerates every world Unit repeatedly while active. Existing font binding is preserved.
-All 1.2.0 handycam, smooth zoom and lighting features remain included.
-See the release notes for testing limits and upgrade instructions.
+- The menu displays your game's Toggle HUD binding and warns if it is unbound.
+  That key remains available while the Photo menu or frozen camera owns input.
+- Apply Pose resets the previous pose first. Changing an already-held pose resets
+  and applies the new selection automatically.
+- Retained menu geometry, cached font metrics and event-driven state changes keep
+  unchanged controls idle. Camera and cleanup ownership checks remain mandatory.
 
-## What's included
+See the [1.3.0 changelog](docs/RELEASE-1.3.0.md) and
+[known issues](docs/KNOWN-ISSUES.md) for supported behavior and testing limits.
 
-- **Cinema action shots:** place the camera, begin an action shot, and control your Helldiver while the camera holds its position, angle and lens. Returning to Photo Mode restores your previous Freeze Action state. Your selected slow-motion speed is retained, and the Cinema hint fades away after three seconds.
-- **Camera paths:** record up to 32 scene-local points with per-segment durations, smooth travel or timed cuts. Five separate player-relative Director camera presets remain saved across restarts.
-- **Reachable global controls:** Freeze/Resume Action, solo AI behavior, Slow Motion with a speed slider, and Lock Camera stay available above the settings. The AI indicator uses the current mission's faction emblem when verified.
-- **Photo studio:** move and resize the menu, adjust opacity, navigate with W/S and A/D, and use Shift for fine slider scrubbing. Menu geometry and controls-drawer visibility/layout survive restarts. The contextual controls drawer docks at the left edge.
-- **Native and shader lenses:** focus distance, aperture, double-click subject focus, center autofocus, focal-length presets and portrait roll. The combined shader compositor layers depth effects, grading and preview bokeh without the former color rectangle or dim/cool tint.
-- **Fixed subject poses:** 213 sampled frames and variants apply while paused; Reset restores the original pose. Supported cape variants follow the posed shoulders. See the [pose catalogue](docs/SUBJECT-POSE-CATALOGUE.md).
-- **Photo lighting:** up to three point/spot lights, draggable position indicators, a color editor with Apply and a live swatch, subject-directed rigs, and five saved lighting setups. Wider lighting coverage remains **Not tested fully**.
-- **Solo AI direction:** Normal, Passive and Dummy persist after closing Photo Mode and apply to newly discovered enemies. Reset returns normal combat. Multiplayer/joining players disable suppression; game restart begins at Normal.
-- **Correct frozen ragdolls:** an observed ragdoll pose stays still at exact zero time, resumes normally and yields to Subject poses. This reproduction and handoff were verified in game.
-- **Input and recovery fixes:** gameplay look returns after menu handoffs, native settings suspend the Photo camera, chat ignores the Photo shortcut, held ADS remains intact, and double-click focus uses buffered click timing. Camera cursor confinement is retained.
-- **Complete subject hiding:** owned equipment attachments, including the Maxigun feed belt, hide and restore with the subject. Curated Helldivers logos and Super Earth insignia remain included.
-- **Owned camera controller:** Photo Mode uses its own scene discovery, motion and cleanup. Starting it does not inspect or wrap another camera mod's private functions.
-- **Radeon compatibility repair:** the package contains the game's 77 native shader registrations and its 44 shipped Photo Mode shaders. Radeon testers reported stable Alt-Tab, fullscreen, bloom and DoF changes with this repair.
+## Current limitations
 
-## Install
+Subject selection and complete equipment hiding still need broader coverage.
+Cape detachment and rare ragdoll issues remain. Hoverpack pause uses a near-zero
+fallback. Handycam body turning, aim parallax, and drifting native world HUD
+markers remain unresolved. Automatic native HUD hiding is unavailable on Windows;
+use the game's own Toggle HUD binding. Enemy AI controls are unavailable.
+Native camera DoF works, including focus and aperture. Inverted depth, Thermal depth, Depth contours, Depth fog and Shader DoF are removed because depth shaders do not currently work. Unavailable controls are omitted from the normal-user menu; developer reload, inventories and test activations are disabled.
 
-Choose one loader: **BSL v15+** (recommended), **MDL API 2**, or **LLL**.
-Nexus hosts BSL and MDL; GitHub hosts all three. Every ZIP includes the complete
-runtime and its required assets. No separate asset download is needed.
-MCM, DBF-HUD, ActionCam and Link's addon are not prerequisites.
+## Chef preview
 
-BSL: import the complete ZIP in Arsenal, enable with BSL, deploy and restart.
-MDL: copy `dbf_freecam` into MDL's Mods folder, then import the complete MDL ZIP
-into Arsenal to enable and deploy its `GameData` assets. Restart normally.
-Arsenal installs assets only; the runtime folder must also be installed.
-The MDL package contains no nested archives.
-LLL: install `dbf_freecam` in LLL's Mods folder, deploy the asset ZIP bundled
-inside that same download, and restart.
-Use one Photo Mode runtime at a time. Preserve settings, presets and screenshots.
-Photo Mode uses its own camera controller. Other camera mods are not inspected, reconfigured or paused by a private adapter.
-See [installation and controls](freecam/README.md) for manual installation.
+Boot Mod Loader is the only supported loader at present. A Lite version for Chef's Shared Loader is planned. Whitelist approval may permit fuller compatibility; neither approval nor full compatibility is guaranteed.
 
-## Controls
+## Development
 
-P opens Photo Mode; Tab switches camera/menu focus; Pause takes a screenshot.
-W/S navigates rows and A/D changes values in menu focus; Q/E changes tabs.
-Double-click a subject outside the menu to focus. Hold Shift while dragging
-sliders for finer adjustment. Typed values commit when clicking away.
-All key bindings are configurable; existing bindings are retained.
+See [BUILD.md](BUILD.md) for source checks and build entrypoints. Runtime source,
+fixtures and builders live in `freecam/` and `tools/`. Local packages and test
+output belong under `dist/` and are excluded from Git.
 
-Native DoF is the quality baseline. Shader DoF offers round/hex bokeh and
-64/128-sample quality above 1x strength (32/64 at 1x). Scene effects and grading
-can layer with shader DoF. The stronger shader still needs live acceptance.
-The compositor's HDR tint/exposure correction was visually accepted;
-SDR compositor parity and all effect combinations are not fully validated.
-Pause/slow motion are solo-only. See [known issues](docs/KNOWN-ISSUES.md).
+Defunct BSL, MDL and earlier LLL entrypoints, release tooling and historical
+records are retained in [archive/](archive/README.md). Shared models still used
+by the current runtime or fixtures remain in the active source tree.
 
-## Build and verification
-
-Use `py -3 tools/build_release.py --output dist/releases/<new-folder>`.
-The builder uses maintained source and hash-checked compiled asset snapshots;
-no installed-game assets or developer capture folders are needed. Lua syntax
-validation requires a Lua 5.1/LuaJIT DLL (`HD2_LUA51_DLL` can select it).
-Run `py -3 tools/run_tests.py` for isolated fixtures and
-`py -3 tools/test_packaged_standalone.py <BSL.zip> <MDL.zip> <LLL.zip>` for
-source-independent package startup checks. Tests do not establish live GPU behavior.
-
-## Credits
-
-Earlier releases used [ActionCam](https://www.nexusmods.com/helldivers2/mods/16752)
-by HuedPurple as a camera foundation. The current controller is maintained here.
-Native UI/font reader: CowboyBingus (0BSD). Selected reader
-work: Link (MIT). Bundled licenses and vendor provenance identify their scope.
-Helldivers 2/Arrowhead artwork belongs to its respective owners; individual
-logo sources and authors are recorded under `freecam/assets/logos`.
+Artwork credits, third-party licenses and asset provenance remain with their
+respective source files and manifests.

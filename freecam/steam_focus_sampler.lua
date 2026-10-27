@@ -1,5 +1,6 @@
 -- Existing linear_depth readback only. The GPU copies the full surface;
--- Lua reads a small median window. UVs use a top-left origin.
+-- Lua reads a small median window for autofocus, the exact pixel for explicit
+-- selection. UVs use a top-left origin.
 local M={};local sequence=0
 local function integer(data,offset)
  local a,b,c,d=data:byte(offset+1,offset+4);assert(d,'Focus DDS header truncated')
@@ -54,11 +55,26 @@ function M.new(sr,depth,verify,options)
   assert(verify and options.now and options.mkdir and options.pid,'Ordinary Lua focus platform/verifier required')
   local system={}
   local clock=options.now or system.now;local mkdir=options.mkdir or system.mkdir;local pid=options.pid or system.pid
+  -- Scheduling may use a frame-latched engine clock. Operation cost must use
+  -- an independently advancing clock or a slow readback looks instantaneous.
+  local measure=options.measure or clock
+  local function stamp()
+   local ok,value=pcall(measure)
+   if ok and finite(value)and value>=0 then return value end
+  end
   local guard=assert(verify)
   local interval=options.interval or 1;assert(finite(interval)and interval>=.5 and interval<=60,'Focus cooldown must be at least 0.5 seconds')
+  local auto_budget=options.auto_budget_ms
+  assert(auto_budget==nil or finite(auto_budget)and auto_budget>0,'Invalid automatic depth budget')
+  local auto_blocked;local captures,max_capture=0,0
+  -- A silhouette click belongs to its center pixel. A neighborhood median can
+  -- replace that surface with the background (or a foreground neighbor), then
+  -- incorrectly reject/select a character in the picker's occlusion check.
+  local selection_options={radius=0,max_distance=options.max_distance}
   local localdir=assert(os.getenv('LOCALAPPDATA'),'LocalAppData unavailable'):gsub('\\','/'):gsub('/+$','')
   assert(localdir:match('^[A-Za-z]:/')and not localdir:find('%z')and not localdir:find('[\r\n]')and not localdir:find('/%.%./'),'Focus cache root must be absolute LocalAppData')
-  sequence=sequence+1;local folder=localdir..'/DBF_PhotoMode/FocusCache'
+  sequence=sequence+1;local folder=options.directory or localdir..'/DBF_PhotoMode/FocusCache'
+  assert(type(folder)=='string'and folder:match('^[A-Za-z]:/')and not folder:find('%z')and not folder:find('[\r\n]')and not folder:find('/%.%./'),'Focus cache directory must be absolute')
   local path=folder..'/depth-'..tostring(pid)..'-'..string.format('%.0f',clock()*1000)..'-'..sequence..'.dds'
   local self={now=clock,interval=interval,path=path,status='Focus sampling ready'};local owned=false;local cached;local next_capture=0;local last_error;local identity;local display_generation;local display_stable_at
   local function remove()
@@ -76,7 +92,11 @@ function M.new(sr,depth,verify,options)
    return true,meta
   end
   function self.release()local done,why=remove();if done then cached,identity=nil,nil;display_generation,display_stable_at=nil,nil;self.status='Focus sampler released'end;return done,why end
-  function self.sample(u,v)
+  function self.sample(u,v,fresh,automatic)
+   -- A synchronous full-surface GPU read cannot be preempted. After one measured
+   -- over-budget read, stop continuous sampling for this generation. Explicit
+   -- clicks remain available and no background retry can recreate the spikes.
+   if automatic and auto_blocked then return nil,auto_blocked end
    if not uv(u,v)then return nil,'Focus coordinates must be normalized top-left UVs'end
    local now=clock();if not finite(now)then return nil,'Focus clock unavailable'end
    local ready,meta=self.ready();if not ready then display_generation,display_stable_at=nil,nil;local done,why=remove();self.status=tostring(meta);return nil,done and self.status or why end
@@ -94,20 +114,33 @@ function M.new(sr,depth,verify,options)
     end
    end
    if identity and meta.identity~=identity then local done,why=remove();if not done then return nil,why end;identity=nil end
+   -- Explicit subject selection must not combine an old image with this
+   -- frame's camera/units. Respect the readback cooldown and retry once due.
+   if fresh and now<next_capture and cached and now>cached.captured_at+.001 then
+    return nil,'Selection waiting for fresh depth',{pending=true,retry_at=next_capture}
+   end
    if now>=next_capture then
     next_capture=now+interval;local cleared,why=remove();if not cleared then return nil,why end
     local prior=io.open(path,'rb');if prior then prior:close();return nil,'Focus cache path already belongs to another file'end
-    if not(mkdir(localdir..'/DBF_PhotoMode')and mkdir(folder))then return nil,'Focus cache directory unavailable'end
-    local start=clock();owned=true
+    if not((options.directory or mkdir(localdir..'/DBF_PhotoMode'))and mkdir(folder))then return nil,'Focus cache directory unavailable'end
+    local start=stamp();owned=true
     local captured,error=pcall(sr.Application.save_render_target,'linear_depth',path)
-    local finish=clock();self.last_capture_ms=math.max(0,(finish-start)*1000)
-    next_capture=finish+math.max(interval,self.last_capture_ms/1000*3)
+    local measured=stamp();local finish=clock()
+    self.last_capture_ms=start and measured and measured>=start and(measured-start)*1000 or -1
+    captures=captures+1;max_capture=math.max(max_capture,self.last_capture_ms)
+    if auto_budget and (self.last_capture_ms<0 or self.last_capture_ms>auto_budget)then
+     if not auto_blocked then
+      auto_blocked='Centre autofocus paused: synchronous depth read exceeds frame budget; use manual or click focus'
+      if options.log then options.log(string.format('Depth readback budget: %.3f ms; budget %.3f ms; continuous autofocus suspended',self.last_capture_ms,auto_budget))end
+     end
+    elseif captures==1 and options.log then options.log(string.format('Depth readback first sample: %.3f ms',self.last_capture_ms))end
+    next_capture=finish+math.max(interval,math.max(0,self.last_capture_ms)/1000*3)
     if not captured then remove();last_error='Focus readback failed: '..tostring(error);self.status=last_error;return nil,last_error end
     cached={captured_at=finish,capture_ms=self.last_capture_ms};identity=meta.identity;last_error=nil
    end
    if not cached then return nil,last_error or'Focus readback cooling down',not last_error and{pending=true,retry_at=next_capture}or nil end
    local file=io.open(path,'rb');if not file then remove();cached=nil;last_error='Focus depth file was not written';self.status=last_error;return nil,last_error end
-   local ran,distance,info=pcall(M.read,file,u,v,options);file:close()
+   local ran,distance,info=pcall(M.read,file,u,v,fresh and selection_options or options);file:close()
    if not ran then
     -- Bad surfaces are discarded; a valid surface with no subject stays cached.
     if not tostring(distance):find('No focusable surface',1,true)then remove();cached=nil end
@@ -115,9 +148,10 @@ function M.new(sr,depth,verify,options)
    end
    if info.width~=meta.width or info.height~=meta.height then remove();cached=nil;self.status='Focus depth dimensions changed';return nil,self.status end
    info.capture_ms=cached.capture_ms;info.age=math.max(0,now-cached.captured_at);info.cached=info.age>0;info.next_capture=next_capture
-   self.status=string.format('Focus %.3f m; depth readback %.0f ms',distance,info.capture_ms)
+   self.status=string.format('Focus %.3f m; depth readback %s',distance,info.capture_ms>=0 and string.format('%.0f ms',info.capture_ms)or'timing unavailable')
    self.last_sample=info;return distance,nil,info
   end
+  function self.metrics()return{captures=captures,max_capture_ms=max_capture,automatic_suspended=auto_blocked~=nil}end
   if jit then jit.off(self.sample,true);jit.off(self.ready,true)end
   return self
  end)

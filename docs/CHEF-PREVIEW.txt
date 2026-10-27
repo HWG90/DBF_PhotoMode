@@ -1,0 +1,112 @@
+War Journalist 0.4.0-chef-preview.4
+
+Development candidate for Chef Shared Loader 1.2.3 (API 3).
+Shader effects and AI controls are excluded. Some native legacy features still
+need APIs Chef does not provide. Offline fixtures and package checks do not
+establish visible functionality or runtime performance in the game.
+
+Install for testing: import this ZIP into Arsenal/HD2 Mod Manager, enable its
+core with Chef Shared Loader, deploy through the manager and restart the game.
+Use only one War Journalist runtime. There is no loader or boot replacement in
+this ZIP. The build has not installed or published anything.
+
+CAMERA
+Open Chef's menu (F9 by default), then War Journalist (Chef preview).
+Enable Photo camera (experimental), wait for discovery, then close the menu.
+Hold Left Alt: WASD moves; Q/E changes height; arrows look; Z/C rolls; R/F zooms;
+Shift moves 4x faster. Optional mouse look starts off. Rebind in War Journalist
+controls. Chef's menu suspends input. Releasing the clutch resets mouse motion
+and smoothing. Movement lock stops manual motion. Smoothing is adjustable.
+
+Clutch + P closes the camera or returns Cinema to placement. Clutch + Space
+toggles Freeze; L locks; B/N saves/recalls the selected scene bookmark; V records
+a path point; K plays the path. Opening uses Chef's menu: no closed-state polling.
+Lens shortcuts use 24/35/50/85/135 mm against a 24 mm sensor height. Horizon level,
+portrait tilt +/-90 and return to opening camera are explicit actions. Offset
+and angle sliders apply incremental edits; readouts are not a live pose. FOV
+zero restores the opening lens when that slider changes. Camera offsets reset
+at each opening; preferences persist through Chef settings.
+
+TIME AND CINEMA
+Freeze requests exact zero. Slow motion offers 0.05x to 1x. Resume keeps the
+chosen slow rate; rate edits while frozen do not thaw. Motion and paths use an
+unscaled clock. Time controls start off. Close/focus/world/session/stop release
+time to 1x. One visible peer is required. Peer checks run at most four times per
+second while time is owned; Chef cannot expose earlier joining stages. Use solo
+testing and avoid other time mods: no previous multiplier can be read.
+
+Begin placed action shot holds the camera while you control gameplay; Begin
+path action shot follows a recorded path. Starting restores an owned subject
+pose before resuming at the chosen slow rate. Return to camera placement restores
+a pre-take freeze. Explicit time edits during the take cancel that refreeze.
+End closes the camera and releases time. Path completion holds its final view.
+
+PATHS AND SAVES
+Record 2-32 points, then play. Duration and Smooth/Cut belong to the segment
+leaving each point. Selected-point actions edit, recall or remove it. Manual
+control takes over playback. Closing clears paths and five scene bookmarks.
+Five persistent camera presets store position, orientation and lens relative
+to the opening camera; the next opening becomes the anchor. No player tracking.
+Malformed data blocks changes; failed saves preserve the previous cached data.
+
+LIGHTING
+Choose slot 1-3, color/RGB, intensity, enabled state, point/spot, cone and offsets,
+then Place/update selected light. Editing rows alone does not affect a light.
+Optional swatch previews the next color. Opt-in following moves with the camera;
+static lights stay still. Range defaults to the compiled 8 m. Changing it requires
+a positive native getter and verified readback; refusal removes that copy.
+Shadows remain off. No scene lights are changed.
+
+Enable markers and dragging, then hold the clutch and middle mouse on a marker.
+Dragging preserves camera-plane depth; Shift gives 0.1x precision. Aim selected
+spot uses the target distance ahead of the camera. Key/Fill/Rim, Portrait and
+Dramatic side rigs use that target. Five saved setups recall relative to the
+current camera, not a player/subject. A failed replacement attempts to restore
+the previous setup. Camera close, focus loss, world change and stop remove lights.
+
+SUBJECT POSES (EXPERIMENTAL, OFF BY DEFAULT)
+Enable selected-subject poses, refresh, choose slot 1-4, then Select photographic
+subject. Only the known 107-node photographic rig is accepted. This does not
+identify the local player. Freeze, choose catalogue page and number, then Apply.
+Seven pages cover 213 frames; empty slots on the final page refuse safely.
+Reset restores exact captured body matrices and animation mode. Thaw/Cinema
+reset first; failed reset blocks that explicit transition. Pending cleanup has
+a Retry action. Unknown rigs, multiple visible peers and foreign edits refuse
+writes. No per-frame pose reapply. Visible pose/cape behavior is untested in Chef.
+
+COMPOSITION AND NATIVE SWITCHES
+Frame masks, guides, tint overlay, vignette/width, grain, clean composition and
+all curated logos are included. Logo size/position/opacity/RGB are adjustable.
+The optional legend has position/scale/opacity settings. Clean composition hides
+guides/logo, not the game's HUD, legend or light markers. These are screen overlays.
+
+Native bloom and native DoF have independent Game setting/Off/On choices. DoF
+uses the game's focus; numeric focus/aperture and autofocus remain unavailable.
+Each switch captures its baseline, checks acknowledgements for up to two seconds,
+then stays idle. Game setting requests restoration. Observable foreign edits
+are preserved. To retry late cleanup, change the row back to Game setting.
+Both controls start at Game setting. No custom shader resources are included.
+
+BOUNDARIES AND RECOVERY
+Chef does not capture gameplay input: native menus, chat and gameplay may react
+to the same keys. No cursor confinement/interception is added. Use Steam or
+another external screenshot key. WJ PNG capture, game HUD/subject/equipment
+hiding, Handycam/player-follow, player-relative anchors, numeric DoF/autofocus,
+cape pose adaptation and frozen-ragdoll protections remain unavailable.
+
+Acquisition failures close the toggle and log the reason. Reopen to retry.
+Failed camera/light/pose cleanup retains its ownership obligation. Retry photo
+cleanup closes the camera and retries, even when the camera toggle is already
+off. Failed time cleanup retries at most once a second. If stop ends with cleanup
+pending, restart before reusing the addon. See chef_loader.log.
+
+VALIDATION STATUS
+Source and decoded-package fixtures check guarded calls, Chef menu constraints,
+ownership, refused writes, cleanup, persistence and transitions with mock engine
+APIs. In-game behavior, visuals and deployed frame cost/spikes remain pending.
+Static state stays idle. Grain changes at most 12 Hz. Extra logos are prebaked
+to at most 512 rectangles each; crest fallback uses at most 256. Fine edge detail
+is reduced. No runtime logo rasterization or steady-state subject scans occur.
+
+Archive packaging adapts Chef Shared Loader by Th3chef. See Chef-LICENSE.txt and
+ARTWORK-CREDITS.txt. Chef loader source is not distributed in this package.

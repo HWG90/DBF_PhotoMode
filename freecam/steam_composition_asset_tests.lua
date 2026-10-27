@@ -13,7 +13,7 @@ local function check()
    local value=dofile('freecam/'..path:sub(5));loaded[path]=value;return value
   end
   if path=='src/steam_runtime.lua'then return{new=function(_,_,modules)deps=modules;return runtime end}end
-  return{}
+  return{new=function()return{}end,association=function()return function()end end}
  end
  rawset(_G,'mod',{require=require_module,log=function()end})
  rawset(_G,'stingray',{})

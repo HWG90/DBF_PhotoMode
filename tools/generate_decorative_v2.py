@@ -127,6 +127,6 @@ def generate():
     return float4(saturate(rgb),input.color.a);
 }
 '''
-  (FOLDER/f'{name}.hlsl').write_text(source)
+  (FOLDER/f'{name}.hlsl').write_text(source, newline='\n')
  return list(PATTERNS)+list(SMOOTH)
 if __name__=='__main__':print(generate())

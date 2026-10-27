@@ -2,6 +2,7 @@ local root=rawget(_G,'DBF_PHOTO_TEST_ROOT')or'freecam/'
 local values={speed=3,filter=1,locked=8,bind=80,slowmo_speed=.2};local commands;local keys={};local invoked=0;local hud_calls=0;local measure_calls=0;local refresh_calls=0
 local freeze_frozen,freeze_enabled,freeze_calls=false,true,0
 local slowmo_active,slowmo_enabled,slowmo_calls=false,true,0
+local smooth_freeze,smooth_calls=false,0
 local function measure(label,size)local n=0;for _ in label:gmatch('[%z\1-\127\194-\244][\128-\191]*')do n=n+1 end;measure_calls=measure_calls+1;return n*size*.8 end
 local choices={};for i=1,24 do choices[i]='Filter '..i end
 local controls={{id='speed',type='slider',label='Movement speed with a deliberately long label',min=.1,max=50,step=.1,fine_step=.01},
@@ -14,6 +15,7 @@ local menu=dofile(root..'photo_menu.lua').new({draw=function(c)commands=c end,re
  text_metrics=function(size)return {min_y=-size*.2,max_y=size*.8,optical_y=0}end,refresh_font=function()refresh_calls=refresh_calls+1 end},
  {focus=function()end,hud=function()hud_calls=hud_calls+1 end,hide=function()end,exit=function()end,
  freeze=function()freeze_calls=freeze_calls+1;freeze_frozen=not freeze_frozen end,freeze_state=function()return freeze_frozen,freeze_enabled,.2 end,
+ smooth_freeze=function()smooth_calls=smooth_calls+1;smooth_freeze=not smooth_freeze end,smooth_freeze_state=function()return smooth_freeze,freeze_enabled end,
  slowmo=function()slowmo_calls=slowmo_calls+1;slowmo_active=not slowmo_active end,slowmo_state=function()return slowmo_active,slowmo_enabled end})
 values.light_color='#406080'
 menu.bind(handle,{{name='Camera',controls=controls},{name='Effects',controls={controls[2]}},{name='Lighting',controls={{id='light_color',type='color',label='Light color'}}}})
@@ -121,6 +123,7 @@ for _,size in ipairs({{1920,1080},{3840,2160},{800,600},{640,480}})do
   for _,c in ipairs(commands)do assert(c.control_id~='freeze_player','Freeze toggle remained in the scrolling controls');assert(not(c.ui_role=='slider_track'and c.control_id=='slowmo_speed'),'Slow motion slider remained in the scrolling controls')end
   local n=freeze_calls;pointer(b,true);tick({click=false});draw(size[1],size[2]);assert(freeze_calls==n+1 and freeze_frozen,'Toolbar did not freeze exactly once')
   assert(find(function(c)return c.full_text=='Resume Action'end),'Paused action lacks Resume label')
+  assert(not pcall(find,function(c)return c.ui_key=='smooth_freeze_action'end),'Removed checkbox must stay absent even with old actions')
   b=find(function(c)return c.ui_key=='freeze_action'end);pointer(b,true);tick({click=false});draw(size[1],size[2]);assert(freeze_calls==n+2 and not freeze_frozen,'Toolbar did not resume exactly once')
   freeze_enabled=false;draw(size[1],size[2]);b=find(function(c)return c.ui_key=='freeze_action'end);pointer(b,true);tick({click=false});assert(freeze_calls==n+2,'Unavailable time control accepted a click')
   freeze_enabled=true;menu.draw(size[1],size[2],false,false,{focus='TAB',hide='H'});b=find(function(c)return c.ui_key=='freeze_action'end)
@@ -140,4 +143,52 @@ tick({click=false});keys[16]=false;draw();local retained=values.slowmo_speed
 assert(find(function(c)return c.full_text==string.format('%.0f%%',retained*100)end),'Toolbar percentage does not reflect retained rate')
 slowmo_enabled=false;draw();rate=find(function(c)return c.ui_role=='slowmo_speed_track'end)
 tick({x=rate.x+rate.w,y=rate.y+1,click=true});tick({click=false});assert(values.slowmo_speed==retained,'Unavailable toolbar slider accepted edits')
-menu.close();print('Photo panel interaction: fixed Freeze/Resume toolbar on every tab and viewport, actual state/authority, hidden scrolling toggle, native label fitting, modal pointer ownership, keyboard values and tab transitions passed')
+menu.close()
+-- BML on Windows has no HUD backend. Its absent toolbar callback must be
+-- disabled, rather than falling through to a nonexistent row control.
+local exits=0
+menu=dofile(root..'photo_menu.lua').new({draw=function(c)commands=c end,release=function()end,measure=measure},
+ {focus=function()end,hide=function()end,exit=function()exits=exits+1 end})
+menu.bind(handle,{{name='Camera',controls=controls}})
+draw();tick()
+local unavailable=find(function(c)return c.ui_key=='hud'end)
+pointer(unavailable,true);tick({click=false});draw()
+assert(exits==0 and hud_calls==0,'Missing HUD callback activated another action')
+pointer(find(function(c)return c.ui_key=='exit'end),true);tick({click=false})
+assert(exits==1,'Absent HUD callback broke the remaining toolbar')
+menu.close();print('Photo panel interaction: absent native HUD callback, fixed Freeze/Resume toolbar on every tab and viewport, actual state/authority, hidden scrolling toggle, native label fitting, modal pointer ownership, keyboard values and tab transitions passed')
+
+-- Camera handle captures a pointer gesture, previews only on movement and commits once.
+do
+ local saved={handycam_right_cm=0,handycam_up_cm=7,handycam_forward_cm=14,handycam_yaw_deg=0,handycam_pitch_deg=0}
+ local preview;local commits,updates=0,0;local cmds;local keys={}
+ local ctl={id='handycam_position_handle',type='button',label='Drag camera position',button_label='Drag camera position'}
+ local function get(id)return preview and preview[id]~=nil and preview[id]or saved[id]end
+ local m=dofile(root..'photo_menu.lua').new({draw=function(c)cmds=c end,release=function()end,measure=measure},{
+  focus=function()end,hide=function()end,exit=function()end,handycam_adjust=function(v,commit)
+   if v then updates=updates+1;preview=preview or{};for k,n in pairs(v)do preview[k]=n end
+   else if commit and preview then commits=commits+1;for k,n in pairs(preview)do saved[k]=n end end;preview=nil end;return true
+  end})
+ m.bind({get=get,set=function()error('Gesture must not write directly')end},{{name='Director',controls={ctl}}})
+ local function draw(focus)m.draw(1920,1080,focus~=false,false,{focus='TAB',hide='H'})end
+ local function tick(x,y,left,wheel)m.tick({x=x,y=y,click=left==true,wheel=wheel or 0},function(k)return keys[k]or false end)end
+ draw();local b;for _,c in ipairs(cmds)do if c.ui_role=='field'and c.control_id==ctl.id then b=c end end;assert(b)
+ local x,y=b.x+b.w/2,b.y+b.h/2
+ tick(x,y,false);tick(x,y,true);tick(x+10,y+20,true)
+ assert(get('handycam_right_cm')>0 and get('handycam_up_cm')>7 and commits==0)
+ local n=updates;tick(x+10,y+20,true);assert(updates==n,'Unchanged pointer performs no preview work')
+ tick(x+10,y+20,true,120);assert(get('handycam_forward_cm')==14.5)
+ tick(x+10,y+20,false);assert(commits==1 and not preview)
+ tick(x,y,false,-120);assert(commits==2 and saved.handycam_forward_cm==14,'Wheel over handle adjusts depth without scrolling')
+ keys[16]=true;tick(x,y,false,120);assert(math.abs(saved.handycam_forward_cm-14.05)<1e-9,'Shift wheel takes a fine depth step');keys[16]=false
+ -- Account for the additional explicit wheel commit.
+ commits=2
+
+ keys[4]=true;tick(x,y,false);tick(x+20,y+10,false);assert(get('handycam_yaw_deg')<0 and get('handycam_pitch_deg')>0 and commits==2)
+ keys[4]=false;tick(x+20,y+10,false);assert(commits==3)
+ tick(x,y,true);tick(x+10,y,true);assert(preview);draw(false);assert(not preview and commits==3,'Focus loss cancels an unfinished gesture')
+ draw();tick(x,y,false);ctl.disabled=true;tick(x,y,true);tick(x+10,y+10,true);assert(not preview,'Disabled handle refuses input')
+ m.close()
+end
+print('Camera handle: M1 position, wheel depth, MMB rotation, idle preview, single commit and focus-loss cancellation passed')
+

@@ -40,7 +40,7 @@ local function unhex(s)return(s:gsub('%x%x',function(x)return string.char(tonumb
 local function native_memory()
  local memory=mod.require('src/host_native.lua').memory()
  memory.scene=memory.world_address
- local open,why=package.loadlib(mod.dir..'/port51/hd2_nativeinfo_3139cc5f8ecb4078.dll','luaopen_hd2_nativeinfo')
+ local open,why=package.loadlib(mod.require('src/host_native.lua').library('hd2_nativeinfo_3139cc5f8ecb4078.dll'),'luaopen_hd2_nativeinfo')
  assert(open,why);local bridge=open()
  for _,name in ipairs({'hover_ensure','hover_height','gamepads_absent'})do assert(type(bridge[name])=='function','Hover native bridge incomplete')end
  function memory.ensure_private(frame)return bridge.hover_ensure(frame.entity,frame.unit_ref)end

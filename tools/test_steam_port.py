@@ -12,11 +12,32 @@ FIXTURES=('steam_control_updates_tests.lua','steam_director_runtime_tests.lua','
           'steam_pose_bank_tests.lua','steam_subject_tests.lua','steam_subject_native_tests.lua','steam_subject_runtime_tests.lua')
 FIXTURES+=('steam_scene_sdr_tests.lua','steam_scene_resources_tests.lua','steam_scene_tests.lua','steam_focus_sampler_tests.lua','steam_scene_overlay_tests.lua','steam_ai_backend_tests.lua','steam_player_passive_tests.lua','steam_ai_control_tests.lua','steam_ai_tests.lua','steam_required_input_tests.lua','steam_hud_tests.lua','steam_hud_runtime_tests.lua','steam_handycam_tests.lua')
 
-FIXTURES+=('steam_pick_tests.lua','steam_handoff_runtime_tests.lua','steam_native_lens_runtime_tests.lua','steam_ragdoll_runtime_tests.lua','steam_hover_pause_tests.lua','steam_hover_runtime_tests.lua','steam_hover_backend_tests.lua','steam_mcm_host_tests.lua')
+FIXTURES+=('steam_engine_capture_tests.lua','steam_native_diagnostics_tests.lua','steam_bindings_tests.lua','steam_engine_input_tests.lua','steam_native_library_tests.lua','steam_pick_tests.lua','steam_handoff_runtime_tests.lua','steam_native_lens_runtime_tests.lua','steam_ragdoll_runtime_tests.lua','steam_hover_pause_tests.lua','steam_hover_runtime_tests.lua','steam_hover_backend_tests.lua','steam_bml_degraded_tests.lua','steam_mcm_host_tests.lua')
 
+FIXTURES+=('engine_input_gate_tests.lua','windows_hover_freeze_tests.lua','windows_hover_activity_tests.lua',)
+FIXTURES+=('steam_pick_runtime_tests.lua',)
+FIXTURES+=('esc_state_observer_tests.lua',)
+FIXTURES+=('windows_native_fog_probe_tests.lua',)
+FIXTURES+=('engine_cursor_gate_tests.lua',)
 FEATURE_FIXTURES=('cinema_camera_tests.lua','cinema_controls_tests.lua','cinema_hint_tests.lua',
                   'saved_camera_tests.lua','director_tests.lua','photo_lights_tests.lua','photo_light_presets_tests.lua',
-                  'subject_poses_tests.lua','subject_pose_cape_tests.lua','ragdoll_pause_tests.lua','photo_menu_cache_tests.lua','photo_light_gizmos_tests.lua')
+                  'subject_poses_tests.lua','subject_pose_cape_tests.lua','ragdoll_pause_tests.lua','photo_menu_cache_tests.lua','photo_menu_interaction_tests.lua','photo_light_gizmos_tests.lua')
+
+FIXTURES+=('windows_input_service_tests.lua','steam_light_sync_tests.lua','windows_lens_tests.lua','windows_freeze_tests.lua','windows_font_tests.lua','wjl_helper_startup_tests.lua','engine_scene_resources_tests.lua','windows_dof_runtime_tests.lua','windows_font_view_tests.lua')
+FIXTURES+=('windows_native_dof_tests.lua','windows_native_dof_selftest_tests.lua','windows_dof_override_tests.lua')
+FIXTURES+=('windows_freeze_observer_tests.lua',)
+FIXTURES+=('windows_freeze_root_hold_tests.lua','windows_freeze_root_runtime_tests.lua','windows_freeze_world_anchor_tests.lua','windows_freeze_transfer_runtime_tests.lua')
+FIXTURES+=('windows_cape_observer_tests.lua',)
+FIXTURES+=('windows_dev_reload_tests.lua',)
+FIXTURES+=('windows_subject_tracking_tests.lua',)
+FIXTURES+=('windows_visibility_probe_tests.lua',)
+FIXTURES+=('windows_mesh_visibility_tests.lua',)
+FIXTURES+=('windows_pov_visibility_tests.lua','windows_camera_signals_tests.lua','windows_handycam_ads_tests.lua',)
+FIXTURES+=('windows_movement_probe_tests.lua',)
+FIXTURES+=('windows_freeze_bone_probe_tests.lua',)
+FIXTURES+=('windows_freeze_physics_probe_tests.lua',)
+FIXTURES+=('windows_freeze_pose_probe_tests.lua','windows_freeze_cape_tests.lua','windows_freeze_ramp_tests.lua')
+FIXTURES+=('windows_animation_source_tests.lua',)
 
 def run():
     from lupa.lua51 import LuaRuntime
@@ -47,6 +68,14 @@ def run():
             content=hashlib.sha256(source+b':aligned-v2').hexdigest()[:16]
             assert path==f'mods/dbf_photo/materials/decorative_{name}_{content}'
         rows.append({'fixture':'decorative_asset_path_closure','passed':True,'materials':40})
+        # lll/ pins the last Lua 5.1 loader (R35 insert-fix.2); the input
+        # service must match it; Git may convert the dependency's LF to CRLF.
+        service=ROOT/'lll/src/steam/input_service.lua'
+        if service.is_file():
+            assert (ROOT/'freecam/test_reference/input_service_r35.lua').read_bytes().replace(b'\r\n',b'\n')==service.read_bytes().replace(b'\r\n',b'\n'),'Input service reference differs from lll/'
+            rows.append({'fixture':'lll_r35_input_service_reference','passed':True})
+        else:
+            rows.append({'fixture':'lll_r35_input_service_reference','passed':None,'skipped':'lll submodule not checked out'})
         for fixture in FIXTURES:
             lua=LuaRuntime()
             assert lua.eval('_VERSION')=='Lua 5.1' and lua.eval('jit==nil and package.loaded.ffi==nil')
@@ -59,6 +88,7 @@ def run():
             # The shared MCM checkout can be an unmounted link; record the gap.
             rows.extend({'fixture':fixture,'passed':None,'skipped':'DBF-MCM checkout unavailable'}for fixture in FEATURE_FIXTURES)
             return {'passed':True,'fixtures':rows,'live_game_verified':False,'feature_fixtures_skipped':len(FEATURE_FIXTURES)}
+        (ROOT/'dist/validation').mkdir(parents=True,exist_ok=True)  # Light presets write a fixture file here.
         os.chdir(mcm)
         for fixture in FEATURE_FIXTURES:
             lua=LuaRuntime()

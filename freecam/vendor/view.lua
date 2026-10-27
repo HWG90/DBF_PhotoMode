@@ -2,9 +2,22 @@
 local M={}
 function M.new(sr,preview_only,diagnostic_log,shared_fonts)
     local font_state=shared_fonts or {guis={}}
+    font_state.assigned=font_state.assigned or setmetatable({},{__mode='k'})
     local preview_guis={}
     local gui,world;local ids={};local G=sr.Gui;local self={};local reported=false
     local partial_cleanup=false
+    local menu_blur -- nil: not admitted this session; false: unavailable until explicit release.
+    function self.menu_blur_material()
+        if menu_blur~=nil then return menu_blur or nil end
+        menu_blur=false
+        if type(sr.Application.can_get)~='function'or type(G.bitmap)~='function'then return end
+        for _,name in ipairs({'content/ui/shared/material/gui_blur','content/ui/shared/material/blur_background'})do
+            local ok,available=pcall(sr.Application.can_get,'material',name)
+            if ok and available==true then menu_blur=name;break end
+        end
+        if diagnostic_log then diagnostic_log(menu_blur and('Photo menu native blur: '..menu_blur)or'Photo menu native blur material unavailable')end
+        return menu_blur or nil
+    end
     local stable_commands,stable_token,stable_font,stable_gui,stable_text_guis
     local split_commands,split_token,split_menu,split_preview,split_popup
     local function forget_draw()
@@ -35,7 +48,15 @@ function M.new(sr,preview_only,diagnostic_log,shared_fonts)
     local function descriptor_key(descriptor)
         return descriptor and table.concat({descriptor.font,descriptor.material,descriptor.atlas},'|') or debug_font
     end
-    local function bind_font(target_gui,descriptor)
+    local function bind_font(target_gui,descriptor,allow_deferred)
+        -- This Windows build has no Gui.create_material. Do not query an
+        -- unassigned material: let the first real retained text primitive
+        -- assign it, then bind its atlas before the GUI is submitted.
+        local assigned=font_state.assigned[target_gui]
+        if type(G.create_material)~='function'and not(assigned and assigned[descriptor.material])then
+            if allow_deferred then return true,true end
+            return false
+        end
         local ok,success=pcall(function()
             local queried,handle=pcall(G.material,target_gui,sr.IdString64.from_hex(descriptor.material))
             if not queried then handle=nil end
@@ -53,7 +74,10 @@ function M.new(sr,preview_only,diagnostic_log,shared_fonts)
             if font_state.failed_key~=key and diagnostic_log then diagnostic_log('MCM game font unavailable; using stock font')end
             font_state.failed_key=key;return false
         end
-        return true
+        local key=descriptor_key(descriptor)
+        if font_state.bound_key~=key and diagnostic_log then diagnostic_log('Game font atlas bound: '..descriptor.font)end
+        font_state.bound_key=key
+        return true,false
     end
     function self._accept_font(descriptor)
         local key=descriptor_key(descriptor);local changed=key~=self.font_key
@@ -94,7 +118,7 @@ function M.new(sr,preview_only,diagnostic_log,shared_fonts)
                 for owned,owned_world in pairs(font_state.guis)do
                     local alive=false;for _,w in pairs(worlds)do if w==owned_world then alive=true;break end end
                     if not alive then font_state.guis[owned]=nil
-                    elseif not bind_font(owned,descriptor)then descriptor=nil;break end
+                    elseif not bind_font(owned,descriptor,true)then descriptor=nil;break end
                 end
             end
         end
@@ -152,6 +176,7 @@ function M.new(sr,preview_only,diagnostic_log,shared_fonts)
         if gui and live()then for _,item in ipairs(ids)do destroy_item(item)end end;ids={}
     end
     function self.release()
+        menu_blur=nil
         forget_all()
         if preview_view then local ok,why=preview_view.release();if ok==false then return false,why end end
         if popup_view then local ok,why=popup_view.release();if ok==false then return false,why end end;reported=false
@@ -176,7 +201,7 @@ function M.new(sr,preview_only,diagnostic_log,shared_fonts)
         preview_guis={};ids={};gui,world=nil,nil;partial_cleanup=false;metric_ready=false;reset_metrics()
     end
     -- Retained primitives compare scalar fields directly: no per-frame serialization.
-    local fields={'type','text','x','y','w','h','size','a','layer','font_resource','font_material','preview_material','preview_role','text_bold'}
+    local fields={'type','text','x','y','w','h','size','a','layer','font_resource','font_material','preview_material','preview_role','text_bold','native_material'}
     local vector_fields={'points','preview_uv'}
     local function same_command(old,c)
         if type(old)~='table' or old.font_key~=(c.type=='text'and self.font_key or nil)then return false end
@@ -262,7 +287,11 @@ function M.new(sr,preview_only,diagnostic_log,shared_fonts)
         local prepared={}
         if active_font then for _,c in ipairs(commands)do if c.type=='text' and not c.font_resource then
             local owned=command_gui(c)
-            if not prepared[owned]then if not bind_font(owned,active_font)then return false end;prepared[owned]=true end
+            if not prepared[owned]then
+                local ok,deferred=bind_font(owned,active_font,true)
+                if not ok then return false end
+                prepared[owned]=deferred and 'pending' or true
+            end
         end end end
         -- Per-primitive text reports are opt-in diagnostics, not routine logs.
         local report_now=diagnostic_log and rawget(_G,'DBF_VIEW_TEXT_DIAGNOSTICS')==true and not reported
@@ -341,6 +370,8 @@ function M.new(sr,preview_only,diagnostic_log,shared_fonts)
                 -- A late availability/primitive loss after preflight must
                 -- still fail closed. The GUI remains owned for caller cleanup.
                 error('Required preview material unavailable',0)
+            elseif c.type=='bitmap' then
+                value=G.bitmap(target_gui,c.native_material,sr.Vector3(c.x,c.y,z),sr.Vector2(c.w,c.h),color)
             elseif c.type=='rect' then value=G.rect(target_gui,sr.Vector3(c.x,c.y,z),sr.Vector2(c.w,c.h),color)
             else
                 local font,material=font_id(),active_font and sr.IdString64.from_hex(active_font.material) or debug_font
@@ -349,6 +380,17 @@ function M.new(sr,preview_only,diagnostic_log,shared_fonts)
                 if c.text_bold then
                     if active_font and not c.font_resource then font,material=font_id(),sr.IdString64.from_hex(active_font.material)end
                     bold_id=G.text(target_gui,c.text,font,c.size,material,sr.Vector3(c.x+.65,c.y,z),color)
+                end
+                if value and active_font and not c.font_resource then
+                    local assigned=font_state.assigned[target_gui]or{}
+                    font_state.assigned[target_gui]=assigned;assigned[active_font.material]=true
+                    if prepared[target_gui]=='pending'then
+                        if bind_font(target_gui,active_font)then prepared[target_gui]=true
+                        else
+                            G.destroy_text(target_gui,value);if bold_id then G.destroy_text(target_gui,bold_id)end
+                            value,bold_id=nil,nil;cacheable=false;self._accept_font(nil)
+                        end
+                    end
                 end
             end
             if report_now and c.type=='text' and not c.diagnostic_console then report[#report]=report[#report]..' allocation='..tostring(value)end

@@ -1,0 +1,32 @@
+War Journalist Chef preview artwork
+
+The Chef build converts the existing War Journalist monochrome geometry into
+bounded rectangle spans. This reduces fine edge detail. The Helldiver crest
+also retains its triangle representation. Original sources are unchanged in
+the source repository; this candidate contains derived numeric geometry.
+
+Helldiver crest: gehryguest / @guestit, CC BY 4.0.
+https://www.figma.com/community/file/1382854850516388445/helldivers-2-logo-stratagems
+https://creativecommons.org/licenses/by/4.0/
+
+Super Earth crest: Alphaccca, Super_Earth.svg.
+https://gist.github.com/Alphaccca/71f148c625adf8e46685ff28f4693d5a
+The recorded source gist has no explicit license statement. No CC license is
+inferred from the separate gehryguest artwork.
+
+Curated SteamGridDB designs for Helldivers II:
+https://www.steamgriddb.com/game/5403655/logos
+105609 Main stacked wordmark: Orion1189
+139968 Wide wordmark: r_dsgnd
+139970 Compact wordmark and skull: r_dsgnd
+108334 Textless skull and wings: HiddenEgg
+108191 Super Citizen Edition: CluckenDip
+139972 Omens of Tyranny: r_dsgnd
+139966 Heart of Democracy: r_dsgnd
+148760 Into the Unjust: r_dsgnd
+The recorded catalog has no per-asset redistribution license. Attribution is
+preserved here and in freecam/assets/logos in the source repository.
+
+Arrowhead/Helldivers names and marks remain their owners' property. Existing
+War Journalist Arrowhead and DBF geometry is retained. Source metadata and
+geometry hashes are recorded by the repository and package provenance.

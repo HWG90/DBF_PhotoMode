@@ -11,20 +11,46 @@ from verify_installed_modules import audit
 from test_steam_port import run
 
 ROOT=Path(__file__).resolve().parents[1]
-MODULES=('steam_overlay.lua', 'steam_camera.lua', 'steam_input.lua', 'steam_path.lua', 'steam_runtime.lua', 'steam_capture.lua', 'steam_lighting.lua', 'photo_lights.lua', 'photo_light_presets.lua', 'photo_light_gizmos.lua', 'photo_options.lua', 'photo_menu.lua', 'control_legend.lua', 'composition.lua', 'look.lua', 'lens.lua', 'vendor/core.lua', 'vendor/store.lua', 'vendor/view.lua', 'assets/logo_art.lua', 'assets/helldiver_crest.lua', 'steam_bookmark.lua', 'host_native.lua', 'subject_backend.lua', 'subject_visibility.lua', 'input_cleanup.lua', 'vendor/font.lua', 'director.lua', 'steam_subject.lua', 'steam_subject_native.lua', 'subject_poses.lua', 'assets/steam_subject_poses.lua', 'steam_hud.lua', 'cffi.lua', 'linux_capture.lua', 'steam_handycam.lua', 'ragdoll_pause.lua', 'steam_lens_model.lua', 'steam_native_lens.lua', 'hover_pause.lua', 'steam_hover_backend.lua', 'steam_hover_pause.lua', 'steam_update_clock.lua', 'steam_ai.lua', 'steam_ai_backend.lua', 'steam_ai_control.lua', 'steam_scene_resources.lua', 'steam_scene_overlay.lua', 'steam_focus_sampler.lua', 'steam_scene.lua', 'steam_pick.lua')
-NATIVE_LIBRARIES=('port51/hd2_nativeinfo_f6d3465944c1aea1.dll', 'port51/hd2_nativeinfo_3139cc5f8ecb4078.dll', 'port51/hd2_nativeinfo_4aab2adfbc4090d6.dll', 'port51/hd2_nativeinfo_5e39eeeeb76b863a.dll')
+# Own LLL folder/id so it installs beside the FFI build (dbf_freecam); the
+# runtime's internal 'dbf_freecam' ids stay, so only one can run at a time.
+MOD_ID='dbf_freecam_lua51'
+MODULES=('steam_overlay.lua', 'steam_camera.lua', 'steam_input.lua', 'steam_path.lua', 'steam_runtime.lua', 'steam_capture.lua', 'steam_lighting.lua', 'photo_lights.lua', 'photo_light_presets.lua', 'photo_light_gizmos.lua', 'photo_options.lua', 'photo_menu.lua', 'control_legend.lua', 'composition.lua', 'look.lua', 'lens.lua', 'vendor/core.lua', 'vendor/store.lua', 'vendor/view.lua', 'assets/logo_art.lua', 'assets/helldiver_crest.lua', 'steam_bookmark.lua', 'host_native.lua', 'subject_backend.lua', 'subject_visibility.lua', 'input_cleanup.lua', 'vendor/font.lua', 'director.lua', 'steam_subject.lua', 'steam_subject_native.lua', 'subject_poses.lua', 'assets/steam_subject_poses.lua', 'steam_hud.lua', 'linux_capture.lua', 'steam_handycam.lua', 'ragdoll_pause.lua', 'steam_lens_model.lua', 'steam_native_lens.lua', 'hover_pause.lua', 'steam_hover_backend.lua', 'steam_hover_pause.lua', 'steam_update_clock.lua', 'steam_scene_resources.lua', 'steam_scene_overlay.lua', 'steam_focus_sampler.lua', 'steam_scene.lua', 'steam_pick.lua', 'engine_input.lua', 'steam_bindings.lua', 'native_diagnostics.lua', 'engine_capture.lua')
+MODULES+=('engine_input_gate.lua','windows_api_inventory.lua','windows_hover_freeze.lua')
+MODULES+=('windows_native_dof.lua','windows_native_dof_selftest.lua','windows_dof_override.lua')
+MODULES+=('windows_freeze_observer.lua',)
+MODULES+=('windows_animation_source.lua',)
+MODULES+=('windows_freeze_root_hold.lua',)
+MODULES+=('windows_cape_observer.lua',)
+MODULES+=('windows_dev_reload.lua',)
+MODULES+=('windows_subject_tracking.lua',)
+MODULES+=('windows_native_fog_probe.lua',)
+MODULES+=('esc_state_observer.lua',)
+MODULES+=('windows_visibility_probe.lua',)
+MODULES+=('windows_mesh_visibility.lua',)
+MODULES+=('windows_pov_visibility.lua',)
+MODULES+=('windows_camera_signals.lua','windows_handycam_ads.lua',)
+MODULES+=('windows_movement_probe.lua',)
+MODULES+=('windows_freeze_bone_probe.lua',)
+MODULES+=('windows_freeze_physics_probe.lua',)
+MODULES+=('windows_freeze_pose_probe.lua','windows_freeze_cape.lua')
+MODULES+=('engine_render_contract.lua','engine_scene_resources.lua','engine_scene_registry.lua','wjl_helper_payload.lua','wjl_helper_startup.lua','windows_lens.lua','engine_cursor_gate.lua','windows_input_service.lua','vendor/wjl_transport.lua','vendor/wjl_capture.lua','vendor/wjl_input_service.lua')
+# Plain Lua 5.1 only: no cffi/ffi imports, ffi calls, cdef blocks or PORT51 adapters.
+FFI=re.compile(r"['\"]c?ffi['\"]|\bffi\s*\.|\bcdef\b|\bPORT51\b|luaopen_hd2_cffi")
+NATIVE_LIBRARIES=('port51/hd2_nativeinfo_f6d3465944c1aea1.dll', 'port51/hd2_nativeinfo_3139cc5f8ecb4078.dll', 'port51/hd2_nativeinfo_78b314de6177433d.dll', 'port51/hd2_nativeinfo_4aab2adfbc4090d6.dll', 'port51/hd2_nativeinfo_5e39eeeeb76b863a.dll')
 
 def digest(data):return hashlib.sha256(data).hexdigest()
-def build(output):
+def build(output,release=False):
     from lupa.lua51 import LuaRuntime
     output=output.resolve()
     assert output.is_relative_to(ROOT/'dist/review'),'Development port must stay in dist/review'
     output.mkdir(parents=True,exist_ok=True)
     fixture=run()
-    version=(ROOT/'VERSION').read_text().strip()+'-steam51-dev'
-    manifest={'id':'dbf_freecam','name':'War Journalist','version':version,'author':'Goose',
+    # A public build carries the plain version; everything else stays marked as a candidate.
+    version=(ROOT/'VERSION').read_text().strip()+(''if release else'-steam51-dev')
+    manifest={'id':MOD_ID,'name':'War Journalist (Lua 5.1)','version':version,'author':'Goose',
               'lll':{'entry':'main.lua','defaults':'config/defaults.cfg','modules':['src/'+name for name in MODULES],
                      'restart_only':False,'retain_until_exit':False}}
+    manifest['public_release']=bool(release)
     manifest['license_files']=['LICENSE-Link.txt','LICENSE-Bingus.txt']
     manifest['native_libraries']=list(NATIVE_LIBRARIES)
     files={'main.lua':(ROOT/'freecam/steam51.lua').read_bytes(),'manifest.json':(json.dumps(manifest,indent=2)+'\n').encode(),
@@ -37,8 +63,9 @@ def build(output):
         if name.endswith('.lua'):
             source=body.decode('utf-8')
             assert not re.search(r"\brequire\s*\(\s*['\"](?:ffi|bit|jit(?:\.[^'\"]+)?)['\"]",source),name
+            assert not FFI.search(source),name+' uses FFI'
             compile_lua(source)
-    provenance={'version':version,'runtime':'Lua 5.1','candidate_only':True,'publication_performed':False,
+    provenance={'version':version,'runtime':'Lua 5.1','ffi':'none; FFI enemy behavior omitted','candidate_only':not release,'publication_performed':False,
                 'source_sha256':{name:digest(body)for name,body in files.items()},
                 'native_features':'Still being ported; full parity is not verified',
                 'minimum_input_service':1,'requires_relative_mouse':True,
@@ -52,14 +79,14 @@ def build(output):
     files['FILES-SHA256.txt']=''.join(digest(body)+'  '+name+'\n'for name,body in sorted(files.items())).encode()
     package=output/('War-Journalist-'+version+'-LLL.zip')
     with zipfile.ZipFile(package,'w',zipfile.ZIP_DEFLATED)as archive:
-        for name,body in files.items():archive.writestr('dbf_freecam/'+name,body)
+        for name,body in files.items():archive.writestr(MOD_ID+'/'+name,body)
     # Reconstruct only our fixed candidate directory, then audit actual bytes.
     unpacked=output/'candidate'
     if unpacked.exists():
         assert unpacked.resolve().is_relative_to(ROOT/'dist/review')
         shutil.rmtree(unpacked)
     with zipfile.ZipFile(package)as archive:archive.extractall(unpacked)
-    directory=unpacked/'dbf_freecam'
+    directory=unpacked/MOD_ID
     for name,body in files.items():assert (directory/name).read_bytes()==body,name
     report=audit(directory);assert report['passed'],report['errors']
     receipt={'package':str(package),'sha256':digest(package.read_bytes()),'candidate':str(directory),'fixtures':fixture,
@@ -70,6 +97,7 @@ def build(output):
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output',type=Path,default=ROOT/'dist/review/steam-lua51/package')
+    parser.add_argument('--release',action='store_true',help='public build: plain VERSION, candidate_only false')
     args=parser.parse_args()
-    result=build(args.output)
+    result=build(args.output,args.release)
     print(json.dumps({k:result[k]for k in ('package','sha256','candidate','installed','live_acceptance')},indent=2))

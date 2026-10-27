@@ -20,10 +20,17 @@ function M.new()
     local head=copy(p)
     local previous=previous_state
     local elapsed=previous and math.max(0,math.min(.1,now-previous.time))or 0
+    local lag=options.handycam_lag_ms
+    lag=finite(lag)and math.max(0,math.min(500,lag))or 0
+    if previous and lag>0 then
+     local alpha=1-math.exp(-elapsed/(lag*.001))
+     for i=1,3 do p[i]=previous.position[i]+(p[i]-previous.position[i])*alpha end
+    end
     local smooth=options.camera_smoothing==true and strength>0 and previous
     if smooth then
      local alpha=1-math.exp(-elapsed/smoothing_time)
-     for i=1,3 do p[i]=previous.position[i]+(p[i]-previous.position[i])*alpha end
+     -- Aim smoothing and the configurable position lag are independent.
+     -- Sway remains angular and never feeds back into the mount.
      yaw=previous.yaw+((yaw-previous.yaw+math.pi)%(2*math.pi)-math.pi)*alpha
      pitch=previous.pitch+(pitch-previous.pitch)*alpha
     end
@@ -48,10 +55,27 @@ function M.new()
      sway_yaw=math.rad(1.4)*shake,sway_pitch=math.rad(1.8)*energy*math.sin(phase*2.87),
      sway_roll=1.8*energy*math.sin(phase*1.73)}
   local view=previous_state
-  local yaw,pitch=view.yaw+view.sway_yaw,view.pitch+view.sway_pitch
+  local yaw_offset,pitch_offset=options.handycam_yaw_deg,options.handycam_pitch_deg
+  yaw_offset=finite(yaw_offset)and math.max(-180,math.min(180,yaw_offset))or 0
+  pitch_offset=finite(pitch_offset)and math.max(-89,math.min(89,pitch_offset))or 0
+  local yaw=view.yaw+view.sway_yaw+math.rad(yaw_offset)
+  local pitch=math.max(math.rad(-89.9),math.min(math.rad(89.9),view.pitch+view.sway_pitch+math.rad(pitch_offset)))
   local cy,sy,cp,sp=math.cos(yaw),math.sin(yaw),math.cos(pitch),math.sin(pitch)
   local f,r={cy*cp,sy*cp,sp},{sy,-cy,0};view.output_forward=copy(f)
-  return copy(view.position),f,r,view.sway_roll
+  -- Offset the clean mount in view-local metres after position smoothing.
+  -- Never feed the offset back into lag, speed estimation or shake history.
+  local forward_cm,up_cm=options.handycam_forward_cm,options.handycam_up_cm
+  forward_cm=finite(forward_cm)and math.max(-30,math.min(30,forward_cm))or 14
+  up_cm=finite(up_cm)and math.max(-30,math.min(30,up_cm))or 7
+  local y,p=view.yaw,view.pitch
+  local cy,sy,cp,sp=math.cos(y),math.sin(y),math.cos(p),math.sin(p)
+  local side=options.handycam_right_cm
+  side=(finite(side)and math.max(-30,math.min(30,side))or 0)*.01
+  local ahead,height=forward_cm*.01,up_cm*.01
+  local horizontal=cp*ahead-sp*height
+  local mounted={view.position[1]+cy*horizontal+sy*side,view.position[2]+sy*horizontal-cy*side,
+   view.position[3]+sp*ahead+cp*height}
+  return mounted,f,r,view.sway_roll
  end}
 end
 return M

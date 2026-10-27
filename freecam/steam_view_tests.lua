@@ -145,3 +145,26 @@ do
 end
 DBF_VIEW_TEXT_DIAGNOSTICS=nil
 print('Steam retained view: immutable/static geometry, mutable safety, font binding, lifetime/retry and required/dynamic previews passed')
+
+-- Native frosted backdrops use bitmap's material argument; rect is always
+-- untextured on the game build. Admission is cached until explicit release.
+do
+ local world={};local checks,bitmaps,removed=0,0,0
+ local native={Gui={resolution=function()return 1920,1080 end,
+  bitmap=function(g,material,p,size,color)assert(material=='content/ui/shared/material/gui_blur');bitmaps=bitmaps+1;return bitmaps end,
+  rect=function()error('Blur cannot use the untextured rect primitive')end,
+  destroy_bitmap=function()removed=removed+1 end},
+  Application={worlds=function()return{world}end,main_world=function()return world end,
+   can_get=function(kind,name)assert(kind=='material');checks=checks+1;return true end},
+  World={create_screen_gui=function()return{}end,destroy_gui=function()return true end},
+  Vector2=function(...)return{...}end,Vector3=function(...)return{...}end,Color=function(...)return{...}end}
+ local v=View.new(native,true);local material=v.menu_blur_material();assert(material)
+ for i=1,100 do assert(v.menu_blur_material()==material)end;assert(checks==1,'Material admission cannot poll')
+ local c={{type='bitmap',native_material=material,x=0,y=0,w=1920,h=1080,c={255,255,255},a=1,layer=295}}
+ for i=1,100 do assert(v.draw(c,c)~=false)end
+ assert(bitmaps==1 and checks==1,'Unchanged native backdrop has no allocations or resource checks')
+ assert(v.release()~=false and removed==1,'Hiding the menu retires the backdrop')
+ native.Application.can_get=function()checks=checks+1;return false end
+ local n=checks;for i=1,100 do assert(v.menu_blur_material()==nil)end
+ assert(checks==n+2,'Unavailable materials are checked once per candidate per session')
+end

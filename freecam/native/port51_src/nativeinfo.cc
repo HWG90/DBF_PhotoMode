@@ -172,10 +172,33 @@ static int native_hud_visible(lua_State *L) {
  const unsigned char prefix[]={0x48,0x83,0xec,0x28,0x44,0x8b,0x01,0x4c,0x8b,0xd1,0x41,0x8b,0xc0,0x45,0x8b,0xc8,0x83,0xe0,0xef,0x41,0x83,0xc9,0x10,0x84,0xd2,0x44,0x0f,0x44,0xc8,0x44,0x89,0x09};
  unsigned char actual[sizeof(prefix)]={};if(!rd(game+0x12e4cc0,actual,sizeof(actual))||std::memcmp(actual,prefix,sizeof(actual)))return native_api.luaL_error(L,"HUD setter witness differs");
  uintptr_t state=0,root=0,parent=0,panel_parent=0;uint32_t scene=0;unsigned char initialized=0;
- if(!rd(game+0x2ce1508,&state,8)||!rd(state+0xac29c,&scene,4)||scene!=4||!rd(game+0x2e28788,&root,8)||widget!=root+0x820||!rd(root+0x24e334,&initialized,1)||initialized!=1||!rd(widget+0xf0,&parent,8)||parent!=root+0x258||!rd(root+0x24e340+0x146940+0xf0,&panel_parent,8)||panel_parent!=widget)return native_api.luaL_error(L,"Gameplay HUD ownership differs");
+ // Scene 4 is a mission. Scene 3 is the ship: the same widget, and no mission panel there.
+ if(!rd(game+0x2ce1508,&state,8)||!rd(state+0xac29c,&scene,4)||(scene!=4&&scene!=3)||!rd(game+0x2e28788,&root,8)||widget!=root+0x820||!rd(root+0x24e334,&initialized,1)||initialized!=1||!rd(widget+0xf0,&parent,8)||parent!=root+0x258||(scene==4&&(!rd(root+0x24e340+0x146940+0xf0,&panel_parent,8)||panel_parent!=widget)))return native_api.luaL_error(L,"Gameplay HUD ownership differs");
  reinterpret_cast<void(*)(uintptr_t,uint8_t)>(game+0x12e4cc0)(widget,static_cast<uint8_t>(value));
  uint32_t flags=0;if(!rd(widget,&flags,4)||((flags>>4)&1)!=static_cast<uint32_t>(value))return native_api.luaL_error(L,"HUD visibility acknowledgement differs");
  native_api.lua_pushboolean(L,1);return 1;
+}
+// The game's own Toggle HUD state on the ship: the byte its key flips (live HUD probe,
+// 2026-10-25), written only from the expected value, on writable data, with readback.
+// Hiding needs the ship's HUD; restoring needs only the same UI root, in any scene.
+static int native_hud_toggle(lua_State *L) {
+ const auto expected=native_api.luaL_checkinteger(L,1),value=native_api.luaL_checkinteger(L,2);const auto owner=native_api.luaL_checknumber(L,3);
+ if((expected!=0&&expected!=1)||(value!=0&&value!=1)||!(owner>=65536&&owner<140737488355328.0))return native_api.luaL_error(L,"HUD toggle arguments invalid");
+ const uintptr_t game=reinterpret_cast<uintptr_t>(GetModuleHandleA("game.dll"));
+ auto rd=[&](uintptr_t at,void *to,size_t n)->bool{return at>=65536&&at<(UINT64_C(1)<<47)&&read_exact(reinterpret_cast<void*>(at),to,n);};
+ uint32_t pe=0,stamp=0,size=0;
+ if(!rd(game+60,&pe,4)||pe<64||pe>1048576||!rd(game+pe+8,&stamp,4)||stamp!=0x6ad7c05d||!rd(game+pe+80,&size,4)||size!=0x3382000)return native_api.luaL_error(L,"HUD build differs");
+ uintptr_t state=0,root=0,parent=0;uint32_t scene=0;unsigned char initialized=0,current=0;
+ if(!rd(game+0x2e28788,&root,8)||static_cast<lua_Number>(root)!=owner)return native_api.luaL_error(L,"HUD root differs");
+ if(value==1&&(!rd(game+0x2ce1508,&state,8)||!rd(state+0xac29c,&scene,4)||scene!=3||!rd(root+0x24e334,&initialized,1)||initialized!=1||!rd(root+0x820+0xf0,&parent,8)||parent!=root+0x258))return native_api.luaL_error(L,"Ship HUD ownership differs");
+ const uintptr_t address=root+0x24e338;
+ if(!rd(address,&current,1)||current!=expected)return native_api.luaL_error(L,"HUD toggle changed by another writer");
+ const unsigned char target=static_cast<unsigned char>(value);
+ if(current!=target){MEMORY_BASIC_INFORMATION m={};
+  if(!VirtualQuery(reinterpret_cast<void*>(address),&m,sizeof(m))||m.State!=MEM_COMMIT||(m.Protect!=PAGE_READWRITE&&m.Protect!=PAGE_WRITECOPY)||address+1>reinterpret_cast<uintptr_t>(m.BaseAddress)+m.RegionSize)return native_api.luaL_error(L,"HUD toggle is not writable data");
+  SIZE_T written=0;if(!WriteProcessMemory(GetCurrentProcess(),reinterpret_cast<void*>(address),&target,1,&written)||written!=1||!rd(address,&current,1)||current!=target)return native_api.luaL_error(L,"HUD toggle acknowledgement failed");
+ }
+ native_api.lua_pushinteger(L,current);return 1;
 }
 
 // Narrow current-build data accessor. No hooks or executable writes.
@@ -297,12 +320,21 @@ static int native_hover_ensure(lua_State *L) {
  native_api.lua_pushboolean(L,1);return 1;
 }
 
+#include "keyboard_native.cc"
 static int open_nativeinfo(lua_State *L) {
- native_api.lua_createtable(L,0,9);
+ native_api.lua_createtable(L,0,13);
  native_api.lua_pushcclosure(L,native_profile_float,0);
  native_api.lua_setfield(L,-2,"profile_float");
  native_api.lua_pushcclosure(L,native_hud_visible,0);
  native_api.lua_setfield(L,-2,"hud_visible");
+ native_api.lua_pushcclosure(L,native_hud_toggle,0);
+ native_api.lua_setfield(L,-2,"hud_toggle");
+ native_api.lua_pushcclosure(L,native_keyboard_acquire,0);
+ native_api.lua_setfield(L,-2,"keyboard_acquire");
+ native_api.lua_pushcclosure(L,native_keyboard_sample,0);
+ native_api.lua_setfield(L,-2,"keyboard_sample");
+ native_api.lua_pushcclosure(L,native_keyboard_release,0);
+ native_api.lua_setfield(L,-2,"keyboard_release");
  native_api.lua_pushcclosure(L,native_hover_height,0);
  native_api.lua_setfield(L,-2,"hover_height");
  native_api.lua_pushcclosure(L,native_gamepads_absent,0);

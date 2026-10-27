@@ -1,11 +1,46 @@
-# Build
+# Build and validation
 
-Python 3 and a LuaJIT/Lua 5.1 compiler library are development tools, not player prerequisites. HD2_LUA51_DLL selects the compiler library; the default uses the installed game LuaJIT.
+The current version is read from `VERSION` (1.3.0). Building source does not
+publish a release or install anything into the game.
 
-Build BSL with `py -3 freecam/build.py --output dist/releases/photo-0.6`, then MDL with `py -3 tools/build_mdl.py --output dist/releases/photo-0.6`. All camera/private runtime and decorative native assets are owned under freecam/vendor and freecam/assets/shaders. No DBF-HUD, DBF-MCM, external ActionCam, installed mod package or patched game asset is read during release builds. Vendored byte identities are checked before packaging.
+## Lua 5.1 checks
 
-Run `py -3 tools/run_tests.py --mcm-root <canonical DBF-MCM>` for isolated behavior fixtures, `py -3 tools/verify_release.py <ZIP>` for exact immutable release validation, and `py -3 tools/test_packaged_standalone.py <BSL ZIP> <MDL ZIP> --receipt <receipt.json>` for package-only standalone startup. The fixture runner's MCM source input is testing only; the packaged-startup check prohibits external source fallback.
+Use Python 3 with `lupa` providing the Lua 5.1 runtime:
 
-The optional screenshot converter can be rebuilt from freecam/native/build_photo_capture.py with MSVC x64, static CRT; player packages include its verified binary. Vendored native DLL payloads are kept as hex in source and decoded into real DLLs during packaging.
+```powershell
+py -3 tools/test_steam_port.py --receipt dist/validation/lua51.json
+```
 
-BSL contains the runtime and native assets under Addon. MDL includes the loose addon plus GameData patches in the same ZIP. Numeric DoF and scene effects remain disabled until visual verification. Saved settings, diagnostics, game files and development evidence are excluded.
+The shared feature fixtures use a sibling `DBF-MCM` source checkout when
+available. Missing shared-fixture dependencies are reported explicitly.
+
+## Boot Mod Loader
+
+Loader source and installation guidance: [Boot Mod Loader](https://github.com/pat-pat-patrick/boot-mod-loader).
+
+`tools/build_steam_candidate.py` defines the current module graph and constructs
+a folder candidate. `tools/build_steam_archive.py` packages that graph as a
+Boot Mod Loader addon. Both default to development output under `dist/review`.
+Inspect each tool's `--help` for required asset/native build inputs. Native bridge
+sources are under `freecam/native/port51_src`; their availability depends on the
+host. The Windows input helper remains a separate bundled process.
+
+Run the Lua fixtures and verify the package's exact embedded source bytes,
+checksums and startup/cleanup before distributing it. Numeric shader DoF and
+scene effects must remain disabled until visually verified in the package.
+Keep release artifacts under `dist/releases`.
+
+## Chef preview
+
+```powershell
+py -3 tools/test_chef_port.py --sandbox <pinned-chef-sandbox.lua>
+py -3 tools/build_chef_candidate.py --help
+```
+
+The [Chef port documentation](docs/CHEF-LOADER-PORT.md) identifies the required
+upstream sandbox revision and preview limitations.
+
+## Archived implementations
+
+Retired BSL/MDL/LLL entrypoints and one-off deployment/review scripts are under
+`archive/`. They are historical references, not supported build entrypoints.

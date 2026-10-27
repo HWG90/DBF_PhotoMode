@@ -26,12 +26,13 @@ sr.Application.set_time_step_policy=native_policy
 sr.Application.main_world=function()return'world'end
 sr.Network={game_session=function()return game_session end}
 sr.GameSession={peers=function()return session_peers end}
-local camera_active=false;local last_position;local camera_changed=false;local guarded_writes=0
+local camera_active=false;local last_position,last_up;local camera_changed=false;local guarded_writes=0
 local camera={open=function()assert(not camera_active);camera_active=true;scans=scans+1;return true end,
  scene=function()assert(camera_active);return'world',scans end,
- frame=function()return{position={0,0,0},forward={1,0,0},right={0,-1,0},up={0,0,1},fov=1}end,
+ -- The game camera is rolled 15 degrees: Photo Mode must still start level.
+ frame=function()return{position={0,0,0},forward={1,0,0},right={0,-.96592583,.25881905},up={0,-.25881905,.96592583},fov=1}end,
  write_view=function(p,f,u,fov,guard)
-  assert(camera_active and f and u and fov)
+  assert(camera_active and f and u and fov);last_up={unpack(u)}
   if guard then guarded_writes=guarded_writes+1;if camera_changed then return false,'Rendered camera changed'end end
   writes=writes+1;last_position={unpack(p)};return true
  end,
@@ -113,12 +114,17 @@ assert(runtime.handle.set('clean_view',true));key('h')
 assert(not runtime.handle.get('clean_view')and not runtime.handle.get('hide_controls'),
  'Show controls must escape persisted clean view')
 local a,b,c=render(nil);assert(a=='native'and b==1 and c==nil,'Preserve native render arguments/results')
+assert(math.abs(last_up[1])<1e-6 and math.abs(last_up[2])<1e-6 and math.abs(last_up[3]-1)<1e-6,
+ 'Photo Mode starts level: no game camera roll and no saved Roll')
 local vignette_controls={}
 for _,page in ipairs(menu.pages)do for _,control in ipairs(page.controls)do
  if control.id=='vignette'or control.id=='vignette_width'then vignette_controls[control.id]=control end
 end end
 assert(not vignette_controls.vignette.disabled and not vignette_controls.vignette_width.disabled,
  'Portable vignette controls must be available')
+for _,page in ipairs(menu.pages)do for _,control in ipairs(page.controls)do
+ assert(not(control.id and control.id:match('^ai_'))and not control.photo_global_ai,'The Lua 5.1 build has no FFI enemy behavior rows')
+end end
 assert(runtime.handle.set('vignette',60));assert(runtime.handle.set('vignette_width',20));render()
 assert(#overlay_commands==48,'Vignette must draw its actual edge geometry')
 local retained_commands=overlay_commands;local retained_layouts=composition_layouts
@@ -209,12 +215,12 @@ key('p');assert(runtime.active and rate==0,'Gameplay slow motion must preserve s
 assert(runtime.handle.set('slowmo_speed',.4)and rate==0)
 assert(runtime.handle.set('freeze_player',false)and rate==.4,'Resume uses latest cached speed')
 assert(runtime.handle.set('freeze_player',true)and rate==0)
-assert(runtime.handle.set('enabled',false));assert(not runtime.active,'Disabling Photo Mode must release ownership')
+runtime.close(true);assert(not runtime.active,'Closing Photo Mode must release ownership')
 assert(runtime.dispose())
 assert(rate==1 and sr.Application.set_time_step_policy==native_policy,'Disposal must restore normal time and native binding')
 local next_runtime=module('steam_runtime').new({config_dir='unused',log=fixture_log},sr,deps,service)
 assert(next_runtime.handle.get('show_legend')==false,'Retain preference through runtime reconstruction')
-assert(next_runtime.handle.set('enabled',true));assert(next_runtime.handle.set('freeze_player',true))
+assert(next_runtime.handle.set('freeze_player',true))
 session_peers={'local','remote'}
 assert(next_runtime.open()and next_runtime.active and rate==1 and not next_runtime.handle.get('freeze_player'),
  'Unavailable solo pause must not block Photo Mode')
@@ -231,9 +237,8 @@ assert(rate==1 and not next_runtime.active,'Restored binding must permit pending
 assert(next_runtime.dispose())
 -- Action shots hold the world camera while returning input to gameplay. They
 -- retain lights and recorded points instead of reopening/scanning the camera.
-assert(runtime.handle.get('enabled')==false)
 local action=module('steam_runtime').new({config_dir='unused',log=fixture_log},sr,deps,service)
-assert(action.handle.set('enabled',true));assert(action.handle.set('freeze_player',true))
+assert(action.handle.set('freeze_player',true))
 assert(action.handle.set('action_camera_mode',1));assert(action.open());assert(rate==0)
 local action_scans,action_lights=scans,lighting_opens
 assert(action.toggle_slowmo());assert(action.handle.set('slowmo_speed',.3));assert(rate==0)
@@ -306,7 +311,7 @@ local focal_length=deps.options.focal_length;local lens_reads=0
 deps.options.focal_length=function(value)lens_reads=lens_reads+1;return focal_length(value)end
 stored.fov=40;stored.focal_preset=4;stored.roll=12;stored.roll_preset=3
 local optics=module('steam_runtime').new({config_dir='unused',log=fixture_log},sr,deps,service)
-assert(optics.handle.set('enabled',true));assert(optics.handle.set('hide_controls',false));assert(optics.handle.set('clean_view',false))
+assert(optics.handle.set('hide_controls',false));assert(optics.handle.set('clean_view',false))
 local entry_saves=saves;refuse_settings=true;assert(optics.open());refuse_settings=false
 assert(optics.handle.get('focal_preset')==1 and optics.handle.get('roll_preset')==1,
  'Reopening must present stale shortcuts as Custom even with read-only settings')
@@ -354,11 +359,8 @@ local first_status=focal_status();assert(first_status:find('(gameplay)',1,true))
 assert(optics.close());gameplay_fov=.8;assert(optics.open());render()
 assert(focal_status()~=first_status and focal_status():find('(gameplay)',1,true),'New camera FOV must replace prior gameplay focal length')
 assert(optics.focus()and optics.mode=='camera');pressed.e=true;time=time+.016;optics.tick();pressed.e=false
-local before_disable=saves
-assert(optics.handle.set_many({enabled=false,roll=12})and not optics.active)
-assert(optics.handle.get('roll')==12 and stored.roll==12 and saves==before_disable+1,
- 'Mixed disable/tilt batch must suppress superseded pending roll before close callbacks')
-assert(optics.handle.set('enabled',true));assert(optics.open())
+optics.close(true);assert(not optics.active)
+assert(optics.open())
 assert(optics.handle.set('path_duration',1));assert(optics.handle.activate('path_add'))
 assert(optics.focus());pressed.w=true;time=time+.1;optics.tick();render();pressed.w=false
 assert(optics.handle.activate('path_add'));assert(optics.handle.activate('path_play'))
@@ -366,10 +368,7 @@ time=time+.1;optics.tick();render();local preview_before=last_position[1]
 refuse_settings=true;assert(not optics.handle.set('fov',60));refuse_settings=false
 time=time+.1;optics.tick();render()
 assert(last_position[1]~=preview_before,'Refused lens edits must leave preview playback running')
-local before_path_close=saves
-assert(optics.handle.set_many({enabled=false,fov=60})and not optics.active)
-assert(optics.handle.get('fov')==60 and stored.fov==60 and saves==before_path_close+1,
- 'Mixed disable/FOV batch must supersede path lens cleanup in the same commit')
+optics.close(true);assert(not optics.active,'Closing during path preview ends it')
 assert(optics.dispose());camera.frame=native_frame;deps.options.focal_length=focal_length
 -- A dead persistence transport must not own the camera/input restoration path.
 -- Store faults and logger faults are independent of genuine native refusals.
@@ -388,7 +387,7 @@ do
    f.logs=f.logs+1;if f.log_error then error('fixture diagnostic transport unavailable')end
   end},sr,deps,service)
   local r=f.runtime
-  assert(r.handle.set('enabled',true));assert(r.handle.set('freeze_player',true));assert(r.open()and rate==0)
+  assert(r.handle.set('freeze_player',true));assert(r.open()and rate==0)
   if kind=='roll'then
    assert(r.focus());pressed.e=true;time=time+.1;r.tick();pressed.e=false
   else
