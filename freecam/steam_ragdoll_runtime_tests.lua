@@ -20,6 +20,26 @@ f.refuse=false;assert(f.runtime.close(true));assert(not f.held and f.rate==1 and
 f.finish()
 print('Ragdoll runtime: zero-time-only updates, no closed work, release-before-resume and held-time cleanup retry passed')
 
+-- The coherent skeleton hold owns the local body: the native ragdoll yields to
+-- it; on another selected body the local ragdoll stays held.
+for _,local_body in ipairs({true,false})do
+ local y=fixture(false,function(f,deps)
+  f.busy={};f.body=newproxy();f.checks=0
+  deps.subject_backend={new=function()return{is_local_unit=function(u)f.checks=f.checks+1;return local_body and u==f.body end}end}
+  deps.subject_visibility={new=function()return{ready=function()return false end,refresh=function()return false end,
+  release=function()return true end,flush=function()return true end}end}
+  deps.freeze_pose_hold={prepare=function()return true end,tick=function()return true end,render=function()return true end,
+   release=function()return true end,active=function()return true end,unit=function()return f.body end}
+  deps.ragdoll={native=function()return{}end,new=function()return{
+  flush=function(enabled,busy)f.busy[#f.busy+1]=busy==true;return true end,release=function()return true end}end}
+ end)
+ y.open();for i=1,5 do y.step(.016)end
+ assert(#y.busy>0 and y.busy[#y.busy]==local_body,'Ragdoll yields only to a skeleton hold on the local body')
+ assert(y.checks==1,'The local-body check runs once per held body, not every frame')
+ assert(y.runtime.close(true));y.finish()
+end
+print('Ragdoll and skeleton hold: one bone-transfer owner on the local body, cached local check passed')
+
 -- A guarded startup failure is transient, not a permanent feature veto.
 local cold=fixture(false,function(f,deps)
  f.initializations=0;f.ragdoll_initializations=0;f.held=false

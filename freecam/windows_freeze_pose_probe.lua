@@ -42,6 +42,8 @@ function M.new(sr,log,measure,options)
   for i=1,12 do assert(finite(value[i]),'Pose trial matrix invalid')end;return value
  end
  function self.active()return work~=nil end
+ -- The held body's stock handle, for owners that must yield to this hold.
+ function self.unit()return work and work.unit end
  function self.release(why,retry)
   if not work then return true end
   if pending and retry~=true then return false,pending end

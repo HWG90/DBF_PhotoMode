@@ -518,6 +518,18 @@ function M.new(host,sr,deps,service)
  function self.hud_status()return hud and hud.status()or{available=false}end
  local subject_before_time,subject_before_zero
  self.freeze_skeleton=deps.freeze_pose_probe or deps.freeze_pose_hold
+ -- The native ragdoll hold yields when the coherent skeleton hold owns the
+ -- local body: both claim bone transfer, and only the skeleton hold leaves the
+ -- cape to its cloth. Another selected body leaves the local ragdoll held.
+ function self.skeleton_owns_local()
+  local hold=self.freeze_skeleton;local unit=hold and hold.unit and hold.unit()
+  if not unit or not subject_backend or type(subject_backend.is_local_unit)~='function'then return false end
+  if self.skeleton_local_unit~=unit then
+   local called,value=pcall(subject_backend.is_local_unit,unit)
+   self.skeleton_local_unit,self.skeleton_local=unit,called and value==true
+  end
+  return self.skeleton_local
+ end
  local select_freeze_rate=deps.freeze_rate and function()
   local frame
   if subject and type(subject.tracking_frame)=='function'then
@@ -2256,7 +2268,7 @@ function M.new(host,sr,deps,service)
  local function handoff_frame(now)
   if not handoff then return false end
   -- Another menu owns input: keep the held scene, retake input when it closes.
-  if ragdoll then local ok,why=ragdoll.flush(simulation and simulation.owns_zero()or false,subject_holds==true);if not ok then notice(why)end end
+  if ragdoll then local ok,why=ragdoll.flush(simulation and simulation.owns_zero()or false,subject_holds==true or self.skeleton_owns_local());if not ok then notice(why)end end
   -- ESC still exits when no other menu took the input.
   if not handoff.entry and input.focused()and edge(27)then self.close();return true end
   if input.focused()then handoff_tick(now)end
@@ -2405,7 +2417,7 @@ function M.new(host,sr,deps,service)
    -- Focus loss only yields input. Freeze, camera and menu state are kept.
    self.focus_suspended=true
    if self.mode~='shot'then local ok,why=input.release();if not ok then notice(why)end end
-   if ragdoll then local ok,why=ragdoll.flush(simulation and simulation.owns_zero()or false,subject_holds==true);if not ok then notice(why)end end
+   if ragdoll then local ok,why=ragdoll.flush(simulation and simulation.owns_zero()or false,subject_holds==true or self.skeleton_owns_local());if not ok then notice(why)end end
    return
   end
   if self.focus_suspended then
@@ -2445,7 +2457,7 @@ function M.new(host,sr,deps,service)
    local ok,why=subject.maintain();if not ok then sync_subject();notice(why)end
   end
   if ragdoll then
-   local ok,why=ragdoll.flush(simulation and simulation.owns_zero()or false,subject_holds==true)
+   local ok,why=ragdoll.flush(simulation and simulation.owns_zero()or false,subject_holds==true or self.skeleton_owns_local())
    if not ok then notice(why)end
   end
   local o=read_options()

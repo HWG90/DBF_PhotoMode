@@ -240,22 +240,24 @@ local function factory(sr,policy,preview)
  end)or nil
  local function capture_cape(r)
   if r.cape_capture_done then return end
+  r.cape_capture_done=true
+  -- The native local-avatar solver was accepted live; the stock-API placement
+  -- is the fallback for other bodies or when the native reader is unavailable.
+  if cape then
+   local ok,frame=pcall(cape_reader.pose_frame)
+   if ok and frame.root_handle==r.unit and frame.world==r.world then
+    local records=cape.capture(frame)
+    status.cape=records and #records or 'Cape topology unavailable'
+    if records and #records>0 then r.cape={frame=frame,capes=records};return end
+   else status.cape='No proven local cape owner'end
+  end
   if selected_cape then
-   r.cape_capture_done=true
    local frame={explicit_subject=true,identity=r.identity,root_handle=r.unit,world=r.world}
    local ok,lease=pcall(selected_cape.capture,frame)
    status.cape=ok and #lease.meshes or tostring(lease)
    if ok then r.cape={frame=frame,selected=lease}end
    if type(policy.log)=='function'then pcall(policy.log,'Authored pose cape capture: '..tostring(status.cape))end
-   return
   end
-  if not cape then return end
-  r.cape_capture_done=true
-  local ok,frame=pcall(cape_reader.pose_frame)
-  if not ok or frame.root_handle~=r.unit or frame.world~=r.world then status.cape='No proven local cape owner';return end
-  local records=cape.capture(frame)
-  status.cape=records and #records or 'Cape topology unavailable'
-  if records and #records>0 then r.cape={frame=frame,capes=records}end
  end
  local function restore_cape(r)
   if r.cape then
