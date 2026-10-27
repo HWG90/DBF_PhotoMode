@@ -7,7 +7,7 @@ subject poses, camera paths and first-person Handycam.
 
 **[Download War Journalist 1.3.1 for Boot Mod Loader](https://github.com/HWG90/DBF_PhotoMode/releases/tag/v1.3.1).** This is the first pass of a total Lua rewrite with incomplete parity. Import the complete ZIP into HD2 Arsenal, enable War Journalist and Assets, deploy with the game closed, then launch normally. No manual helper or Python setup is required.
 
-**New in 1.3.1:** Photo Mode no longer flashes and closes on Windows when another program (for example a GPU overlay) owns one of its Ctrl/Shift/Alt shortcuts, and WJL now starts without PowerShell, so Photo Mode opens under Proton again. See the [1.3.1 notes](docs/RELEASE-1.3.1.md).
+**New in 1.3.1:** Photo Mode no longer flashes and closes on Windows when another program (for example a GPU overlay) owns one of its Ctrl/Shift/Alt shortcuts, WJL now starts without PowerShell, so Photo Mode opens under Proton again, and the cursor stays inside the game window while Photo Mode has it. See the [1.3.1 notes](docs/RELEASE-1.3.1.md).
 
 ## Current runtime
 

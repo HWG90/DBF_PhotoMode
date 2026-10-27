@@ -421,6 +421,56 @@ s=patch_once(s,'''    note("Stock game hashes verified; awaiting local Lua files
     }
 ''','service contract')
 p.write_text(s)
+# The engine's clip flag does not hold while Photo Mode has taken the game's mouse focus
+# (seen under Proton; the LLL build clipped from an in-game DLL, which Windows refuses).
+# The helper confines the cursor itself, from outside the game, as Windows allows.
+p=native/'steam_pointer.c';s=p.read_text()
+s=patch_once(s,'int lll_pointer_snapshot_extended(LLLSteamPointerSample *out) {\n','''/* WJ: keep the cursor inside the game's client area while Photo Mode owns the
+ * pointer. Windows and games drop a clip on focus and mode changes, so every
+ * sample re-applies it. A clip that already keeps the cursor inside the window
+ * (the game's own) is left alone, and release removes only a clip set here. */
+static RECT lll_pointer_clip;
+static int lll_pointer_clipped;
+static void lll_pointer_unconfine(void) {
+    RECT current;
+    if (!lll_pointer_clipped) return;
+    lll_pointer_clipped = 0;
+    if (GetClipCursor(&current) && EqualRect(&current, &lll_pointer_clip)) ClipCursor(NULL);
+}
+static void lll_pointer_confine(HWND window, const RECT *client) {
+    POINT origin = {0, 0};
+    RECT wanted, frame, current;
+    if (!ClientToScreen(window, &origin) || !GetWindowRect(window, &frame) || !GetClipCursor(&current)) return;
+    if (current.left >= frame.left && current.top >= frame.top && current.right <= frame.right && current.bottom <= frame.bottom) return;
+    SetRect(&wanted, origin.x, origin.y, origin.x + (client->right - client->left), origin.y + (client->bottom - client->top));
+    if (ClipCursor(&wanted)) { lll_pointer_clip = wanted; lll_pointer_clipped = 1; }
+}
+int lll_pointer_snapshot_extended(LLLSteamPointerSample *out) {
+''','pointer confinement helpers')
+s=patch_once(s,'''    HWND foreground, after;
+    POINT point;
+    RECT bounds;
+''','''    HWND foreground = NULL, after;
+    POINT point;
+    RECT bounds = {0, 0, 0, 0};
+''','pointer sample locals')
+s=patch_once(s,'''    out->dy = motion.dy;
+done:
+    ReleaseSRWLockShared(&lll_pointer_lifecycle);
+''','''    out->dy = motion.dy;
+done:
+    if (out->valid) lll_pointer_confine(foreground, &bounds); else lll_pointer_unconfine();
+    ReleaseSRWLockShared(&lll_pointer_lifecycle);
+''','pointer sample confinement')
+s=patch_once(s,'''int lll_pointer_release(void) {
+    int ok;
+    AcquireSRWLockExclusive(&lll_pointer_lifecycle);
+''','''int lll_pointer_release(void) {
+    int ok;
+    AcquireSRWLockExclusive(&lll_pointer_lifecycle);
+    lll_pointer_unconfine();
+''','pointer release confinement')
+p.write_text(s)
 # WJL owns a separate namespace and settings/log directory. The upstream
 # checkout is read-only; all compilation inputs here are private copies.
 for owned in native.iterdir():
@@ -429,7 +479,7 @@ for owned in native.iterdir():
   owned.write_text(body,encoding='utf-8')
 # Preserve the source delta as a reviewable patch; owning LLL checkout stays untouched.
 patch=''
-for name in ('steam_keyboard.c','test_steam_keyboard.c','steam_files.c','steam_service.c'):
+for name in ('steam_keyboard.c','test_steam_keyboard.c','steam_files.c','steam_service.c','steam_pointer.c'):
  a=(source/'native'/name).read_text().splitlines(keepends=True);b=(native/name).read_text().splitlines(keepends=True)
  patch+=''.join(difflib.unified_diff(a,b,fromfile='a/native/'+name,tofile='b/native/'+name))
 (root/'tools/windows_input_shortcut.patch').write_text(patch)

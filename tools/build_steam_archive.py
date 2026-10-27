@@ -34,9 +34,12 @@ function mod.log(message)
  print('['..TITLE..'] '..tostring(message))
  local f=io.open(game..'/war_journalist_lua51.log','ab');if f then f:write(os.date('%Y-%m-%d %H:%M:%S '),tostring(message),'\n');f:close()end
 end
+-- Boot Mod Loader runs the Windows build. Windows refuses unsigned in-process DLLs (error 577),
+-- so under it no bridge is written or loaded, under Proton too: it behaves as it does on Windows.
+mod.native_libraries=rawget(_G,'LiveLuaLoader')~=nil
 -- Bridges are content-addressed: install a missing one, refuse one whose size differs.
 local function size_of(path)local f=io.open(path,'rb');if not f then return nil end;local size=f:seek('end');f:close();return size end
-for _,library in ipairs(LIBRARIES)do
+for _,library in ipairs(mod.native_libraries and LIBRARIES or{})do
  local path=mod.native_dir..'/'..library.name;local size=size_of(path)
  if size==nil then
   local data=library.hex:gsub('%x%x',function(h)return string.char(tonumber(h,16))end)
@@ -81,10 +84,7 @@ local input_service,input_driver
 local connected,why=pcall(function()input_service,input_driver=mod.require('src/windows_input_service.lua').connect(mod,stingray)end)
 if not connected then
  mod.log('Input helper unavailable: '..tostring(why))
- -- Proton: the in-game keyboard bridge isolates Photo Mode's keys, as 1.3.0-bml.1 did.
- -- Native Windows refuses that DLL, so there Photo Mode still needs the helper.
- local function keyboard()local open,why=package.loadlib(mod.require('src/host_native.lua').library('hd2_nativeinfo_78b314de6177433d.dll'),'luaopen_hd2_nativeinfo');assert(open,why);return open()end
- input_service=mod.require('src/engine_input.lua').new(stingray,mod.log,keyboard)
+ input_service=mod.require('src/engine_input.lua').new(stingray,mod.log)
 end
 mod.host_loader={engine_input=true,require_keyboard=true,input_service=input_service,bindings=bindings,capabilities={revision='boot-mod-loader-r34-input.1'}}
 local state='waiting'
@@ -221,12 +221,14 @@ return entry,a,b,calls,shut,table.concat(registered,'|')
         os.environ['APPDATA'], os.environ['LOCALAPPDATA'] = str(Path(temp) / 'Roaming'), str(Path(temp) / 'Local')
         os.environ['USERPROFILE'] = str(Path(temp) / 'Profile')
         try:
-            # Without LLL's folders the bridges go to the game's settings folder.
+            # Boot Mod Loader: the Windows build, with no bridges.
             entry, a, b, calls, shut, keys = LuaRuntime().execute(host, text)
             assert entry['live_lua_api'] == 1 and (a, b, calls, shut) == ('game', 0.5, 6, True), 'Update/shutdown wrapping'
-            for name, data in libraries.items():
-                assert (game / name).read_bytes() == data, name
+            # The Windows build never writes or loads an in-process bridge.
+            for name in libraries:
+                assert not (game / name).exists(), 'Boot Mod Loader wrote a bridge: ' + name
             log = (game / 'war_journalist_lua51.log').read_text()
+            assert 'In-process native libraries are not used by the Windows build' in log, 'A bridge load was attempted, not refused'
             # Boot Mod Loader's Mod Bindings Menu holds the keys once Photo Mode starts.
             hosted = dict(item.split('=', 1) for item in keys.split('|'))
             assert all(k.startswith('war_journalist.') for k in hosted) and hosted.get('war_journalist.toggle_key') == 'p' and len(hosted) >= 13, keys
@@ -296,7 +298,10 @@ shutdown()
             name, data = next(iter(libraries.items()))
             (lll / 'Native' / name).write_bytes(data[:-1])
             try:
-                LuaRuntime().eval(run)(text)
+                # Only LLL installs bridges; it refuses one that differs from this build.
+                lua_lll = LuaRuntime()
+                lua_lll.execute('LiveLuaLoader={}')
+                lua_lll.eval(run)(text)
             except Exception as error:
                 assert 'Native bridge differs' in str(error), error
             else:
@@ -334,11 +339,11 @@ def build(candidate, output):
     assets = folder / 'Assets'
     shutil.copytree(ASSETS, assets)
     description = ('War Journalist Photo Mode for Boot Mod Loader on the Lua 5.1 game, with its assets. No FFI, so no '
-                   'Enemy behavior. Its keys are set in HD2 Mod Setting GUI or the Photo panel. On Linux/Proton its native '
-                   'bridges add subject poses, the native lens, hiding the game HUD and keeping Photo Mode\'s keys from the '
-                   'game; they install into LLL\'s Native folder or the game\'s settings folder on first load. On Windows, '
-                   'the bundled WJL helper starts automatically for Photo Mode input capture; no separate helper setup or '
-                   'Python is required. Native bridge features remain unavailable where DLL loading is refused. Windows '
+                   'Enemy behavior. Its keys are set in HD2 Mod Setting GUI or the Photo panel. Under Boot Mod Loader it is the '
+                   'Windows build on Windows and Proton alike: the bundled WJL helper starts automatically for Photo Mode '
+                   'input capture, with no separate helper setup, Python or PowerShell, and no in-process native bridge is '
+                   'written or loaded, as Windows refuses them. Under LLL its native bridges install into LLL\'s Native '
+                   'folder. Windows '
                    'DoF and scene effects are renderer-checked test candidates awaiting visual verification. Screenshots '
                    'are PNG through the War Journalist Linux capture worker where it runs, else DDS from the engine. Settings '
                    'live in LLL/Helldivers2/Settings/' + MOD_ID + ' when that folder exists, else in the game\'s settings '
@@ -355,7 +360,7 @@ def build(candidate, output):
                   'modules': len(sources) - 1, 'native_bridges': {name: digest(b) for name, b in libraries.items()},
                   'assets': {p.relative_to(assets).as_posix(): digest(p.read_bytes()) for p in sorted(assets.iterdir())},
                   'verified': ['modules and bridges read back exactly', 'Boot Mod Loader: wraps update/shutdown, passes the game results through, starts, ticks and cleans up on a bare engine, registers its keys with ModBindingsMenu, selects engine DDS capture without LLL or the Linux worker',
-                               'no LLL: bridges go to the game settings folder', 'LLL: returns the API 1 entry, uses LLL folders',
+                               'Boot Mod Loader (the Windows build): no bridge written or loaded, as Windows refuses them', 'LLL: returns the API 1 entry, uses LLL folders',
                                'installs missing bridges', 'refuses a differing bridge'],
                   'registered': False, 'deployed': False, 'live_acceptance': 'pending'}
     (folder / 'PROVENANCE.json').write_text(json.dumps(provenance, indent=2) + '\n')

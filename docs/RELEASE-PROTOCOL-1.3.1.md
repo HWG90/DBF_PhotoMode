@@ -5,7 +5,7 @@ Status: patch release of the 1.3.0 Boot Mod Loader line, 27 October 2026.
 ## Release boundary
 
 - One complete Boot Mod Loader package, `War-Journalist-1.3.1-BML.zip`. No BSL/MDL/LLL or Chef compatibility promise.
-- Scope: WJL keyboard reservation when another program owns a Ctrl/Shift/Alt shortcut (Windows error 1409), Handycam refusal notices, PowerShell-free WJL startup through `cmd.exe`, and the Proton in-game keyboard fallback. Everything else is 1.3.0.
+- Scope: WJL keyboard reservation when another program owns a Ctrl/Shift/Alt shortcut (Windows error 1409), Handycam refusal notices, PowerShell-free WJL startup through `cmd.exe`, cursor confinement to the game window, and the Windows-build rule: no in-game native DLLs under Boot Mod Loader, Proton included. Everything else is 1.3.0.
 - Every 1.3.0 limitation stays on every page: first pass of the Lua rewrite, BML only, Chef Lite planned without a whitelist guarantee, no AI control, no depth shaders (Native DoF works), occasional cape detachment, intermittent subject selection, incomplete Hide options.
 - Keep all existing photos, credits and licenses on Nexus, Ayaka and Discord. Add a 1.3.1 block; do not stack old change notes.
 
