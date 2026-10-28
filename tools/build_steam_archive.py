@@ -287,7 +287,7 @@ local unused_popen=function(command,mode)""", 1)
             assert launches.startswith('""') and closes == 1, ('The launcher is closed once, after the helper answered', closes)
             log = (game / 'war_journalist_lua51.log').read_text()
             assert 'WJL helper ready' in log and 'Input: WJL keyboard service connected' in log, log
-            assert 'WJL PNG capture selected, engine DDS when PNG cannot work: ' + str(game).replace('\\', '/') in log, log
+            assert 'WJL PNG screenshots selected (engine DDS converted by WJL): ' + str(game).replace('\\', '/') in log, log
             assert 'Photo Mode started on Boot Mod Loader' in log and 'Input helper unavailable' not in log, log
             (game / 'war_journalist_lua51.log').unlink()
             # Boot Mod Loader: the Windows build, with no bridges.

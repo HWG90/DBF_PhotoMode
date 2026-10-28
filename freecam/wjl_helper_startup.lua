@@ -5,7 +5,7 @@ local launch_sequence=0
 -- hex digits of its SHA-256, so each changed helper left a new file; the game's Lua cannot
 -- list a folder, so these exact names are removed instead. Last, 1.3.0's PowerShell log.
 M.retired={'wjl_steam_service_28af6b376f6afcb8.exe','wjl_steam_service_f9d73353ad66d4e8.exe',
- 'wjl_steam_service_444cacc9bdd1cada.exe','wjl_startup.log'}
+ 'wjl_steam_service_444cacc9bdd1cada.exe','wjl_steam_service_4249097cb43acbbe.exe','wjl_startup.log'}
 function M.config(mod,sr)
  local payload=mod.require('src/wjl_helper_payload.lua')
  assert(payload.name:match('^wjl_steam_service_%x+%.exe$')and payload.sha256:match('^%x+$')and #payload.sha256==64)

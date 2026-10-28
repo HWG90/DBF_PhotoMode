@@ -111,9 +111,25 @@ do
   reads=reads+1;local value=files[path];if not value then return end
   return{read=function()return value end,close=function()end}
  end
- assert(adapter.hud_config('C:/Steam/steamapps/common/Helldivers 2',open)==config and reads==2)
- files['C:/Steam/config/loginusers.vdf']='"users" { "76561197968617275" { } "76561197968617276" { } }'
- assert(adapter.hud_config('C:/Steam/steamapps/common/Helldivers 2',open)==nil,'Ambiguous accounts are not guessed')
+ local env={}
+ local function getenv(name)return env[name]end
+ assert(adapter.hud_config('C:/Steam/steamapps/common/Helldivers 2',open,getenv)==config and reads==2)
+ -- A second library: Steam's own folder from Proton's environment (Z: in Wine), or
+ -- Steam's default folder on Windows.
+ local users,binding=files['C:/Steam/config/loginusers.vdf'],files['C:/Steam/userdata/8351547/553850/remote/input_settings.config']
+ files={['Z:/home/goose/.local/share/Steam/config/loginusers.vdf']=users,['Z:/home/goose/.local/share/Steam/userdata/8351547/553850/remote/input_settings.config']=binding}
+ env={STEAM_COMPAT_CLIENT_INSTALL_PATH='/home/goose/.local/share/Steam',['ProgramFiles(x86)']='C:\\Program Files (x86)'}
+ assert(adapter.hud_config('S:\\steamapps\\common\\Helldivers 2',open,getenv)==config,'Proton: Steam from the game environment')
+ local roots=adapter.steam_roots('S:\\steamapps\\common\\Helldivers 2',getenv)
+ assert(roots[1]=='S:'and roots[2]=='Z:/home/goose/.local/share/Steam'and roots[3]=='C:/Program Files (x86)/Steam',table.concat(roots,'|'))
+ files={['C:/Program Files (x86)/Steam/config/loginusers.vdf']=users,['C:/Program Files (x86)/Steam/userdata/8351547/553850/remote/input_settings.config']=binding}
+ env={['ProgramFiles(x86)']='C:\\Program Files (x86)'}
+ assert(adapter.hud_config('D:\\SteamLibrary\\steamapps\\common\\Helldivers 2',open,getenv)==config,'Windows: Steam\'s default folder for a second library')
+ files={['C:/Steam/config/loginusers.vdf']='"users" { "76561197968617275" { } "76561197968617276" { } }',
+  ['C:/Steam/userdata/8351547/553850/remote/input_settings.config']=binding,
+  ['C:/Program Files (x86)/Steam/config/loginusers.vdf']=users,['C:/Program Files (x86)/Steam/userdata/8351547/553850/remote/input_settings.config']=binding}
+ assert(adapter.hud_config('C:/Steam/steamapps/common/Helldivers 2',open,getenv)==nil,'Ambiguous accounts are not guessed, nor looked past')
+ files={['C:/Steam/config/loginusers.vdf']=users,['C:/Steam/userdata/8351547/553850/remote/input_settings.config']=binding}
  local current_config=config
  local requested_mask
  local t={exchange=function(bytes)
@@ -134,7 +150,7 @@ do
  print('HUD key passthrough: saved binding discovery, ambiguity, narrow masks, menu/camera and rebind lifecycle passed')
 end
 
--- PNG screenshot jobs: the helper's reply layout (operations 13-15) through LLL's facade.
+-- PNG screenshot jobs: the helper's reply layout (operations 13-15).
 do
  local id=string.rep('ab',16)
  local state,seen=1,{}
@@ -145,28 +161,21 @@ do
  local t={exchange=function(bytes)
   local seq,op,len=u(bytes,1),u(bytes,5),u(bytes,9)
   local path=bytes:sub(13,12+len)
-  if op==13 then seen[#seen+1]='request';helper_path=path:gsub('/','\\');return reply(seq,helper_path)end
+  if op==13 then seen[#seen+1]='request';helper_path=path;return reply(seq,helper_path)end
   if op==14 then assert(path==id);seen[#seen+1]='status';return reply(seq,helper_path,0,3840,2160)end
-  if op==15 then assert(path==id);seen[#seen+1]='cancel';state=4;return reply(seq,helper_path)end
+  if op==15 then assert(path==id);seen[#seen+1]='cancel';state=4;return reply(seq,helper_path,0x4c7)end
+  if op==99 then return n(seq)..n(0x32)end
   return transport.exchange(bytes)
  end}
- local clock=0
- local p=adapter.new({Application={process_id=function()return 17 end,time_since_launch=function()return clock end}},t,function()end)
- local folder='C:/Users/Some One/Pictures'
- local shots=dofile('freecam/vendor/wjl_screenshots.lua').new({screenshot_directory=folder,screenshot_session='wjl_input_17_1_1',now=p.now,
-  screenshot_request=p.screenshot_request,screenshot_status=p.screenshot_status,screenshot_cancel=p.screenshot_cancel})
- assert(shots.capabilities.format=='png'and shots.capabilities.game_window==true)
- local token=assert(shots.new_job_token());local name='War-Journalist-20261027-180000-1-1.png'
- local record=assert(shots.request({job_token=token,output_token=name,output_path=folder..'/'..name}))
- assert(record.state=='pending'and not record.uncertain and seen[1]=='request',record.reason)
- assert(shots.status(token,name).state=='pending'and #seen==1,'Status polls at most 10 times a second')
- clock=clock+.2;state=2
- record=shots.status(token,name)
- assert(record.state=='succeeded'and record.width==3840 and record.height==2160 and record.output_path==folder..'/'..name and seen[2]=='status')
- -- A refused request: no job, the helper's code in the reason.
- local refused={exchange=function(bytes)return n(u(bytes,1))..n(0x32)end}
- local q=adapter.new({Application={process_id=function()return 17 end,time_since_launch=function()return clock end}},
-  {exchange=function(bytes)if u(bytes,5)==13 then return refused.exchange(bytes)end;return transport.exchange(bytes)end},function()end)
- local value,why=q.screenshot_request(folder..'/x.png');assert(value==nil and why=='Screenshot request refused (0x00000032)')
- print('WJL PNG screenshots: request/status/cancel reply layout, facade identity, 10 Hz polling and refused requests passed')
+ local p=adapter.new({Application={process_id=function()return 17 end,time_since_launch=function()return 0 end}},t,function()end)
+ local png='C:\\Users\\Some One\\AppData\\Local\\WJL\\Helldivers2\\Screenshots\\War-Journalist-1.png'
+ local r=assert(p.screenshot_request(png))
+ assert(r.state=='pending'and r.id==id and r.output_path==png and seen[1]=='request')
+ state=2;r=assert(p.screenshot_status(id))
+ assert(r.state=='succeeded'and r.width==3840 and r.height==2160 and r.error==0)
+ r=assert(p.screenshot_cancel(id));assert(r.state=='cancelled'and r.error==0x4c7)
+ local refused=adapter.new({Application={process_id=function()return 17 end,time_since_launch=function()return 0 end}},
+  {exchange=function(bytes)if u(bytes,5)==13 then return n(u(bytes,1))..n(0x7b)end;return transport.exchange(bytes)end},function()end)
+ local value,why=refused.screenshot_request(png);assert(value==nil and why=='Screenshot request refused (0x0000007b)')
+ print('WJL PNG screenshot jobs: request/status/cancel reply layout and refused requests passed')
 end

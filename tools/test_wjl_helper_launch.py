@@ -152,6 +152,69 @@ def main():
   log=service_log.read_text(errors='replace')
   assert not config['contract_ready']()and config['failure']().startswith('Refused'),config['failure']()
   results.append({'scenario':'unsupported-game','ready':False,'launch_seconds':round(elapsed,3),'reported':log.strip().splitlines()[-1]})
+  # PNG screenshots: the engine's DDS, written beside the requested PNG, converted by the
+  # helper's screenshot job (SDR BGRA8 and HDR10 RGB10A2), as Photo Mode asks for it.
+  shots_dir=Path(unix(localdata))/'WJL/Helldivers2/Screenshots';windows_shots=localdata+'\\WJL\\Helldivers2\\Screenshots'
+  exe=good/'bin/helldivers2.exe'
+  def dds(width,height,fmt,pixels):
+   head=bytearray(148);struct.pack_into('<4sIIIIIII',head,0,b'DDS ',124,0x100f,height,width,width*4,0,1)
+   struct.pack_into('<II4s',head,76,32,4,b'DX10');struct.pack_into('<I',head,108,0x1000)
+   struct.pack_into('<IIIII',head,128,fmt,3,0,1,0)
+   return bytes(head)+b''.join(struct.pack('<I',p)for p in pixels)
+  def png_pixels(data):
+   import zlib
+   assert data[:8]==b'\x89PNG\r\n\x1a\n';at,idat,ihdr=8,b'',None
+   while at<len(data):
+    size,kind=struct.unpack('>I4s',data[at:at+8]);body=data[at+8:at+8+size];at+=12+size
+    if kind==b'IHDR':ihdr=struct.unpack('>IIBBBBB',body)
+    elif kind==b'IDAT':idat+=body
+   width,height,depth,color=ihdr[:4];assert depth==8 and color in(2,6),ihdr
+   step=4 if color==6 else 3;raw=zlib.decompress(idat);rows,previous=[],bytearray(width*step);pos=0
+   for _ in range(height):
+    kind=raw[pos];line=bytearray(raw[pos+1:pos+1+width*step]);pos+=1+width*step
+    for i in range(len(line)):
+     a=line[i-step]if i>=step else 0;b=previous[i];c=previous[i-step]if i>=step else 0
+     p=a+b-c;pa,pb,pc=abs(p-a),abs(p-b),abs(p-c)
+     line[i]=(line[i]+(0,a,b,(a+b)//2,a if pa<=pb and pa<=pc else b if pb<=pc else c)[kind])&255
+    rows.append([tuple(line[i:i+3])for i in range(0,len(line),step)]);previous=line
+   return width,height,rows
+  def pq(code):
+   m1,m2,c1,c2,c3=2610/16384,2523/32,3424/4096,2413/128,2392/128;p=(code/1023)**(1/m2)
+   return 10000*(max(p-c1,0)/(c2-c3*p))**(1/m1)
+  def native_sdr(r,g,b):
+   mul=lambda m,v:[m[i][0]*v[0]+m[i][1]*v[1]+m[i][2]*v[2]for i in range(3)]
+   pre=[[0.9599400162696838,0.010470000095665455,0.007029999978840351],[0.0016199999954551458,0.9996899962425232,0.0014900000533089042],[0.005289999768137932,0.023830000311136246,1.0501600503921509]]
+   xyz=[[0.6624541878700256,0.13400420546531677,0.15618768334388733],[0.2722287178039551,0.6740817427635193,0.053689517080783844],[-0.005574649665504694,0.00406073359772563,1.0103391408920288]]
+   adapt=[[1.6410233974456787,-0.32480329275131226,-0.23642469942569733],[-0.663662850856781,1.6153316497802734,0.016756348311901093],[0.011721894145011902,-0.008284442126750946,0.9883948564529419]]
+   rgb=[[3.2409698963165283,-1.5373831987380981,-0.4986107647418976],[-0.9692436456680298,1.8759675025939941,0.04155505821108818],[0.05563008040189743,-0.20397695899009705,1.056971549987793]]
+   v=[(x-0.001)*0.0036363769322633743 for x in mul(pre,[r,g,b])];v=mul(xyz,v);s=max(sum(v),0.0001);x,y=v[0]/s,v[1]/s
+   lum=min(max(v[1],0),65504)**0.9811000227928162;ratio=lum/max(y,0.0001)
+   v=mul(rgb,mul(xyz,mul(adapt,[ratio*x,lum,ratio*(1-x-y)])))
+   return tuple(int(min(max(c,0),1)**0.4544999897480011*255+0.5)for c in v)
+  sdr=[0xff102030,0xff405060,0xffffffff,0xff000000,0x80ff0000,0xff00ff00,0xff0000ff,0xff7f7f7f]
+  hdr=[(r|g<<10|b<<20|3<<30)for r,g,b in((0,0,0),(512,512,512),(768,300,100),(1023,1023,1023),(400,600,200),(100,100,900),(520,520,520),(650,0,0))]
+  for name,fmt,pixels,expect in(('sdr',87,sdr,lambda p:((p>>16)&255,(p>>8)&255,p&255)),
+                               ('hdr10',24,hdr,lambda p:native_sdr(pq(p&1023),pq((p>>10)&1023),pq((p>>20)&1023)))):
+   if not exe.is_symlink():exe.unlink();os.symlink(args.game/'bin/helldivers2.exe',exe)
+   config,code,elapsed=launch(good_pid)
+   assert logged('awaiting local Lua filesystem client'),service_log.read_text(errors='replace')
+   assert shots_dir.is_dir(),'The helper creates its Screenshots folder at start'
+   stem='War-Journalist-20261027-200000-1-'+name
+   (shots_dir/(stem+'.dds')).write_bytes(dds(4,2,fmt,pixels))
+   # The job admits only the game's own process: the client runs from the game's path.
+   exe.unlink();shutil.copyfile(probe,exe)
+   out=wine(str(exe),'shot',config['pipe'],windows_shots+'\\'+stem+'.png',timeout=60)
+   job=json.loads(out.stdout.strip().splitlines()[-1])
+   assert job.get('state')==2 and job['error']==0 and(job['width'],job['height'])==(4,2),(name,job,service_log.read_text(errors='replace'))
+   width,height,rows=png_pixels((shots_dir/(stem+'.png')).read_bytes())
+   got=[px for row in rows for px in row];want=[expect(p)for p in pixels]
+   assert(width,height)==(4,2)and all(abs(a-b)<=1 for g,w in zip(got,want)for a,b in zip(g,w)),(name,got,want)
+   assert(shots_dir/(stem+'.dds')).is_file(),'The helper leaves the DDS to Photo Mode'
+   results.append({'scenario':'png-from-'+name,'state':'succeeded','elapsed_ms':job['elapsed_ms'],'pixels_match':True})
+   for _ in range(200):
+    if'service stopped'in service_log.read_text(errors='replace'):break
+    time.sleep(.05)
+  if not exe.is_symlink():exe.unlink();os.symlink(args.game/'bin/helldivers2.exe',exe)
   # The helper EXE removed after it was written (as antivirus does): cmd.exe prints an
   # error and returns. start would have shown a dialog and waited on it.
   def missing_launch():

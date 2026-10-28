@@ -34,26 +34,50 @@ function M.hud_keyboard_mask(mask,config,names)
  end
  return string.char(unpack(bytes)),count,#labels>0 and table.concat(labels,' / ')or'Unbound',#labels==0 and"Toggle HUD is unbound. Assign it in the game's key bindings."or nil
 end
-function M.hud_config(root,open)
+-- Steam's own folder holds the account list and the game's saved key bindings. The game's
+-- library is inside it only for Steam's first library; a second library (D:\SteamLibrary,
+-- or any library under Proton) is not. Then Proton names Steam's folder in the game's
+-- environment (a Linux path, Z: in Wine), and on Windows Steam's default folder is tried.
+function M.steam_roots(root,getenv)
+ getenv=getenv or os.getenv
+ local roots,seen={},{}
+ local function add(path)
+  if type(path)~='string'or path==''then return end
+  path=path:gsub('\\','/'):gsub('/+$','')
+  if not seen[path:lower()]then seen[path:lower()]=true;roots[#roots+1]=path end
+ end
+ add((root or''):gsub('\\','/'):match('^(.-)/steamapps/common/'))
+ local proton=getenv('STEAM_COMPAT_CLIENT_INSTALL_PATH')
+ if type(proton)=='string'and proton:sub(1,1)=='/'then add('Z:'..proton)end
+ for _,name in ipairs({'ProgramFiles(x86)','ProgramFiles'})do
+  local folder=getenv(name);if type(folder)=='string'and folder~=''then add(folder..'/Steam')end
+ end
+ return roots
+end
+function M.hud_config(root,open,getenv)
  open=open or io.open
- local steam=root:gsub('\\','/'):match('^(.-)/steamapps/common/')
- if not steam then return end
  local function read(path)
   local f=open(path,'rb');if not f then return end
   local s=f:read(131073);f:close();if type(s)=='string'and #s<=131072 then return s end
  end
- local users=read(steam..'/config/loginusers.vdf');if not users then return end
- local selected,only,total=nil,nil,0
- for id,row in users:gmatch('"(7656%d+)"%s*(%b{})')do
-  total=total+1;only=id
-  if row:match('"MostRecent"%s*"1"')then if selected then return end;selected=id end
+ for _,steam in ipairs(M.steam_roots(root,getenv))do
+  local users=read(steam..'/config/loginusers.vdf')
+  if users then
+   local selected,only,total,ambiguous=nil,nil,0,false
+   for id,row in users:gmatch('"(7656%d+)"%s*(%b{})')do
+    total=total+1;only=id
+    if row:match('"MostRecent"%s*"1"')then if selected then ambiguous=true end;selected=id end
+   end
+   selected=not ambiguous and(selected or(total==1 and only))
+   -- One Steam folder decides: its accounts are never guessed past.
+   if not selected then return end
+   -- SteamID64 exceeds Lua 5.1's exact double range; subtract in decimal limbs.
+   local account=(tonumber(selected:sub(1,-9))-765611979)*100000000+tonumber(selected:sub(-8))-60265728
+   if account<0 or account>=4294967296 then return end
+   local config=read(steam..'/userdata/'..string.format('%.0f',account)..'/553850/remote/input_settings.config')
+   if config then return config end
+  end
  end
- selected=selected or(total==1 and only)
- if not selected then return end
- -- SteamID64 exceeds Lua 5.1's exact double range; subtract in decimal limbs.
- local account=(tonumber(selected:sub(1,-9))-765611979)*100000000+tonumber(selected:sub(-8))-60265728
- if account<0 or account>=4294967296 then return end
- return read(steam..'/userdata/'..string.format('%.0f',account)..'/553850/remote/input_settings.config')
 end
 function M.new(sr,transport,log,hud_config,names)
  local P={}
@@ -87,8 +111,8 @@ local function call(operation, path, bytes)
     return u32(reply, 5), reply
 end
  function P.now()return sr.Application.time_since_launch()end
--- PNG screenshot jobs (operations 13-15, as LLL's runtime calls them): the helper captures
--- the game window and writes the PNG itself.
+-- PNG screenshot jobs (operations 13-15, as LLL's runtime calls them). For a PNG path with
+-- the engine's DDS beside it, the helper converts that DDS and writes the PNG itself.
 local function screenshot_reply(status,reply)
     if status~=0 then return nil,string.format('Screenshot request refused (0x%08x)',status)end
     assert(#reply>=36,'Truncated screenshot reply')
@@ -257,10 +281,12 @@ local function connect(mod,sr,config,transport)
   return restored,why
  end
  mod.log('Input: WJL keyboard service connected; process proof verified')
- -- PNG screenshots through the same helper, into a folder the caller picks.
+ -- PNG screenshots into a folder the caller picks: the engine's DDS, converted by the helper
+ -- in its own Screenshots folder (it creates it at start).
  local function screenshots(directory)
-  return mod.require('src/vendor/wjl_screenshots.lua').new({screenshot_directory=directory,screenshot_session=config.pipe,now=platform.now,
-   screenshot_request=platform.screenshot_request,screenshot_status=platform.screenshot_status,screenshot_cancel=platform.screenshot_cancel})
+  local staging=assert(os.getenv('LOCALAPPDATA'),'LOCALAPPDATA unavailable')..'\\WJL\\Helldivers2\\Screenshots'
+  local engine=assert(mod.require('src/engine_capture.lua').new(sr,(staging:gsub('\\','/'))),'Engine screenshots unavailable')
+  return mod.require('src/windows_capture.lua').new(engine,platform,staging,directory,mod.log)
  end
  return service,driver,screenshots
 end

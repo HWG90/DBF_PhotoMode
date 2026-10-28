@@ -1,87 +1,102 @@
 local capture=dofile('freecam/windows_capture.lua')
--- Fake PNG (WJL) and DDS (engine) backends with the facade contract: their own tokens,
--- records naming them, and an outcome chosen by the test.
-local function backend(name,folder)
- local self={output_directory=folder,calls={}}
- local serial,issued,current=0,nil,nil
- self.next_state,self.next_reason='succeeded',nil
- function self.new_job_token()serial=serial+1;issued=name..':'..serial;return issued end
- function self.request(intent)
-  assert(intent.job_token==issued,'Inner token required');issued=nil
-  self.calls[#self.calls+1]=intent.output_token
-  if self.reject then return nil,self.reject end
-  current={job_token=intent.job_token,output_token=intent.output_token,output_path=intent.output_path,state='pending'}
-  return{job_token=current.job_token,output_token=current.output_token,output_path=current.output_path,state='pending'}
+-- An in-memory filesystem (paths compared with / and \ alike), a fake engine writer and a
+-- fake WJL whose jobs the test finishes.
+local files={}
+local function key(path)return(path:gsub('\\','/'))end
+local renames_fail=false
+local fs={open=function(path,mode)
+  local k=key(path)
+  if mode=='rb'then
+   local body=files[k];if not body then return nil end
+   local at=0
+   return{read=function(_,n)if n=='*a'then return body end;local part=body:sub(at+1,at+n);at=at+n;return part end,
+    seek=function(_,_,offset)at=offset or 0;return at end,close=function()end}
+  end
+  assert(mode=='wb');local chunks={}
+  return{write=function(_,s)chunks[#chunks+1]=s;return true end,close=function()files[k]=table.concat(chunks)end}
+ end,
+ rename=function(from,to)if renames_fail then return nil,'cross-device'end;local a,b=key(from),key(to);if not files[a]or files[b]then return nil end;files[b],files[a]=files[a],nil;return true end,
+ remove=function(path)files[key(path)]=nil;return true end}
+local staging='C:\\Users\\Some One\\AppData\\Local\\WJL\\Helldivers2\\Screenshots'
+local output='C:/Users/Some One/Pictures'
+local format=87
+local function header(f)return'DDS '..string.rep('\0',124)..string.char(f%256,0,0,0)..string.rep('\0',16)end
+local engine_fails
+local engine={output_directory=(staging:gsub('\\','/'))}
+do local serial,issued=0,nil
+ function engine.new_job_token()serial=serial+1;issued='engine:'..serial;return issued end
+ function engine.request(intent)
+  assert(intent.job_token==issued and intent.output_path==engine.output_directory..'/'..intent.output_token and intent.output_token:match('%.dds$'))
+  if engine_fails then return{job_token=issued,output_token=intent.output_token,output_path=intent.output_path,state='failed',reason=engine_fails}end
+  files[key(intent.output_path)]=header(format)..'pixels'
+  return{job_token=issued,output_token=intent.output_token,output_path=intent.output_path,state='succeeded'}
  end
- function self.status(job,output_token)
-  assert(current and current.job_token==job and current.output_token==output_token,'Inner identity')
-  current.state,current.reason=self.next_state,self.next_reason
-  return{job_token=job,output_token=output_token,output_path=current.output_path,state=current.state,reason=current.reason}
- end
- function self.cancel(job,output_token)
-  assert(current and current.job_token==job)
-  current.state='cancelled'
-  return true,{job_token=job,output_token=output_token,output_path=current.output_path,state='cancelled'}
- end
- return self
 end
-local folder='C:/Users/Some One/Pictures'
+local clock,requests,job,refuse=0,{},nil,nil
+local platform={now=function()return clock end}
+function platform.screenshot_request(path)
+ requests[#requests+1]=path
+ if refuse then return nil,refuse end
+ job={id=string.rep('c',32),path=path,state='pending'}
+ return{state='pending',id=job.id,output_path=path,error=0,width=0,height=0,elapsed_ms=0}
+end
+local polls=0
+function platform.screenshot_status(id)
+ assert(id==job.id);polls=polls+1
+ if job.state=='succeeded'then files[key(job.path)]='\137PNG\r\n\26\n'end
+ return{state=job.state,id=id,output_path=job.path,error=job.error or 0,width=4,height=2,elapsed_ms=1}
+end
+function platform.screenshot_cancel(id)assert(id==job.id);job.state='cancelled';return platform.screenshot_status(id)end
 local logged={}
-local png,dds=backend('png',folder),backend('dds',folder)
-local c=capture.new(png,dds,false,function(m)logged[#logged+1]=m end)
-assert(c.version==1 and c.output_directory==folder and c.extension=='png')
-assert(c.capabilities.game_window==true and c.capabilities.format=='png'and c.capabilities.color_space=='sdr'and c.capabilities.max_jobs==1)
+local c=capture.new(engine,platform,staging,output,function(m)logged[#logged+1]=m end,fs)
+assert(c.version==1 and c.extension=='png'and c.output_directory==output and c.capabilities.format=='png'and c.capabilities.async)
 local n=0
-local function shot(extension)
- n=n+1
- local name='War-Journalist-20261027-180000-1-'..n..'.'..extension
+local function begin()
+ n=n+1;local name='War-Journalist-20261027-200000-1-'..n..'.png'
  local token=c.new_job_token()
- local record,why=c.request({job_token=token,output_token=name,output_path=folder..'/'..name})
- if not record then return nil,why end
- assert(record.job_token==token and record.state=='pending','Records carry the outer token')
- return c.status(token,name),token,name
+ return c.request({job_token=token,output_token=name,output_path=output..'/'..name}),token,name
 end
--- PNG by default; a success keeps PNG.
-local done=shot(c.extension);assert(done.state=='succeeded'and #png.calls==1 and c.extension=='png')
-assert(not pcall(c.status,'windows-shot:0',done.output_token),'A stale token is refused')
-assert(not c.request({job_token='windows-shot:99',output_token='x.png',output_path=folder..'/x.png'}),'Only the latest token')
--- A passing failure (the window moved) keeps PNG once; a second in a row switches to DDS.
-png.next_state,png.next_reason='failed','Screenshot error 0x000004d5'
-assert(shot(c.extension).state=='failed'and c.extension=='png'and #logged==0)
-png.next_reason='Screenshot error 0x000005b4'
-assert(shot(c.extension).state=='failed'and c.extension=='dds','Two failed PNGs in a row switch to DDS')
-assert(#logged==1 and logged[1]:find('saving DDS',1,true))
--- DDS from then on, through the engine backend with its own token.
-done=shot(c.extension);assert(done.state=='succeeded'and done.output_token:match('%.dds$')and #dds.calls==1 and #png.calls==3)
--- A refusal that will not pass (HDR display: ERROR_NOT_SUPPORTED) switches at once.
-png,dds,logged=backend('png',folder),backend('dds',folder),{}
-c=capture.new(png,dds,false,function(m)logged[#logged+1]=m end)
-png.next_state,png.next_reason='failed','Screenshot error 0x00000032'
-assert(shot('png').state=='failed'and c.extension=='dds'and #logged==1)
--- A request the helper rejects counts the same way.
-png,dds,logged=backend('png',folder),backend('dds',folder),{}
-c=capture.new(png,dds,false,function(m)logged[#logged+1]=m end)
-png.reject='Screenshot request refused (0x80040154)'
-local record,why=shot('png');assert(record==nil and why==png.reject and c.extension=='dds')
--- A success between failures resets the count.
-png,dds=backend('png',folder),backend('dds',folder)
-c=capture.new(png,dds,false)
-png.next_state,png.next_reason='failed','Screenshot error 0x000004d5';shot('png')
-png.next_state,png.next_reason='succeeded',nil;shot('png')
-png.next_state,png.next_reason='failed','Screenshot error 0x000004d5'
-local _,token,name=shot('png')
-assert(c.extension=='png','Failures must be in a row')
--- Polling the same failed job again does not count it twice.
-assert(c.status(token,name).state=='failed'and c.status(token,name).state=='failed'and c.extension=='png')
--- HDR at start: DDS from the first shot.
-png,dds,logged=backend('png',folder),backend('dds',folder),{}
-c=capture.new(png,dds,true,function(m)logged[#logged+1]=m end)
-assert(c.extension=='dds'and logged[1]:find('HDR is on',1,true))
--- Cancellation reaches the job's own backend and returns the outer token.
-png,dds=backend('png',folder),backend('dds',folder)
-c=capture.new(png,dds,false)
-token=c.new_job_token();name='War-Journalist-x.png'
-assert(c.request({job_token=token,output_token=name,output_path=folder..'/'..name}))
-local cancelled,final=c.cancel(token,name);assert(cancelled and final.state=='cancelled'and final.job_token==token and c.extension=='png')
-assert(not pcall(capture.new,png,backend('dds','D:/Other'),false),'One folder for both formats')
-print('Windows capture: WJL PNG by default, engine DDS after a lasting refusal, HDR or two failures in a row, outer tokens and cancellation passed')
+local function stem(name)return name:sub(1,-5)end
+-- SDR: the engine writes the DDS into WJL's folder, WJL converts it, the PNG is moved and
+-- the DDS removed. Status polls WJL at most 10 times a second.
+local record,token,name=begin()
+assert(record.state=='pending'and record.job_token==token and record.output_path==output..'/'..name)
+assert(requests[1]==staging..'\\'..stem(name)..'.png','WJL is asked for the PNG beside the staged DDS')
+assert(files[key(staging..'/'..stem(name)..'.dds')],'The engine wrote the DDS into WJL\'s folder')
+assert(c.status(token,name).state=='pending'and polls==0)
+clock=.2;job.state='succeeded'
+record=c.status(token,name)
+assert(record.state=='succeeded'and record.output_path==output..'/'..name and files[key(output..'/'..name)]=='\137PNG\r\n\26\n')
+assert(not files[key(staging..'/'..stem(name)..'.dds')]and not files[key(staging..'/'..stem(name)..'.png')]and not files[key(output..'/'..stem(name)..'.dds')],'SDR keeps only the PNG')
+assert(c.status(token,name).state=='succeeded'and polls==1,'A finished job is not polled again')
+-- HDR10: the DDS is kept beside the PNG. A rename across volumes falls back to a copy.
+format=24;renames_fail=true
+record,token,name=begin();clock=clock+.2;job.state='succeeded'
+assert(c.status(token,name).state=='succeeded')
+assert(files[key(output..'/'..name)]and files[key(output..'/'..stem(name)..'.dds')]and not files[key(staging..'/'..stem(name)..'.dds')],'HDR keeps its DDS')
+format,renames_fail=87,false
+-- WJL refuses: the DDS goes to the screenshot folder and the log says why.
+refuse='Screenshot request refused (0x0000007b)'
+record,token,name=begin()
+assert(record.state=='failed'and record.reason:find('0x0000007b',1,true)and record.reason:find('DDS saved',1,true))
+assert(files[key(output..'/'..stem(name)..'.dds')]and logged[#logged]:find('PNG screenshot unavailable',1,true))
+refuse=nil
+-- Conversion fails: the same.
+record,token,name=begin();clock=clock+.2;job.state,job.error='failed',0x32
+record=c.status(token,name)
+assert(record.state=='failed'and record.reason:find('0x00000032',1,true)and files[key(output..'/'..stem(name)..'.dds')])
+-- The engine cannot write: no WJL request.
+local before=#requests;engine_fails='The engine did not write the screenshot'
+record=begin();assert(record.state=='failed'and record.reason==engine_fails and #requests==before)
+engine_fails=nil
+-- Cancelled while converting (Photo Mode closed): the DDS is kept, the record cancelled.
+record,token,name=begin()
+local done,final=c.cancel(token,name)
+assert(done and final.state=='cancelled'and files[key(output..'/'..stem(name)..'.dds')])
+-- Identity: latest token only, the screenshot folder only, never an existing file.
+assert(not c.request({job_token='windows-shot:1',output_token='War-Journalist-x.png',output_path=output..'/War-Journalist-x.png'}))
+token=c.new_job_token()
+assert(not c.request({job_token=token,output_token='War-Journalist-x.png',output_path='D:/Elsewhere/War-Journalist-x.png'}))
+files[key(output..'/War-Journalist-y.png')]='old'
+assert(not c.request({job_token=token,output_token='War-Journalist-y.png',output_path=output..'/War-Journalist-y.png'}),'Never replaces a file')
+print('Windows capture: engine DDS converted to PNG by WJL, moved to the screenshot folder; SDR DDS removed, HDR kept; DDS kept on refusal, failure or cancel passed')

@@ -8,8 +8,9 @@ Fixes the game stopping on a black screen while it starts with War Journalist en
 
 - **The game no longer waits for WJL while it starts.** 1.3.0 and 1.3.1 started WJL, the bundled input helper, while the game was starting, and the game waited for it. On some Windows PCs that wait took several seconds or never ended. The game sat on a black screen, then closed or had to be closed. A Boot Mod Loader log from one such PC showed 15 of 20 starts stopping inside that wait, and none with War Journalist disabled. Antivirus checking a new, unsigned program is one known cause of such a wait. The game now starts WJL and carries on at once. Photo Mode becomes available as soon as WJL answers, normally well under a second later. If WJL refuses to run or has not answered after 90 seconds, Photo Mode starts without it, and `war_journalist_lua51.log` says why.
 - **No hidden dialogs.** 1.3.1 started WJL through `start`. When the WJL program was missing or blocked, `start` showed a dialog that could sit behind the game. `cmd.exe` now runs WJL directly, so the same problem only writes an error to the log.
-- **PNG screenshots on Windows again.** 1.3.0 and 1.3.1 saved Windows screenshots as the game engine's raw DDS files, which most photo viewers cannot open. WJL now captures the game window and saves a PNG. The capture uses Windows Graphics Capture, outside the game, and needs Windows 10 version 1903 or later. It works on SDR displays only. With HDR on, or where Windows Graphics Capture is unavailable, screenshots stay DDS. A PNG failure that retrying won't fix, or two failures in a row, switches the rest of the session to DDS, and the log says why. Screenshots go to the same folder as before (normally `Pictures`).
-- **Old WJL copies removed.** Each release that changed WJL left its own `wjl_steam_service_<id>.exe` in `%APPDATA%\Arrowhead\Helldivers2`. War Journalist now removes the copies from 1.3.0 and the 1.3.1 test builds, and 1.3.0's `wjl_startup.log`. WJL itself is unchanged from 1.3.1, so the same `wjl_steam_service_4249097cb43acbbe.exe` stays.
+- **PNG screenshots on Windows again.** 1.3.0 and 1.3.1 saved Windows screenshots as the game engine's raw DDS files, which most photo viewers cannot open. The engine still writes the DDS, which works on every PC. WJL now converts it to a PNG outside the game, using the converter War Journalist 0.9.x used, for SDR and HDR10 alike. HDR shots keep their DDS beside the PNG; SDR shots keep only the PNG. If a shot cannot be converted, its DDS is saved instead and the log says why. Screenshots go to the same folder as before (normally `Pictures`).
+- **Toggle HUD binding found in a second Steam library.** Photo Mode reads the game's Toggle HUD key from Steam's own folder. It looked for that folder only around the game, so with Helldivers 2 in a second library (for example `D:\SteamLibrary`, or any library under Proton) the menu said "Could not read the game's Toggle HUD binding." It now also tries the Steam folder Proton names, and Steam's default folder on Windows.
+- **Old WJL copies removed.** Each release that changed WJL left its own `wjl_steam_service_<id>.exe` in `%APPDATA%\Arrowhead\Helldivers2`. War Journalist now removes the copies from 1.3.0, 1.3.1 and the 1.3.1 test builds, and 1.3.0's `wjl_startup.log`. WJL is rebuilt for the PNG conversion (`wjl_steam_service_2e246b0bde86bec6.exe`).
 
 All 1.3.0 known issues still apply: occasional cape detachment, intermittent subject selection, incomplete Hide options, no AI control, and no depth shaders (Native DoF works). See [known issues](https://github.com/HWG90/DBF_PhotoMode/blob/v1.3.2/docs/KNOWN-ISSUES.md).
 
@@ -19,17 +20,18 @@ Import the complete **BML ZIP** into HD2 Arsenal, enable War Journalist and Asse
 
 ## Testing scope
 
-- **Not yet tested in game.** Live tests on Linux/Proton and native Windows are pending. PNG capture can only be checked on Windows: Proton has no Windows Graphics Capture, and on Linux the Linux capture worker makes the PNGs.
+- **Not yet tested in game.** Live tests on Linux/Proton and native Windows are pending. Under Proton, screenshots take the same DDS-to-PNG path as on Windows; the Linux capture worker is used only when WJL is not connected.
 - Isolated Lua 5.1 fixtures cover the new startup:
   - the launcher is started and never waited on;
   - WJL is looked for once a frame and connected when it answers;
   - a refusal is reported within a second;
   - WJL not answering ends after 90 seconds;
   - the game never closes the launcher before WJL answers.
-- Fixtures for screenshots: WJL's reply format, PNG by default, and DDS after an HDR start, a lasting refusal, or two failed PNGs in a row.
+- Fixtures for screenshots: WJL's reply format; the DDS written into WJL's folder, converted and moved; SDR DDS removed, HDR10 DDS kept; the DDS kept when WJL refuses, fails or is cancelled; never replacing a file.
+- WJL was rebuilt with the same Visual Studio 2022 compiler and Windows SDK, warnings as errors, and its native fixtures pass. Under Wine, the start-up test now sends real SDR and HDR10 DDS files through WJL's screenshot job. Every PNG pixel matched the 0.9.x converter's math.
 - The package check runs the archive as Boot Mod Loader does, twice:
   - with a WJL that refuses at once: Photo Mode started on the first frame, with DDS screenshots, and the launcher was never waited on;
-  - with a WJL that answers a few frames later: Photo Mode waited for it, then selected PNG capture.
+  - with a WJL that answers a few frames later: Photo Mode waited for it, then selected WJL PNG screenshots.
 - A start-up test runs the exact launcher under Wine against the real game executable. It covers readiness, game-root discovery, the renderer check, refusal of a different game build, and a WJL program removed after it was written (the launcher returns at once). A folder name with spaces, parentheses and `&` was also checked.
 
 ## Reporting
