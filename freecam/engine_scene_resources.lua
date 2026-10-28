@@ -39,10 +39,24 @@ function M.new(sr,mod,registry,local_probe)
  local function assets()
   if registry_checked then return true end
   local root=assert(mod.game_root,'WJL game-root proof unavailable')
-  local f=assert(io.open(root..'/data/'..registry.name,'rb'),'Owned shader registry archive missing')
-  local body=f:read(#registry.hex/2+1);f:close()
   local expected=registry.hex:gsub('%x%x',function(h)return string.char(tonumber(h,16))end)
-  assert(body==expected,'Installed shader registry differs from the packaged registry')
+  -- A mod manager numbers archives that share a name, so ours is not always patch_0
+  -- beside other mods. Find the patch whose bytes are exactly ours (stopping 64 numbers
+  -- past the last one present, as Boot Mod Loader does).
+  local base=assert(registry.name:match('^(.-)%.patch_%d+$'),'Owned shader registry name invalid')
+  local found,present,last=nil,false,-1
+  for n=0,1024 do
+   if n-last>64 then break end
+   local f=io.open(root..'/data/'..base..'.patch_'..n,'rb')
+   if f then
+    present,last=true,n
+    local body=f:read(#expected+1);f:close()
+    if body==expected then found=n;break end
+   end
+  end
+  assert(present,'Owned shader registry archive missing')
+  assert(found,'Installed shader registry differs from the packaged registry')
+  if found>0 then mod.log('Owned shader registry found at '..base..'.patch_'..found)end
   registry_checked=true;return true
  end
  function self.registered(requested)

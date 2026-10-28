@@ -117,5 +117,13 @@ assert(r.release());bad_depth=true;local before=gets;assert(not r.depth.availabl
 for key in pairs(files)do assert(key=='C:/game/data/owned.patch_0','Every owned probe file must be removed')end
 assert(r.release());files['C:/game/data/owned.patch_0']='foreign'
 local other=module.new(sr,mod,{name='owned.patch_0',hex='61'});assert(not pcall(other.registered),'Foreign shader registry refuses before use')
+-- Beside other mods' archives of the same name, ours may be deployed as patch_N.
+files['C:/game/data/owned.patch_1']='b';files['C:/game/data/owned.patch_2']='a'
+local shifted=module.new(sr,mod,{name='owned.patch_0',hex='61'});assert(shifted.registered(),'A shifted shader registry is found by its bytes')
+files['C:/game/data/owned.patch_2']=nil;files['C:/game/data/owned.patch_70']='a'
+local far=module.new(sr,mod,{name='owned.patch_0',hex='61'});assert(not pcall(far.registered),'The scan stops 64 numbers past the last patch present')
+files['C:/game/data/owned.patch_0'],files['C:/game/data/owned.patch_1'],files['C:/game/data/owned.patch_70']=nil,nil,nil
+local missing=module.new(sr,mod,{name='owned.patch_0',hex='61'});local ok,why=pcall(missing.registered)
+assert(not ok and tostring(why):find('archive missing',1,true),tostring(why))
 io.open,os.remove,os.getenv=old_open,old_remove,old_env
-print('Engine scene resources: exact registry, depth-only DDS proof, GPU-only color, no missing-target lookup, cached readbacks, HDR invalidation, binding and cleanup passed; visual shader output pending')
+print('Engine scene resources: exact registry at any patch number, depth-only DDS proof, GPU-only color, no missing-target lookup, cached readbacks, HDR invalidation, binding and cleanup passed; visual shader output pending')

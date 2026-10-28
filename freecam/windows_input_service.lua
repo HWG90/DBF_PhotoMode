@@ -34,26 +34,50 @@ function M.hud_keyboard_mask(mask,config,names)
  end
  return string.char(unpack(bytes)),count,#labels>0 and table.concat(labels,' / ')or'Unbound',#labels==0 and"Toggle HUD is unbound. Assign it in the game's key bindings."or nil
 end
-function M.hud_config(root,open)
+-- Steam's own folder holds the account list and the game's saved key bindings. The game's
+-- library is inside it only for Steam's first library; a second library (D:\SteamLibrary,
+-- or any library under Proton) is not. Then Proton names Steam's folder in the game's
+-- environment (a Linux path, Z: in Wine), and on Windows Steam's default folder is tried.
+function M.steam_roots(root,getenv)
+ getenv=getenv or os.getenv
+ local roots,seen={},{}
+ local function add(path)
+  if type(path)~='string'or path==''then return end
+  path=path:gsub('\\','/'):gsub('/+$','')
+  if not seen[path:lower()]then seen[path:lower()]=true;roots[#roots+1]=path end
+ end
+ add((root or''):gsub('\\','/'):match('^(.-)/steamapps/common/'))
+ local proton=getenv('STEAM_COMPAT_CLIENT_INSTALL_PATH')
+ if type(proton)=='string'and proton:sub(1,1)=='/'then add('Z:'..proton)end
+ for _,name in ipairs({'ProgramFiles(x86)','ProgramFiles'})do
+  local folder=getenv(name);if type(folder)=='string'and folder~=''then add(folder..'/Steam')end
+ end
+ return roots
+end
+function M.hud_config(root,open,getenv)
  open=open or io.open
- local steam=root:gsub('\\','/'):match('^(.-)/steamapps/common/')
- if not steam then return end
  local function read(path)
   local f=open(path,'rb');if not f then return end
   local s=f:read(131073);f:close();if type(s)=='string'and #s<=131072 then return s end
  end
- local users=read(steam..'/config/loginusers.vdf');if not users then return end
- local selected,only,total=nil,nil,0
- for id,row in users:gmatch('"(7656%d+)"%s*(%b{})')do
-  total=total+1;only=id
-  if row:match('"MostRecent"%s*"1"')then if selected then return end;selected=id end
+ for _,steam in ipairs(M.steam_roots(root,getenv))do
+  local users=read(steam..'/config/loginusers.vdf')
+  if users then
+   local selected,only,total,ambiguous=nil,nil,0,false
+   for id,row in users:gmatch('"(7656%d+)"%s*(%b{})')do
+    total=total+1;only=id
+    if row:match('"MostRecent"%s*"1"')then if selected then ambiguous=true end;selected=id end
+   end
+   selected=not ambiguous and(selected or(total==1 and only))
+   -- One Steam folder decides: its accounts are never guessed past.
+   if not selected then return end
+   -- SteamID64 exceeds Lua 5.1's exact double range; subtract in decimal limbs.
+   local account=(tonumber(selected:sub(1,-9))-765611979)*100000000+tonumber(selected:sub(-8))-60265728
+   if account<0 or account>=4294967296 then return end
+   local config=read(steam..'/userdata/'..string.format('%.0f',account)..'/553850/remote/input_settings.config')
+   if config then return config end
+  end
  end
- selected=selected or(total==1 and only)
- if not selected then return end
- -- SteamID64 exceeds Lua 5.1's exact double range; subtract in decimal limbs.
- local account=(tonumber(selected:sub(1,-9))-765611979)*100000000+tonumber(selected:sub(-8))-60265728
- if account<0 or account>=4294967296 then return end
- return read(steam..'/userdata/'..string.format('%.0f',account)..'/553850/remote/input_settings.config')
 end
 function M.new(sr,transport,log,hud_config,names)
  local P={}
@@ -87,6 +111,33 @@ local function call(operation, path, bytes)
     return u32(reply, 5), reply
 end
  function P.now()return sr.Application.time_since_launch()end
+-- PNG screenshot jobs (operations 13-15, as LLL's runtime calls them). For a PNG path with
+-- the engine's DDS beside it, the helper converts that DDS and writes the PNG itself.
+local function screenshot_reply(status,reply)
+    if status~=0 then return nil,string.format('Screenshot request refused (0x%08x)',status)end
+    assert(#reply>=36,'Truncated screenshot reply')
+    local states={'pending','succeeded','failed','cancelled'}
+    local state=states[u32(reply,9)]
+    assert(state,'Invalid screenshot state')
+    local id,at=text(reply,29)
+    local path;path,at=text(reply,at)
+    assert(at==#reply+1,'Trailing screenshot reply bytes')
+    return {state=state,error=u32(reply,13),width=u32(reply,17),height=u32(reply,21),
+        elapsed_ms=u32(reply,25),id=id,output_path=path}
+end
+function P.screenshot_request(path)return screenshot_reply(call(13,path))end
+function P.screenshot_status(id)return screenshot_reply(call(14,id))end
+function P.screenshot_cancel(id)return screenshot_reply(call(15,id))end
+-- The VKs at the US W/A/S/D/Q/E key positions in the game's keyboard layout
+-- (Z/Q/S/D/A/E on AZERTY), so default movement keys sit where WASD sits.
+function P.key_positions()
+    local status,reply=call(21,'layout-v1')
+    if status~=0 then return nil,string.format('Keyboard layout refused (0x%08x)',status)end
+    assert(#reply==40 and u32(reply,9)==6,'Invalid keyboard layout reply')
+    local keys={}
+    for index=1,6 do keys[index]=u32(reply,9+index*4)end
+    return {forward=keys[1],left=keys[2],back=keys[3],right=keys[4],roll_left=keys[5],roll_right=keys[6],layout=u32(reply,37)}
+end
 local pointer={}
 local function signed(bytes,at)
     local value=u32(bytes,at)
@@ -223,9 +274,7 @@ end local acquire,snapshot,release=P.keyboard_acquire,P.keyboard_snapshot,P.keyb
  end
  return P
 end
-function M.connect(mod,sr)
- local config=mod.require('src/wjl_helper_startup.lua').config(mod,sr)
- local transport=mod.require('src/vendor/wjl_transport.lua')(config)
+local function connect(mod,sr,config,transport)
  local names=mod.require('src/steam_input.lua').key_names
  local ok,platform=pcall(M.new,sr,transport,mod.log,function()return M.hud_config(mod.game_root or '')end,names)
  if not ok then transport.close();error(platform)end
@@ -242,6 +291,68 @@ function M.connect(mod,sr)
   return restored,why
  end
  mod.log('Input: WJL keyboard service connected; process proof verified')
- return service,driver
+ -- Default movement keys follow the layout's key positions; saved bindings are kept.
+ local found,keys=pcall(platform.key_positions)
+ if found and keys then
+  local seen,usable={},true
+  for _,id in ipairs({'forward','left','back','right','roll_left','roll_right'})do
+   local vk=keys[id];local bits=vk and platform.base_keyboard_capture_mask:byte(math.floor(vk/8)+1)
+   if not names[vk]or seen[vk]or not bits or math.floor(bits/2^(vk%8))%2~=1 then usable=false end;seen[vk or 0]=true
+  end
+  if usable then mod.key_positions=keys end
+  mod.log(string.format('Keyboard layout %08x: movement defaults %s/%s/%s/%s, roll %s/%s%s',keys.layout,
+   names[keys.forward]or'?',names[keys.left]or'?',names[keys.back]or'?',names[keys.right]or'?',names[keys.roll_left]or'?',names[keys.roll_right]or'?',
+   usable and''or' unusable; WASD defaults kept'))
+ else mod.log('Keyboard layout unavailable; WASD defaults kept: '..tostring(keys))end
+ -- PNG screenshots into a folder the caller picks: the engine's DDS, converted by the helper
+ -- in its own Screenshots folder (it creates it at start).
+ local function screenshots(directory)
+  local staging=assert(os.getenv('LOCALAPPDATA'),'LOCALAPPDATA unavailable')..'\\WJL\\Helldivers2\\Screenshots'
+  local engine=assert(mod.require('src/engine_capture.lua').new(sr,(staging:gsub('\\','/'))),'Engine screenshots unavailable')
+  return mod.require('src/windows_capture.lua').new(engine,platform,staging,directory,mod.log)
+ end
+ return service,driver,screenshots
+end
+-- How long the game keeps looking for the helper. Antivirus may hold a new unsigned
+-- EXE for a cloud check: 10 s by default, up to 60 s by policy.
+M.start_seconds=90
+-- Launcher handles of helpers that never answered. Closing one waits for cmd.exe, which
+-- may still be waiting on Windows, so they stay referenced (never collected) instead.
+local unanswered={}
+-- Starts WJL beside the game without the game waiting on it, and returns poll(). Call it
+-- once a frame: nil while the helper is starting, then the service, its driver and a
+-- screenshots(directory) factory for PNG capture.
+-- It raises once the helper has refused or has not answered within start_seconds.
+function M.start(mod,sr,clock)
+ local config=mod.require('src/wjl_helper_startup.lua').config(mod,sr)
+ local open=mod.require('src/vendor/wjl_transport.lua')
+ local began=clock()
+ local launcher=assert(io.popen(config.launcher,'r'),'Cannot start the WJL helper launcher')
+ local check_at,done=began,false
+ local function give_up(why)
+  done=true;unanswered[#unanswered+1]=launcher;launcher=nil
+  error(why,0)
+ end
+ return function()
+  assert(not done,'WJL helper start already finished')
+  -- A pipe that is not there fails at once; the service creates both before it is ready.
+  local ready,transport=pcall(open,{pipe=config.pipe})
+  if ready then
+   done=true
+   -- The service is ready, so its --launch copy has returned and cmd.exe with it.
+   pcall(launcher.close,launcher);launcher=nil
+   mod.log(string.format('WJL helper ready %.1f s after launch',clock()-began))
+   return connect(mod,sr,config,transport)
+  end
+  local now=clock()
+  if now>=check_at then
+   check_at=now+1
+   local report=config.failure()
+   if report:find('Refused',1,true)then give_up(report)end
+  end
+  if now-began>=M.start_seconds then
+   give_up(string.format('WJL helper not ready %d s after launch: %s',M.start_seconds,config.failure()))
+  end
+ end
 end
 return M

@@ -11,6 +11,7 @@ local transport={exchange=function(bytes)
  if op==17 then return prefix..n(1)..n(10)..n(20)..n(1920)..n(1080)..n(0)..n(0)..n(2)..n(3)..n(1)..n(7)..n(2)..string.rep('\0',32)end
  if op==18 then if release_refused then return n(seq)..n(5)end;return prefix..n(1)..n(1)..n(7)end
  if op==11 then return prefix end
+ if op==21 then return prefix..n(6)..n(0x5A)..n(0x51)..n(0x53)..n(0x44)..n(0x41)..n(0x45)..n(0x040C040C)end
  error(op)
 end}
 local sr={Application={process_id=function()return 17 end,time_since_launch=function()return 1 end}}
@@ -34,21 +35,62 @@ count=#operations;for i=1,20 do driver.begin_frame()end;assert(#operations==coun
 assert(driver.close())
 print('Windows R34 input adapter: process proof, strict lease, one sample/frame, mode switch, uncertain release, exact restore and idle passed')
 
+-- The game never waits on the helper: start() only spawns the launcher, and poll() is nil
+-- until the helper's pipe opens. The launcher is closed (which waits for cmd.exe) only
+-- once the service answered; a refused or silent helper's launcher is never closed.
 -- A rejected render graph must not make keyboard/menu startup fail.
 sr.Window=window;transport.close=function()end
+local report,ready_after,opens='No WJL helper log written',3,0
+local spawned,closed={},0
 local mod={log=function()end,require=function(name)
- if name=='src/wjl_helper_startup.lua'then return{config=function()return{pipe='fixture_input_pipe',contract_ready=function()return false end}end}end
+ if name=='src/wjl_helper_startup.lua'then return{config=function()return{pipe='fixture_input_pipe',launcher='""C:\\wjl.exe" --launch"',
+  contract_ready=function()return false end,failure=function()return report end}end}end
  if name=='src/steam_input.lua'then return dofile('freecam/steam_input.lua')end
- if name=='src/vendor/wjl_transport.lua'then return function()return transport end end
+ if name=='src/vendor/wjl_transport.lua'then return function(config)
+  assert(config.pipe=='fixture_input_pipe'and config.launcher==nil,'The transport never launches')
+  opens=opens+1;if opens<ready_after then error('WJL input service not ready')end;return transport end end
  if name=='src/vendor/wjl_capture.lua'then return dofile('freecam/vendor/wjl_capture.lua')end
  if name=='src/vendor/wjl_input_service.lua'then return dofile('freecam/vendor/wjl_input_service.lua')end
  error(name)
 end}
-local isolated,runner=adapter.connect(mod,sr)
+local old_popen=io.popen
+io.popen=function(command,mode)
+ assert(mode=='r');spawned[#spawned+1]=command
+ return{close=function()closed=closed+1;return true end,read=function()error('The launcher output is never read')end}
+end
+local now=0;local function clock()return now end
+local poll=adapter.start(mod,sr,clock)
+assert(#spawned==1 and spawned[1]=='""C:\\wjl.exe" --launch"'and closed==0,'Launch spawns cmd.exe and returns at once')
+assert(poll()==nil and poll()==nil and closed==0,'Pending frames return nil without waiting')
+local isolated,runner=poll()
+assert(isolated and closed==1,'The launcher is closed once the service answered')
 assert(mod.game_root=='C:/game'and mod.render_contract_verified==false)
+local keys=mod.key_positions
+assert(keys and keys.forward==0x5A and keys.left==0x51 and keys.back==0x53 and keys.right==0x44 and keys.roll_left==0x41 and keys.roll_right==0x45,'AZERTY positions become the movement defaults')
 local held=assert(isolated.acquire('dbf_freecam','menu',nil,{keyboard=true}))
 runner.begin_frame();assert(isolated.snapshot(held).keyboard_active)
 assert(isolated.release(held));assert(runner.close())
+assert(not pcall(poll),'A finished start is not polled again')
+-- A refusal in the helper's log ends the start within a second, without closing the launcher.
+opens,ready_after,closed=0,math.huge,0
+poll=adapter.start(mod,sr,clock)
+assert(poll()==nil);report='Refused: installed game hashes do not match this service build'
+now=now+.5;assert(poll()==nil,'The helper log is read once a second')
+now=now+.6;local ok,why=pcall(poll)
+assert(not ok and why==report and closed==0,'Refusal reported; launcher left open')
+-- A helper that never answers: the start ends after start_seconds, launcher left open.
+report,opens,closed='No WJL helper log written',0,0
+poll=adapter.start(mod,sr,clock)
+local frames=0
+while true do
+ local done,value=pcall(poll);frames=frames+1
+ if not done then why=value;break end
+ assert(value==nil);now=now+1/60
+end
+assert(why:find('not ready '..adapter.start_seconds..' s after launch: No WJL helper log written',1,true)and closed==0,why)
+assert(frames>=adapter.start_seconds*60,'Each frame polls once')
+io.popen=old_popen
+print('Windows WJL start: launcher spawned without waiting, per-frame pipe poll, close after ready, refusal and timeout without waiting passed')
 
 -- Saved Toggle HUD bindings are excluded at acquisition; unrelated keys stay isolated.
 do
@@ -72,9 +114,25 @@ do
   reads=reads+1;local value=files[path];if not value then return end
   return{read=function()return value end,close=function()end}
  end
- assert(adapter.hud_config('C:/Steam/steamapps/common/Helldivers 2',open)==config and reads==2)
- files['C:/Steam/config/loginusers.vdf']='"users" { "76561197968617275" { } "76561197968617276" { } }'
- assert(adapter.hud_config('C:/Steam/steamapps/common/Helldivers 2',open)==nil,'Ambiguous accounts are not guessed')
+ local env={}
+ local function getenv(name)return env[name]end
+ assert(adapter.hud_config('C:/Steam/steamapps/common/Helldivers 2',open,getenv)==config and reads==2)
+ -- A second library: Steam's own folder from Proton's environment (Z: in Wine), or
+ -- Steam's default folder on Windows.
+ local users,binding=files['C:/Steam/config/loginusers.vdf'],files['C:/Steam/userdata/8351547/553850/remote/input_settings.config']
+ files={['Z:/home/goose/.local/share/Steam/config/loginusers.vdf']=users,['Z:/home/goose/.local/share/Steam/userdata/8351547/553850/remote/input_settings.config']=binding}
+ env={STEAM_COMPAT_CLIENT_INSTALL_PATH='/home/goose/.local/share/Steam',['ProgramFiles(x86)']='C:\\Program Files (x86)'}
+ assert(adapter.hud_config('S:\\steamapps\\common\\Helldivers 2',open,getenv)==config,'Proton: Steam from the game environment')
+ local roots=adapter.steam_roots('S:\\steamapps\\common\\Helldivers 2',getenv)
+ assert(roots[1]=='S:'and roots[2]=='Z:/home/goose/.local/share/Steam'and roots[3]=='C:/Program Files (x86)/Steam',table.concat(roots,'|'))
+ files={['C:/Program Files (x86)/Steam/config/loginusers.vdf']=users,['C:/Program Files (x86)/Steam/userdata/8351547/553850/remote/input_settings.config']=binding}
+ env={['ProgramFiles(x86)']='C:\\Program Files (x86)'}
+ assert(adapter.hud_config('D:\\SteamLibrary\\steamapps\\common\\Helldivers 2',open,getenv)==config,'Windows: Steam\'s default folder for a second library')
+ files={['C:/Steam/config/loginusers.vdf']='"users" { "76561197968617275" { } "76561197968617276" { } }',
+  ['C:/Steam/userdata/8351547/553850/remote/input_settings.config']=binding,
+  ['C:/Program Files (x86)/Steam/config/loginusers.vdf']=users,['C:/Program Files (x86)/Steam/userdata/8351547/553850/remote/input_settings.config']=binding}
+ assert(adapter.hud_config('C:/Steam/steamapps/common/Helldivers 2',open,getenv)==nil,'Ambiguous accounts are not guessed, nor looked past')
+ files={['C:/Steam/config/loginusers.vdf']=users,['C:/Steam/userdata/8351547/553850/remote/input_settings.config']=binding}
  local current_config=config
  local requested_mask
  local t={exchange=function(bytes)
@@ -93,4 +151,63 @@ do
  assert(requested_mask==alternate and service.capabilities.keyboard_mask==alternate,'Next activation refreshes the saved binding')
  assert(service.release(token)and driver.close())
  print('HUD key passthrough: saved binding discovery, ambiguity, narrow masks, menu/camera and rebind lifecycle passed')
+end
+
+-- Keyboard layout (operation 21): reply layout, refusal, and unusable keys keep WASD.
+do
+ local function layout(reply)
+  return adapter.new(sr,{exchange=function(bytes)
+   if u(bytes,5)==21 then assert(bytes:sub(13)=='layout-v1');return reply(u(bytes,1))end
+   return transport.exchange(bytes)end},function()end)
+ end
+ local p=layout(function(seq)return n(seq)..n(0)..n(6)..n(0x57)..n(0x41)..n(0x53)..n(0x44)..n(0x51)..n(0x45)..n(0x04090409)end)
+ local k=assert(p.key_positions());assert(k.forward==87 and k.left==65 and k.roll_right==69 and k.layout==0x04090409)
+ local value,why=layout(function(seq)return n(seq)..n(0x490)end).key_positions()
+ assert(value==nil and why=='Keyboard layout refused (0x00000490)')
+ local logged
+ for _,keys in ipairs({{0x57,0x57,0x53,0x44,0x51,0x45},{0x5B,0x41,0x53,0x44,0x51,0x45}})do
+  local m={log=function(line)logged=line end,require=mod.require}
+  local before=transport.exchange
+  transport.exchange=function(bytes)
+   if u(bytes,5)==21 then local r=n(u(bytes,1))..n(0)..n(6);for i=1,6 do r=r..n(keys[i])end;return r..n(1)end
+   return before(bytes)
+  end
+  opens,ready_after=0,1
+  local popen=io.popen;io.popen=function()return{close=function()return true end}end
+  local poll=adapter.start(m,sr,clock)
+  local svc,drv=poll();assert(svc and drv.close())
+  transport.exchange,io.popen=before,popen
+  assert(m.key_positions==nil,'Duplicate or uncaptured keys keep the WASD defaults')
+ end
+ print('Keyboard layout: reply layout, refusal, AZERTY defaults and unusable layouts kept on WASD passed')
+end
+
+-- PNG screenshot jobs: the helper's reply layout (operations 13-15).
+do
+ local id=string.rep('ab',16)
+ local state,seen=1,{}
+ local function reply(seq,path,error_code,width,height)
+  return n(seq)..n(0)..n(state)..n(error_code or 0)..n(width or 0)..n(height or 0)..n(40)..n(32)..id..n(#path)..path
+ end
+ local helper_path
+ local t={exchange=function(bytes)
+  local seq,op,len=u(bytes,1),u(bytes,5),u(bytes,9)
+  local path=bytes:sub(13,12+len)
+  if op==13 then seen[#seen+1]='request';helper_path=path;return reply(seq,helper_path)end
+  if op==14 then assert(path==id);seen[#seen+1]='status';return reply(seq,helper_path,0,3840,2160)end
+  if op==15 then assert(path==id);seen[#seen+1]='cancel';state=4;return reply(seq,helper_path,0x4c7)end
+  if op==99 then return n(seq)..n(0x32)end
+  return transport.exchange(bytes)
+ end}
+ local p=adapter.new({Application={process_id=function()return 17 end,time_since_launch=function()return 0 end}},t,function()end)
+ local png='C:\\Users\\Some One\\AppData\\Local\\WJL\\Helldivers2\\Screenshots\\War-Journalist-1.png'
+ local r=assert(p.screenshot_request(png))
+ assert(r.state=='pending'and r.id==id and r.output_path==png and seen[1]=='request')
+ state=2;r=assert(p.screenshot_status(id))
+ assert(r.state=='succeeded'and r.width==3840 and r.height==2160 and r.error==0)
+ r=assert(p.screenshot_cancel(id));assert(r.state=='cancelled'and r.error==0x4c7)
+ local refused=adapter.new({Application={process_id=function()return 17 end,time_since_launch=function()return 0 end}},
+  {exchange=function(bytes)if u(bytes,5)==13 then return n(u(bytes,1))..n(0x7b)end;return transport.exchange(bytes)end},function()end)
+ local value,why=refused.screenshot_request(png);assert(value==nil and why=='Screenshot request refused (0x0000007b)')
+ print('WJL PNG screenshot jobs: request/status/cancel reply layout and refused requests passed')
 end

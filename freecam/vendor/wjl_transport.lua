@@ -5,15 +5,10 @@ return function(config)
         return string.char(value%256,math.floor(value/256)%256,math.floor(value/65536)%256,math.floor(value/16777216)%256)
     end
     local prefix='\\\\.\\pipe\\' .. assert(config.pipe)
+    -- Opens a running service only. Starting it is windows_input_service's job, and the
+    -- game never waits on that: a missing pipe fails here at once.
     local outgoing=io.open(prefix..'_request','wb')
-    if not outgoing and config.launcher then
-        local launcher=assert(io.popen(config.launcher,'r'),'Cannot start WJL input service launcher')
-        -- Wait only for the bounded startup parent. Reading to EOF could wait
-        -- for a long-lived GUI child that inherited the output stream.
-        launcher:close()
-        outgoing=io.open(prefix..'_request','wb')
-    end
-    if not outgoing then error('WJL input service unavailable after startup: '..tostring(config.failure and config.failure()or'no diagnostics'))end
+    if not outgoing then error('WJL input service not ready: '..tostring(config.failure and config.failure()or'no diagnostics'))end
     outgoing:setvbuf('no')
     local incoming,why=io.open(prefix..'_response','rb')
     if not incoming then pcall(outgoing.close,outgoing);error('Filesystem response pipe unavailable: '..tostring(why)) end

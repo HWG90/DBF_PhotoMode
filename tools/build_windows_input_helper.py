@@ -256,7 +256,14 @@ static int lll_patch_name(const wchar_t *name) {
     for (size_t index = 23; index < length; ++index) if (name[index] < L'0' || name[index] > L'9') return 0;
     return 1;
 }
-/* No installed patch may replace the stock renderer configuration. */
+/* No installed patch may replace the stock renderer configuration. The limits bound the
+ * work for very large mod setups (1.3.1's 128 patches / 8,192 entries refused ordinary
+ * ones and hid every scene effect); entry tables are read in 4,096-row blocks. */
+#define LLL_RENDER_PATCHES 4096u
+#define LLL_RENDER_TYPES 1024u
+#define LLL_RENDER_ENTRIES 262144u
+#define LLL_RENDER_TOTAL 4194304u
+static unsigned char lll_render_rows[4096 * 80];
 static int lll_renderer_untouched(const wchar_t *data, unsigned long long resource, unsigned long long type) {
     WIN32_FIND_DATAW found;
     wchar_t pattern[32768], path[32768];
@@ -269,28 +276,31 @@ static int lll_renderer_untouched(const wchar_t *data, unsigned long long resour
     for (;;) {
         if (!(found.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) && lll_patch_name(found.cFileName)) {
             HANDLE file;
-            unsigned char head[72], entry[80];
+            unsigned char head[72];
             DWORD count;
             uint32_t magic = 0, types = 0, entries = 0;
             LARGE_INTEGER length, at;
             length.QuadPart = 0;
-            if (++patches > 128) { ok = 0; break; }
+            if (++patches > LLL_RENDER_PATCHES) { ok = 0; break; }
             swprintf_s(path, 32768, L"%s\\%s", data, found.cFileName);
             file = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, 0, NULL);
             if (file == INVALID_HANDLE_VALUE) { ok = 0; break; }
             ok = ReadFile(file, head, 72, &count, NULL) && count == 72 && GetFileSizeEx(file, &length);
             if (ok) {
                 memcpy(&magic, head, 4); memcpy(&types, head + 4, 4); memcpy(&entries, head + 8, 4);
-                ok = magic == 0xf0000011u && types <= 128 && entries <= 4096;
+                ok = magic == 0xf0000011u && types <= LLL_RENDER_TYPES && entries <= LLL_RENDER_ENTRIES;
             }
-            if (ok) { total += entries; ok = total <= 8192 && 72ull + 32ull * types + 80ull * entries <= (unsigned long long)length.QuadPart; }
+            if (ok) { total += entries; ok = total <= LLL_RENDER_TOTAL && 72ull + 32ull * types + 80ull * entries <= (unsigned long long)length.QuadPart; }
             if (ok) { at.QuadPart = 72 + 32 * (LONGLONG)types; ok = SetFilePointerEx(file, at, NULL, FILE_BEGIN); }
-            for (uint32_t index = 0; ok && index < entries; ++index) {
-                unsigned long long name, kind;
-                ok = ReadFile(file, entry, 80, &count, NULL) && count == 80;
-                if (!ok) break;
-                memcpy(&name, entry, 8); memcpy(&kind, entry + 8, 8);
-                if (name == resource && kind == type) ok = 0;
+            for (uint32_t done = 0; ok && done < entries;) {
+                const uint32_t block = entries - done < 4096u ? entries - done : 4096u;
+                ok = ReadFile(file, lll_render_rows, block * 80u, &count, NULL) && count == block * 80u;
+                for (uint32_t index = 0; ok && index < block; ++index) {
+                    unsigned long long name, kind;
+                    memcpy(&name, lll_render_rows + index * 80u, 8); memcpy(&kind, lll_render_rows + index * 80u + 8, 8);
+                    if (name == resource && kind == type) ok = 0;
+                }
+                done += block;
             }
             CloseHandle(file);
             if (!ok) break;
@@ -419,7 +429,205 @@ s=patch_once(s,'''    note("Stock game hashes verified; awaiting local Lua files
         lll_contract_proof(game_pid,contract_id,token,verified);
         note(verified?"Stock renderer contract verified without GPU readback":"Scene backend unavailable: stock renderer contract not verified");
     }
+    {
+        /* WJ: the engine writes its DDS screenshot into this folder before asking for
+         * the PNG, so it must exist before the first job (which would create it). */
+        wchar_t shots[MAX_PATH];DWORD shots_length=GetEnvironmentVariableW(L"LOCALAPPDATA",shots,MAX_PATH);
+        if (shots_length&&shots_length<MAX_PATH-40&&!wcscat_s(shots,MAX_PATH,L"\\\\LLL\\\\Helldivers2\\\\Screenshots")) CreateDirectoryW(shots,NULL);
+    }
 ''','service contract')
+# Movement defaults by key position: the VKs at the US W/A/S/D/Q/E positions in the
+# game's active layout (Z/Q/S/D/A/E on AZERTY). Read-only; no hook or input change.
+s=patch_once(s,'''static int dispatch(const unsigned char *bytes, uint32_t size, HANDLE outgoing) {
+''','''static int send_layout(uint32_t nonce, const unsigned char *bytes, uint32_t size,
+                       uint32_t path_size, HANDLE outgoing) {
+    static const char path[] = "layout-v1";
+    static const UINT scancodes[6] = {0x11, 0x1E, 0x1F, 0x20, 0x10, 0x12};
+    uint32_t reply[10] = {nonce, ERROR_INVALID_DATA, 0}, length = 12;
+    DWORD owner = 0, thread = 0;
+    HWND window = GetForegroundWindow();
+    HKL layout;
+    if (path_size != sizeof(path) - 1 || size != 12 + path_size || memcmp(bytes + 12, path, sizeof(path) - 1)) goto refused;
+    if (window) thread = GetWindowThreadProcessId(window, &owner);
+    layout = GetKeyboardLayout(thread && owner == session_pid ? thread : 0);
+    for (int index = 0; index < 6; ++index) {
+        reply[3 + index] = MapVirtualKeyExW(scancodes[index], MAPVK_VSC_TO_VK, layout);
+        if (!reply[3 + index]) { reply[1] = ERROR_NOT_FOUND; goto refused; }
+    }
+    reply[1] = 0; reply[2] = 6; reply[9] = (uint32_t)(uintptr_t)layout; length = sizeof(reply);
+refused:
+    return transfer(outgoing, &length, 4, 1) && transfer(outgoing, reply, length, 1) ? 2 : 0;
+}
+
+static int dispatch(const unsigned char *bytes, uint32_t size, HANDLE outgoing) {
+''','layout op')
+s=patch_once(s,'''    if (operation==20) return send_codec(nonce,bytes,size,path_size,outgoing);
+''','''    if (operation==20) return send_codec(nonce,bytes,size,path_size,outgoing);
+    if (operation==21) return send_layout(nonce,bytes,size,path_size,outgoing);
+''','layout dispatch')
+p.write_text(s)
+# PNG screenshots: Windows Graphics Capture of the game window failed on a tester's PC,
+# and the engine's own DDS works everywhere. A PNG request with a same-named DDS beside it
+# converts that DDS (DBF_PhotoMode's 0.9.x photo_capture.cpp, SDR and HDR10), outside the
+# game; any other PNG request keeps LLL's window capture.
+p=native/'steam_screenshot.cpp';s=p.read_text()
+s=patch_once(s,'#include <algorithm>\n','#include <algorithm>\n#include <array>\n#include <cmath>\n','conversion includes')
+s=patch_once(s,'constexpr ULONGLONG kDeadlineMs = 5000;\n','constexpr ULONGLONG kDeadlineMs = 5000;\nconstexpr ULONGLONG kConvertMs = 60000;\n','conversion deadline')
+s=patch_once(s,'''    const ULONGLONG begun = GetTickCount64();
+    void check() const {''','''    const ULONGLONG begun = GetTickCount64();
+    const ULONGLONG deadline = kDeadlineMs;
+    void check() const {''','operation deadline')
+s=patch_once(s,'        require(GetTickCount64() - begun < kDeadlineMs, ERROR_TIMEOUT);\n','        require(GetTickCount64() - begun < deadline, ERROR_TIMEOUT);\n','check deadline')
+s=patch_once(s,'''        require(elapsed < kDeadlineMs, ERROR_TIMEOUT);
+        return static_cast<DWORD>(kDeadlineMs - elapsed);''','''        require(elapsed < deadline, ERROR_TIMEOUT);
+        return static_cast<DWORD>(deadline - elapsed);''','remaining deadline')
+s=patch_once(s,'} // namespace\n',r'''// WJ: the engine's DDS screenshot, converted to the PNG beside it.
+uint32_t dds_word(const uint8_t* bytes) {
+    return uint32_t(bytes[0]) | (uint32_t(bytes[1]) << 8) | (uint32_t(bytes[2]) << 16) | (uint32_t(bytes[3]) << 24);
+}
+float dds_pq_nits(float encoded) {
+    // SMPTE ST 2084 EOTF. PQ is absolute: normalized 1.0 means 10,000 nits.
+    constexpr double m1 = 2610.0 / 16384.0, m2 = 2523.0 / 32.0;
+    constexpr double c1 = 3424.0 / 4096.0, c2 = 2413.0 / 128.0, c3 = 2392.0 / 128.0;
+    const double power = std::pow(static_cast<double>(encoded), 1.0 / m2);
+    return static_cast<float>(10000.0 * std::pow(std::max(power - c1, 0.0) / (c2 - c3 * power), 1.0 / m1));
+}
+using DdsColor = std::array<float, 3>;
+using DdsMatrix = std::array<DdsColor, 3>;
+DdsColor dds_multiply(const DdsMatrix& matrix, const DdsColor& color) {
+    DdsColor value{};
+    for (size_t i = 0; i < value.size(); ++i)
+        value[i] = matrix[i][0] * color[0] + matrix[i][1] * color[1] + matrix[i][2] * color[2];
+    return value;
+}
+void dds_native_sdr(float r, float g, float b, uint8_t& red, uint8_t& green, uint8_t& blue) {
+    // The game's SDR final compositor converts the already tone-mapped PQ scene with
+    // these exact float32 constants (aaac81ae5fbabc7c-ace8 final-compositor DXBC).
+    constexpr DdsMatrix pre{{
+        {{0.9599400162696838F, 0.010470000095665455F, 0.007029999978840351F}},
+        {{0.0016199999954551458F, 0.9996899962425232F, 0.0014900000533089042F}},
+        {{0.005289999768137932F, 0.023830000311136246F, 1.0501600503921509F}}
+    }};
+    constexpr DdsMatrix xyz{{
+        {{0.6624541878700256F, 0.13400420546531677F, 0.15618768334388733F}},
+        {{0.2722287178039551F, 0.6740817427635193F, 0.053689517080783844F}},
+        {{-0.005574649665504694F, 0.00406073359772563F, 1.0103391408920288F}}
+    }};
+    constexpr DdsMatrix adapt{{
+        {{1.6410233974456787F, -0.32480329275131226F, -0.23642469942569733F}},
+        {{-0.663662850856781F, 1.6153316497802734F, 0.016756348311901093F}},
+        {{0.011721894145011902F, -0.008284442126750946F, 0.9883948564529419F}}
+    }};
+    constexpr DdsMatrix rgb{{
+        {{3.2409698963165283F, -1.5373831987380981F, -0.4986107647418976F}},
+        {{-0.9692436456680298F, 1.8759675025939941F, 0.04155505821108818F}},
+        {{0.05563008040189743F, -0.20397695899009705F, 1.056971549987793F}}
+    }};
+    DdsColor value = dds_multiply(pre, DdsColor{{r, g, b}});
+    for (float& channel : value) channel = (channel - 0.001F) * 0.0036363769322633743F;
+    value = dds_multiply(xyz, value);
+    const float sum = std::max(value[0] + value[1] + value[2], 0.0001F);
+    const float x = value[0] / sum, y = value[1] / sum;
+    const float luminance = std::pow(std::clamp(value[1], 0.0F, 65504.0F), 0.9811000227928162F);
+    const float ratio = luminance / std::max(y, 0.0001F);
+    value = DdsColor{{ratio * x, luminance, ratio * (1.0F - x - y)}};
+    value = dds_multiply(rgb, dds_multiply(xyz, dds_multiply(adapt, value)));
+    auto byte = [](float channel) {
+        return static_cast<uint8_t>(std::floor(std::pow(std::clamp(channel, 0.0F, 1.0F), 0.4544999897480011F) * 255.0F + 0.5F));
+    };
+    red = byte(value[0]); green = byte(value[1]); blue = byte(value[2]);
+}
+std::wstring dds_sibling(const std::wstring& png) { return png.substr(0, png.size() - 4) + L".dds"; }
+bool dds_present(const wchar_t* png) {
+    if (!png) return false;
+    const std::wstring path(png);
+    if (path.size() < 5 || _wcsicmp(path.c_str() + path.size() - 4, L".png")) return false;
+    const DWORD attributes = GetFileAttributesW(dds_sibling(path).c_str());
+    return attributes != INVALID_FILE_ATTRIBUTES && !(attributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT));
+}
+void dds_read(HANDLE file, void* buffer, DWORD count) {
+    DWORD read = 0;
+    if (!ReadFile(file, buffer, count, &read, nullptr)) last_error();
+    require(read == count, ERROR_HANDLE_EOF);
+}
+void convert_dds(const LLLScreenshotRequest& request, LLLScreenshotResult& result, const Operation& operation) {
+    operation.check();
+    const std::wstring path = output_path(request.output_path);
+    const HANDLE opened = CreateFileW(dds_sibling(path).c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
+                                      FILE_FLAG_SEQUENTIAL_SCAN | FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
+    if (opened == INVALID_HANDLE_VALUE) last_error();
+    winrt::handle input{opened};
+    LARGE_INTEGER size{};
+    if (!GetFileSizeEx(input.get(), &size)) last_error();
+    uint8_t header[148]{};
+    require(size.QuadPart >= 148, ERROR_BAD_FORMAT);
+    dds_read(input.get(), header, 148);
+    const uint32_t flags = dds_word(header + 8), height = dds_word(header + 12), width = dds_word(header + 16);
+    require(dds_word(header) == 0x20534444 && dds_word(header + 4) == 124 && (flags & 0x1007) == 0x1007 &&
+            dds_word(header + 76) == 32 && (dds_word(header + 80) & 4) && dds_word(header + 84) == 0x30315844 &&
+            width && height && width <= 16384 && height <= 16384 && uint64_t(width) * height <= kMaxPixels &&
+            dds_word(header + 24) <= 1 && dds_word(header + 28) <= 1 && !(dds_word(header + 112) & 0x20fe00) &&
+            dds_word(header + 132) == 3 && !(dds_word(header + 136) & 4) && dds_word(header + 140) == 1, ERROR_BAD_FORMAT);
+    uint32_t format = dds_word(header + 128);
+    switch (format) {
+    case 27: format = 28; break; case 90: format = 87; break; case 92: format = 88; break; case 23: format = 24; break;
+    default: break;
+    }
+    // The engine writes SDR as BGRA bytes, labelled 87 once War Journalist corrected the
+    // header, or 28 (its own label) when it could not; HDR as RGB10A2 HDR10 (PQ, BT.2020).
+    require(format == 87 || format == 88 || format == 91 || format == 93 || format == 28 || format == 29 || format == 24,
+            ERROR_NOT_SUPPORTED);
+    const uint32_t pitch = (flags & 8) ? dds_word(header + 20) : width * 4;
+    require(pitch >= width * 4 && pitch <= 16384u * 4 + 4096 &&
+            uint64_t(pitch) * height + 148 <= static_cast<uint64_t>(size.QuadPart), ERROR_BAD_FORMAT);
+    std::array<float, 1024> pq{};
+    if (format == 24) for (size_t i = 0; i < pq.size(); ++i) pq[i] = dds_pq_nits(static_cast<float>(i) / 1023.0F);
+    std::vector<uint8_t> source(pitch), pixels(size_t(width) * height * 4);
+    for (uint32_t row = 0; row < height; ++row) {
+        if (!(row & 63)) operation.check();
+        dds_read(input.get(), source.data(), pitch);
+        uint8_t* out = pixels.data() + size_t(row) * width * 4;
+        for (uint32_t column = 0; column < width; ++column) {
+            const uint8_t* in = source.data() + size_t(column) * 4;
+            uint8_t red, green, blue;
+            if (format == 24) {
+                const uint32_t packed = dds_word(in);
+                dds_native_sdr(pq[packed & 1023], pq[(packed >> 10) & 1023], pq[(packed >> 20) & 1023], red, green, blue);
+            } else { blue = in[0]; green = in[1]; red = in[2]; }
+            out[size_t(column) * 4] = blue; out[size_t(column) * 4 + 1] = green;
+            out[size_t(column) * 4 + 2] = red; out[size_t(column) * 4 + 3] = 255;
+        }
+    }
+    input.close();
+    D3D11_MAPPED_SUBRESOURCE mapped{};
+    mapped.pData = pixels.data(); mapped.RowPitch = width * 4;
+    operation.check();
+    auto png = encode_png(width, height, mapped);
+    STATSTG status{}; winrt::check_hresult(png->Stat(&status, STATFLAG_NONAME));
+    require(status.cbSize.QuadPart > 8 && status.cbSize.QuadPart <= 512ull * 1024 * 1024);
+    LARGE_INTEGER beginning{}; winrt::check_hresult(png->Seek(beginning, STREAM_SEEK_SET, nullptr));
+    ExclusiveOutput output(path);
+    uint64_t remaining = status.cbSize.QuadPart;
+    std::vector<BYTE> buffer(65536);
+    while (remaining) {
+        operation.check();
+        const ULONG requested = static_cast<ULONG>(std::min<uint64_t>(buffer.size(), remaining));
+        ULONG read = 0; winrt::check_hresult(png->Read(buffer.data(), requested, &read));
+        require(read == requested, ERROR_HANDLE_EOF);
+        DWORD written = 0;
+        if (!WriteFile(output.file.get(), buffer.data(), read, &written, nullptr)) last_error();
+        require(written == read, ERROR_WRITE_FAULT); remaining -= read;
+    }
+    if (!FlushFileBuffers(output.file.get())) last_error();
+    output.publish(path, operation);
+    result.width = width; result.height = height;
+}
+} // namespace
+''','DDS conversion')
+s=patch_once(s,'''        save_window(*request, *result, operation);''','''        if (dds_present(request->output_path)) {
+            const Operation conversion{*request, GetTickCount64(), kConvertMs};
+            convert_dds(*request, *result, conversion);
+        } else save_window(*request, *result, operation);''','conversion branch')
 p.write_text(s)
 # The engine's clip flag does not hold while Photo Mode has taken the game's mouse focus
 # (seen under Proton; the LLL build clipped from an in-game DLL, which Windows refuses).
@@ -479,7 +687,7 @@ for owned in native.iterdir():
   owned.write_text(body,encoding='utf-8')
 # Preserve the source delta as a reviewable patch; owning LLL checkout stays untouched.
 patch=''
-for name in ('steam_keyboard.c','test_steam_keyboard.c','steam_files.c','steam_service.c','steam_pointer.c'):
+for name in ('steam_keyboard.c','test_steam_keyboard.c','steam_files.c','steam_service.c','steam_pointer.c','steam_screenshot.cpp'):
  a=(source/'native'/name).read_text().splitlines(keepends=True);b=(native/name).read_text().splitlines(keepends=True)
  patch+=''.join(difflib.unified_diff(a,b,fromfile='a/native/'+name,tofile='b/native/'+name))
 (root/'tools/windows_input_shortcut.patch').write_text(patch)
@@ -521,4 +729,5 @@ binary.write_bytes(built.read_bytes())
  'sources':{p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in native.iterdir()}},indent=2)+'\n')
 print(binary)
 
-(root/'freecam/wjl_helper_payload.lua').write_text('return {name='+json.dumps(binary.name)+',sha256='+json.dumps(hashlib.sha256(binary.read_bytes()).hexdigest())+',hex='+json.dumps(binary.read_bytes().hex())+'}\n')
+# One helper file under one name; the game checks its bytes against sha256 before each start.
+(root/'freecam/wjl_helper_payload.lua').write_text('return {name="wjl_steam_service.exe",sha256='+json.dumps(hashlib.sha256(binary.read_bytes()).hexdigest())+',hex='+json.dumps(binary.read_bytes().hex())+'}\n')

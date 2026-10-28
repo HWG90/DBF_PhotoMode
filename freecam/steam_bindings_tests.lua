@@ -34,7 +34,7 @@ do
  api.values['war_journalist.toggle_key']='';assert(hosted.code('toggle_key')==nil,'No key, no code')
 end
 -- The runtime with a hosted helper: the minimal harness of steam_runtime_tests.
-local function runtime_case(api,saved,virtual_cursor,extra,log,custom_service)
+local function runtime_case(api,saved,virtual_cursor,extra,log,custom_service,key_positions)
  local pressed={};local time=0;local stored=saved or{}
  local token,lease
  local raw={x=100,y=100,width=1920,height=1080,buttons=0,wheel=0,dx=0,dy=0}
@@ -65,10 +65,21 @@ local function runtime_case(api,saved,virtual_cursor,extra,log,custom_service)
  local menu;local menu_new=deps.menu.new;deps.menu.new=function(...)menu=menu_new(...);return menu end
  render=function()return'native'end
  drawn_pointer=false
- local runtime=module('steam_runtime').new({config_dir='unused',log=log or function()end},sr,deps,service)
+ local runtime=module('steam_runtime').new({config_dir='unused',log=log or function()end,key_positions=key_positions},sr,deps,service)
  -- The camera is written at render time, as in game.
  local function tick()time=time+.016;runtime.tick();render()end
  return runtime,deps,pressed,tick,function()return last_position end,function()return menu end
+end
+-- Movement defaults follow the layout's key positions (AZERTY: Z/Q/S/D, roll A/E).
+do
+ local api=helper()
+ runtime_case(api,nil,nil,nil,nil,nil,{forward=90,left=81,back=83,right=68,roll_left=65,roll_right=69})
+ local function default(id)return api.registered['war_journalist.'..id].default.button end
+ assert(default('forward_key')=='z'and default('left_key')=='q'and default('back_key')=='s'and default('right_key')=='d')
+ assert(default('roll_left_key')=='a'and default('roll_right_key')=='e'and default('up_key')=='left shift')
+ local us=helper();runtime_case(us)
+ assert(us.registered['war_journalist.forward_key'].default.button=='w'and us.registered['war_journalist.roll_left_key'].default.button=='q','No layout: WASD')
+ print('Layout-aware movement defaults: AZERTY positions registered, WASD without a layout passed')
 end
 do
  local api=helper()

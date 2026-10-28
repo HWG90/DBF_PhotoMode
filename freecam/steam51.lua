@@ -103,9 +103,9 @@ entry={live_lua_api=1,name='War Journalist',
   -- they never fall back to an unqualified in-game capture or helper pipe.
   local capture=loader.capture_service
   local local_data=os.getenv('LOCALAPPDATA')
-  -- Boot Mod Loader has no capture service. Where the Linux host worker runs (the one LLL
-  -- uses), it writes PNGs to LLL's Screenshots folder and we issue its job tokens; anywhere
-  -- else (native Windows) the engine writes DDS itself.
+  -- Boot Mod Loader has no capture service. The addon's own path comes first, on Windows
+  -- and Proton alike: the engine writes a DDS and WJL converts it to a PNG. Without WJL,
+  -- the Linux host worker (the one LLL uses) where it runs, else the engine's DDS.
   if engine_host and not capture then
    local function writable(dir)
     if type(dir)~='string'then return false end
@@ -113,16 +113,23 @@ entry={live_lua_api=1,name='War Journalist',
    end
    local lll=type(local_data)=='string'and local_data:gsub('\\','/')..'/LLL/Helldivers2'
    local issued=os.time()%1000000000
-   capture={output_directory=lll and lll..'/Screenshots',new_job_token=function()issued=issued+1;return'lll-shot:war_journalist:'..issued end}
-   local linux=lll and mod.require('src/linux_capture.lua')
-   local backend=linux and type(linux.new)=='function'and linux.new(lll..'/LinuxCapture',capture.output_directory,capture.new_job_token)
-   if backend then capture=backend;mod.log('Linux game-window PNG capture selected')
+   local worker={output_directory=lll and lll..'/Screenshots',new_job_token=function()issued=issued+1;return'lll-shot:war_journalist:'..issued end}
+   local profile=os.getenv('USERPROFILE');local game=os.getenv('APPDATA')
+   profile=type(profile)=='string'and profile:gsub('\\','/')..'/Pictures';game=type(game)=='string'and game:gsub('\\','/')..'/Arrowhead/Helldivers2'
+   local folder=writable(worker.output_directory)and worker.output_directory or writable(profile)and profile or writable(game)and game
+   local made,png=false,nil
+   if folder and type(loader.helper_screenshots)=='function'then made,png=pcall(loader.helper_screenshots,folder)end
+   if made and png then
+    capture=png;mod.log('WJL PNG screenshots selected (engine DDS converted by WJL): '..folder)
    else
-    local profile=os.getenv('USERPROFILE');local game=os.getenv('APPDATA')
-    profile=type(profile)=='string'and profile:gsub('\\','/')..'/Pictures';game=type(game)=='string'and game:gsub('\\','/')..'/Arrowhead/Helldivers2'
-    local folder=writable(capture.output_directory)and capture.output_directory or writable(profile)and profile or writable(game)and game
-    capture=folder and mod.require('src/engine_capture.lua').new(stingray,folder)or nil
-    if capture then mod.log('Engine DDS capture selected: '..folder)end
+    if png~=nil and not made then mod.log('WJL PNG screenshots unavailable: '..tostring(png))end
+    local linux=lll and mod.require('src/linux_capture.lua')
+    local backend=linux and type(linux.new)=='function'and linux.new(lll..'/LinuxCapture',worker.output_directory,worker.new_job_token)
+    if backend then capture=backend;mod.log('Linux game-window PNG capture selected')
+    else
+     capture=folder and mod.require('src/engine_capture.lua').new(stingray,folder)or nil
+     if capture then mod.log('Engine DDS capture selected: '..folder)end
+    end
    end
   end
   if capture and not engine_host and type(capture.output_directory)=='string'and type(local_data)=='string'then
@@ -139,7 +146,7 @@ entry={live_lua_api=1,name='War Journalist',
   local capture_revision=revision=='R33-steam-screenshots-factoryfix-candidate'or revision=='R34-steam-lua51-preview.1'or revision=='R35-26088801-cffi-dev.2'or revision=='R35-26088801-cffi-insert-fix.2'or engine_host
   local ready=capture_revision and
    type(capture)=='table'and capture.version==1 and type(caps)=='table'and
-   caps.async==true and caps.max_jobs==1 and(caps.game_window==true and caps.format=='png'and caps.color_space=='sdr'or engine_host and caps.format=='dds')and
+   caps.async==true and caps.max_jobs==1 and(caps.game_window==true and caps.format=='png'and caps.color_space=='sdr'or engine_host and(caps.format=='dds'or caps.format=='png'))and
    type(capture.output_directory)=='string'and #capture.output_directory>0
   for _,name in ipairs({'new_job_token','request','status','cancel'})do
    if not ready or type(capture[name])~='function'then ready=false;break end

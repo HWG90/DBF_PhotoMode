@@ -34,6 +34,7 @@ MODULES+=('windows_freeze_bone_probe.lua',)
 MODULES+=('windows_freeze_physics_probe.lua',)
 MODULES+=('windows_freeze_pose_probe.lua','windows_freeze_cape.lua')
 MODULES+=('engine_render_contract.lua','engine_scene_resources.lua','engine_scene_registry.lua','wjl_helper_payload.lua','wjl_helper_startup.lua','windows_lens.lua','engine_cursor_gate.lua','windows_input_service.lua','vendor/wjl_transport.lua','vendor/wjl_capture.lua','vendor/wjl_input_service.lua')
+MODULES+=('windows_capture.lua',)
 # Plain Lua 5.1 only: no cffi/ffi imports, ffi calls, cdef blocks or PORT51 adapters.
 FFI=re.compile(r"['\"]c?ffi['\"]|\bffi\s*\.|\bcdef\b|\bPORT51\b|luaopen_hd2_cffi")
 NATIVE_LIBRARIES=('port51/hd2_nativeinfo_f6d3465944c1aea1.dll', 'port51/hd2_nativeinfo_3139cc5f8ecb4078.dll', 'port51/hd2_nativeinfo_78b314de6177433d.dll', 'port51/hd2_nativeinfo_4aab2adfbc4090d6.dll', 'port51/hd2_nativeinfo_5e39eeeeb76b863a.dll')

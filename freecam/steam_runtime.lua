@@ -1182,20 +1182,22 @@ function M.new(host,sr,deps,service)
    if not c.disabled and c.default~=nil and(deps.options.defaults[id]~=nil or id=='light_subject_distance')then handle.set(id,c.default)end
   end
  end
+ -- WASD and Q/E by key position (Z/Q/S/D and A/E on AZERTY) when the helper read the layout.
+ local keys=host.key_positions or{}
  local bindings={
   {id='toggle_key',type='keybind',label='Photo mode toggle',default=80},
   {id='handycam_key',type='keybind',label='Start / end Handycam',default=122,disabled=not handycam},
   {id='focus_key',type='keybind',label='Switch camera / menu focus',default=9},
   {id='hide_controls_key',type='keybind',label='Show / hide photo controls',default=72},
   {id='lock_camera_key',type='keybind',label='Lock / unlock camera',default=76},
-  {id='forward_key',type='keybind',label='Move forward',default=87},
-  {id='back_key',type='keybind',label='Move backward',default=83},
-  {id='left_key',type='keybind',label='Move left',default=65},
-  {id='right_key',type='keybind',label='Move right',default=68},
+  {id='forward_key',type='keybind',label='Move forward',default=keys.forward or 87},
+  {id='back_key',type='keybind',label='Move backward',default=keys.back or 83},
+  {id='left_key',type='keybind',label='Move left',default=keys.left or 65},
+  {id='right_key',type='keybind',label='Move right',default=keys.right or 68},
   {id='up_key',type='keybind',label='Move up',default=16},
   {id='down_key',type='keybind',label='Move down',default=17},
-  {id='roll_left_key',type='keybind',label='Roll left',default=81},
-  {id='roll_right_key',type='keybind',label='Roll right',default=69},
+  {id='roll_left_key',type='keybind',label='Roll left',default=keys.roll_left or 81},
+  {id='roll_right_key',type='keybind',label='Roll right',default=keys.roll_right or 69},
   {id='screenshot_key',type='keybind',label='Screenshot key',default=19,disabled=not capture},
   {id='slowmo_key',type='keybind',label='Slow-motion key',default=220,disabled=not simulation},
   {id='recover_input_key',type='keybind',label='Recovery key (Ctrl+Shift)',default=121},
@@ -1729,6 +1731,7 @@ function M.new(host,sr,deps,service)
  end
  deps.menu.legend_factory=deps.legend
  menu=deps.menu.new(view,{focus=self.focus,hide=hide,exit=self.close,hide_unavailable=deps.engine_time_only==true,
+  version=host.version and('v'..host.version..(host.build and(' build '..host.build)or''))or nil,
   handycam_adjust=function(values,finish)
    if not values then
     local saved=self.handycam_drag_values;self.handycam_drag_values=nil;options_revision=nil
