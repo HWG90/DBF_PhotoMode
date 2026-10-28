@@ -1,13 +1,15 @@
 local startup=dofile('freecam/wjl_helper_startup.lua')
-local payload={name='wjl_steam_service_0123456789abcdef.exe',sha256=string.rep('a',64),hex='4d5a0102'}
+local payload={name='wjl_steam_service.exe',sha256=string.rep('a',64),hex='4d5a0102'}
 local files={};local writes=0;local removed={}
-local old_open,old_env,old_remove=io.open,os.getenv,os.remove
+local old_open,old_env,old_remove,old_rename=io.open,os.getenv,os.remove,os.rename
+local locked={}
 local env={APPDATA='C:/User Space/Settings',LOCALAPPDATA='C:\\User Space\\Local'}
 os.getenv=function(name)return env[name]end
-os.remove=function(path)removed[#removed+1]=path;files[path]=nil;return true end
+os.remove=function(path)removed[#removed+1]=path;if locked[path]then return nil,'in use'end;files[path]=nil;return true end
+os.rename=function(from,to)if files[to]or not files[from]then return nil end;files[to],files[from]=files[from],nil;return true end
 io.open=function(path,mode)
  if mode=='rb'then if not files[path]then return nil end;return{read=function()return files[path]end,close=function()return true end}end
- assert(mode=='wb');return{write=function(_,body)files[path]=body;if path:match('%.exe$')then writes=writes+1 end;return true end,close=function()return true end}
+ assert(mode=='wb');return{write=function(_,body)files[path]=body;if path:match('%.exe')then writes=writes+1 end;return true end,close=function()return true end}
 end
 local contract={id=string.rep('b',64),resource='ee6b1ba7e22d71ed',resource_type='27862fe24795319c',
  checks={{file='bundles.nxa',offset=0,size=8,sha256=string.rep('c',64)},{file='bundles.17.nxa',offset=475061920,size=81198,sha256=string.rep('d',64)}}}
@@ -16,7 +18,7 @@ local sr={Application={process_id=function()return 1234 end}}
 local config=startup.config(mod,sr);assert(config.pipe:match('^wjl_input_1234_%d+_%d+$'))
 -- cmd.exe only: no script host, no generated script file. cmd runs the helper itself
 -- (never start, whose shell fallback shows dialogs); the outer quotes are cmd /c's.
-assert(config.launcher=='""C:\\User Space\\Settings\\Arrowhead\\Helldivers2\\wjl_steam_service_0123456789abcdef.exe" --launch --game-pid 1234 --pipe '..config.pipe..
+assert(config.launcher=='""C:\\User Space\\Settings\\Arrowhead\\Helldivers2\\wjl_steam_service.exe" --launch --game-pid 1234 --pipe '..config.pipe..
  ' --contract '..contract.id..' --contract-resource ee6b1ba7e22d71ed --contract-type 27862fe24795319c --check bundles.nxa:0:8:'..string.rep('c',64)..
  ' --check bundles.17.nxa:475061920:81198:'..string.rep('d',64)..'"',config.launcher)
 assert(not config.launcher:lower():find('powershell',1,true)and not config.launcher:find('start',1,true)and #config.launcher<8000)
@@ -43,7 +45,14 @@ env.APPDATA='C:/100%Settings';assert(not pcall(startup.config,mod,sr),'A path cm
 env.APPDATA='C:/User Space/Settings'
 contract.checks[1].sha256=string.rep('C',64);assert(not pcall(startup.config,mod,sr),'The helper takes lowercase hashes only')
 contract.checks[1].sha256=string.rep('c',64)
-for key in pairs(files)do files[key]='foreign'end
-assert(not pcall(startup.config,mod,sr),'Changed helper must be refused before execution')
-io.open,os.getenv,os.remove=old_open,old_env,old_remove
-print('Bundled WJL startup: exact extraction/cache, foreign-file refusal, cmd.exe launcher without PowerShell, fresh helper log and launch-bound renderer proof passed')
+-- One file, one name: a copy from another release (or damaged) is replaced before any start.
+local helper='C:/User Space/Settings/Arrowhead/Helldivers2/wjl_steam_service.exe'
+files[helper]='foreign';startup.config(mod,sr)
+assert(files[helper]=='\77\90\1\2'and not files[helper..'.new'],'An older helper is replaced, never run')
+-- Windows keeps a running program's file: an older helper still running is not run either.
+files[helper]='older';locked[helper]=true
+local ok,why=pcall(startup.config,mod,sr)
+assert(not ok and why=='An older WJL helper is still running; restart the game'and files[helper]=='older'and not files[helper..'.new'],tostring(why))
+locked[helper]=nil
+io.open,os.getenv,os.remove,os.rename=old_open,old_env,old_remove,old_rename
+print('Bundled WJL startup: one helper file under one name, replaced when it differs, refused while an older one runs, cmd.exe launcher without PowerShell, fresh helper log and launch-bound renderer proof passed')

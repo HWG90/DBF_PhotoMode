@@ -62,8 +62,58 @@ local weapon_nodes={};for i=1,40 do weapon_nodes[i]=i end
 for _,item in ipairs({{'309f7e645a8d2b56',4,14},{'66781fc94b2db0e0',5,13},{'244d6938e49be6b9',4,18}})do
  models[#models+1]={group='equipment',resource=item[1],count=item[2],nodes=item[3],parent='b80951732a5f58f4',parent_nodes=40,parent_anchors=weapon_nodes,local_bind=true,optional=true}
 end
-function M.association(sr)
+-- Any outfit: the render units bound to the selected skeleton (every probed bone the unit
+-- shares with it sits on the same world matrix, which only an attached unit can), grouped
+-- by the bones they carry. A cape carries cape1; arm and leg pieces a hand or the hips
+-- (the body, kept in POV); a helmet the head; a torso piece the chest or spine.
+M.probes={'head','chest','spine1','hips','l_hand','r_hand','cape1'}
+function M.classify(has)
+ if has.cape1 then return'cape'end
+ if has.l_hand or has.r_hand or has.hips then return'body'end
+ if has.head then return'helmet'end
+ if has.chest or has.spine1 then return'torso'end
+end
+function M.association(sr,log,clock)
  local U,W,B=sr.Unit,sr.World,sr.Matrix4x4
+ clock=clock or os.clock
+ local function discover(frame,group,pose)
+  assert(type(W.units)=='function','POV hiding is not available for this outfit')
+  local started=clock()
+  local units=W.units(frame.world);assert(type(units)=='table','POV outfit discovery unavailable')
+  local result,scanned,bound={},0,0
+  for key,unit in pairs(units)do
+   scanned=scanned+1
+   assert(type(key)=='number'and key%1==0 and key>=1 and scanned<=16384,'POV outfit discovery exceeds bound')
+   if unit~=frame.root_handle and U.alive(unit)and U.world(unit)==frame.world then
+    local meshes=U.num_meshes(unit)
+    if type(meshes)=='number'and meshes%1==0 and meshes>0 and meshes<=128 then
+     local has,named,matched={},0,0
+     for _,name in ipairs(M.probes)do if U.has_node(unit,name)then
+      has[name]=true
+      if U.has_node(frame.root_handle,name)then
+       named=named+1
+       local a,b=pose(unit,U.node(unit,name)),pose(frame.root_handle,U.node(frame.root_handle,name));local same=true
+       for i=1,12 do if math.abs(a[i]-b[i])>1e-4 then same=false;break end end
+       if same then matched=matched+1 end
+      end
+     end end
+     if matched>0 and matched==named then
+      bound=bound+1
+      if M.classify(has)==group then
+       assert(#result<32,'POV outfit discovery exceeds bound')
+       local indices={};for index=1,meshes do indices[index]=index end
+       result[#result+1]={unit=unit,world=frame.world,resource=tostring(U.resource_name(unit)),indices=indices}
+      end
+     end
+    end
+   end
+  end
+  if log then
+   local names={};for _,row in ipairs(result)do names[#names+1]=row.resource..'x'..#row.indices end
+   log(string.format('POV outfit discovery: %s=%d of %d bound units (%s); scanned=%d ms=%.3f',group,#result,bound,table.concat(names,','),scanned,(clock()-started)*1000))
+  end
+  return result
+ end
  local function read_pose(u,node)
   local p={B.to_elements(U.world_pose(u,node))};assert(#p==12,'POV pose shape changed')
   for _,v in ipairs(p)do assert(type(v)=='number'and v==v and math.abs(v)<1e8,'POV pose invalid')end
@@ -153,7 +203,8 @@ function M.association(sr)
      end
     end
    end
-   assert(#found>0 or model.optional,'POV hiding is not yet available for this outfit')
+   -- Another outfit than the one this catalog was verified with: discover it instead.
+   if #found==0 and not model.optional then return discover(frame,group,pose)end
    for _,found in ipairs(found)do
     if model.graph then assert(U.num_scene_graph_items(found)==model.graph,'POV equipment graph changed')end
     local count=model.count or #model.names
@@ -281,14 +332,14 @@ function M.new(sr,selected,lease_factory,log,clock)
  local U,W,B=sr.Unit,sr.World,sr.Matrix4x4;local groups={'helmet','torso','cape','body','equipment'};local pov_groups={'helmet','torso','cape'};local leases={}
  for _,group in ipairs(groups)do leases[group]=lease_factory.new(sr)end
  local desired,dirty,owners={},{},{};local requested={};local full=false;local scan;local equipment_settle=0;local extra=lease_factory.new(sr)
- local self={status='POV visibility off',max_apply_ms=0};clock=clock or os.clock
+ local self={status='Helmet, torso and cape hiding off',max_apply_ms=0};clock=clock or os.clock
  local function count_owned()local n=extra.count();for _,group in ipairs(groups)do n=n+leases[group].count()end;return n end
  local function report(started,ok,why)
   local elapsed=(clock()-started)*1000;self.max_apply_ms=math.max(self.max_apply_ms,elapsed)
   if log then log('POV visibility: '..self.status..'; transition_ms='..string.format('%.3f',elapsed)..'; owned_meshes='..count_owned()..'; max_equipment_render_ms='..string.format('%.3f',self.max_maintain_ms or 0))end
   return ok,why
  end
- local rows=M.association(sr)
+ local rows=M.association(sr,log,clock)
  function self.queue(group,value)
   -- Boolean form retained for internal all-group callers.
   if type(group)=='boolean'then for _,name in ipairs(pov_groups)do self.queue(name,group)end;return end
@@ -325,7 +376,7 @@ function M.new(sr,selected,lease_factory,log,clock)
    local ok,why=leases[group].release()
    if ok then owners[group]=nil else success=false;reason=why end
   end
-  self.status=success and'POV visibility off'or('POV restoration pending: '..tostring(reason))
+  self.status=success and'Helmet, torso and cape hiding off'or('POV restoration pending: '..tostring(reason))
   if started then return report(started,success,reason)end
   return success,reason
  end
@@ -402,7 +453,7 @@ function M.new(sr,selected,lease_factory,log,clock)
    return report(started,false,self.status)
   end
   local active={};for _,group in ipairs(groups)do if desired[group]then active[#active+1]=group end end
-  self.status=#active==0 and'POV visibility off'or('POV hidden: '..table.concat(active,', '))
+  self.status=#active==0 and'Helmet, torso and cape hiding off'or('Hidden: '..table.concat(active,', '))
   return report(started,true)
  end
  return self

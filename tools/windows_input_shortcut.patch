@@ -1687,7 +1687,7 @@
          reply[0]=nonce;reply[1]=0;length=8;
          if (operation==8) {
              reply[2]=session_pid;reply[3]=watch_count;length=16+watch_count*4;
-@@ -348,13 +367,240 @@
+@@ -348,13 +367,250 @@
      }
      if (_wfopen_s(&stream,request_file,L"wb")) return 0;
      if (fwrite(bytes,1,size,stream)!=size) { fclose(stream);return 0; }
@@ -1805,7 +1805,14 @@
 +    for (size_t index = 23; index < length; ++index) if (name[index] < L'0' || name[index] > L'9') return 0;
 +    return 1;
 +}
-+/* No installed patch may replace the stock renderer configuration. */
++/* No installed patch may replace the stock renderer configuration. The limits bound the
++ * work for very large mod setups (1.3.1's 128 patches / 8,192 entries refused ordinary
++ * ones and hid every scene effect); entry tables are read in 4,096-row blocks. */
++#define WJL_RENDER_PATCHES 4096u
++#define WJL_RENDER_TYPES 1024u
++#define WJL_RENDER_ENTRIES 262144u
++#define WJL_RENDER_TOTAL 4194304u
++static unsigned char wjl_render_rows[4096 * 80];
 +static int wjl_renderer_untouched(const wchar_t *data, unsigned long long resource, unsigned long long type) {
 +    WIN32_FIND_DATAW found;
 +    wchar_t pattern[32768], path[32768];
@@ -1818,28 +1825,31 @@
 +    for (;;) {
 +        if (!(found.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) && wjl_patch_name(found.cFileName)) {
 +            HANDLE file;
-+            unsigned char head[72], entry[80];
++            unsigned char head[72];
 +            DWORD count;
 +            uint32_t magic = 0, types = 0, entries = 0;
 +            LARGE_INTEGER length, at;
 +            length.QuadPart = 0;
-+            if (++patches > 128) { ok = 0; break; }
++            if (++patches > WJL_RENDER_PATCHES) { ok = 0; break; }
 +            swprintf_s(path, 32768, L"%s\\%s", data, found.cFileName);
 +            file = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, 0, NULL);
 +            if (file == INVALID_HANDLE_VALUE) { ok = 0; break; }
 +            ok = ReadFile(file, head, 72, &count, NULL) && count == 72 && GetFileSizeEx(file, &length);
 +            if (ok) {
 +                memcpy(&magic, head, 4); memcpy(&types, head + 4, 4); memcpy(&entries, head + 8, 4);
-+                ok = magic == 0xf0000011u && types <= 128 && entries <= 4096;
++                ok = magic == 0xf0000011u && types <= WJL_RENDER_TYPES && entries <= WJL_RENDER_ENTRIES;
 +            }
-+            if (ok) { total += entries; ok = total <= 8192 && 72ull + 32ull * types + 80ull * entries <= (unsigned long long)length.QuadPart; }
++            if (ok) { total += entries; ok = total <= WJL_RENDER_TOTAL && 72ull + 32ull * types + 80ull * entries <= (unsigned long long)length.QuadPart; }
 +            if (ok) { at.QuadPart = 72 + 32 * (LONGLONG)types; ok = SetFilePointerEx(file, at, NULL, FILE_BEGIN); }
-+            for (uint32_t index = 0; ok && index < entries; ++index) {
-+                unsigned long long name, kind;
-+                ok = ReadFile(file, entry, 80, &count, NULL) && count == 80;
-+                if (!ok) break;
-+                memcpy(&name, entry, 8); memcpy(&kind, entry + 8, 8);
-+                if (name == resource && kind == type) ok = 0;
++            for (uint32_t done = 0; ok && done < entries;) {
++                const uint32_t block = entries - done < 4096u ? entries - done : 4096u;
++                ok = ReadFile(file, wjl_render_rows, block * 80u, &count, NULL) && count == block * 80u;
++                for (uint32_t index = 0; ok && index < block; ++index) {
++                    unsigned long long name, kind;
++                    memcpy(&name, wjl_render_rows + index * 80u, 8); memcpy(&kind, wjl_render_rows + index * 80u + 8, 8);
++                    if (name == resource && kind == type) ok = 0;
++                }
++                done += block;
 +            }
 +            CloseHandle(file);
 +            if (!ok) break;
@@ -1932,7 +1942,7 @@
      wchar_t incoming_name[256],outgoing_name[256],log_path[MAX_PATH],dll[32768];
      char hash[65];
      HANDLE incoming=INVALID_HANDLE_VALUE,outgoing=INVALID_HANDLE_VALUE;
-@@ -365,17 +611,34 @@
+@@ -365,17 +621,34 @@
      DWORD peer=0;
      (void)instance;(void)previous;(void)command;(void)show;
      if (!arguments) return 1;
@@ -1971,7 +1981,7 @@
          (unsigned long long)resource_hash((const unsigned char *)home,wcslen(home)*sizeof(wchar_t)));
      single_instance=CreateMutexW(NULL,FALSE,mutex_name);
      if (!single_instance || GetLastError()==ERROR_ALREADY_EXISTS) goto done;
-@@ -387,6 +650,17 @@
+@@ -387,6 +660,17 @@
      supported=hash_file(executable,hash)&&!strcmp(hash,EXE_SHA)&&hash_file(dll,hash)&&!strcmp(hash,GAME_SHA);
      if (!supported) { note("Refused: installed game hashes do not match this service build");goto done; }
      note("Stock game hashes verified; awaiting local Lua filesystem client");
@@ -1989,7 +1999,7 @@
      swprintf_s(incoming_name,256,L"\\\\.\\pipe\\%s_request",token);
      swprintf_s(outgoing_name,256,L"\\\\.\\pipe\\%s_response",token);
      io_event=CreateEventW(NULL,TRUE,FALSE,NULL);if (!io_event) goto done;
-@@ -395,7 +669,7 @@
+@@ -395,7 +679,7 @@
      outgoing=CreateNamedPipeW(outgoing_name,PIPE_ACCESS_OUTBOUND|FILE_FLAG_FIRST_PIPE_INSTANCE|FILE_FLAG_OVERLAPPED,
          PIPE_TYPE_BYTE|PIPE_READMODE_BYTE|PIPE_WAIT|PIPE_REJECT_REMOTE_CLIENTS,1,65536,65536,0,NULL);
      if (incoming==INVALID_HANDLE_VALUE || outgoing==INVALID_HANDLE_VALUE) { note("Cannot create exclusive local pipes");goto done; }
@@ -1998,7 +2008,7 @@
      ready_event=CreateEventW(NULL,TRUE,FALSE,ready_name);
      if (!ready_event || !SetEvent(ready_event)) { note("Cannot signal filesystem service readiness");goto done; }
      if (!connect_pipe(incoming)||!connect_pipe(outgoing)) { note("No complete client connection within startup timeout");goto done; }
-@@ -418,13 +692,13 @@
+@@ -418,13 +702,13 @@
      if (ready_event) ResetEvent(ready_event);
      if (incoming!=INVALID_HANDLE_VALUE) { CloseHandle(incoming);incoming=INVALID_HANDLE_VALUE; }
      if (outgoing!=INVALID_HANDLE_VALUE) { CloseHandle(outgoing);outgoing=INVALID_HANDLE_VALUE; }

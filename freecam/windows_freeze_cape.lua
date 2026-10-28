@@ -21,7 +21,7 @@ function M.new(sr,associate,options)
   if sr.Application.main_world()~=r.world or sr.Network.game_session()~=r.session then return false end
   if U.alive(r.unit)==false then return false end
   assert(U.alive(r.unit)==true and U.world(r.unit)==r.world,'Cape world changed')
-  assert(I.equal(U.resource_name(r.unit),I.from_hex(r.resource))==true,'Cape resource changed')
+  assert(I.equal(U.resource_name(r.unit),r.resource)==true,'Cape resource changed')
   assert(U.num_scene_graph_items(r.unit)==r.count and U.num_meshes(r.unit)==#r.handles,'Cape layout changed')
   for i,h in ipairs(r.handles)do if U.mesh(r.unit,i)~=h then return false end end
   for name,n in pairs(r.bones)do assert(U.has_node(r.unit,name)and U.node(r.unit,name)==n,'Cape bone mapping changed')end
@@ -70,7 +70,7 @@ function M.new(sr,associate,options)
   assert(node(anchor,U.num_scene_graph_items(frame.root_handle)),'Body shoulder invalid')
   local inverse=save(X.inverse(U.world_pose(frame.root_handle,anchor)))
   local r={unit=u,world=frame.world,body=frame.root_handle,identity=frame.identity,anchor=anchor,
-   resource='ea846ef460cc5ba0',session=sr.Network.game_session(),count=U.num_scene_graph_items(u),bones={},meshes={},handles={},writes=0,
+   resource=U.resource_name(u),session=sr.Network.game_session(),count=U.num_scene_graph_items(u),bones={},meshes={},handles={},writes=0,
    flip=options and options.flip_shoulder_right==true}
   assert(node(r.count,512),'Cape graph bounds changed')
   local bones={}

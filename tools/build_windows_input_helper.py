@@ -256,7 +256,14 @@ static int lll_patch_name(const wchar_t *name) {
     for (size_t index = 23; index < length; ++index) if (name[index] < L'0' || name[index] > L'9') return 0;
     return 1;
 }
-/* No installed patch may replace the stock renderer configuration. */
+/* No installed patch may replace the stock renderer configuration. The limits bound the
+ * work for very large mod setups (1.3.1's 128 patches / 8,192 entries refused ordinary
+ * ones and hid every scene effect); entry tables are read in 4,096-row blocks. */
+#define LLL_RENDER_PATCHES 4096u
+#define LLL_RENDER_TYPES 1024u
+#define LLL_RENDER_ENTRIES 262144u
+#define LLL_RENDER_TOTAL 4194304u
+static unsigned char lll_render_rows[4096 * 80];
 static int lll_renderer_untouched(const wchar_t *data, unsigned long long resource, unsigned long long type) {
     WIN32_FIND_DATAW found;
     wchar_t pattern[32768], path[32768];
@@ -269,28 +276,31 @@ static int lll_renderer_untouched(const wchar_t *data, unsigned long long resour
     for (;;) {
         if (!(found.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) && lll_patch_name(found.cFileName)) {
             HANDLE file;
-            unsigned char head[72], entry[80];
+            unsigned char head[72];
             DWORD count;
             uint32_t magic = 0, types = 0, entries = 0;
             LARGE_INTEGER length, at;
             length.QuadPart = 0;
-            if (++patches > 128) { ok = 0; break; }
+            if (++patches > LLL_RENDER_PATCHES) { ok = 0; break; }
             swprintf_s(path, 32768, L"%s\\%s", data, found.cFileName);
             file = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, 0, NULL);
             if (file == INVALID_HANDLE_VALUE) { ok = 0; break; }
             ok = ReadFile(file, head, 72, &count, NULL) && count == 72 && GetFileSizeEx(file, &length);
             if (ok) {
                 memcpy(&magic, head, 4); memcpy(&types, head + 4, 4); memcpy(&entries, head + 8, 4);
-                ok = magic == 0xf0000011u && types <= 128 && entries <= 4096;
+                ok = magic == 0xf0000011u && types <= LLL_RENDER_TYPES && entries <= LLL_RENDER_ENTRIES;
             }
-            if (ok) { total += entries; ok = total <= 8192 && 72ull + 32ull * types + 80ull * entries <= (unsigned long long)length.QuadPart; }
+            if (ok) { total += entries; ok = total <= LLL_RENDER_TOTAL && 72ull + 32ull * types + 80ull * entries <= (unsigned long long)length.QuadPart; }
             if (ok) { at.QuadPart = 72 + 32 * (LONGLONG)types; ok = SetFilePointerEx(file, at, NULL, FILE_BEGIN); }
-            for (uint32_t index = 0; ok && index < entries; ++index) {
-                unsigned long long name, kind;
-                ok = ReadFile(file, entry, 80, &count, NULL) && count == 80;
-                if (!ok) break;
-                memcpy(&name, entry, 8); memcpy(&kind, entry + 8, 8);
-                if (name == resource && kind == type) ok = 0;
+            for (uint32_t done = 0; ok && done < entries;) {
+                const uint32_t block = entries - done < 4096u ? entries - done : 4096u;
+                ok = ReadFile(file, lll_render_rows, block * 80u, &count, NULL) && count == block * 80u;
+                for (uint32_t index = 0; ok && index < block; ++index) {
+                    unsigned long long name, kind;
+                    memcpy(&name, lll_render_rows + index * 80u, 8); memcpy(&kind, lll_render_rows + index * 80u + 8, 8);
+                    if (name == resource && kind == type) ok = 0;
+                }
+                done += block;
             }
             CloseHandle(file);
             if (!ok) break;
@@ -690,4 +700,5 @@ binary.write_bytes(built.read_bytes())
  'sources':{p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in native.iterdir()}},indent=2)+'\n')
 print(binary)
 
-(root/'freecam/wjl_helper_payload.lua').write_text('return {name='+json.dumps(binary.name)+',sha256='+json.dumps(hashlib.sha256(binary.read_bytes()).hexdigest())+',hex='+json.dumps(binary.read_bytes().hex())+'}\n')
+# One helper file under one name; the game checks its bytes against sha256 before each start.
+(root/'freecam/wjl_helper_payload.lua').write_text('return {name="wjl_steam_service.exe",sha256='+json.dumps(hashlib.sha256(binary.read_bytes()).hexdigest())+',hex='+json.dumps(binary.read_bytes().hex())+'}\n')

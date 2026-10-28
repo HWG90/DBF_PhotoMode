@@ -1,20 +1,35 @@
 -- One-shot helper extraction/startup. Child inherits the game's integrity level.
 local M={}
 local launch_sequence=0
--- What earlier releases wrote beside the game's settings. A helper's name is the first 16
--- hex digits of its SHA-256, so each changed helper left a new file; the game's Lua cannot
--- list a folder, so these exact names are removed instead. Last, 1.3.0's PowerShell log.
+-- What earlier releases wrote beside the game's settings: until 1.3.2 each helper was named
+-- after its SHA-256, so each changed helper left a new file. The game's Lua cannot list a
+-- folder, so these exact names are removed instead. Last, 1.3.0's PowerShell log.
 M.retired={'wjl_steam_service_28af6b376f6afcb8.exe','wjl_steam_service_f9d73353ad66d4e8.exe',
- 'wjl_steam_service_444cacc9bdd1cada.exe','wjl_steam_service_4249097cb43acbbe.exe','wjl_startup.log'}
+ 'wjl_steam_service_444cacc9bdd1cada.exe','wjl_steam_service_4249097cb43acbbe.exe',
+ 'wjl_steam_service_2e246b0bde86bec6.exe','wjl_steam_service_68e76a7de0ff989f.exe','wjl_startup.log'}
+M.name='wjl_steam_service.exe'
+-- The helper is one file under one name. Its bytes are checked against this build's helper
+-- before every start; a copy from another release is replaced, never run.
+local function install(path,bytes)
+ local function read(at)local f=io.open(at,'rb');if not f then return nil end;local body=f:read('*a');f:close();return body end
+ if read(path)==bytes then return end
+ local staged=path..'.new'
+ local file=assert(io.open(staged,'wb'),'Cannot write the WJL helper');local written=file:write(bytes);file:close()
+ assert(written and read(staged)==bytes,'The WJL helper did not write back intact')
+ -- Windows keeps a running program's file: one still running from an earlier session
+ -- cannot be replaced until it exits.
+ if read(path)~=nil then os.remove(path)end
+ if read(path)~=nil then os.remove(staged);error('An older WJL helper is still running; restart the game',0)end
+ assert(os.rename(staged,path),'Cannot place the WJL helper')
+ assert(read(path)==bytes,'The WJL helper did not write back intact')
+end
 function M.config(mod,sr)
  local payload=mod.require('src/wjl_helper_payload.lua')
- assert(payload.name:match('^wjl_steam_service_%x+%.exe$')and payload.sha256:match('^%x+$')and #payload.sha256==64)
+ assert(payload.name==M.name and payload.sha256:match('^%x+$')and #payload.sha256==64)
  local directory=assert(os.getenv('APPDATA'))..'/Arrowhead/Helldivers2/'
  local path=directory..payload.name
  local bytes=payload.hex:gsub('%x%x',function(v)return string.char(tonumber(v,16))end)
- local existing=io.open(path,'rb')
- if existing then local body=existing:read('*a');existing:close();assert(body==bytes,'Bundled WJL helper cache differs; refusing to execute')
- else local file=assert(io.open(path,'wb'));assert(file:write(bytes));assert(file:close())end
+ install(path,bytes)
  local pid=sr.Application.process_id();assert(type(pid)=='number'and pid>0 and pid==math.floor(pid))
  launch_sequence=launch_sequence+1
  local token='wjl_input_'..pid..'_'..os.time()..'_'..launch_sequence

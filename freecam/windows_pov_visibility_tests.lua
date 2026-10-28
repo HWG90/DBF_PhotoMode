@@ -339,3 +339,29 @@ do
  f.p.queue_weapons(false);assert(f.p.flush()and gun.meshes[1].visible and scope.meshes[1].visible,'Restore both holstered model and accessory')
 end
 print('Observed holstered variant: resource/layout, local-root parent, nested offset scope, after-game enforcement and restoration passed')
+
+-- Any other outfit: the units bound to the selected skeleton (shared bones on the same
+-- world matrices), grouped by their bones. Another player's or a prop's units never match.
+do
+ local world={}
+ local root={nodes={head=1,chest=1,spine1=1,hips=1,l_hand=1,r_hand=1,cape1=1}}
+ local function unit(name,nodes,meshes,offset)return{name=name,nodes=nodes,meshes=meshes,offset=offset or 0}end
+ local all={unit('helmet',{head=1},5),unit('collar',{head=1,chest=1,spine1=1},6),unit('chest',{chest=1,spine1=1},5),
+  unit('arm',{chest=1,spine1=1,l_hand=1},5),unit('legs',{hips=1},5),unit('cape',{head=1,chest=1,cape1=1},4),
+  unit('other_helmet',{head=1},5,7),unit('prop',{},3),unit('empty',{head=1},0)}
+ local logged={}
+ local sr={IdString64={from_hex=function(s)return s end},Matrix4x4={to_elements=function(m)return unpack(m)end},
+  World={units_by_resource=function()return{}end,units=function(w)assert(w==world);return all end},
+  Unit={alive=function()return true end,world=function()return world end,resource_name=function(u)return u.name end,
+   num_meshes=function(u)return u.meshes end,node=function(_,n)return n end,
+   has_node=function(u,n)if u==root then return root.nodes[n]~=nil end;return u.nodes[n]~=nil end,
+   world_pose=function(u,n)return{1,0,0,0,1,0,0,0,1,u==root and 0 or u.offset,#n,0}end}}
+ local rows=P.association(sr,function(m)logged[#logged+1]=m end,function()return 0 end)
+ local frame={explicit_subject=true,identity='other outfit',root_handle=root,world=world}
+ local function names(group)local r={};for _,row in ipairs(rows(frame,group))do r[#r+1]=row.resource..':'..#row.indices end;table.sort(r);return table.concat(r,',')end
+ local helmet,torso,cape,body=names('helmet'),names('torso'),names('cape'),names('body')
+ assert(helmet=='collar:6,helmet:5',helmet);assert(torso=='chest:5',torso);assert(cape=='cape:4',cape);assert(body=='arm:5,legs:5',body)
+ assert(#logged==4 and logged[1]:find('POV outfit discovery: helmet=2 of 6 bound units',1,true),#logged..' '..table.concat(logged,' | '))
+ assert(P.classify({head=true,chest=true,cape1=true})=='cape'and P.classify({chest=true,r_hand=true})=='body'and P.classify({})==nil)
+ print('Other outfits: skeleton-bound units grouped into helmet, torso, cape and body; foreign and mesh-less units refused passed')
+end

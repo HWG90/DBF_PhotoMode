@@ -58,10 +58,11 @@ def main():
   (data/'9ba626afa44a3aa3.patch_0').write_bytes(patch([(0x9ba626afa44a3aa3,0xa14e8dfa2cd117e2)]))
   (data/'ee6b1ba7e22d71ed.patch_0.stream').write_bytes(b'not a patch header')
   lua=LuaRuntime(unpack_returned_tuples=True);g=lua.globals()
-  old_open,old_remove=g.io.open,g.os.remove
+  old_open,old_remove,old_rename=g.io.open,g.os.remove,g.os.rename
   mapped=lambda path:unix(path)if isinstance(path,str)and path[:2].upper()=='C:'else path
   g.io.open=lambda path,mode='r':old_open(mapped(path),mode)
   g.os.remove=lambda path:old_remove(mapped(path))
+  g.os.rename=lambda a,b:old_rename(mapped(a),mapped(b))
   g.os.getenv=lambda name:{'APPDATA':appdata,'LOCALAPPDATA':localdata}.get(name)
   startup=lua.execute((ROOT/'freecam/wjl_helper_startup.lua').read_text())
   payload=lua.execute((ROOT/'freecam/wjl_helper_payload.lua').read_text())
@@ -108,10 +109,19 @@ def main():
    assert reply['root'].lower()==windows_root.replace('\\','/').lower(),(reply['root'],windows_root)
    assert reply['exe'].lower().endswith('/bin/helldivers2.exe')
    results.append({'scenario':scenario,'ready':True,'renderer_proof':proof,'launch_seconds':round(elapsed,3),'root_resolved':reply['root']})
+  # A large mod setup (600 patches, 10,000 entries) still proves the stock renderer: 1.3.1's
+  # 128-patch / 8,192-entry limits refused it and hid every scene effect.
+  many=[data/('%016x.patch_%d'%(0x1000000000000000+i,i%3))for i in range(600)]
+  for i,path in enumerate(many):path.write_bytes(patch([(0x2000000000000000+i*17+k,0xa14e8dfa2cd117e2)for k in range(17 if i<400 else 16)]))
+  (data/'bundles.nxa').write_bytes(index)
+  config,code,elapsed=launch(good_pid);reply,proof=finish(config)
+  assert proof and reply['status']==0,('large mod setup',service_log.read_text(errors='replace'))
+  results.append({'scenario':'large-mod-setup','patches':len(many)+2,'renderer_proof':proof,'launch_seconds':round(elapsed,3)})
+  for path in many:path.unlink()
   # The shipped contract against the real installation (its bundles and deployed patches),
-  # compared with the PowerShell check this replaces, ported line for line.
+  # compared with a reference port of the check (the old PowerShell one, with 1.3.2's limits).
   real=lua.execute((ROOT/'freecam/engine_render_contract.lua').read_text())
-  def powershell_verdict(data):
+  def reference_verdict(data):
    for row in real['checks'].values():
     path=data/row['file']
     if not path.is_file()or row['offset']+row['size']>path.stat().st_size:return False
@@ -119,14 +129,14 @@ def main():
     if hashlib.sha256(body).hexdigest()!=row['sha256']:return False
    import re
    patches=[p for p in data.glob('*.patch_*')if re.fullmatch(r'[a-fA-F0-9]{16}\.patch_\d+',p.name)]
-   if len(patches)>128:return False
+   if len(patches)>4096:return False
    total=0
    for p in patches:
     with open(p,'rb')as f:
      head=f.read(72)
      if len(head)!=72 or struct.unpack_from('<I',head)[0]!=0xf0000011:return False
      types,entries=struct.unpack_from('<II',head,4);total+=entries
-     if types>128 or entries>4096 or total>8192 or 72+32*types+80*entries>p.stat().st_size:return False
+     if types>1024 or entries>262144 or total>4194304 or 72+32*types+80*entries>p.stat().st_size:return False
      f.seek(72+32*types)
      for _ in range(entries):
       name,kind=struct.unpack('<QQ',f.read(16));f.read(64)
@@ -141,9 +151,9 @@ def main():
   (stock/'bin/helldivers2.exe').unlink();os.symlink(args.game/'bin/helldivers2.exe',stock/'bin/helldivers2.exe')
   contract=real
   config,code,elapsed=launch(int(pid_file.read_text()))
-  reply,proof=finish(config);expected=powershell_verdict(args.game/'data')
+  reply,proof=finish(config);expected=reference_verdict(args.game/'data')
   assert reply['status']==0 and proof==expected,(code,proof,expected,service_log.read_text(errors='replace'))
-  results.append({'scenario':'stock-install','ready':True,'renderer_proof':proof,'matches_powershell_check':True,'launch_seconds':round(elapsed,3)})
+  results.append({'scenario':'stock-install','ready':True,'renderer_proof':proof,'matches_reference_check':True,'launch_seconds':round(elapsed,3)})
   stock_process.kill();stock_process.wait()
   # A game whose executable differs from the pinned build: cmd.exe returns and the helper's
   # log says Refused, which is what the game's poll reads to stop waiting.
@@ -200,6 +210,8 @@ def main():
    assert logged('awaiting local Lua filesystem client'),service_log.read_text(errors='replace')
    assert shots_dir.is_dir(),'The helper creates its Screenshots folder at start'
    stem='War-Journalist-20261027-200000-1-'+name
+   for old in(shots_dir/(stem+'.png'),shots_dir/(stem+'.dds')):
+    if old.exists():old.unlink()
    (shots_dir/(stem+'.dds')).write_bytes(dds(4,2,fmt,pixels))
    # The job admits only the game's own process: the client runs from the game's path.
    exe.unlink();shutil.copyfile(probe,exe)
