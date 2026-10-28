@@ -1,8 +1,10 @@
-# War Journalist 1.3.2 — startup fix and PNG screenshots
+# War Journalist 1.3.2 — Startup, PNGs and any armour
 
 Stop the action. Find your angle. Build the shot.
 
-Fixes the game stopping on a black screen while it starts with War Journalist enabled, and brings back PNG screenshots on Windows. Everything else in 1.3.1 is unchanged; read the [1.3.1 notes](https://github.com/HWG90/DBF_PhotoMode/releases/tag/v1.3.1) and the [1.3.0 notes](https://github.com/HWG90/DBF_PhotoMode/releases/tag/v1.3.0) for features and limitations. **Boot Mod Loader is the only supported loader at the moment.**
+**A HUGE THANK YOU to everyone sharing photos, testing builds and reporting bugs.** Special thanks to **Muchacho, JuanHalodiver, Scarpheon and jager** of the Helldivers Modding Discord for bug testing; your logs and screenshots found these. Keep the shots coming!
+
+Fixes the game stopping on a black screen while it starts with War Journalist enabled, brings back PNG screenshots on Windows, and makes POV hiding, Handycam and Full Hide work with any armour. Everything else in 1.3.1 is unchanged; read the [1.3.1 notes](https://github.com/HWG90/DBF_PhotoMode/releases/tag/v1.3.1) and the [1.3.0 notes](https://github.com/HWG90/DBF_PhotoMode/releases/tag/v1.3.0) for features and limitations. **Boot Mod Loader is the only supported loader at the moment.** A Lite version for Chef's Shared Loader is planned; whitelist approval may allow fuller compatibility. Neither is guaranteed.
 
 ## Fixed
 
@@ -25,7 +27,11 @@ Import the complete **BML ZIP** into HD2 Arsenal, enable War Journalist and Asse
 
 ## Testing scope
 
-- **Not yet tested in game.** Live tests on Linux/Proton and native Windows are pending. Under Proton, screenshots take the same DDS-to-PNG path as on Windows; the Linux capture worker is used only when WJL is not connected.
+- **Live on Linux/Proton, Boot Mod Loader**, with development builds of this release: the game started without waiting for WJL; screenshots came out as PNGs (SDR, and a 4K HDR10 shot with correct colours); the Toggle HUD binding was read from a second Steam library; Full Hide, POV hiding and Handycam worked after changing armour; exposure, contrast and saturation worked; the version and build showed in the corner.
+- **Native Windows:** exposure worked with a development build of this release. The startup fix answers Boot Mod Loader logs from Windows PCs that stopped on a black screen; please report whether your game now starts every time.
+- **Keyboard layouts:** only checked under Wine with a US layout, where WJL reported W/A/S/D/Q/E. Fixtures cover AZERTY defaults, a refused layout, and layouts whose keys cannot be used (which keep W/A/S/D/Q/E). AZERTY players, please report.
+- **The exact final ZIP has not received another cold-start gameplay test.** Live acceptance above comes from its development builds.
+- Normal-user build: development reload, inventories and test activations are disabled. Unavailable menu controls are omitted.
 - Isolated Lua 5.1 fixtures cover the new startup:
   - the launcher is started and never waited on;
   - WJL is looked for once a frame and connected when it answers;
@@ -33,12 +39,11 @@ Import the complete **BML ZIP** into HD2 Arsenal, enable War Journalist and Asse
   - WJL not answering ends after 90 seconds;
   - the game never closes the launcher before WJL answers.
 - Fixtures for screenshots: WJL's reply format; the DDS written into WJL's folder, converted and moved; SDR DDS removed, HDR10 DDS kept; the DDS kept when WJL refuses, fails or is cancelled; never replacing a file.
-- WJL was rebuilt with the same Visual Studio 2022 compiler and Windows SDK, warnings as errors, and its native fixtures pass. Under Wine, the start-up test now sends real SDR and HDR10 DDS files through WJL's screenshot job. Every PNG pixel matched the 0.9.x converter's math.
+- WJL was rebuilt with the same Visual Studio 2022 compiler and Windows SDK, warnings as errors, and its native fixtures pass. Under Wine, the start-up test sends real SDR and HDR10 DDS files through WJL's screenshot job. Every PNG pixel matched the 0.9.x converter's math.
 - The package check runs the archive as Boot Mod Loader does, twice:
   - with a WJL that refuses at once: Photo Mode started on the first frame, with DDS screenshots, and the launcher was never waited on;
   - with a WJL that answers a few frames later: Photo Mode waited for it, then selected WJL PNG screenshots.
-- Under Wine, WJL reported the US layout's W/A/S/D/Q/E keys; fixtures cover AZERTY defaults, a refused layout, and layouts whose keys cannot be used (which keep W/A/S/D/Q/E).
-- A start-up test runs the exact launcher under Wine against the real game executable. It covers readiness, game-root discovery, the renderer check, refusal of a different game build, and a WJL program removed after it was written (the launcher returns at once). A folder name with spaces, parentheses and `&` was also checked.
+- A start-up test runs the exact launcher under Wine against the real game executable. It covers readiness, game-root discovery, the renderer check (including a 600-patch mod setup), refusal of a different game build, and a WJL program removed after it was written (the launcher returns at once). A folder name with spaces, parentheses and `&` was also checked.
 
 ## Reporting
 

@@ -437,7 +437,7 @@ def build(candidate, output):
                    'live in LLL/Helldivers2/Settings/' + MOD_ID + ' when that folder exists, else in the game\'s settings '
                    'folder. Also runs as an LLL archive mod. Use one War Journalist at a time.')
     if manifest.get('public_release'):
-        description = 'War Journalist 1.3.1: Windows and Proton input fix for the Lua rewrite for Boot Mod Loader. Native DoF, Handycam and automatic WJL startup. AI control and depth shaders are unavailable. Cape, subject selection, equipment hiding and hoverpack limitations remain; see release notes.'
+        description = 'War Journalist 1.3.2: startup fix (the game no longer waits for WJL), PNG screenshots on Windows and any armour for POV hiding, Handycam and Full Hide, for the Lua rewrite for Boot Mod Loader. Native DoF, Handycam and automatic WJL startup. AI control and depth shaders are unavailable. Cape, subject selection, equipment hiding and hoverpack limitations remain; see release notes.'
     arsenal = {'Version': 1, 'Guid': GUID, 'Name': TITLE + ' ' + manifest['version'], 'Description': description,
                'Options': [{'Name': TITLE, 'Description': 'Photo Mode and its assets.', 'Include': [OPTION, 'Assets']}]}
     (folder / 'manifest.json').write_text(json.dumps(arsenal, indent=2, ensure_ascii=False) + '\n')
