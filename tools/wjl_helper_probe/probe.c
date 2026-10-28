@@ -1,6 +1,7 @@
 /* Test-only stand-ins for tools/test_wjl_helper_launch.py. Never shipped.
  *   probe.exe sleep <pid-file>   a "game" process: writes its pid, then waits
  *   probe.exe client <token>     the Lua side's first exchange on the helper's pipes, once they exist
+ *   probe.exe layout <token>     the VKs at the W/A/S/D/Q/E key positions (operation 21)
  *   probe.exe popen <file> <out> io.popen(command):close(): how long cmd.exe runs the launcher
  *                                (the game itself never closes it before the helper answers) */
 #include <windows.h>
@@ -110,7 +111,32 @@ static int shot(const char *token, const char *path) {
         ++nonce; Sleep(50);
     }
 }
+/* The keyboard layout (21): the VKs at the W/A/S/D/Q/E key positions. */
+static int layout(const char *token) {
+    char name[256];
+    static unsigned char request[64], reply[256];
+    uint32_t size = 0, words[10] = {0}, operation = 21, nonce = 1, length = 9;
+    HANDLE outgoing = INVALID_HANDLE_VALUE, incoming;
+    for (int attempt = 0; attempt < 400 && outgoing == INVALID_HANDLE_VALUE; ++attempt) {
+        snprintf(name, sizeof(name), "\\\\.\\pipe\\%s_request", token);
+        outgoing = CreateFileA(name, GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
+        if (outgoing == INVALID_HANDLE_VALUE) Sleep(50);
+    }
+    snprintf(name, sizeof(name), "\\\\.\\pipe\\%s_response", token);
+    incoming = CreateFileA(name, GENERIC_READ, 0, NULL, OPEN_EXISTING, 0, NULL);
+    if (outgoing == INVALID_HANDLE_VALUE || incoming == INVALID_HANDLE_VALUE) { printf("{\"connected\":false}\n"); return 3; }
+    memset(request, 0, 12);
+    if (!exchange(outgoing, incoming, request, 12, reply, sizeof(reply), &size)) return 4;
+    memcpy(request, &nonce, 4); memcpy(request + 4, &operation, 4); memcpy(request + 8, &length, 4);
+    memcpy(request + 12, "layout-v1", length);
+    if (!exchange(outgoing, incoming, request, 12 + length, reply, sizeof(reply), &size)) return 5;
+    memcpy(words, reply, size < 40 ? size : 40);
+    printf("{\"size\":%u,\"status\":%u,\"count\":%u,\"keys\":[%u,%u,%u,%u,%u,%u],\"layout\":%u}\n",
+           size, words[1], words[2], words[3], words[4], words[5], words[6], words[7], words[8], words[9]);
+    return 0;
+}
 int main(int argc, char **argv) {
+    if (argc == 3 && !strcmp(argv[1], "layout")) return layout(argv[2]);
     if (argc == 4 && !strcmp(argv[1], "shot")) return shot(argv[2], argv[3]);
     if (argc == 3 && !strcmp(argv[1], "sleep")) return sleeper(argv[2]);
     if (argc == 3 && !strcmp(argv[1], "client")) return client(argv[2]);

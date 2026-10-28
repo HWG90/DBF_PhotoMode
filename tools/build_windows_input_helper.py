@@ -436,6 +436,35 @@ s=patch_once(s,'''    note("Stock game hashes verified; awaiting local Lua files
         if (shots_length&&shots_length<MAX_PATH-40&&!wcscat_s(shots,MAX_PATH,L"\\\\LLL\\\\Helldivers2\\\\Screenshots")) CreateDirectoryW(shots,NULL);
     }
 ''','service contract')
+# Movement defaults by key position: the VKs at the US W/A/S/D/Q/E positions in the
+# game's active layout (Z/Q/S/D/A/E on AZERTY). Read-only; no hook or input change.
+s=patch_once(s,'''static int dispatch(const unsigned char *bytes, uint32_t size, HANDLE outgoing) {
+''','''static int send_layout(uint32_t nonce, const unsigned char *bytes, uint32_t size,
+                       uint32_t path_size, HANDLE outgoing) {
+    static const char path[] = "layout-v1";
+    static const UINT scancodes[6] = {0x11, 0x1E, 0x1F, 0x20, 0x10, 0x12};
+    uint32_t reply[10] = {nonce, ERROR_INVALID_DATA, 0}, length = 12;
+    DWORD owner = 0, thread = 0;
+    HWND window = GetForegroundWindow();
+    HKL layout;
+    if (path_size != sizeof(path) - 1 || size != 12 + path_size || memcmp(bytes + 12, path, sizeof(path) - 1)) goto refused;
+    if (window) thread = GetWindowThreadProcessId(window, &owner);
+    layout = GetKeyboardLayout(thread && owner == session_pid ? thread : 0);
+    for (int index = 0; index < 6; ++index) {
+        reply[3 + index] = MapVirtualKeyExW(scancodes[index], MAPVK_VSC_TO_VK, layout);
+        if (!reply[3 + index]) { reply[1] = ERROR_NOT_FOUND; goto refused; }
+    }
+    reply[1] = 0; reply[2] = 6; reply[9] = (uint32_t)(uintptr_t)layout; length = sizeof(reply);
+refused:
+    return transfer(outgoing, &length, 4, 1) && transfer(outgoing, reply, length, 1) ? 2 : 0;
+}
+
+static int dispatch(const unsigned char *bytes, uint32_t size, HANDLE outgoing) {
+''','layout op')
+s=patch_once(s,'''    if (operation==20) return send_codec(nonce,bytes,size,path_size,outgoing);
+''','''    if (operation==20) return send_codec(nonce,bytes,size,path_size,outgoing);
+    if (operation==21) return send_layout(nonce,bytes,size,path_size,outgoing);
+''','layout dispatch')
 p.write_text(s)
 # PNG screenshots: Windows Graphics Capture of the game window failed on a tester's PC,
 # and the engine's own DDS works everywhere. A PNG request with a same-named DDS beside it

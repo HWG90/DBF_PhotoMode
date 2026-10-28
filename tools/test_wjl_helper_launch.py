@@ -226,6 +226,18 @@ def main():
    for _ in range(200):
     if'service stopped'in service_log.read_text(errors='replace'):break
     time.sleep(.05)
+  # Movement defaults by key position: a US layout reports W/A/S/D/Q/E itself.
+  if not exe.is_symlink():exe.unlink();os.symlink(args.game/'bin/helldivers2.exe',exe)
+  config,code,elapsed=launch(good_pid)
+  assert logged('awaiting local Lua filesystem client'),service_log.read_text(errors='replace')
+  exe.unlink();shutil.copyfile(probe,exe)
+  out=wine(str(exe),'layout',config['pipe'],timeout=60)
+  keys=json.loads(out.stdout.strip().splitlines()[-1])
+  assert keys.get('size')==40 and keys['status']==0 and keys['count']==6 and keys['keys']==[0x57,0x41,0x53,0x44,0x51,0x45],keys
+  results.append({'scenario':'keyboard-layout','keys':keys['keys'],'layout':'%08x'%keys['layout']})
+  for _ in range(200):
+   if'service stopped'in service_log.read_text(errors='replace'):break
+   time.sleep(.05)
   if not exe.is_symlink():exe.unlink();os.symlink(args.game/'bin/helldivers2.exe',exe)
   # The helper EXE removed after it was written (as antivirus does): cmd.exe prints an
   # error and returns. start would have shown a dialog and waited on it.

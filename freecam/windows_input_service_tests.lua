@@ -11,6 +11,7 @@ local transport={exchange=function(bytes)
  if op==17 then return prefix..n(1)..n(10)..n(20)..n(1920)..n(1080)..n(0)..n(0)..n(2)..n(3)..n(1)..n(7)..n(2)..string.rep('\0',32)end
  if op==18 then if release_refused then return n(seq)..n(5)end;return prefix..n(1)..n(1)..n(7)end
  if op==11 then return prefix end
+ if op==21 then return prefix..n(6)..n(0x5A)..n(0x51)..n(0x53)..n(0x44)..n(0x41)..n(0x45)..n(0x040C040C)end
  error(op)
 end}
 local sr={Application={process_id=function()return 17 end,time_since_launch=function()return 1 end}}
@@ -64,6 +65,8 @@ assert(poll()==nil and poll()==nil and closed==0,'Pending frames return nil with
 local isolated,runner=poll()
 assert(isolated and closed==1,'The launcher is closed once the service answered')
 assert(mod.game_root=='C:/game'and mod.render_contract_verified==false)
+local keys=mod.key_positions
+assert(keys and keys.forward==0x5A and keys.left==0x51 and keys.back==0x53 and keys.right==0x44 and keys.roll_left==0x41 and keys.roll_right==0x45,'AZERTY positions become the movement defaults')
 local held=assert(isolated.acquire('dbf_freecam','menu',nil,{keyboard=true}))
 runner.begin_frame();assert(isolated.snapshot(held).keyboard_active)
 assert(isolated.release(held));assert(runner.close())
@@ -148,6 +151,35 @@ do
  assert(requested_mask==alternate and service.capabilities.keyboard_mask==alternate,'Next activation refreshes the saved binding')
  assert(service.release(token)and driver.close())
  print('HUD key passthrough: saved binding discovery, ambiguity, narrow masks, menu/camera and rebind lifecycle passed')
+end
+
+-- Keyboard layout (operation 21): reply layout, refusal, and unusable keys keep WASD.
+do
+ local function layout(reply)
+  return adapter.new(sr,{exchange=function(bytes)
+   if u(bytes,5)==21 then assert(bytes:sub(13)=='layout-v1');return reply(u(bytes,1))end
+   return transport.exchange(bytes)end},function()end)
+ end
+ local p=layout(function(seq)return n(seq)..n(0)..n(6)..n(0x57)..n(0x41)..n(0x53)..n(0x44)..n(0x51)..n(0x45)..n(0x04090409)end)
+ local k=assert(p.key_positions());assert(k.forward==87 and k.left==65 and k.roll_right==69 and k.layout==0x04090409)
+ local value,why=layout(function(seq)return n(seq)..n(0x490)end).key_positions()
+ assert(value==nil and why=='Keyboard layout refused (0x00000490)')
+ local logged
+ for _,keys in ipairs({{0x57,0x57,0x53,0x44,0x51,0x45},{0x5B,0x41,0x53,0x44,0x51,0x45}})do
+  local m={log=function(line)logged=line end,require=mod.require}
+  local before=transport.exchange
+  transport.exchange=function(bytes)
+   if u(bytes,5)==21 then local r=n(u(bytes,1))..n(0)..n(6);for i=1,6 do r=r..n(keys[i])end;return r..n(1)end
+   return before(bytes)
+  end
+  opens,ready_after=0,1
+  local popen=io.popen;io.popen=function()return{close=function()return true end}end
+  local poll=adapter.start(m,sr,clock)
+  local svc,drv=poll();assert(svc and drv.close())
+  transport.exchange,io.popen=before,popen
+  assert(m.key_positions==nil,'Duplicate or uncaptured keys keep the WASD defaults')
+ end
+ print('Keyboard layout: reply layout, refusal, AZERTY defaults and unusable layouts kept on WASD passed')
 end
 
 -- PNG screenshot jobs: the helper's reply layout (operations 13-15).

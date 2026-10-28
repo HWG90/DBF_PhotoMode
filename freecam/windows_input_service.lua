@@ -128,6 +128,16 @@ end
 function P.screenshot_request(path)return screenshot_reply(call(13,path))end
 function P.screenshot_status(id)return screenshot_reply(call(14,id))end
 function P.screenshot_cancel(id)return screenshot_reply(call(15,id))end
+-- The VKs at the US W/A/S/D/Q/E key positions in the game's keyboard layout
+-- (Z/Q/S/D/A/E on AZERTY), so default movement keys sit where WASD sits.
+function P.key_positions()
+    local status,reply=call(21,'layout-v1')
+    if status~=0 then return nil,string.format('Keyboard layout refused (0x%08x)',status)end
+    assert(#reply==40 and u32(reply,9)==6,'Invalid keyboard layout reply')
+    local keys={}
+    for index=1,6 do keys[index]=u32(reply,9+index*4)end
+    return {forward=keys[1],left=keys[2],back=keys[3],right=keys[4],roll_left=keys[5],roll_right=keys[6],layout=u32(reply,37)}
+end
 local pointer={}
 local function signed(bytes,at)
     local value=u32(bytes,at)
@@ -281,6 +291,19 @@ local function connect(mod,sr,config,transport)
   return restored,why
  end
  mod.log('Input: WJL keyboard service connected; process proof verified')
+ -- Default movement keys follow the layout's key positions; saved bindings are kept.
+ local found,keys=pcall(platform.key_positions)
+ if found and keys then
+  local seen,usable={},true
+  for _,id in ipairs({'forward','left','back','right','roll_left','roll_right'})do
+   local vk=keys[id];local bits=vk and platform.base_keyboard_capture_mask:byte(math.floor(vk/8)+1)
+   if not names[vk]or seen[vk]or not bits or math.floor(bits/2^(vk%8))%2~=1 then usable=false end;seen[vk or 0]=true
+  end
+  if usable then mod.key_positions=keys end
+  mod.log(string.format('Keyboard layout %08x: movement defaults %s/%s/%s/%s, roll %s/%s%s',keys.layout,
+   names[keys.forward]or'?',names[keys.left]or'?',names[keys.back]or'?',names[keys.right]or'?',names[keys.roll_left]or'?',names[keys.roll_right]or'?',
+   usable and''or' unusable; WASD defaults kept'))
+ else mod.log('Keyboard layout unavailable; WASD defaults kept: '..tostring(keys))end
  -- PNG screenshots into a folder the caller picks: the engine's DDS, converted by the helper
  -- in its own Screenshots folder (it creates it at start).
  local function screenshots(directory)
