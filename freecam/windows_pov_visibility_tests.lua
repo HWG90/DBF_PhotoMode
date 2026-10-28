@@ -361,7 +361,13 @@ do
  local function names(group)local r={};for _,row in ipairs(rows(frame,group))do r[#r+1]=row.resource..':'..#row.indices end;table.sort(r);return table.concat(r,',')end
  local helmet,torso,cape,body=names('helmet'),names('torso'),names('cape'),names('body')
  assert(helmet=='collar:6,helmet:5',helmet);assert(torso=='chest:5',torso);assert(cape=='cape:4',cape);assert(body=='arm:5,legs:5',body)
- assert(#logged==4 and logged[1]:find('POV outfit discovery: helmet=2 of 6 bound units',1,true),#logged..' '..table.concat(logged,' | '))
+ assert(#logged==4 and logged[1]:find('POV outfit discovery: helmet=2 of 6 bound units',1,true)and logged[1]:find('collar[head+chest+spine1]',1,true),#logged..' '..table.concat(logged,' | '))
+ assert(not rows(frame,'helmet').unsettled,'A bound outfit is settled')
+ -- Caught mid-update (no unit on the skeleton yet): flagged for a retry, not an empty hide.
+ for _,u in ipairs(all)do u.offset=u.offset+3 end
+ local caught=rows(frame,'helmet');assert(#caught==0 and caught.unsettled,'An unsettled outfit is retried')
+ for _,u in ipairs(all)do u.offset=u.offset-3 end
+ assert(M_short==nil and P.short('[IdString64 "#ID[a5ba6eec2f15cf2d]" 0xa5ba]')=='a5ba6eec2f15cf2d')
  assert(P.classify({head=true,chest=true,cape1=true})=='cape'and P.classify({chest=true,r_hand=true})=='body'and P.classify({})==nil)
  print('Other outfits: skeleton-bound units grouped into helmet, torso, cape and body; foreign and mesh-less units refused passed')
 end

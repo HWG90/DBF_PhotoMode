@@ -67,6 +67,10 @@ end
 -- by the bones they carry. A cape carries cape1; arm and leg pieces a hand or the hips
 -- (the body, kept in POV); a helmet the head; a torso piece the chest or spine.
 M.probes={'head','chest','spine1','hips','l_hand','r_hand','cape1'}
+-- A resource name as its 16 hex digits, for the log.
+function M.short(name)
+ local text=tostring(name);return text:match('#ID%[(%x+)%]')or text
+end
 function M.classify(has)
  if has.cape1 then return'cape'end
  if has.l_hand or has.r_hand or has.hips then return'body'end
@@ -80,7 +84,7 @@ function M.association(sr,log,clock)
   assert(type(W.units)=='function','POV hiding is not available for this outfit')
   local started=clock()
   local units=W.units(frame.world);assert(type(units)=='table','POV outfit discovery unavailable')
-  local result,scanned,bound={},0,0
+  local result,scanned,bound,seen={},0,0,{}
   for key,unit in pairs(units)do
    scanned=scanned+1
    assert(type(key)=='number'and key%1==0 and key>=1 and scanned<=16384,'POV outfit discovery exceeds bound')
@@ -99,6 +103,8 @@ function M.association(sr,log,clock)
      end end
      if matched>0 and matched==named then
       bound=bound+1
+      local flags={};for _,name in ipairs(M.probes)do if has[name]then flags[#flags+1]=name end end
+      seen[#seen+1]=M.short(U.resource_name(unit))..'['..table.concat(flags,'+')..']'
       if M.classify(has)==group then
        assert(#result<32,'POV outfit discovery exceeds bound')
        local indices={};for index=1,meshes do indices[index]=index end
@@ -109,9 +115,12 @@ function M.association(sr,log,clock)
    end
   end
   if log then
-   local names={};for _,row in ipairs(result)do names[#names+1]=row.resource..'x'..#row.indices end
-   log(string.format('POV outfit discovery: %s=%d of %d bound units (%s); scanned=%d ms=%.3f',group,#result,bound,table.concat(names,','),scanned,(clock()-started)*1000))
+   local names={};for _,row in ipairs(result)do names[#names+1]=M.short(row.resource)..'x'..#row.indices end
+   log(string.format('POV outfit discovery: %s=%d of %d bound units (%s); bound: %s; scanned=%d ms=%.3f',group,#result,bound,table.concat(names,','),table.concat(seen,' '),scanned,(clock()-started)*1000))
   end
+  -- No unit bound at all: the outfit was caught mid-update (the frame a freeze releases the
+  -- skeleton). The caller retries on later frames instead of hiding nothing.
+  result.unsettled=bound==0
   return result
  end
  local function read_pose(u,node)
@@ -331,7 +340,7 @@ end
 function M.new(sr,selected,lease_factory,log,clock)
  local U,W,B=sr.Unit,sr.World,sr.Matrix4x4;local groups={'helmet','torso','cape','body','equipment'};local pov_groups={'helmet','torso','cape'};local leases={}
  for _,group in ipairs(groups)do leases[group]=lease_factory.new(sr)end
- local desired,dirty,owners={},{},{};local requested={};local full=false;local scan;local equipment_settle=0;local extra=lease_factory.new(sr)
+ local desired,dirty,owners,unsettled={},{},{},{};local requested={};local full=false;local scan;local equipment_settle=0;local extra=lease_factory.new(sr)
  local self={status='Helmet, torso and cape hiding off',max_apply_ms=0};clock=clock or os.clock
  local function count_owned()local n=extra.count();for _,group in ipairs(groups)do n=n+leases[group].count()end;return n end
  local function report(started,ok,why)
@@ -444,6 +453,11 @@ function M.new(sr,selected,lease_factory,log,clock)
     local restored,why=leases[group].release();assert(restored,why);owners[group]=nil
     if desired[group]then
      local hidden,issue=leases[group].hide(plans[group]);assert(hidden,issue);owners[group]=identities[group]
+     if plans[group].unsettled and(unsettled[group]or 0)<60 then unsettled[group]=(unsettled[group]or 0)+1;dirty[group]=true
+     else
+      if plans[group].unsettled and log then log('POV outfit discovery: '..group..' found no attached pieces in 60 frames')end
+      unsettled[group]=nil
+     end
     end
    end end
   end)

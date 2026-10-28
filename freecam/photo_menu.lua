@@ -585,7 +585,13 @@ function M.new(view,actions,existing)
   rect(opacity_track.x,opacity_track.y,opacity_track.w*fraction,opacity_track.h,opacity_ink,1,307)
   rect(opacity_track.x+(opacity_track.w-4*s)*fraction,opacity_track.y-4*s,4*s,11*s,opacity_ink,1,308,false,'menu_opacity_thumb')
   reset_regions[#reset_regions+1]=opacity_bounds;if focused then hits[#hits+1]=opacity_bounds end
-  text('W/S rows  |  A/D values  |  Q/E tabs  |  Enter edits  |  Right-click resets',left,strip_bottom+6*s,width-32*s,16*s,11,T.muted)
+  -- Version and build, bottom right, so a report or screenshot names the exact build.
+  local version_width=0
+  if type(actions.version)=='string'and actions.version~=''then
+   version_width=measure(actions.version,9*s)+6*s
+   text(actions.version,x+width-16*s-version_width,strip_bottom+7*s,version_width,14*s,9,T.muted,310,nil,'version')
+  end
+  text('W/S rows  |  A/D values  |  Q/E tabs  |  Enter edits  |  Right-click resets',left,strip_bottom+6*s,width-32*s-(version_width>0 and version_width+12*s or 0),16*s,11,T.muted)
   local grip={x=x+4*s,y=bottom+4*s,w=20*s,h=20*s};local grip_hover=over(grip);local grip_pressed=resize~=nil
   local grip_command=rect(grip.x,grip.y,grip.w,grip.h,grip_pressed and T.pressed or grip_hover and T.field_hover or T.panel,1,320,false,'resize_grip');grip_command.resize=true;grip_command.hovered=grip_hover==true;grip_command.pressed=grip_pressed
   for i=0,2 do rect(x+(7+i*5)*s,bottom+(7+i*5)*s,3*s,3*s,focused and(grip_hover or grip_pressed)and T.gold or T.muted,1,321)end
