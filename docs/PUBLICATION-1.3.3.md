@@ -59,6 +59,19 @@ Proof screenshots are in `dist/releases/1.3.3/` (not committed).
 
 `~/.config/hd2arsenal/mods/War-Journalist-1.3.2-BML_AR139969` (GUID `7020a1c8-01ed-4a9d-874f-f778916eb067`) matches the published ZIP: 18 files, 17 checksums. Label "War Journalist (Lua 5.1) 1.3.3" with the 1.3.3 description. Rollback (the previous DEV `c7ba34d` staging): `~/.config/hd2arsenal/repair-backups/War-Journalist-1.3.2-BML_AR139969-before-release-1.3.3-20261029-114648`.
 
+## Page-only edits, 29 October 2026 (later the same day)
+
+The user asked for plain, first-person copy for players: no "we" or "the tester", "Tested in …", fewer technical details. No binaries, tags or files changed.
+
+- GitHub: `docs/RELEASE-1.3.3.md`, `docs/KNOWN-ISSUES.md` and the README rewritten (`main` `5b210cd`); the v1.3.3 release body replaced with the new notes. Still Latest; asset digests unchanged.
+- Nexus: description rewritten (7 photos before and after; "F11 toggles Handycam" corrected to Page Down), short description, and the 1.3.3 changelog. The file has no file description.
+- Ayaka: overview rewritten (5 description images and 11 gallery attachments kept; stray `[/*]` marks removed from the Known Bugs list), tag line, and update 8504's text.
+- Discord: starter message replaced; cover image kept, thread title unchanged.
+- The ZIP's own `RELEASE-NOTES.md` and `KNOWN-ISSUES.md` keep the original wording, since published bytes don't change.
+- Older release notes (1.3.0 to 1.3.2 on GitHub, Ayaka updates and Nexus changelogs) were not touched.
+
+The previous copy is in `dist/releases/1.3.3/copy/before-plain/` (not committed).
+
 ## Pending
 
 Reports from native Windows players, and an in-game check of the Follow player cameras and of the cape after an armour change.
