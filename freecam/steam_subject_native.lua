@@ -385,6 +385,28 @@ local function factory(sr,policy,preview)
    lifetime(r);return frame
   end)
  end
+ -- Saved shots anchor on a bone's full position and orientation, so a camera on the face
+ -- stays on the face as the Helldiver turns: the root and a few stable bones, world space,
+ -- as position p and axes x, y, z. Read-only.
+ function self.anchor_frame(target,rig)
+  return result(function()
+   local r=record(target,rig);lifetime(r)
+   local function bone(index)
+    local m=matrix_values(one(pack(U.world_pose(r.unit,index)),'userdata','Unit.world_pose'))
+    return{p={m[10],m[11],m[12]},x={m[1],m[2],m[3]},y={m[4],m[5],m[6]},z={m[7],m[8],m[9]}}
+   end
+   local bones={root=bone(1)}
+   for _,name in ipairs({'hips','chest','head'})do
+    if U.has_node(r.unit,name)==true then
+     local index=U.node(r.unit,name);check(finite(index)and index%1==0 and index>=1 and index<=107,'Anchor bone bounds')
+     bones[name]=bone(index)
+    end
+   end
+   local forward=bones.root.y
+   local frame={identity=r.identity,position=bones.root.p,yaw=math.atan2(forward[2],forward[1]),bones=bones}
+   lifetime(r);return frame
+  end)
+ end
  function self.valid(target,rig)
   local ok,why=pcall(function()local r=record(target,rig);if r.retired then error({tag=retired_tag,reason='Selected subject retired'},0)end;lifetime(r)end)
   if ok then return true end

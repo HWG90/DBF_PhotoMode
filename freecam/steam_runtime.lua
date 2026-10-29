@@ -973,7 +973,7 @@ function M.new(host,sr,deps,service)
   if subject and type(subject.anchor_frame)=='function'then
    local frame,why=subject.anchor_frame()
    if type(frame)~='table'then return nil,why or'Select a Helldiver in Subject'end
-   return{local_owner=true,identity=frame.identity,yaw=frame.yaw,position=frame.position}
+   return{local_owner=true,identity=frame.identity,yaw=frame.yaw,position=frame.position,bones=frame.bones}
   end
   return nil,'Local player unavailable'
  end

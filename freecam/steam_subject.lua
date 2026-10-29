@@ -279,6 +279,7 @@ function M.new(adapter,bank,is_frozen)
  -- automatically on open included. Only position and facing are read.
  function self.anchor_frame()
   if not selected then return nil,'Select a Helldiver in Subject'end
+  if type(adapter.anchor_frame)=='function'then return adapter.anchor_frame(selected,bank.rig)end
   if type(adapter.tracking_frame)~='function'then return nil,'Selected-subject tracking unavailable'end
   return adapter.tracking_frame(selected,bank.rig)
  end
