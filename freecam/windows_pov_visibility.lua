@@ -79,20 +79,28 @@ local head_up=1.58 -- Above: a helmet. Below: a torso piece reaching the neck.
 local chest_up=1.05 -- A whole-rig piece centred below this is a whole suit (kept with the body).
 local function whole(has)return has.chest and has.l_hand and has.r_hand and has.hips end
 function M.ambiguous(has)return not has.cape1 and(whole(has)or has.head and not(has.l_hand or has.r_hand))end
--- The piece's geometry centre (right, forward, up from its root), from the stored bounds most of
--- its meshes share (its LODs); a proxy mesh with other bounds is outvoted. nil if unreadable.
--- The bounds are read as stored, root-relative: a mesh's world pose is not applied. Live, the
--- same meshes read the same heights as stored (chest marker 1.35, torso LODs 1.28) in every
--- armour, while some meshes' world poses sat 0.93 m below or 1.35 m above the root and moved
--- them to 0.35 or 2.70.
-function M.geometry(sr,unit,meshes)
- local H,V=sr.Mesh,sr.Vector3
+-- The piece's geometry centre in the body root's frame (right, forward, up), from the bounds most
+-- of its meshes share (its LODs); a proxy mesh with other bounds is outvoted. nil if unreadable.
+-- Stored bounds come in two frames. Bounds stored away from the mesh's origin are already in the
+-- body's frame, and the mesh's world pose is not applied: live, torso LODs stored 1.29 m up while
+-- their poses sat 0.93-0.96 m below the root. Bounds around the mesh's own origin are local to
+-- the node it hangs on, and need that pose: live 10:47, a helmet's meshes stored centre 0 and sat
+-- on the head at 1.74 m. Read as stored, every helmet measured 0 m and Hide Helmet hid nothing.
+function M.geometry(sr,unit,meshes,root)
+ local H,V,B=sr.Mesh,sr.Vector3,sr.Matrix4x4
  if not(H and V and type(H.bounding_volume_components)=='function')then return nil end
  local ok,result=pcall(function()
   local found={}
   for i=1,math.min(meshes,8)do
-   local lo,hi=H.bounding_volume_components(sr.Unit.mesh(unit,i))
-   local c={(V.x(lo)+V.x(hi))/2,(V.y(lo)+V.y(hi))/2,(V.z(lo)+V.z(hi))/2}
+   local m=sr.Unit.mesh(unit,i);local lo,hi=H.bounding_volume_components(m)
+   local l={V.x(lo),V.y(lo),V.z(lo)};local h={V.x(hi),V.y(hi),V.z(hi)}
+   local c={(l[1]+h[1])/2,(l[2]+h[2])/2,(l[3]+h[3])/2}
+   if l[1]<=0 and h[1]>=0 and l[2]<=0 and h[2]>=0 and l[3]<=0 and h[3]>=0 then
+    assert(root and type(H.world_pose)=='function','Mesh pose unavailable')
+    local p={B.to_elements(H.world_pose(m))};assert(#p==12,'Mesh pose shape changed')
+    local w={};for k=1,3 do w[k]=p[9+k]+c[1]*p[k]+c[2]*p[3+k]+c[3]*p[6+k]-root[9+k]end
+    c={};for a=0,2 do c[a+1]=w[1]*root[a*3+1]+w[2]*root[a*3+2]+w[3]*root[a*3+3]end
+   end
    for _,v in ipairs(c)do assert(v==v and math.abs(v)<100,'Mesh bounds invalid')end
    found[#found+1]=c
   end
@@ -144,7 +152,7 @@ function M.association(sr,log,clock)
      if matched>0 and matched==named then
       bound=bound+1
       local flags={};for _,name in ipairs(M.probes)do if has[name]then flags[#flags+1]=name end end
-      local geometry=M.ambiguous(has)and M.geometry(sr,unit,meshes)or nil
+      local geometry=M.ambiguous(has)and M.geometry(sr,unit,meshes,pose(frame.root_handle,1))or nil
       local class=M.classify(has,geometry)
       local short=M.short(U.resource_name(unit))
       seen[#seen+1]=short..'['..table.concat(flags,'+')..(geometry and string.format('@%.2f',geometry.up)or'')..']'
