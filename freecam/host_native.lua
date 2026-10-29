@@ -9,7 +9,7 @@ function M.library(name)
 end
 function M.open()
  if not native then
-  local open,why=package.loadlib(M.library('hd2_nativeinfo_f6d3465944c1aea1.dll'),'luaopen_hd2_nativeinfo')
+  local open,why=package.loadlib(M.library('hd2_nativeinfo_c1578203689e39b9.dll'),'luaopen_hd2_nativeinfo')
   assert(open,why);native=assert(open(),'War Journalist native bridge refused this host')
   for _,name in ipairs({'function_address','userdata_address','read_memory','module_base'})do assert(type(native[name])=='function','Native bridge API differs: '..name)end
  end
@@ -30,7 +30,7 @@ function M.memory()
   for _,r in ipairs(images)do if address>=r[1]and address+size<=r[2]then return true end end
   return false
  end
- -- Build 26088801's protection runtime decrypts some code pages only once the
+ -- The protection runtime (builds 26088801, 26251122) decrypts some code pages only once the
  -- game has run them; until then they are no-access. The bridge opens only
  -- after hashing this exact executable (and LLL hashes game.dll), so a code
  -- witness on such a page is already proven by the build. Readable pages are

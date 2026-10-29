@@ -82,13 +82,13 @@ entry={live_lua_api=1,name='War Journalist',
     return scene
    end
    local host_native=mod.require('src/host_native.lua');local memory=host_native.memory();local bridge=host_native.open()
-   local open,why=package.loadlib(host_native.library('hd2_nativeinfo_4aab2adfbc4090d6.dll'),'luaopen_hd2_nativeinfo');assert(open,why);local native=open()
+   local open,why=package.loadlib(host_native.library('hd2_nativeinfo_8db3d96f8c3cbb24.dll'),'luaopen_hd2_nativeinfo');assert(open,why);local native=open()
    local resources=mod.require('src/steam_scene_resources.lua').new(sr,memory,bridge)
    resources.depth.bind=function(material,slot,resource)assert(slot=='diffuse_map');return native.depth_bind(material,resource)end
    local overlay=mod.require('src/steam_scene_overlay.lua').new(sr,resources.depth,true,{present=resources.registered},resources.color)
    local sampler,reason=mod.require('src/steam_focus_sampler.lua').new(sr,resources.depth,function()
-    assert(memory.function_address(sr.Application.save_render_target)==memory.exe+0x3da140,'Depth readback binding differs')
-    assert(memory.read(memory.exe+0x3da140,8)=='\072\139\209\233\104\247\255\255','Depth readback dispatch differs')
+    assert(memory.function_address(sr.Application.save_render_target)==memory.exe+0x3da080,'Depth readback binding differs')
+    assert(memory.read(memory.exe+0x3da080,8)=='\072\139\209\233\104\247\255\255','Depth readback dispatch differs')
     local target=resources.target(0x9b8038e0);local display=resources.target(0x2b269c03)
     target.identity=table.concat({target.resource,target.backing,target.id},':');target.display_identity=table.concat({display.resource,display.backing,display.id,display.width,display.height},':')
     return true,target
@@ -106,7 +106,7 @@ entry={live_lua_api=1,name='War Journalist',
    return mod.require('src/windows_dof_override.lua').new(sr,mod.log,deps.lens,mod.require('src/windows_native_dof.lua'))
   end
   else deps.load_native_lens=function(sr)
-   return mod.require('src/steam_native_lens.lua').new(sr,mod.require('src/host_native.lua'),mod.require('src/steam_lens_model.lua'),deps.lens,'hd2_nativeinfo_3139cc5f8ecb4078.dll')
+   return mod.require('src/steam_native_lens.lua').new(sr,mod.require('src/host_native.lua'),mod.require('src/steam_lens_model.lua'),deps.lens,'hd2_nativeinfo_c1578203689e39b9.dll')
   end end
   deps.camera_signals=mod.require('src/windows_camera_signals.lua');deps.handycam_ads=mod.require('src/windows_handycam_ads.lua')
   deps.engine_shader_lens=engine_host
@@ -191,7 +191,7 @@ entry={live_lua_api=1,name='War Journalist',
   if not engine_host then deps.input_policy.pointer_clip=function(active)
    if not pointer_native then
     if not active then return true end
-    local open,why=package.loadlib(mod.require('src/host_native.lua').library('hd2_nativeinfo_5e39eeeeb76b863a.dll'),'luaopen_hd2_nativeinfo');assert(open,why)
+    local open,why=package.loadlib(mod.require('src/host_native.lua').library('hd2_nativeinfo_c1578203689e39b9.dll'),'luaopen_hd2_nativeinfo');assert(open,why)
     pointer_native=assert(open());assert(type(pointer_native.pointer_clip)=='function','Pointer confinement bridge unavailable')
    end
    return pointer_native.pointer_clip(active and 1 or 0)

@@ -169,7 +169,7 @@ local P=TEST_MOD.require('src/cffi.lua')
 local address=tonumber(P.ffi.cast('uintptr_t',newproxy()))
 return paths[1],address
 """)
-            assert (path, address) == (str(lll / 'Native/hd2_nativeinfo_f6d3465944c1aea1.dll'), 4096), (path, address)
+            assert (path, address) == (str(lll / 'Native/hd2_nativeinfo_c1578203689e39b9.dll'), 4096), (path, address)
             assert host.eval('TEST_MOD.config_dir') == str(lll / 'Settings' / MOD_ID)
             name, data = next(iter(libraries.items()))
             (lll / 'Native' / name).write_bytes(data[:-1])

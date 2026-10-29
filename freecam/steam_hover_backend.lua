@@ -3,7 +3,7 @@
 -- Local avatar/inventory layout follows the existing subject identity adapter
 -- and Link's MIT address reference (vendor/LICENSE-Link.txt).
 local M={}
-M.layout={game_stamp=0x6ad7c05d,game_size=0x3382000,exe_stamp=0x6ad78c0d,
+M.layout={game_stamp=0x6ae0e5ff,game_size=0x3382000,exe_stamp=0x6ae0964a,
  WORLD=0x2ce41b8,PLAYER=0x2ce1618,INVENTORY=0x2ce18e8,AVATAR=0x2ce1ee0,JUMP=0x2ce1d78,
  WORLD_UNITS=0xf24990,WORLD_ENTITIES=0xf1c978,WORLD_RECORDS=0xf349e0,REGISTRY=0x1ab76f8}
 M.fingerprints={{0x9c6420,'48895c241855565741544155415641'},{0x9c6942,'f3410f1084249c000000'},{0x9c6a97,'0f2e3d72cf78027a1575130f2ef27a0e750c440f2ee37a060f84740400'},{0x9c6d8a,'f3450f5eee'},{0x9c6db7,'f3410f5efef3410f5ef6'},{0x58e860,'83f90c771d4c8d059417a7ff8bc1418b948088e858004903d0ffe248c1e9208bc1c3b8ffffffff'},{0x58e890,'7be85800'}}
@@ -40,7 +40,7 @@ local function unhex(s)return(s:gsub('%x%x',function(x)return string.char(tonumb
 local function native_memory()
  local memory=mod.require('src/host_native.lua').memory()
  memory.scene=memory.world_address
- local open,why=package.loadlib(mod.require('src/host_native.lua').library('hd2_nativeinfo_3139cc5f8ecb4078.dll'),'luaopen_hd2_nativeinfo')
+ local open,why=package.loadlib(mod.require('src/host_native.lua').library('hd2_nativeinfo_c1578203689e39b9.dll'),'luaopen_hd2_nativeinfo')
  assert(open,why);local bridge=open()
  for _,name in ipairs({'hover_ensure','hover_height','gamepads_absent'})do assert(type(bridge[name])=='function','Hover native bridge incomplete')end
  function memory.ensure_private(frame)return bridge.hover_ensure(frame.entity,frame.unit_ref)end
@@ -66,7 +66,7 @@ function M.new(sr,memory,completed_update)
  -- Code witnesses tolerate packed pages of this hash-verified build (host_native).
  local function code(at,bytes)if memory.code then return memory.code(at,bytes)end;return read(at,#bytes)==bytes end
  for _,fp in ipairs(M.fingerprints)do assert(code(memory.game+fp[1],unhex(fp[2])),'Hover control fingerprint changed')end
- assert(code(memory.exe+0xa06b0,'\072\137\092\036\008\072\137\116\036\016\087\072\131\236\032\072\139\053\050\112\161\001'),'Hover Unit registry changed')
+ assert(code(memory.exe+0xa06a0,'\072\137\092\036\008\072\137\116\036\016\087\072\131\236\032\072\139\053\066\112\161\001'),'Hover Unit registry changed')
  local function map(header,key,limit)
   local s=read(header,24);local data,cap,empty,seed=address(s,0),word(s,8),word(s,12),word(s,16)
   assert(data>=65536 and data<2^47 and data%4==0 and cap>0 and cap<=4194304 and power_two(cap),
@@ -91,7 +91,7 @@ function M.new(sr,memory,completed_update)
   if index>=count then return nil,true end
   if read(assert(ptr(registry+0xa0,1))+index,1):byte()~=generation then return nil,true end
   local object=ptr(assert(ptr(registry+0x88))+index*8);if not object then return nil,true end
-  local vt=assert(ptr(object));assert(ptr(vt+0xf8)==memory.exe+0x28d3c0 and ptr(vt+0xc8)==memory.exe+0x2935e0,'Hover Unit type changed')
+  local vt=assert(ptr(object));assert(ptr(vt+0xf8)==memory.exe+0x28d330 and ptr(vt+0xc8)==memory.exe+0x293550,'Hover Unit type changed')
   return object
  end
  local function local_owner(cleanup)

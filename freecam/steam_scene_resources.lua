@@ -7,9 +7,9 @@ function M.new(sr,memory,bridge)
  local function ptr(at)local p=pointer(memory.read(at,8),0);assert(p>=65536 and p<2^47,'Renderer pointer invalid');return p end
  local function word(at)return u32(memory.read(at,4),0)end
  local function check()
-  local pe=word(memory.exe+60);assert(word(memory.exe+pe+8)==0x6ad78c0d,'Renderer build differs')
-  assert(memory.function_address(sr.Renderer.resource)==memory.exe+0x3f9450,'Renderer getter differs')
-  assert(memory.read(memory.exe+0x103d4d,6)=='\139\133\144\004\000\000'and memory.read(memory.exe+0x103d5c,7)=='\072\139\133\128\004\000\000','Renderer cache consumer differs')
+  local pe=word(memory.exe+60);assert(word(memory.exe+pe+8)==0x6ae0964a,'Renderer build differs')
+  assert(memory.function_address(sr.Renderer.resource)==memory.exe+0x3f9390,'Renderer getter differs')
+  assert(memory.read(memory.exe+0x103d1d,6)=='\139\133\144\004\000\000'and memory.read(memory.exe+0x103d2c,7)=='\072\139\133\128\004\000\000','Renderer cache consumer differs')
   local renderer=ptr(ptr(memory.exe+0x24099e8)+0x338);return renderer
  end
  function self.target(hash)
@@ -48,8 +48,8 @@ function M.new(sr,memory,bridge)
  function self.color()
   local target=self.target(0xa68c78a4);local display=self.target(0x2b269c03)
   assert(target.resource~=display.resource and target.backing~=display.backing and target.id~=display.id,'Scene color aliases display')
-  local getter=sr.Application.render_setting;assert(memory.function_address(getter)==memory.exe+0x3d43b0,'Render setting getter differs')
-  assert(memory.read(memory.exe+0x3d417a,7)=='\072\139\013\063\055\110\001','Render setting schema binding differs')
+  local getter=sr.Application.render_setting;assert(memory.function_address(getter)==memory.exe+0x3d42f0,'Render setting getter differs')
+  assert(memory.read(memory.exe+0x3d40ba,7)=='\072\139\013\255\055\110\001','Render setting schema binding differs')
   local settings=ptr(memory.exe+0x1ab78c0);local n=word(settings);assert(n>0 and n<=4096,'Render settings count invalid');local rows=ptr(settings+8);local schema={};local records=bulk(rows,n*24)
   for i=0,n-1 do local row=records:sub(i*24+1,i*24+24);schema[u32(row,16)]=u32(row,0)end
   assert(schema[0xbf7ef641]==4 and schema[0x3f5fea89]==1,'Render settings schema differs')

@@ -3,7 +3,7 @@ local PORT51=mod.require('src/cffi.lua')
 -- hd2_net libraries. Copyright (c) 2026 Link; see vendor/LICENSE-Link.txt.
 -- This backend changes behavior fields and the solo player no-aggro bit only: no clock, pose, velocity, stun,
 -- spawn, despawn, physics API, or game-function invocation.
-local M={game_stamp=0x6ad7c05d,exe_stamp=0x6ad78c0d}
+local M={game_stamp=0x6ae0e5ff,exe_stamp=0x6ae0964a}
 M.layout={WORLD=0x2ce41b8,DIRECTOR=0x2ce1ed0,AI=0x2ce1878,BEHAVIOR=0x2ce18f0,DETECTOR=0x2ce16f8,ALERT=0x2ce16d8,
  INVALID=0x2e3f0d0,NET=0x2e38228,GAME_STATE=0x2ce1508,GAME_MODE=0x2ce1850,STATE_VALUE=0xac29c,
  WORLD_ENTITIES=0xf1c978,WORLD_RECORDS=0xf349e0,UNIT_REGISTRY=0x1ab76f8}
@@ -45,7 +45,7 @@ function M.new(sr,memory)
  local function image(base,stamp)local pe=u32(base+60);assert(pe>=64 and pe<1048576 and read(base+pe,4)=='PE\0\0'and u32(base+pe+8)==stamp,'Enemy behavior build unsupported')end
  image(memory.game,M.game_stamp);image(memory.exe,M.exe_stamp)
  -- Registry fingerprint shared with the already verified local-subject route.
- assert(read(memory.exe+0xa06b0,22)=='\072\137\092\036\008\072\137\116\036\016\087\072\131\236\032\072\139\053\050\112\161\001','AI Unit registry changed')
+ assert(read(memory.exe+0xa06a0,22)=='\072\137\092\036\008\072\137\116\036\016\087\072\131\236\032\072\139\053\066\112\161\001','AI Unit registry changed')
  local function map(header,key,copied)
   local h=copied or read(header,24);local data,cap,empty,seed=address(h,0),word(h,8),word(h,12),word(h,16)
   assert(data>=65536 and cap>0 and cap<=1048576 and bit.band(cap,cap-1)==0,'AI map layout changed')
@@ -160,7 +160,7 @@ function M.new(sr,memory)
   local methods=span(vt+0xc8,56)
   local alive=copied_pointer(methods,48,vt+0xf8)
   local visible=copied_pointer(methods,0,vt+0xc8)
-  if alive~=memory.exe+0x28d3c0 or visible~=memory.exe+0x2935e0 then return end
+  if alive~=memory.exe+0x28d330 or visible~=memory.exe+0x293550 then return end
   return ref
  end
  -- Solo Passive owns one player flag, rather than touching every enemy.

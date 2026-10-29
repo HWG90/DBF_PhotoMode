@@ -16,7 +16,9 @@ import zipfile
 
 from verify_installed_modules import audit, IMPORT
 from test_steam_port import run
-from build_steam_candidate import NATIVE_LIBRARIES
+# Game build 26251122. One bridge serves memory, lens, HUD, keyboard, hover and pointer clip; the
+# scene bridge binds depth. The Boot Mod Loader list (build_steam_candidate) loads none in game.
+NATIVE_LIBRARIES=('port51/hd2_nativeinfo_c1578203689e39b9.dll','port51/hd2_nativeinfo_8db3d96f8c3cbb24.dll')
 from build_steam_archive import build_id
 
 ROOT=Path(__file__).resolve().parents[1]

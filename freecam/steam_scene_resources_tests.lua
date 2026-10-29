@@ -6,8 +6,8 @@ local function number(at,n,size)local s={};for i=1,size do s[i]=string.char(n%25
 local function zero(at,n)raw(at,string.rep('\0',n))end
 local function ptr(at,n)number(at,n,8)end
 local function word(at,n)number(at,n,4)end
-word(exe+60,128);word(exe+128+8,0x6ad78c0d);ptr(exe+0x24099e8,app);ptr(app+0x338,renderer)
-raw(exe+0x103d4d,'\139\133\144\004\000\000');raw(exe+0x103d5c,'\072\139\133\128\004\000\000');raw(exe+0x3d417a,'\072\139\013\063\055\110\001')
+word(exe+60,128);word(exe+128+8,0x6ae0964a);ptr(exe+0x24099e8,app);ptr(app+0x338,renderer)
+raw(exe+0x103d1d,'\139\133\144\004\000\000');raw(exe+0x103d2c,'\072\139\133\128\004\000\000');raw(exe+0x3d40ba,'\072\139\013\255\055\110\001')
 word(renderer+0x1790,3);ptr(renderer+0x1798,resource_rows);ptr(renderer+0x1168,backend);ptr(backend+0x480,array);word(backend+0x490,0);word(array,3);ptr(array+8,cache_rows)
 for i=1,3 do
  local a=resource_rows+(i-1)*32;zero(a,32);word(a,hashes[i]);ptr(a+8,resources[i]);word(a+24,0x7fffffff)
@@ -21,7 +21,7 @@ local sr={Renderer={resource=function(name)assert(name=='linear_depth');calls=ca
 -- The boolean setting must preserve false, without Lua's and/or conversion.
 sr.Application.render_setting=function(name)if name=='hdr_enabled'then return false end;return 200 end
 local memory={exe=exe,read=function(at,n)local s={};for i=0,n-1 do local value=assert(bytes[at+i],'Unreadable test memory');s[#s+1]=string.char(value)end;return table.concat(s)end,
- function_address=function(f)if f==sr.Renderer.resource then return exe+0x3f9450 end;return exe+0x3d43b0 end}
+ function_address=function(f)if f==sr.Renderer.resource then return exe+0x3f9390 end;return exe+0x3d42f0 end}
 local r=M.new(sr,memory,{userdata_address=function(v)return v end})
 assert(r.registered());local ok,color=r.color();assert(ok and color.format==19 and color.hdr_enabled==false and color.ui_brightness==200)
 assert(r.depth.get()==resources[1]and calls==1)

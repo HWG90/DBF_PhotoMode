@@ -5,7 +5,7 @@ local native_type,native_number=type,tonumber
 -- Folder installs keep the bridge in port51/; the archive build sets mod.native_dir.
 local function bridge_path(missing)
  local dir=mod and(mod.native_dir or mod.dir and mod.dir..'/port51')
- return assert(dir,missing)..'/hd2_nativeinfo_f6d3465944c1aea1.dll'
+ return assert(dir,missing)..'/hd2_nativeinfo_c1578203689e39b9.dll'
 end
 local function userdata_address(value)
  local native=package.loaded.hd2_nativeinfo

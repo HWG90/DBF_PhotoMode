@@ -19,11 +19,11 @@ function M.new(sr,log,memory,setter,toggler)
   assert(value>=65536 and value<2^47 and value%8==0,'HUD owner pointer unavailable');return value
  end
  local pe=word(read(game+60,4));assert(pe>=64 and pe<1048576 and read(game+pe,4)=='PE\0\0','HUD PE header differs')
- assert(word(read(game+pe+8,4))==0x6ad7c05d and word(read(game+pe+80,4))==0x3382000,'HUD game build unsupported')
+ assert(word(read(game+pe+8,4))==0x6ae0e5ff and word(read(game+pe+80,4))==0x3382000,'HUD game build unsupported')
  local signature='\072\131\236\040\068\139\001\076\139\209\065\139\192\069\139\200\131\224\239\065\131\201\016\132\210\068\015\068\200\068\137\009'
  assert(read(game+0x12e4cc0,#signature)==signature,'HUD visibility binding differs')
  if not setter then
-  local open,why=package.loadlib(mod.require('src/host_native.lua').library('hd2_nativeinfo_78b314de6177433d.dll'),'luaopen_hd2_nativeinfo');assert(open,why)
+  local open,why=package.loadlib(mod.require('src/host_native.lua').library('hd2_nativeinfo_c1578203689e39b9.dll'),'luaopen_hd2_nativeinfo');assert(open,why)
   local native=open();assert(type(native.hud_visible)=='function'and type(native.hud_toggle)=='function','Typed HUD bridge unavailable')
   setter=function(widget,visible)assert(native.hud_visible(widget,visible and 1 or 0))end
   toggler=function(root,expected,value)assert(native.hud_toggle(expected,value,root)==value,'HUD toggle readback differs')end

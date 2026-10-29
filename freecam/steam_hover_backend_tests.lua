@@ -18,7 +18,7 @@ local function fixture()
  local function image(base,stamp,size)put(base,'MZ');u32(base+60,0x80);put(base+0x80,'PE\0\0\100\134');u32(base+0x88,stamp);put(base+0x98,'\011\002');u32(base+0xd0,size or 0x4000000)end
  image(memory.game,L.game_stamp,L.game_size);image(memory.exe,L.exe_stamp)
  for _,fp in ipairs(M.fingerprints)do put(memory.game+fp[1],unhex(fp[2]))end
- put(memory.exe+0xa06b0,'\072\137\092\036\008\072\137\116\036\016\087\072\131\236\032\072\139\053\050\112\161\001')
+ put(memory.exe+0xa06a0,'\072\137\092\036\008\072\137\116\036\016\087\072\131\236\032\072\139\053\066\112\161\001')
  local maps={}
  local function newmap(header,cap)
   local data=alloc(4096,4);put(header,le(data,8)..le(cap,4)..le(4294967295,4)..le(1,4)..le(0,4))
@@ -41,7 +41,7 @@ local function fixture()
  local function entity(e,index,unit_index,typebytes,game_ref)
   local ref=4194304+unit_index;local object=alloc();local vt=alloc();local raw=typebytes..le(e,4)..le(ref,4)..le(game_ref or 77,4)..le(1,4)
   put(f.world+L.WORLD_RECORDS+index*24,raw);insert(f.world+L.WORLD_ENTITIES,e,index);insert(f.world+L.WORLD_UNITS,ref,index)
-  ptr(f.unit_list+unit_index*8,object);put(f.generations+unit_index,'\1');ptr(object,vt);ptr(vt+0xf8,memory.exe+0x28d3c0);ptr(vt+0xc8,memory.exe+0x2935e0);ptr(object+0x18,f.scene)
+  ptr(f.unit_list+unit_index*8,object);put(f.generations+unit_index,'\1');ptr(object,vt);ptr(vt+0xf8,memory.exe+0x28d330);ptr(vt+0xc8,memory.exe+0x293550);ptr(object+0x18,f.scene)
   return ref,raw,object
  end
  local hero_type=le(0x294dfa97,4)..le(0x4d1c334d,4);local pack_type='\207\102\219\028\079\015\200\094'
@@ -104,7 +104,7 @@ do
 end
 -- Constructor refuses the build/code contract before any data writes.
 for _,change in ipairs({'stamp','size','gate','registry'})do
- local f=fixture();if change=='stamp'then f.u32(f.memory.game+0x88,0)elseif change=='size'then f.u32(f.memory.game+0xd0,0)elseif change=='gate'then f.put(f.memory.game+0x9c6a97,'\0')else f.put(f.memory.exe+0xa06b0,'\0')end
+ local f=fixture();if change=='stamp'then f.u32(f.memory.game+0x88,0)elseif change=='size'then f.u32(f.memory.game+0xd0,0)elseif change=='gate'then f.put(f.memory.game+0x9c6a97,'\0')else f.put(f.memory.exe+0xa06a0,'\0')end
  assert(not pcall(M.new,f.sr,f.memory)and#f.writes==0)
 end
 do

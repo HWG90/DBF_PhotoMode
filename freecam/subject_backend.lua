@@ -25,15 +25,15 @@ function M.new(sr,memory)
  local function image(base,stamp)
   local pe=word(base+60);assert(pe>=64 and pe<1048576 and read(base+pe,4)=='PE\0\0'and word(base+pe+8)==stamp,'Subject game build unsupported')
  end
- image(game,0x6ad7c05d);image(exe,0x6ad78c0d)
+ image(game,0x6ae0e5ff);image(exe,0x6ae0964a)
  assert(sr.Application and sr.World and sr.Unit and type(sr.World.units)=='function','Subject Unit API unavailable')
- assert(memory.function_address(sr.Unit.set_mesh_visibility)==exe+0x3f4c80 and code(exe+0x3f4c80,'\072\139\209\233\168\248\255\255'),'Subject visibility binding changed')
- assert(code(exe+0x51fe50,'\064\087\072\131\236\048\068\015\182\137\220\000\000\000'),'Subject mesh visibility layout changed')
- assert(code(exe+0xa06b0,'\072\137\092\036\008\072\137\116\036\016\087\072\131\236\032\072\139\053\050\112\161\001'),'Subject Unit registry changed')
+ assert(memory.function_address(sr.Unit.set_mesh_visibility)==exe+0x3f4bc0 and code(exe+0x3f4bc0,'\072\139\209\233\168\248\255\255'),'Subject visibility binding changed')
+ assert(code(exe+0x51fdb0,'\064\087\072\131\236\048\068\015\182\137\220\000\000\000'),'Subject mesh visibility layout changed')
+ assert(code(exe+0xa06a0,'\072\137\092\036\008\072\137\116\036\016\087\072\131\236\032\072\139\053\066\112\161\001'),'Subject Unit registry changed')
  -- Verified Unit children getter: first child +1D8, next sibling +1E0.
  -- Read the list directly; the game's Lua is_child binding drops its result.
- assert(code(exe+0x28e6e0,'\072\137\092\036\016\087\072\131\236\032\072\141\185\216\001\000\000')
-  and code(exe+0x28e745,'\072\139\063\139\019\072\129\199\224\001\000\000'),'Subject attachment layout changed')
+ assert(code(exe+0x28e650,'\072\137\092\036\016\087\072\131\236\032\072\141\185\216\001\000\000')
+  and code(exe+0x28e6b5,'\072\139\063\139\019\072\129\199\224\001\000\000'),'Subject attachment layout changed')
  local function lookup(owner,offset,key,limit)
   local data=ptr(owner+offset);local cap=word(owner+offset+8);local empty=word(owner+offset+12);local seed=word(owner+offset+16)
   assert(cap>0 and cap<=4194304,'Subject owner map bounds changed')
@@ -48,7 +48,7 @@ function M.new(sr,memory)
   local registry=ptr(exe+0x1ab76f8);local index=ref%4194304;local generation=math.floor(ref/4194304)
   assert(index<word(registry+0x98)and read(ptr(registry+0xa0)+index,1):byte()==generation,'Subject Unit generation retired')
   local unit=ptr(ptr(registry+0x88)+index*8);local vt=ptr(unit)
-  assert(ptr(vt+0xf8)==exe+0x28d3c0 and ptr(vt+0xc8)==exe+0x2935e0 and ptr(vt+0x1e8)==exe+0x28e6e0 and word(unit+8)==ref,'Subject Unit renderer type changed')
+  assert(ptr(vt+0xf8)==exe+0x28d330 and ptr(vt+0xc8)==exe+0x293550 and ptr(vt+0x1e8)==exe+0x28e650 and word(unit+8)==ref,'Subject Unit renderer type changed')
   return unit
  end
  local root_cache;local self={}
@@ -153,8 +153,10 @@ function M.new(sr,memory)
   local capacity,count=word(manager),word(manager+8)
   assert(capacity>0 and capacity<=384 and count<=capacity,'Subject chain bounds changed')
   if count==0 then return manager,count end
-  assert(code(game+0x8c6eb9,'\068\139\073\032\068\139\081\040\068\015\175\210\065\141\121\255\069\133\201\116\051\076\139\089\024')
-   and code(game+0x8c567f,'\065\137\095\004'),'Subject chain layout changed')
+  -- The pool lookup that reads this manager (game+0x8d6f10 loads 0x2ce1d48). The 0x8c6eb9 and
+  -- 0x8c567f witnesses came from the pre-10/20 build and matched neither 26088801 nor 26251122;
+  -- the row stride and base are witnessed by the constructor above.
+  assert(code(game+0x8d6f29,'\068\139\073\032\068\139\081\040\068\015\175\210\065\141\121\255\069\133\201\116\051\076\139\089\024'),'Subject chain layout changed')
   assert(manager>=65536 and manager<2^47,'Subject chain manager unavailable')
   local capacity,count=word(manager),word(manager+8)
   assert(capacity>0 and capacity<=384 and count<=capacity,'Subject chain bounds changed')
@@ -296,7 +298,7 @@ function M.new(sr,memory)
  -- The public bone-mode getter dereferences Unit+168 without a null check.
  -- This is distinct from the animation state machine at Unit+178.
  local function pose_component(unit)
-  assert(ptr(ptr(unit)+0x1a8)==exe+0x28d4d0 and code(exe+0x28d4d0,'\072\139\129\104\001\000\000\195'),'Subject bone component layout changed')
+  assert(ptr(ptr(unit)+0x1a8)==exe+0x28d440 and code(exe+0x28d440,'\072\139\129\104\001\000\000\195'),'Subject bone component layout changed')
   local component=ptr(unit+0x168)
   assert(component>=65536 and component<2^47,'Subject bone component unavailable')
   assert(word(component+0x164)<=7,'Subject bone transfer mode changed')
@@ -304,10 +306,10 @@ function M.new(sr,memory)
  end
  function self.pose_frame()
   local frame=self.frame();local unit=native(frame.root_ref)
-  assert(memory.function_address(sr.Unit.animation_bone_mode)==exe+0x3f1c30
-   and memory.function_address(sr.Unit.set_animation_bone_mode)==exe+0x3f1f50
-   and code(exe+0x3f1c89,'\139\136\100\001\000\000\133\201')
-   and code(exe+0x3f1f40,'\137\184\100\001\000\000'),'Subject bone mode binding changed')
+  assert(memory.function_address(sr.Unit.animation_bone_mode)==exe+0x3f1b70
+   and memory.function_address(sr.Unit.set_animation_bone_mode)==exe+0x3f1e90
+   and code(exe+0x3f1bc9,'\139\136\100\001\000\000\133\201')
+   and code(exe+0x3f1e80,'\137\184\100\001\000\000'),'Subject bone mode binding changed')
   frame.native=unit;frame.component=pose_component(unit);frame.world_native=ptr(unit+0x18)
   assert(frame.owner_key==owner_key(owner()),'Subject pose owner changed during lookup');return frame
  end

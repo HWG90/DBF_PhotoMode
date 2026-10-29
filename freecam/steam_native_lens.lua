@@ -20,8 +20,8 @@ function M.new(sr,host,model,lens,bridge_name)
   local v=u32(a);local sign=v>=2147483648 and -1 or 1;local e=math.floor(v/8388608)%256;local m=v%8388608
   assert(e~=255,'Nonfinite lens field');return sign*(e==0 and m*2^-149 or(1+m/8388608)*2^(e-127))
  end
- assert(code(exe+0x3d4129,'\072\139\005\184\088\003\002'),'Lens renderer global differs')
- assert(code(exe+0x104a23,'\068\057\131\000\022\000\000'),'Lens world binding differs')
+ assert(code(exe+0x3d4069,'\072\139\005\120\089\003\002'),'Lens renderer global differs')
+ assert(code(exe+0x1049f3,'\068\057\131\000\022\000\000'),'Lens world binding differs')
  local self={ready=false,message='Native lens waits for Depth of field'}
  local observer,previous_update,observer_switch
  local current,selected,observed,observed_at,last_revision,next_attach,next_observe,history,next_check,mismatch,mismatch_at,last_seen
@@ -136,7 +136,7 @@ function M.new(sr,host,model,lens,bridge_name)
    if not observed or now-observed_at>.5 then self.message='Waiting for current camera lens';return true end
    local ok,p=pcall(function()
     local provider=ptr(current.native+0x230b58);local vt=ptr(provider)
-    assert(ptr(vt+0x28)==exe+0x2ad310 and ptr(vt+0x30)==exe+0x2ad520)
+    assert(ptr(vt+0x28)==exe+0x2ad280 and ptr(vt+0x30)==exe+0x2ad490)
     local count,cap=u32(provider+0xb8),u32(provider+0xbc);assert(count<=cap and cap<=4096)
     local entities,classes,instances=ptr(provider+0xc8),ptr(provider+0xd0),ptr(provider+0xd8);local candidates={}
     for i=0,count-1 do if u32(classes+i*4)==0xf7a3101f then

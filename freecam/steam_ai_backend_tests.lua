@@ -12,9 +12,9 @@ local memory={game=game,exe=exe,now=function()return now end,scene=function()ret
  read=function(at,size)s.reads=s.reads+1;s.read_bytes=s.read_bytes+size;if s.fault and at<=s.fault and at+size>s.fault then error('Injected unreadable memory')end;local out={};for i=1,size do out[i]=string.char(bytes[at+i-1]or 0)end;return table.concat(out)end,
  write=function(at,data)memwrites=memwrites+1;s.writes=s.writes+1;put(at,data);if s.after_write then s.after_write(at,data)end end}
 for _,item in ipairs({{game,B.game_stamp},{exe,B.exe_stamp}})do num(item[1]+60,0x100);put(item[1]+0x100,'PE\0\0');num(item[1]+0x108,item[2])end
-put(exe+0xa06b0,'\072\137\092\036\008\072\137\116\036\016\087\072\236\032\072\139\053\050\112\161\001')
+put(exe+0xa06a0,'\072\137\092\036\008\072\137\116\036\016\087\072\236\032\072\139\053\066\112\161\001')
 assert(not pcall(B.new,{},memory),'Invalid registry fingerprint accepted')
-put(exe+0xa06b0,'\072\137\092\036\008\072\137\116\036\016\087\072\131\236\032\072\139\053\050\112\161\001')
+put(exe+0xa06a0,'\072\137\092\036\008\072\137\116\036\016\087\072\131\236\032\072\139\053\066\112\161\001')
 local scene={};local peers={};local joining={}
 local sr={Application={main_world=function()return scene end},Network={game_session=function()return{}end,connections=function()return peers end},GameSession={other_peers=function()return peers end,synchronizing_peers=function()return joining end}}
 local world,state,mode,net,director=0x40000000,0x41000000,0x42000000,0x43000000,0x44000000
@@ -33,7 +33,7 @@ end
 local airow,aidesc=part(ai,0x2430,0x2448,0x2460,0x14);local brow=part(behavior,0x40,0x58,0x60,0x1f8);local drow=part(detector,0x30,0x48,0x50,0x13f8);local arow=part(alert,0x20,0x38,0x50,4)
 num(airow,0);num(airow+4,0x200);num(brow+0x68,entity);num(brow+0x18,77);num(drow+0x13f0,1,1);num(drow+0x310,3);num(arow,4)
 local world_map=map(world+L.WORLD_ENTITIES,entity,0);num(world+L.WORLD_RECORDS+8,entity);num(world+L.WORLD_RECORDS+12,ref)
-local registry,pointers,generations,unit,vt=allocate(),allocate(),allocate(),allocate(),allocate();num(exe+L.UNIT_REGISTRY,registry,8);num(registry+0x98,10);num(registry+0x88,pointers,8);num(registry+0xa0,generations,8);num(generations+5,1,1);num(pointers+5*8,unit,8);num(unit+0x18,0x30000000,8);num(unit,vt,8);num(vt+0xf8,exe+0x28d3c0,8);num(vt+0xc8,exe+0x2935e0,8)
+local registry,pointers,generations,unit,vt=allocate(),allocate(),allocate(),allocate(),allocate();num(exe+L.UNIT_REGISTRY,registry,8);num(registry+0x98,10);num(registry+0x88,pointers,8);num(registry+0xa0,generations,8);num(generations+5,1,1);num(pointers+5*8,unit,8);num(unit+0x18,0x30000000,8);num(unit,vt,8);num(vt+0xf8,exe+0x28d330,8);num(vt+0xc8,exe+0x293550,8)
 local native=B.new(sr,memory);local ctx=assert(native.context());assert(ctx.solo and ctx.player_count==1);local record=assert(native.observe(ctx,entity));assert(record.fields.detector.value==1 and record.fields.still.value==0x200)
  s.reads,s.read_bytes,s.writes=0,0,0
  s.native,s.ctx,s.record,s.memory,s.sr=native,ctx,record,memory,sr

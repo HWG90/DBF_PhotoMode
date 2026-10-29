@@ -10,7 +10,7 @@ local function fixture()
   if f.unreadable then return nil end
   if at==game+60 then return u(128)end
   if at==game+128 then return'PE\0\0'end
-  if at==game+128+8 then return u(0x6ad7c05d)end
+  if at==game+128+8 then return u(0x6ae0e5ff)end
   if at==game+128+80 then return u(0x3382000)end
   if at==game+0x12e4cc0 then return f.bad_signature and string.rep('\0',#signature)or signature end
   if at==game+0x2ce1508 then return p(f.state)end
