@@ -1,6 +1,6 @@
-# Known issues — 1.3.2 Lua rewrite
+# Known issues — 1.3.3 Lua rewrite
 
-1.3.2 fixes the game waiting for WJL at startup, brings back PNG screenshots on Windows and makes POV hiding, Handycam and Full Hide work with any armour; see [1.3.2](RELEASE-1.3.2.md). 1.3.0 is the first pass of a total Lua 5.1 rewrite. Boot Mod Loader is the only supported loader. Chef Lite is planned; whitelist approval may permit fuller compatibility, with no approval or parity guarantee.
+1.3.3 supports the 29 October 2026 game update (build 26251122) and fixes Pose Stop, Saved Shots and Steam's Ctrl+F11; see [1.3.3](RELEASE-1.3.3.md). 1.3.2 fixed the game waiting for WJL at startup, brought back PNG screenshots on Windows and made POV hiding, Handycam and Full Hide work with any armour; see [1.3.2](RELEASE-1.3.2.md). 1.3.0 is the first pass of a total Lua 5.1 rewrite. Boot Mod Loader is the only supported loader. Chef Lite is planned; whitelist approval may permit fuller compatibility, with no approval or parity guarantee.
 
 - **Cape detachment still occasionally happens**, particularly during Freeze, ragdolls and pose transitions.
 - **New subject selection sometimes fails**, including automatic discovery and clicks. Session recovery is improved, not universally reliable.
@@ -11,6 +11,9 @@
 - Use **Native camera DoF**. Depth shaders currently do not work. Inverted depth, Thermal depth, Depth contours, Depth fog and Shader DoF/bokeh are removed from the current menu. Native focus/aperture work. Public scene effects stay disabled until visually verified.
 - Automatic native HUD hiding is not restored on Windows. Use your game's Toggle HUD binding; the tester used `/`.
 - Handycam ADS transitions need wider coverage; occasional camera-return/clipping and normal-aim parallax remain possible. Backward/strafe body turning is not corrected.
+- A Helldiver frozen while running can flicker briefly while the game tries to animate it.
+- Hide Cape can miss a modded cape. Entering Photo Mode from a first-person view has been reported to show a headless prone body; steps to reproduce are welcome.
+- The Follow player cameras and the cape after an armour change are not yet confirmed in game.
 - Lighting, outfits/equipment, respawns and scene changes need broader coverage. Armour is now found on any outfit, but only a few sets were tried. HDR10 shots are converted to PNG; colours were checked on one HDR display.
 - Default movement keys follow your keyboard layout only when WJL is running; keys you saved earlier are kept. Only a US layout was checked.
 - Windows: WJL leaves a shortcut another program already owns (for example a GPU overlay's Alt+R) with that program. Photo Mode does not react to that exact combination.
