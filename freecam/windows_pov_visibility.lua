@@ -113,6 +113,27 @@ function M.geometry(sr,unit,meshes,root)
  end)
  return ok and result or nil
 end
+-- Region markers: every armour piece seen live (63 pieces, 2026-10-29) carries one or two small
+-- meshes whose names are the same on every armour and say which body region it covers. They decide
+-- first; height (M.geometry) and bones are the fallback. Their measured positions are not trusted
+-- (one chest marker read 2.70 m), only their names. Markers also fixed what bones got wrong: sleeves
+-- without the hand bone and waist pieces reaching the chest had been filed as torso.
+M.markers={[-1507809972]='torso',[-393632797]='torso',[1019278452]='torso', -- chest, shoulders
+ [-2146726238]='helmet', -- head
+ [-2045232359]='body',[-1149790933]='body',[-842808422]='body', -- pelvis, thighs
+ [-298288038]='body',[-646512891]='body', -- upper arms
+ [-13682950]='cape'}
+-- The region its markers name; torso wins over the head marker (a collar carries both). nil if
+-- the piece has none or names are unreadable.
+function M.marker_class(sr,unit,meshes)
+ local H=sr.Mesh
+ if not(H and type(H.name)=='function')then return nil end
+ local ok,found=pcall(function()
+  local f={};for i=1,math.min(meshes,16)do local r=M.markers[H.name(sr.Unit.mesh(unit,i))];if r then f[r]=true end end;return f
+ end)
+ if not ok then return nil end
+ for _,region in ipairs({'cape','torso','helmet','body'})do if found[region]then return region end end
+end
 function M.classify(has,geometry)
  if has.cape1 then return'cape'end
  -- Some armours author their chest shells on the whole rig: both arms, the legs and the head
@@ -152,10 +173,11 @@ function M.association(sr,log,clock)
      if matched>0 and matched==named then
       bound=bound+1
       local flags={};for _,name in ipairs(M.probes)do if has[name]then flags[#flags+1]=name end end
-      local geometry=M.ambiguous(has)and M.geometry(sr,unit,meshes,pose(frame.root_handle,1))or nil
-      local class=M.classify(has,geometry)
+      local marked=not has.cape1 and M.marker_class(sr,unit,meshes)or nil
+      local geometry=not marked and M.ambiguous(has)and M.geometry(sr,unit,meshes,pose(frame.root_handle,1))or nil
+      local class=marked or M.classify(has,geometry)
       local short=M.short(U.resource_name(unit))
-      seen[#seen+1]=short..'['..table.concat(flags,'+')..(geometry and string.format('@%.2f',geometry.up)or'')..']'
+      seen[#seen+1]=short..'['..table.concat(flags,'+')..(marked and'='..marked or geometry and string.format('@%.2f',geometry.up)or'')..']'
       -- Every skeleton bone the piece carries, once per resource: evidence for classifying
       -- pieces the probes cannot tell apart (an armour collar and a helmet both carry the head).
       if log and type(frame.rig_nodes)=='table'and not described[short]then
