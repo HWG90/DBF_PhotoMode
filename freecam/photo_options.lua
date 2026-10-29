@@ -1,6 +1,6 @@
 -- Stored photo controls; existing movement and toggle ids remain stable.
 local M={}
-M.defaults={fov=0,focal_preset=1,roll=0,roll_preset=1,saved_camera_radius=60,lock_camera=false,camera_smoothing=false,smoothing_strength=50,action_camera_mode=1,handycam_intensity=50,handycam_lag_ms=0,handycam_forward_cm=14,handycam_up_cm=7,handycam_right_cm=0,handycam_yaw_deg=0,handycam_pitch_deg=0,cinema_notification=false,dof=false,dof_mode=1,dof_quality=1,dof_strength=4,bokeh_shape=1,focus_mode=1,focus_distance=5,aperture=5.6,
+M.defaults={fov=0,focal_preset=1,roll=0,roll_preset=1,saved_camera_radius=60,return_to_last_camera=true,lock_camera=false,camera_smoothing=false,smoothing_strength=50,action_camera_mode=1,handycam_intensity=50,handycam_lag_ms=0,handycam_forward_cm=14,handycam_up_cm=7,handycam_right_cm=0,handycam_yaw_deg=0,handycam_pitch_deg=0,cinema_notification=false,dof=false,dof_mode=1,dof_quality=1,dof_strength=4,bokeh_shape=1,focus_mode=1,focus_distance=5,aperture=5.6,
  filter=1,filter_strength=25,exposure=0,saturation=100,contrast=100,bloom=true,
  shader=1,shader_opacity=10,shader_scale=1,shader_animate=true,scene_shader=1,scene_strength=100,fog_distance=25,fog_density=50,scene_depth_range=100,vignette=0,vignette_width=18,grain=0,grain_size=1.5,
  frame=1,grid=1,logo=1,logo_size=100,logo_x=90,logo_y=8,logo_opacity=85,logo_color='#FFFFFF',clean_view=false,hide_hud=true,hide_controls=false,
@@ -87,6 +87,7 @@ function M.pages(reset,recenter,catalog,saved_actions)
  {id='save_camera',type='button',label='Save camera position',button_label='Save',disabled=not(saved_actions and saved_actions.save),on_activate=saved_actions and saved_actions.save or function()end},
  {id='clear_saved_camera',type='button',label='Clear saved camera position',button_label='Clear',disabled=not(saved_actions and saved_actions.clear),on_activate=saved_actions and saved_actions.clear or function()end},
  {id='recenter',type='button',label='Return to player',button_label='Return',on_activate=recenter},
+ toggle('return_to_last_camera','Reopen at the last camera, relative to the Helldiver'),
  slider('saved_camera_radius','Saved camera retention radius (m)',5,60,1),
  {id='saved_camera_status',type='text',label='Saved camera: none'}}
  -- Move the existing controller-owned movement/pause definitions intact. Their
@@ -206,7 +207,7 @@ function M.pages(reset,recenter,catalog,saved_actions)
  -- Keep the original row objects so live gates and callbacks retain ownership.
  local sections={
  camera_tools={{'Camera tools','screenshot','lock_camera','recenter'},{'Movement','speed','look_sensitivity','wheel_step','roll_speed','camera_smoothing','smoothing_strength','freeze_player','slowmo_speed'},
-  {'Saved camera','save_camera','clear_saved_camera','saved_camera_radius','saved_camera_status'},
+  {'Saved camera','return_to_last_camera','save_camera','clear_saved_camera','saved_camera_radius','saved_camera_status'},
   {'Enemy behavior','ai_behavior','ai_reset','ai_status','ai_hint','ai_limits'},{'Reset','reset_photo'}},
  lens={{'Lens','fov','focal_preset','focal_length_status'},
   {'Focus & depth of field','dof','dof_mode','focus_mode','focus_distance','aperture','focus_status','focus_hint'},

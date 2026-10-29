@@ -87,25 +87,19 @@ function M.new(photo,context,path,log,storage)
   local names={};for i=1,M.maximum do names[i]='Shot '..i..(rows[i]and' — saved'or' — empty')end;return names
  end
  function self.occupied(index)return slot(index)and rows[index]~=nil end
- function self.save(index)
-  if not slot(index)then return false,'Choose a Director shot slot'end
-  local ready,why,player=self.ready();if not ready then self.status=why;return false,why end
-  if type(photo.pos)~='table'or not photo.view or not finite(photo.view.yaw)or not finite(photo.view.pitch)then return false,'Place the Photo Mode camera first'end
-  for i=1,3 do if not finite(photo.pos[i])then return false,'Camera position unavailable'end end
+ -- The current camera as a shot relative to the player frame.
+ local function relative(player)
+  if type(photo.pos)~='table'or not photo.view or not finite(photo.view.yaw)or not finite(photo.view.pitch)then return nil,'Place the Photo Mode camera first'end
+  for i=1,3 do if not finite(photo.pos[i])then return nil,'Camera position unavailable'end end
   local dx,dy,dz=photo.pos[1]-player.position[1],photo.pos[2]-player.position[2],photo.pos[3]-player.position[3]
   local c,s=math.cos(player.yaw),math.sin(player.yaw)
   local row={right=dx*s-dy*c,forward=dx*c+dy*s,up=dz,yaw=angle(photo.view.yaw-player.yaw),pitch=photo.view.pitch,roll=photo.options and photo.options.roll or 0,fov=photo.options and photo.options.fov or 0}
-  if not valid(row)then return false,'Camera is outside the Director shot limits'end
-  local candidate=copy(rows);candidate[index]=row;return commit(candidate,'Shot '..index..' saved relative to player')
+  if not valid(row)then return nil,'Camera is outside the Director shot limits'end
+  return row
  end
- function self.clear(index)
-  if not slot(index)then return false,'Choose a Director shot slot'end
-  local candidate=copy(rows);candidate[index]=nil;return commit(candidate,'Shot '..index..' cleared')
- end
- function self.recall(index,handle)
-  if not slot(index)or not rows[index]then return false,'This Director shot is empty'end
-  local ready,why,player=self.ready();if not ready then self.status=why;return false,why end
-  local row=rows[index];local c,s=math.cos(player.yaw),math.sin(player.yaw)
+ -- Place the camera at a shot relative to the player frame, lens included.
+ local function place(row,player,handle)
+  local c,s=math.cos(player.yaw),math.sin(player.yaw)
   local values={fov=row.fov,roll=row.roll};local old={fov=handle.get('fov'),roll=handle.get('roll')}
   local called,accepted,reason=pcall(function()
    if handle.set_many then return handle.set_many(values)end
@@ -117,6 +111,35 @@ function M.new(photo,context,path,log,storage)
   photo.view={yaw=(player.yaw+row.yaw)%(2*math.pi),pitch=row.pitch,sequence=photo.input and photo.input.sequence}
   photo.locked=false;photo.lock_pose=nil
   if photo.options then photo.options.fov=row.fov;photo.options.roll=row.roll end
+  return true
+ end
+ function self.save(index)
+  if not slot(index)then return false,'Choose a Director shot slot'end
+  local ready,why,player=self.ready();if not ready then self.status=why;return false,why end
+  local row;row,why=relative(player);if not row then return false,why end
+  local candidate=copy(rows);candidate[index]=row;return commit(candidate,'Shot '..index..' saved relative to player')
+ end
+ -- The camera at the last Photo Mode close, for this game session only.
+ local last
+ function self.remember()
+  local ready,why,player=self.ready();if not ready then return false,why end
+  local row;row,why=relative(player);if not row then return false,why end
+  last=row;return true
+ end
+ function self.return_to_last(handle)
+  if not last then return false,'No camera to return to'end
+  local ready,why,player=self.ready();if not ready then return false,why end
+  local ok;ok,why=place(last,player,handle);if not ok then return false,why end
+  self.status='Camera returned to its place relative to the player';return true
+ end
+ function self.clear(index)
+  if not slot(index)then return false,'Choose a Director shot slot'end
+  local candidate=copy(rows);candidate[index]=nil;return commit(candidate,'Shot '..index..' cleared')
+ end
+ function self.recall(index,handle)
+  if not slot(index)or not rows[index]then return false,'This Director shot is empty'end
+  local ready,why,player=self.ready();if not ready then self.status=why;return false,why end
+  local ok;ok,why=place(rows[index],player,handle);if not ok then return false,why end
   self.status='Shot '..index..' recalled relative to current player';return true
  end
  return self

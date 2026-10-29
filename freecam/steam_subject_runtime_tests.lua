@@ -92,6 +92,10 @@ local function configure(f,deps,sr)
     same(r.before,before)and same(r.target,value)and same(r.current,current))
    return true
   end
+  adapter.tracking_frame=function(t)
+   count();assert(valid(t));local p=t.nodes[1].p
+   return{explicit_subject=true,identity=t.identity,root_handle=t,world=f.world,position={p[1],p[2],p[3]},head={p[1],p[2],p[3]+1.6},yaw=0}
+  end
   adapter.commit=function(t)
    count();f.commits=f.commits+1;assert(valid(t));event('commit')
    if f.commit_error then return false,f.commit_error end
@@ -160,6 +164,20 @@ do
  assert(count('Subject reset detail: Subject changed during scene refresh node 23')==1,'A refused Stop names its check once')
  assert(count('Subject recover detail: Subject changed during scene refresh node 23')==1,'The automatic recovery names its check once')
  f.commit_error=nil;assert(f.action('subject_pose_stop'));f.restored()
+end
+do
+ -- Boot Mod Loader has no native player backend: Saved Shots anchor on the selected
+ -- Helldiver, the one selected automatically on open included.
+ local D=dofile('freecam/director.lua');local rows={}
+ local f=fixture(function(f,deps)
+  deps.director={new=function(photo,context,path,log)
+   return D.new(photo,context,path,log,{load=function()return rows end,save=function(v)rows=v;return true end})
+  end}
+ end)
+ f.enable();assert(f.subject.status().selected~=nil,'Opening selects a Helldiver automatically')
+ local ok,why=f.action('director_save');assert(ok,'Save against the selected Helldiver: '..tostring(why))
+ assert(rows[1]and math.abs(rows[1].up-(-3))<10,'The shot is stored relative to the Helldiver')
+ ok,why=f.action('director_recall');assert(ok,'Recall against the selected Helldiver: '..tostring(why))
 end
 local function index_of(events,value)
  for i,item in ipairs(events)do if item==value then return i end end

@@ -969,6 +969,12 @@ function M.new(host,sr,deps,service)
  local function player_frame()
   if deps.player_frame then return deps.player_frame()end
   if subject_backend then return subject_backend.frame()end
+  -- No native player backend (Boot Mod Loader): shots are relative to the selected Helldiver.
+  if subject and type(subject.anchor_frame)=='function'then
+   local frame,why=subject.anchor_frame()
+   if type(frame)~='table'then return nil,why or'Select a Helldiver in Subject'end
+   return{local_owner=true,identity=frame.identity,yaw=frame.yaw,position=frame.position}
+  end
   return nil,'Local player unavailable'
  end
  if deps.director then director=deps.director.new(director_photo,player_frame,host.config_dir..'/director-shots.ini',host.log)end
@@ -977,20 +983,45 @@ function M.new(host,sr,deps,service)
   if controls.director_slot then controls.director_slot.choices=director.list()end
   if texts.director_status then texts.director_status.label=director.status end
  end
- local function director_action(action)
-  if not director or not photo or not self.active or pending_cleanup or self.mode=='shot'then return false,'Place the Photo camera first'end
-  if not stop_path()or not flush_roll()then return false,self.reason end
+ -- The Photo camera as Director input, and a Director placement back onto the camera, in one
+ -- table: M.new is at Lua 5.1's 200-local limit.
+ local director_bridge={}
+ function director_bridge.input()
   director_photo.active=true;director_photo.pos=copy(photo.pos)
   director_photo.view={yaw=math.atan2(photo.forward[2],photo.forward[1]),pitch=math.asin(math.max(-1,math.min(1,photo.forward[3])))}
   director_photo.options={fov=handle.get('fov'),roll=handle.get('roll')};director_photo.input={sequence=sample_sequence}
+ end
+ function director_bridge.output()
+  photo.pos=copy(director_photo.pos);photo.view=director_photo.view;photo.target=nil
+  local yaw,pitch=photo.view.yaw,photo.view.pitch;local c=math.cos(pitch)
+  photo.forward={math.cos(yaw)*c,math.sin(yaw)*c,math.sin(pitch)}
+  photo.right={math.sin(yaw),-math.cos(yaw),0}
+ end
+ local function director_action(action)
+  if not director or not photo or not self.active or pending_cleanup or self.mode=='shot'then return false,'Place the Photo camera first'end
+  if not stop_path()or not flush_roll()then return false,self.reason end
+  director_bridge.input()
   local ok,why=director[action](handle.get('director_slot'),handle)
-  if ok and action=='recall'then
-   photo.pos=copy(director_photo.pos);photo.view=director_photo.view;photo.target=nil
-   local yaw,pitch=photo.view.yaw,photo.view.pitch;local c=math.cos(pitch)
-   photo.forward={math.cos(yaw)*c,math.sin(yaw)*c,math.sin(pitch)}
-   photo.right={math.sin(yaw),-math.cos(yaw),0}
-  end
+  if ok and action=='recall'then director_bridge.output()end
   director_status();if not ok then notice(why)end;return ok,why
+ end
+ -- Closing remembers the camera relative to the player (the selected Helldiver under Boot
+ -- Mod Loader) so the next open returns there. It never holds up the close.
+ function director_bridge.remember()
+  if not director or not photo or not self.active or pending_cleanup or self.mode=='shot'or not handle.get('return_to_last_camera')then return end
+  local called,ok,why=pcall(function()
+   if not stop_path()or not flush_roll()then return false,self.reason end
+   director_bridge.input();return director.remember()
+  end)
+  if not called or not ok then host.log('Last camera not remembered: '..tostring(called and why or ok))end
+ end
+ -- Opening returns to that camera, relative to the player as it stands now. A method, not a
+ -- local: open() is at Lua 5.1's 60-upvalue limit.
+ function self.return_to_last_camera()
+  if not director or not handle.get('return_to_last_camera')then return end
+  director_bridge.input()
+  local called,returned=pcall(director.return_to_last,handle)
+  if called and returned then director_bridge.output();photo.roll=nil end
  end
  function self.native_lens_status()return native_lens and native_lens.message or'Native lens inactive',native_lens and native_lens.ready or false end
  local function unhook()
@@ -1056,6 +1087,7 @@ function M.new(host,sr,deps,service)
  end
  self.capture=capture
  function self.close(clear_time,automatic,subject_retry)
+  director_bridge.remember()
   deferred_shot=nil
   if handycam then handycam.reset()end
   if photo then photo.handy_roll=nil end
@@ -1562,7 +1594,7 @@ function M.new(host,sr,deps,service)
  if handycam then supported.handycam_intensity=true;supported.handycam_lag_ms=true;supported.handycam_forward_cm=true;supported.handycam_up_cm=true;supported.handycam_right_cm=true;supported.handycam_yaw_deg=true;supported.handycam_pitch_deg=true;supported.handycam_position_handle=true end
  if self.pov_visibility then if self.pov_visibility.queue_player then supported.hide_player=true end;if self.pov_visibility.queue_weapons then supported.hide_weapons=true end;supported.handycam_hide_helmet=true;supported.handycam_hide_torso=true;supported.handycam_hide_cape=true end
  if visibility then for _,id in ipairs({'hide_player','hide_armour','hide_weapons','hide_cape'})do supported[id]=true end end
- if director then for _,id in ipairs({'director_slot','director_save','director_recall','director_clear'})do supported[id]=true end end
+ if director then for _,id in ipairs({'director_slot','director_save','director_recall','director_clear','return_to_last_camera'})do supported[id]=true end end
  if bookmark then supported.save_camera=true;supported.clear_saved_camera=true end
  if simulation then supported.freeze_player=true;supported.slowmo_speed=true end
  if type(deps.load_subject)=='function'then for _,id in ipairs({'subject_refresh','subject_select_1','subject_select_2',
@@ -2113,9 +2145,10 @@ function M.new(host,sr,deps,service)
    light_revision=nil;sync_light()
   end
   checkpoint('open: saved camera')
+  local saved_restored=false
   if bookmark then
    local restored,problem=bookmark.restore(bookmark_context(),handle.get('saved_camera_radius'),handle)
-   if restored then photo=restored elseif problem then notice(problem)end
+   if restored then photo=restored;saved_restored=true elseif problem then notice(problem)end
    bookmark_status()
   end
   checkpoint('open: visibility readiness')
@@ -2141,6 +2174,8 @@ function M.new(host,sr,deps,service)
     end
    end
   end
+  -- Now that the Helldiver is selected; an explicitly saved camera position takes priority.
+  if not saved_restored then self.return_to_last_camera()end
   checkpoint('open: renderer flags')
   if bloom then local ok,why=bloom.open(handle.get('bloom'));sync_bloom();if not ok then notice(why)end end
   if dof then local ok,why=dof.open(handle.get('dof'));sync_dof();if not ok then notice(why)end end
