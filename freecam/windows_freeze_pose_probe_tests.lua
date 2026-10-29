@@ -17,8 +17,12 @@ local function fixture(options)
   animation_bone_mode=function(u)read(u);return f.mode end,
   -- The body's animation state machine (nil: none); the game only fights a hold while it runs.
   has_animation_state_machine=function(u)read(u);return f.machine~=nil end,
+  -- Re-enabling restarts the animation from scratch (the arms came back wrong, live); the state
+  -- getter/setter pair carries where it was.
   disable_animation_state_machine=function(u)read(u);f.machine_calls=(f.machine_calls or 0)+1;f.machine=false end,
-  enable_animation_state_machine=function(u)read(u);f.machine_calls=(f.machine_calls or 0)+1;f.machine=true end,
+  enable_animation_state_machine=function(u)read(u);f.machine_calls=(f.machine_calls or 0)+1;f.machine=true;f.anim={0,0,0}end,
+  animation_get_state=function(u)read(u);return unpack(f.anim or{})end,
+  animation_set_state=function(u,...)read(u);f.anim={...};f.restores=(f.restores or 0)+1 end,
   set_animation_bone_mode=function(u,m)read(u);f.modes=f.modes+1
    if m=='position_and_rotation'and f.restore_fail then error('Restore refused')end
    f.mode=m;if m=='ignore'and f.mode_throw then error('Mode changed then threw')end
@@ -177,7 +181,7 @@ do
  -- Taking the mode back every frame flickered and left the arms in a weird pose (live). After
  -- the first takeback, at update or render, the body's animation state machine is paused
  -- until release, which re-enables it before restoring the mode.
- local m=fixture({continuous=true,exclude_cape=true,claim_transfer=true});m.machine=true
+ local m=fixture({continuous=true,exclude_cape=true,claim_transfer=true,pause_animation=true});m.machine=true;m.anim={3,0.25,7}
  local function game_frame()if m.machine then m.mode='position_and_rotation'end end
  assert(m.probe.prepare(m.subject,0)and m.render(.01)and m.mode=='ignore')
  game_frame();assert(m.probe.tick(true,.015)and m.machine==false and m.mode=='ignore','The first update takeback pauses the animation')
@@ -194,10 +198,17 @@ do
  end
  assert(root_count()==root_writes,'No root writes while the animation is paused')
  assert(m.probe.release('Resume')and m.machine==true and m.mode=='position_and_rotation','Resume restores the animation, then the mode')
- local r=fixture({continuous=true,exclude_cape=true,claim_transfer=true});r.machine=true
+ assert(m.restores==1 and m.anim[1]==3 and m.anim[2]==0.25 and m.anim[3]==7,'Resume restores the animation state from before the pause')
+ local r=fixture({continuous=true,exclude_cape=true,claim_transfer=true,pause_animation=true});r.machine=true
  assert(r.probe.prepare(r.subject,0)and r.render(.01));r.mode='position_and_rotation'
  assert(r.render(.02)and r.machine==false and r.mode=='ignore','A render takeback pauses it too')
  assert(r.probe.release('Photo Mode closed')and r.machine==true,'Close restores the animation')
+ -- By default (the shipped Freeze) a fought body is only taken back: pausing its animation
+ -- broke the arms after Resume (live), even with its state restored.
+ local d=fixture({continuous=true,exclude_cape=true,claim_transfer=true});d.machine=true
+ assert(d.probe.prepare(d.subject,0)and d.render(.01));d.mode='position_and_rotation'
+ assert(d.probe.tick(true,.015)and d.mode=='ignore'and d.machine==true and d.machine_calls==nil,'Taken back, never paused by default')
+ assert(d.probe.release('Resume')and d.mode=='position_and_rotation')
  -- Standing freezes are never fought, so their animation is never paused.
  local n=fixture({continuous=true,exclude_cape=true,claim_transfer=true});n.machine=true
  assert(n.probe.prepare(n.subject,0));for i=1,10 do assert(n.probe.tick(true,i/100)and n.render(i/100))end

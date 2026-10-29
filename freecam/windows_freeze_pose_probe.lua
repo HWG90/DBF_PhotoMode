@@ -15,6 +15,7 @@ function M.new(sr,log,measure,options)
  local continuous=options and options.continuous==true
  local claim_transfer=not continuous or options and options.claim_transfer==true
  local exclude_cape=options and options.exclude_cape==true
+ local pause_animation=options and options.pause_animation==true
  local U,W,A,N,I,B=sr.Unit,sr.World,sr.Application,sr.Network,sr.IdString64,sr.Matrix4x4
  local bindings={}
  for _,name in ipairs({'alive','world','resource_name','num_scene_graph_items','local_pose','set_local_pose','animation_bone_mode','set_animation_bone_mode'})do
@@ -49,8 +50,19 @@ function M.new(sr,log,measure,options)
  -- and then throw.
  local function take_back(w,counter)
   assert(U.set_animation_bone_mode(w.unit,'ignore')~=false,'Pose trial bone mode refused')
-  if not w.machine_paused and type(U.disable_animation_state_machine)=='function'and type(U.enable_animation_state_machine)=='function'and
+  -- Off unless options.pause_animation: pausing broke the arms after Resume even with the
+  -- state snapshot restored (live, 2026-10-29), so a running body is only taken back.
+  if pause_animation and not w.machine_paused and type(U.disable_animation_state_machine)=='function'and type(U.enable_animation_state_machine)=='function'and
    type(U.has_animation_state_machine)=='function'and U.has_animation_state_machine(w.unit)==true then
+   -- Snapshot where the animation is, so release resumes it there: re-enabling alone restarts
+   -- it and left the arms in a weird pose (live).
+   if type(U.animation_get_state)=='function'and type(U.animation_set_state)=='function'then
+    local read,state=pcall(function()return{U.animation_get_state(w.unit)}end)
+    if read and #state<=128 then
+     local numeric=true;for _,v in ipairs(state)do if type(v)~='number'or v~=v then numeric=false end end
+     if numeric then w.machine_state=state end
+    end
+   end
    w.machine_paused=true;U.disable_animation_state_machine(w.unit)
    emit('animation paused on the frozen body until Resume (the game kept taking it back)')
   elseif not w.reclaims and not w.update_reclaims then emit('bone mode taken back from the game\'s own animation (body frozen while moving)')end
@@ -63,9 +75,16 @@ function M.new(sr,log,measure,options)
   local ok,result=pcall(function()
    if w.cape then w.cape_writes=w.cape.writes;assert(cape.release(w.cape),'Cape restoration unavailable');w.cape=nil end
    if not w.issued then return 'no mode override' end
-   if not valid(w)then w.machine_paused=nil;return 'subject retired' end
+   if not valid(w)then w.machine_paused=nil;w.machine_state=nil;return 'subject retired' end
    -- The paused animation runs again before the original mode returns.
-   if w.machine_paused then U.enable_animation_state_machine(w.unit);w.machine_paused=nil end
+   if w.machine_paused then
+    U.enable_animation_state_machine(w.unit);w.machine_paused=nil
+    local state=w.machine_state;w.machine_state=nil
+    if state then
+     local restored,why=pcall(U.animation_set_state,w.unit,unpack(state))
+     emit(restored and('animation state restored ('..#state..' values)')or('animation state not restored: '..tostring(why)))
+    end
+   end
    local current=U.animation_bone_mode(w.unit)
    assert(type(current)=='string','Pose trial cleanup mode unavailable')
    if current=='ignore'then
