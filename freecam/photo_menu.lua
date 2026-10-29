@@ -6,10 +6,6 @@ local T={background={12,14,16},panel={19,21,23},header={25,27,29},border={62,66,
 local function split_glyphs(value)local result={};for c in tostring(value):gmatch('[%z\1-\127\194-\244][\128-\191]*')do result[#result+1]=c end;return result end
 local function valid(v)return type(v)=='number'and v>0 and v<math.huge end
 local PANEL_WIDTH,PANEL_HEIGHT,HUD_MARGIN=760,440,180
--- Live, the scene grade (Exposure, Contrast, Saturation, filters) covers GUI layers up to
--- 300, the blur backdrop and panel tint included, while 301 and above stay on top. Every
--- panel layer is lifted by this much (295..321 -> 302..328), below the legend (330+).
-local LAYER_LIFT=7
 function M.new(view,actions,existing)
  local legend=M.legend_factory and M.legend_factory.new(view)
  local self=existing or{page=1,scroll=0,selection=1,size_scale=1};local nav_held={};local nav_time={};local nav_ready=false;local last_focus
@@ -231,10 +227,10 @@ function M.new(view,actions,existing)
   refresh_text_cache(w,h)
   local scale=math.max(.75,math.min(w/1920,h/1080));local x,y=20*scale,h-48*scale
   view.draw({
-   {type='rect',x=x-8*scale,y=y-10*scale,w=340*scale,h=38*scale,c=T.background,a=.68*alpha,layer=300+LAYER_LIFT,ui_role='cinema_indicator'},
-   {type='rect',x=x-8*scale,y=y+27*scale,w=340*scale,h=2*scale,c=T.gold,a=alpha,layer=301+LAYER_LIFT},
-   {type='text',text='CINEMA CAMERA',x=x,y=y+10*scale,size=12*scale,c=T.gold,a=alpha,layer=310+LAYER_LIFT,text_bold=true,text_role='title'},
-   {type='text',text=key..': reposition'..(capture_ready==false and''or'  |  Screenshot key: capture'),x=x,y=y-5*scale,size=10*scale,c=T.white,a=alpha,layer=310+LAYER_LIFT,text_role='body'}})
+   {type='rect',x=x-8*scale,y=y-10*scale,w=340*scale,h=38*scale,c=T.background,a=.68*alpha,layer=300,ui_role='cinema_indicator'},
+   {type='rect',x=x-8*scale,y=y+27*scale,w=340*scale,h=2*scale,c=T.gold,a=alpha,layer=301},
+   {type='text',text='CINEMA CAMERA',x=x,y=y+10*scale,size=12*scale,c=T.gold,a=alpha,layer=310,text_bold=true,text_role='title'},
+   {type='text',text=key..': reposition'..(capture_ready==false and''or'  |  Screenshot key: capture'),x=x,y=y-5*scale,size=10*scale,c=T.white,a=alpha,layer=310,text_role='body'}})
  end
  function self.draw(w,h,focused,hidden,keys)
   capture_cleared=false
@@ -296,7 +292,7 @@ function M.new(view,actions,existing)
   panel_bounds={x=x,y=strip_bottom,w=width,h=top-strip_bottom}
   local function over(b,modal)return focused and (modal or not popup)and pointer_x and pointer_y and pointer_x>=b.x and pointer_x<=b.x+b.w and pointer_y>=b.y and pointer_y<=b.y+b.h end
   local function rect(rx,ry,rw,rh,c,a,layer,modal,role)
-   local command={type='rect',x=rx,y=ry,w=rw,h=rh,c=c,a=a or 1,layer=(layer or 300)+LAYER_LIFT,popup=modal or nil,ui_role=role};commands[#commands+1]=command;return command
+   local command={type='rect',x=rx,y=ry,w=rw,h=rh,c=c,a=a or 1,layer=layer or 300,popup=modal or nil,ui_role=role};commands[#commands+1]=command;return command
   end
   local function border(b,c,layer,modal)
    local stroke=math.min(1,b.w/2,b.h/2)
@@ -307,7 +303,7 @@ function M.new(view,actions,existing)
    local font_size=size*s;local full=tostring(label or '');local shown=fit(full,rw-((role=='title'or role=='heading')and .65 or 0),font_size);local low,high,optical=0,font_size,0
    low,high,optical=text_metrics(font_size,shown)
    local baseline_y=ry+(rh-(high-low))/2-low+optical;if rh>=high-low+2 then baseline_y=math.max(ry-low+1,math.min(ry+rh-high-1,baseline_y))end
-   local command={type='text',text=shown,full_text=full,x=rx,y=baseline_y,size=font_size,c=c or T.white,a=1,layer=(layer or 310)+LAYER_LIFT,popup=modal or nil,
+   local command={type='text',text=shown,full_text=full,x=rx,y=baseline_y,size=font_size,c=c or T.white,a=1,layer=layer or 310,popup=modal or nil,
     text_bold=role=='title'or role=='heading',text_role=role or 'body',text_width=rw,text_bounds={x=rx,y=ry,w=rw,h=rh}}
    commands[#commands+1]=command;return command
   end
@@ -549,7 +545,7 @@ function M.new(view,actions,existing)
      local points={};for i=1,6 do local value=triangle[i];if type(value)~='number'or value~=value or value<0 or value>1 then valid=false;break end;points[i]=(i%2==1 and icon_x or icon_y)+value*icon_size end
      if not valid then break end;triangles[#triangles+1]=points
     end
-    if valid then for _,points in ipairs(triangles)do commands[#commands+1]={type='triangle',points=points,x=icon_x,y=icon_y,w=icon_size,h=icon_size,c=icon_color,a=1,layer=309+LAYER_LIFT,ui_role='ai_faction_icon'}end;has_icon=true end
+    if valid then for _,points in ipairs(triangles)do commands[#commands+1]={type='triangle',points=points,x=icon_x,y=icon_y,w=icon_size,h=icon_size,c=icon_color,a=1,layer=309,ui_role='ai_faction_icon'}end;has_icon=true end
    end
    local selected=tonumber(self.handle.get('ai_behavior'))or 1;local name=ai_control.choices[selected]or'Normal';local pad=has_icon and 30 or 9
    local label=text('AI: '..name,b.x+pad*s,b.y,b.w-(pad+20)*s,b.h,toolbar_font,disabled and T.disabled or selected~=1 and T.gold or T.white);label.control_id='ai_behavior';label.ui_role='ai_behavior_value'
