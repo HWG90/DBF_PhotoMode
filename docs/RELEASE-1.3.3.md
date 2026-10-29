@@ -2,52 +2,43 @@
 
 Stop the action. Find your angle. Build the shot.
 
-**A HUGE THANK YOU to everyone sharing photos, testing builds and reporting bugs.** Special thanks to **Scarpheon, Muchacho, JuanHalodiver and jager** of the Helldivers Modding Discord for bug testing; your logs and reports found these. Keep the shots coming!
+**A HUGE THANK YOU to everyone sharing photos, testing builds and reporting bugs.** Special thanks to **Scarpheon, Muchacho, JuanHalodiver and jager** of the Helldivers Modding Discord for bug testing. Your logs and reports found these. Keep the shots coming!
 
-Brings War Journalist up to the 29 October 2026 game update, fixes Pose Stop, and makes Saved Shots work under Boot Mod Loader. Everything else in 1.3.2 is unchanged; read the [1.3.2 notes](https://github.com/HWG90/DBF_PhotoMode/releases/tag/v1.3.2) and the [1.3.0 notes](https://github.com/HWG90/DBF_PhotoMode/releases/tag/v1.3.0) for features and limitations. **Boot Mod Loader is the only supported loader at the moment.** A Lite version for Chef's Shared Loader is planned; whitelist approval may allow fuller compatibility. Neither is guaranteed.
+1.3.3 gets War Journalist working with the 29 October game update, fixes Pose Stop and gets Saved Shots working. Everything else is the same as 1.3.2. **Boot Mod Loader is the only supported loader right now.** A Lite version for Chef's Shared Loader is planned, and getting whitelisted could let it do more. Neither is guaranteed.
 
 ## Fixed
 
-- **Works with the 29 October game update.** The update changed the game's executable, so 1.3.2's WJL refused to run ("installed game hashes do not match"). Photo Mode then started without keyboard isolation, cursor confinement, PNG screenshots or scene effects. WJL now accepts the updated game (build 26251122). The game's stock renderer is unchanged, and WJL still checks it before scene effects start.
-- **Pose Stop restores your Helldiver.** In 1.3.2, playing a pose and pressing Stop could leave the Helldiver in the pose, and every later Stop or Recover was refused until the game restarted. The cape check compared an engine name that is only valid for a moment. It now compares the name's text.
-- **Steam's Ctrl+F11 recording works in Photo Mode.** F11 was Handycam's key and WJL reserved it with every modifier, so Steam never saw Ctrl+F11. Handycam now defaults to **Page Down**, and WJL leaves F11 to the game. A saved F11 moves to Page Down once, in War Journalist's settings and in Boot Mod Loader's key settings. A key you chose or unbound stays.
-- **The menu stays blurred with Exposure and other scene options on.** With any scene option set, the area behind the panel turned sharp. The scene grade now leaves out the panel and footer backdrops while the panel is shown. Screenshots are still fully graded.
-- **Saved Shots work under Boot Mod Loader.** Save always said "Local player unavailable". Saved Shots now anchor on the selected Helldiver, including the one picked automatically, and on the nearest of its head, chest or hips. A shot saved on your face stays on your face when you turn. Shots saved by earlier versions still load.
-- **A Helldiver frozen while running stays frozen.** The game put the body's animation back mid-freeze, and Freeze let go. Freeze now takes the body back and holds the pose until Resume. A brief flicker can remain while the game keeps trying.
-- **Hide carried weapons hides the slung primary while frozen.** Freeze held the carry sockets (sling, pouch, support weapon) while the game kept moving the gear, so they drifted apart and the gear was not recognised. Freeze now leaves those sockets to the game.
-- **Hide Torso and Hide Helmet on more armours.** Some armours build their chest shells on the whole rig, or with the same bones as the helmet, so Hide Torso missed them or Hide Helmet took them. Armour pieces are now sorted by the parts of the body their meshes are named for (chest, shoulders, head, pelvis, thighs, upper arms, cape), then by where they sit on the body, then by their bones. Sleeves without hands and waist pieces that reach the chest now count as body, so first-person views keep them.
-- **Apply resets the pose first.** Applying the first pose resets the Helldiver, waits for the body to settle, then applies, so the cape follows the new pose. Changing a pose that is already held happens at once.
+- **Works with the 29 October game update.** After the update, 1.3.2 lost its keyboard and mouse lock, PNG screenshots and scene effects. They're back.
+- **Pose Stop works again.** In 1.3.2, stopping a pose could leave your Helldiver stuck in it until you restarted the game.
+- **Steam's Ctrl+F11 recording works in Photo Mode.** Handycam used F11 and blocked it, so Handycam is now on **Page Down**. If you had Handycam on F11, it moves to Page Down once. A key you picked yourself stays.
+- **The menu stays blurred** when Exposure or other scene options are on. Your screenshots still get the full effect.
+- **Saved Shots work.** Saving used to say "Local player unavailable". Shots now stick to your Helldiver's head, chest or hips, so a shot saved on your face stays on your face when you turn. Shots saved in older versions still load.
+- **Freeze holds a running Helldiver.** The game used to pull them out of Freeze. A brief flicker can still happen.
+- **Hide carried weapons hides the slung primary while frozen.**
+- **Hide Torso and Hide Helmet work on more armours.** Some chest pieces were missed, or hidden along with the helmet. Sleeves and waist pieces now stay visible in first person.
+- **The first pose plays cleanly.** Your Helldiver resets before the pose starts, so the cape follows.
 
 ## New
 
-- **The camera returns where you left it.** Closing Photo Mode remembers the camera relative to the selected Helldiver for this game session, and reopening returns there with the same field of view and roll. A saved camera position still takes priority. Turn it off with Camera > Saved camera > "Reopen at the last camera, relative to the Helldiver". Handycam and Cinema shots are not remembered.
-- **Follow player cameras.** Action camera mode has two new options. **Follow player - Pivot** keeps the camera where you placed it and turns it to follow the selected Helldiver, keeping your framing. **Follow player - Pin** keeps the camera's offset and direction and moves it with the Helldiver.
+- **The camera comes back where you left it.** Close Photo Mode, reopen it, and the camera is back in the same spot next to your Helldiver. A saved camera position still comes first. Turn it off under Camera > Saved camera. Handycam and Cinema shots aren't remembered.
+- **Follow player cameras.** Two new Action camera modes. **Follow player - Pivot** stays where you put it and turns to keep your Helldiver in frame. **Follow player - Pin** moves along with your Helldiver.
 
-All 1.3.0 known issues still apply: occasional cape detachment, intermittent subject selection, incomplete Hide options, no AI control, and no depth shaders (Native DoF works). See [known issues](https://github.com/HWG90/DBF_PhotoMode/blob/v1.3.3/docs/KNOWN-ISSUES.md).
+The known bugs from 1.3.0 are still there: the cape sometimes comes loose, picking a subject sometimes fails, some Hide options miss things, AI control is gone for now, and depth shaders don't work (Native DoF does). See the [known issues](https://github.com/HWG90/DBF_PhotoMode/blob/main/docs/KNOWN-ISSUES.md).
 
-## Install and upgrade
+## Install
 
-Import the complete **BML ZIP** into HD2 Arsenal, enable War Journalist and Assets with [Boot Mod Loader](https://www.nexusmods.com/helldivers2/mods/17754), Deploy with the game closed, then launch normally. It replaces 1.3.2 in place; settings, presets and screenshots are kept. Run one War Journalist at a time. WJL is bundled and starts automatically. This version needs the 29 October 2026 game update (build 26251122).
+Import the **BML ZIP** into HD2 Arsenal. Enable War Journalist and Assets with [Boot Mod Loader](https://www.nexusmods.com/helldivers2/mods/17754), Deploy with the game closed, then start the game. It replaces 1.3.2, and your settings, presets and screenshots are kept. Run only one copy of War Journalist. The helper (WJL) is included and starts on its own. You need the 29 October game update.
 
-## Testing scope
+## Tested
 
-- **Live on Linux/Proton, Boot Mod Loader, game build 26251122**, with development builds of this release:
-  - WJL started and verified the game and its renderer, and the keyboard lease worked;
-  - Pose Stop restored the Helldiver;
-  - Steam's Ctrl+F11 and Handycam on Page Down;
-  - the menu blur with Exposure on, and a fully graded screenshot;
-  - Saved Shots on the selected Helldiver, following the face, and the camera returning on reopen;
-  - Freeze while running (a brief flicker remains);
-  - the first pose's cape;
-  - Hide carried weapons with the slung primary;
-  - Hide Torso on several armours and Hide Helmet.
-- **Not yet confirmed in game:** the Follow player cameras, the cape after an armour change, and the newest armour sorting (sleeves and waist pieces kept in first person).
-- **Native Windows:** not tested in game for this release. Please report.
-- The exact final ZIP's cold start is recorded in the publication record.
-- Normal-user build: development reload is not included, and inventories and test activations are disabled. Unavailable menu controls are omitted.
-- WJL was rebuilt with the same Visual Studio 2022 compiler and Windows SDK as 1.3.2. A start-up test runs it under Wine against the real updated game, including the renderer check, and its native fixtures pass.
-- Isolated Lua 5.1 fixtures cover every change above, including rigid and skinned armour pieces, retired keys moving to Page Down, scratch engine names across frames, and the menu's graded cut-outs.
+- Tested in game on Linux (Proton) with Boot Mod Loader, including a fresh start from this exact ZIP. Everything above was checked except the next point.
+- Not checked in game yet: the Follow player cameras, the cape after changing armour, and sleeves and waist pieces in first person.
+- Not tested on Windows yet. Please let me know how it goes.
 
-## Reporting
+## Reporting bugs
 
-Please include `%APPDATA%\Arrowhead\Helldivers2\boot_mod_loader.log`, `%APPDATA%\Arrowhead\Helldivers2\war_journalist_lua51.log` and `%LOCALAPPDATA%\WJL\Helldivers2\Steam\service.log`. Remove private information before sharing them.
+Send these files, with anything private removed:
+
+- `%APPDATA%\Arrowhead\Helldivers2\boot_mod_loader.log`
+- `%APPDATA%\Arrowhead\Helldivers2\war_journalist_lua51.log`
+- `%LOCALAPPDATA%\WJL\Helldivers2\Steam\service.log`
