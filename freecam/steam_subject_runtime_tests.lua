@@ -97,6 +97,11 @@ local function configure(f,deps,sr)
    count();assert(valid(t));local p=t.nodes[1].p
    return{explicit_subject=true,identity=t.identity,root_handle=t,world=f.world,position={p[1],p[2],p[3]},head={p[1],p[2],p[3]+1.6},yaw=0}
   end
+  adapter.abandon=function(t,_,original_mode)
+   count();assert(valid(t));if f.abandon_refuse then return false,'Fixture abandon refused'end
+   f.receipt=nil;if t.mode~=original_mode then t.mode=original_mode;event('mode:'..original_mode)end
+   event('abandon');return true
+  end
   adapter.commit=function(t)
    count();f.commits=f.commits+1;assert(valid(t));event('commit')
    if f.commit_error then return false,f.commit_error end
@@ -104,7 +109,7 @@ local function configure(f,deps,sr)
    return true
   end
   f.subject=Subject.new(adapter,data,is_frozen)
-  for _,name in ipairs({'refresh','select','apply','reset','recover','close','resume','invalidate'})do
+  for _,name in ipairs({'refresh','select','apply','reset','recover','close','resume','invalidate','abandon'})do
    local saved=f.subject[name];f.subject[name]=function(...)
     f.subject_calls[name]=(f.subject_calls[name]or 0)+1;return saved(...)
    end
@@ -265,6 +270,25 @@ do
  f.pressed['left ctrl'],f.pressed['left shift'],f.pressed.f10=false,false,false;f.step(.016)
  assert(f.runtime.open()and f.subject.status().selected~=nil and f.subject.status().pose==nil,
   'Reopening lists current subjects and auto-selects one; no stale pose survives exit')
+ f.finish()
+end
+-- A restoration that can never be proven (the 26251122 pose soft-lock) is given up by the
+-- recovery key: bone mode back, time and Photo Mode released, and the reasons logged.
+do
+ local messages={}
+ local f=fixture(function(f)f.log=function(s)messages[#messages+1]=s end end);f.enable();f.select();f.partial=true;f.fail_node=13
+ local function logged(text)for _,s in ipairs(messages)do if s:find(text,1,true)then return true end end;return false end
+ assert(f.action('subject_pose_play'));f.settle();assert(f.subject.status().pending)
+ assert(logged('Subject apply failed: Subject node write needs explicit recovery (Fixture partial node write)'),'Log the reason with the failure')
+ assert(not f.runtime.close(true)and f.runtime.state=='closing'and f.rate==0)
+ assert(not f.runtime.open(),'Pending pose cleanup keeps Photo Mode closed')
+ f.events={};f.recovery_key()
+ assert(f.runtime.state=='closed'and f.rate==1 and not f.lease and not f.camera_open,'The recovery key gives up an unprovable pose and releases time')
+ assert(f.subject_calls.abandon==1 and index_of(f.events,'abandon')and f.b.mode=='position_and_rotation')
+ assert(logged('Recovery key: retrying Photo Mode cleanup'),'Log each recovery key press')
+ assert(logged('Pose restoration could not be proven'),'Log why the pose was given up')
+ f.pressed['left ctrl'],f.pressed['left shift'],f.pressed.f10=false,false,false;f.step(.016)
+ assert(f.runtime.open()and f.subject.status().pose==nil,'Photo Mode opens again after giving up')
  f.finish()
 end
 do

@@ -382,6 +382,21 @@ function M.new(adapter,bank,is_frozen)
   return restore()
  end
  function self.recover()return restore(true)end
+ -- Last resort (Photo Mode's recovery key): give up a pose whose restoration cannot be
+ -- proven, so Photo Mode can close and release time. The optional adapter.abandon(target,
+ -- rig,original_mode) writes no body node; it forgets its attempts and puts the bone mode
+ -- back, and animation drives the body again once time resumes.
+ function self.abandon()
+  if not lease then return true end
+  if type(adapter.abandon)~='function'then return false,'This subject adapter cannot give up a pose'end
+  local checked,valid=pcall(adapter.valid,selected,bank.rig)
+  if checked and valid==false then return finish(true)end
+  local called,ok,detail=pcall(adapter.abandon,selected,bank.rig,lease.original.mode)
+  if not called or ok~=true then return pending('Giving up the pose failed',called and detail or ok)end
+  finish(false,true)
+  state(status.state,'Pose given up; the subject returns to its animation when time resumes',detail)
+  return true,status.message
+ end
  function self.close()
   closing=true;pose=nil
   if blocked then

@@ -329,6 +329,36 @@ do
  check(f.adapter.set_mode(f.target,f.rig,'ignore','position_and_rotation')and f.adapter.commit(f.target,f.rig))
  check(restores==1)
 end
+-- Game build 26251122 soft-lock: Stop's scene refresh changed a restored node, so every
+-- later snapshot refused ("Failed scene refresh has unknown node outcome") and Recover
+-- could never succeed. Giving the pose up forgets the failed refresh without writing the
+-- body, returns the bone mode and releases the cape.
+do
+ local f=fixture();local releases=0;local lease={meshes={1,2,3}}
+ f.policy.selected_cape={capture=function()return lease end,apply=function()return 3 end,
+  release=function(record)check(record==lease);releases=releases+1;return true end}
+ f:arm()
+ local bank={version=1,rig=f.rig,catalog={{id='full',label='Full'}},decode=function()
+  local result={full_body=true,nodes={}};for i=8,92 do result.nodes[i]={p={10+i/10,.2,.3},q={0,.6,0,.8},s={1,1,1}}end;return result
+ end}
+ local c=Subject.new(f.adapter,bank,function()return true end);check(c.refresh());check(c.select(c.choices()[1].id))
+ f:step();check(c.apply('full')and f.mode=='ignore')
+ f.on_update=function(f)f.nodes[40].pose[10]=float(9);f.on_update=nil end
+ f:step();check(not c.reset()and c.status().pending and tostring(c.status().detail):find('Subject changed during scene refresh',1,true)==1)
+ for _=1,3 do f:step();local ok,why=c.recover();check(not ok and why=='Subject restoration ownership is unknown','A failed refresh blocks every recovery')end
+ check(tostring(c.status().detail):find('Failed scene refresh has unknown node outcome',1,true)==1)
+ local writes=f.writes;f:step();check(c.abandon(),'Giving up the pose clears the failed refresh')
+ check(f.writes==writes and f.nodes[40].pose[10]==float(9),'Giving up writes no body node')
+ check(not c.status().pending and c.status().pose==nil and f.adapter.status().pending==0)
+ check(f.mode=='position_and_rotation'and releases==1)
+ f:step();check(c.apply('full'),'The subject can be read and posed again after giving up')
+ -- A bone mode still held at ignore is returned; a refused cape release is reported, not fatal.
+ f.on_update=function(f)f.nodes[41].pose[10]=float(8);f.on_update=nil end
+ f.policy.selected_cape.release=function()error('Fixture cape release refused',0)end
+ f.failure.mode={refuse=true};f:step();check(not c.reset()and c.status().pending and f.mode=='ignore')
+ f.failure={};f:step();check(c.abandon()and f.mode=='position_and_rotation'and not c.status().pending)
+ check(tostring(c.status().detail):find('Fixture cape release refused',1,true),'A cape release failure is kept as the detail')
+end
 print('steam_subject_native_tests: '..assertions..' assertions passed (actual Lua5.1; strict matrix12; source only)')
 
 do

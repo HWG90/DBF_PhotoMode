@@ -721,7 +721,14 @@ function M.new(host,sr,deps,service)
    local logged=self.subject_failure_details or{};self.subject_failure_details=logged
    local line=detail and'Subject '..method..' detail: '..detail
    if line and not logged[line]then logged[line]=true;pcall(host.log,line)end
-   if ok==true then self.subject_failure_details=nil end
+   if ok==true then self.subject_failure_details=nil
+   else
+    -- The notice alone names no cause, and repeats are silent. Log each new failure with
+    -- the adapter's reason (a soft-locked pose on game build 26251122 left only headlines).
+    local failure='Subject '..method..' failed: '..tostring(why or subject_message):gsub('%c',' '):sub(1,256)..(detail and' ('..detail..')'or'')
+    if failure~=self.subject_failure_line then pcall(host.log,failure)end
+    self.subject_failure_line=failure
+   end
   end
   if ok~=true then notice(why or subject_message)end
   return ok==true,why or subject_message
@@ -754,7 +761,14 @@ function M.new(host,sr,deps,service)
   if ragdoll then local ok,why=ragdoll.release();if not ok then return false,why end end
   if not subject then return true end
   if explicit_retry and subject_pending then
-   local ok,why=subject_call('recover');if not ok then return false,why end
+   local ok,why=subject_call('recover')
+   if not ok then
+    -- The recovery key is the last way out: a pose whose restoration cannot be proven is
+    -- given up (bone mode back, no body writes) so time and Photo Mode are released.
+    pcall(host.log,'Pose restoration could not be proven ('..tostring(why)..'); giving the pose up')
+    ok,why=subject_call('abandon');if not ok then return false,why end
+    local s=subject_status;pcall(host.log,tostring(s and s.message)..(s and type(s.detail)=='string'and'; '..s.detail or''))
+   end
    subject_close_started=false
   end
   if not subject_close_started then
@@ -2463,7 +2477,7 @@ function M.new(host,sr,deps,service)
   local recovery_modifiers=input.down(17)and input.down(16)
   local recovery=recovery_modifiers and edge('recover_input_key')
   if not recovery_modifiers then edges.recover_input_key=false end
-  if recovery then self.close(true,nil,true);return end
+  if recovery then pcall(host.log,'Recovery key: retrying Photo Mode cleanup');self.close(true,nil,true);return end
   end
   if pending_cleanup then
    if simulation and not subject_pending then

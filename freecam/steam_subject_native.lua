@@ -169,12 +169,13 @@ local function factory(sr,policy,preview)
   if r.retired then error({tag=retired_tag,reason='Selected subject retired'},0)end
   return r
  end
+ local function forget(r)
+  for _,entry in pairs(r.nodes)do if entry.attempt then pending=pending-1 end end
+  if r.mode and r.mode.attempt then pending=pending-1 end
+  r.nodes={};r.mode=nil;r.scene_dirty=false;r.refresh_expected=nil;r.refresh_nodes={};status.pending=pending
+ end
  local function drop(r)
-  if not r.retired then
-   for _,entry in pairs(r.nodes)do if entry.attempt then pending=pending-1 end end
-   if r.mode and r.mode.attempt then pending=pending-1 end
-   r.nodes={};r.mode=nil;r.scene_dirty=false;r.refresh_expected=nil;r.refresh_nodes={};r.retired=true;status.pending=pending
-  end
+  if not r.retired then forget(r);r.retired=true end
  end
  local function retire(r,why)drop(r);error({tag=retired_tag,reason=why},0)end
  local function lifetime(r)
@@ -556,6 +557,26 @@ local function factory(sr,policy,preview)
    r.refresh_expected=nil;r.refresh_nodes={};r.scene_dirty=false;return true
   end)
   if ok~=true then return false,why end;return true
+ end
+ -- Last resort after an unproven restoration (Photo Mode's recovery key): forget every
+ -- attempt and a failed scene refresh, put the bone mode back and release the cape. No
+ -- body node is written; animation drives the body again once its mode is back. A cape
+ -- that refuses release is dropped and reported, so it cannot hold the game frozen.
+ function self.abandon(target,rig,original_mode)
+  local ok,why=result(function()
+   local r=record(target,rig);check(mode(original_mode),'Original bone mode unavailable')
+   forget(r)
+   if current(r)~=original_mode then
+    authorize('restore_mode',target)
+    local called=pack(pcall(U.set_animation_bone_mode,r.unit,original_mode));status.last_result=receipt(called)
+    check(called[1]and called[2]~=false,called[1]and(called[3]or'Subject mode setter refused')or called[2])
+    check(current(r)==original_mode,'Subject mode readback differs from submitted value')
+   end
+   local released,issue=pcall(restore_cape,r)
+   if not released then r.cape=nil;r.cape_capture_done=nil;return true,'Cape release failed: '..tostring(issue)end
+   return true
+  end)
+  if ok~=true then return false,why end;return true,why
  end
  function self.status()return status end
  return self
