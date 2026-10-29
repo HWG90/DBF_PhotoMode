@@ -1952,7 +1952,13 @@ function M.new(host,sr,deps,service)
    scene_retry_at=nil;ensure_scene()
   end
   if scene_enabled then
-   local called,ok,why,shader_dof=pcall(scene.render,o,fov)
+   -- gui_blur draws in an earlier UI pass than the grade, so the grade leaves the menu's
+   -- blurred backdrops uncovered: only while the panel is shown, never on capture frames.
+   local holes
+   if self.mode~='shot'and not(capture and capture.active())and not o.hide_controls and not o.clean_view and handoff==nil and menu.blur_regions then
+    holes=menu.blur_regions()
+   end
+   local called,ok,why,shader_dof=pcall(scene.render,o,fov,holes)
    if not called or not ok then
     -- Keep Photo Mode open: drop the effect, report it and retry boundedly.
     local reason=tostring(called and why or ok);scene.release();scene_enabled=false;scene_status('Scene effects paused: '..reason)

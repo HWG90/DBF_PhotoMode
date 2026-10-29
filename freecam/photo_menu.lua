@@ -10,6 +10,8 @@ function M.new(view,actions,existing)
  local legend=M.legend_factory and M.legend_factory.new(view)
  local self=existing or{page=1,scroll=0,selection=1,size_scale=1};local nav_held={};local nav_time={};local nav_ready=false;local last_focus
  local retained_commands;local retained_state={};local layout_retry=false
+ -- Screen areas of the drawn gui_blur backdrops; nil whenever the panel is not shown.
+ local blur_regions
  local rows={};local selected_hit;local hits={};local held=false;local drag;local resize;local camera_drag;local camera_middle_held;local scroll_drag;local move_panel;local geometry;local panel_bounds;local pointer_x,pointer_y;local pressed_key;local reveal_index;local row_scroll_max=0
  local function finish_camera_drag(commit)
   if camera_drag and actions.handycam_adjust then actions.handycam_adjust(nil,commit==true)end
@@ -83,12 +85,12 @@ function M.new(view,actions,existing)
   self.panel_x=stored_layout('menu_x');self.panel_y=stored_layout('menu_y');self.size_scale=stored_layout('menu_scale');layout_dirty=false;return true
  end
  local function finish_layout()if layout_dirty then layout_dirty=false;self.persist_layout()end;finish_opacity()end
- function self.close()retained_commands=nil;blur_number();finish_layout();if self.light_gizmos then self.light_gizmos.cancel()end;if legend then legend.clear()end;view.release();panel_bounds=nil;hits={};drag=nil;finish_camera_drag(false);camera_middle_held=nil;resize=nil;scroll_drag=nil;move_panel=nil;key_capture=nil;text_edit=nil;color_edit=nil;popup=nil;popup_close_on_release=false;self.bound_key=nil;self.editing_value=nil;self.notice=nil;nav_ready=false;held=false;right_held=nil;pointer_x,pointer_y=nil,nil;pressed_key=nil;reveal_index=nil end
+ function self.close()retained_commands=nil;blur_regions=nil;blur_number();finish_layout();if self.light_gizmos then self.light_gizmos.cancel()end;if legend then legend.clear()end;view.release();panel_bounds=nil;hits={};drag=nil;finish_camera_drag(false);camera_middle_held=nil;resize=nil;scroll_drag=nil;move_panel=nil;key_capture=nil;text_edit=nil;color_edit=nil;popup=nil;popup_close_on_release=false;self.bound_key=nil;self.editing_value=nil;self.notice=nil;nav_ready=false;held=false;right_held=nil;pointer_x,pointer_y=nil,nil;pressed_key=nil;reveal_index=nil end
  local function suspend_input()blur_number();finish_layout();if self.light_gizmos then self.light_gizmos.cancel()end;if legend then legend.clear()end;nav_ready=false;held=false;right_held=nil;drag=nil;finish_camera_drag(false);camera_middle_held=nil;resize=nil;scroll_drag=nil;move_panel=nil;pressed_key=nil;pointer_x,pointer_y=nil,nil end
- function self.suspend()capture_cleared=false;retained_commands=nil;suspend_input();panel_bounds=nil;view.draw({})end
+ function self.suspend()capture_cleared=false;retained_commands=nil;blur_regions=nil;suspend_input();panel_bounds=nil;view.draw({})end
  function self.hide_for_capture()
   if capture_cleared then return true end
-  retained_commands=nil;suspend_input();panel_bounds=nil;hits={}
+  retained_commands=nil;blur_regions=nil;suspend_input();panel_bounds=nil;hits={}
   -- release is independent of font binding and drawable state. A refusal or
   -- exception never acknowledges a clean frame; unchanged success stays idle.
   if view.release()==false then return false end
@@ -110,6 +112,7 @@ function M.new(view,actions,existing)
   end
  end
  function self.blur()return blur_number()end
+ function self.blur_regions()return blur_regions end
  local function value(c)
   if c.type=='text'then return ''end;if c.type=='button'then return c.button_label or 'Activate'end
   local v=self.handle.get(c.id)
@@ -238,7 +241,7 @@ function M.new(view,actions,existing)
   -- retained GUI/font planes; explicit focus loss still clears via suspend().
   if focused~=last_focus then suspend_input();last_focus=focused end
   if self.prepare_light_gizmos then self.prepare_light_gizmos(w,h,focused,hidden)end
-  if hidden or not valid(w)or not valid(h)or not self.pages or #self.pages==0 then retained_commands=nil;finish_camera_drag(false);camera_middle_held=nil;finish_layout();if self.light_gizmos then self.light_gizmos.cancel()end;if legend then legend.clear()end;view.draw({});panel_bounds=nil;hits={};resize=nil;scroll_drag=nil;move_panel=nil;return end
+  if hidden or not valid(w)or not valid(h)or not self.pages or #self.pages==0 then retained_commands=nil;finish_camera_drag(false);camera_middle_held=nil;finish_layout();if self.light_gizmos then self.light_gizmos.cancel()end;if legend then legend.clear()end;view.draw({});panel_bounds=nil;blur_regions=nil;hits={};resize=nil;scroll_drag=nil;move_panel=nil;return end
   refresh_text_cache(w,h)
   -- Recompose only when input, settings, availability or layout changes.
   -- Retained GUI submission and font/resource lifetime checks still run.
@@ -344,11 +347,13 @@ function M.new(view,actions,existing)
   end
   local opacity=menu_opacity()
   local blur=view.menu_blur_material and view.menu_blur_material()
+  blur_regions=nil
   if blur then
    local backdrop=rect(x,bottom,width,top-bottom,{255,255,255},1,295,false,'photo_menu_backdrop')
    backdrop.type='bitmap';backdrop.native_material=blur
    local footer=rect(x,strip_bottom,width,54*s,{255,255,255},1,295,false,'photo_footer_backdrop')
    footer.type='bitmap';footer.native_material=blur
+   blur_regions={{x=backdrop.x,y=backdrop.y,w=backdrop.w,h=backdrop.h},{x=footer.x,y=footer.y,w=footer.w,h=footer.h}}
   end
   rect(x,bottom,width,top-bottom,T.background,opacity/100,300,false,'photo_panel')
   rect(x,top-1*s,width,1*s,T.gold,.55,303)

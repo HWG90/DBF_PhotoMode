@@ -4,7 +4,7 @@ function M.new(sr,resources,overlay,sampler,now)
  local self={};local click,held,request;local due=0;local mode_seen
  function self.ready()return overlay.ready()end
  function self.rearm()if overlay.rearm then overlay.rearm()end end
- function self.render(options,fov)return overlay.apply(options,fov)end
+ function self.render(options,fov,holes)return overlay.apply(options,fov,holes)end
  function self.pick_depth(x,y,width,height)
   -- Selection owns this click. Do not also focus a cached projected root.
   click,request=nil,nil

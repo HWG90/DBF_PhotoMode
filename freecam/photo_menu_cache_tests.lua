@@ -194,10 +194,21 @@ do
    assert(a.w<w and a.h<h,'Blur cannot cover the viewport')
   end
   assert(strip.y+strip.h<blur.y,'Keep the footer gap unblurred')
+  -- The scene grade leaves exactly these areas uncovered (gui_blur draws in an earlier pass).
+  local regions=f.menu.blur_regions()
+  assert(#regions==2,'Both blurred backdrops are reported')
+  for i,c in ipairs({blur,strip})do local r=regions[i];assert(r.x==c.x and r.y==c.y and r.w==c.w and r.h==c.h,'Region matches its backdrop exactly')end
   local commands=f.commands;f.draw(w,h);assert(f.commands==commands,'Static decorated/blurred menu stays retained')
+  assert(#f.menu.blur_regions()==2,'Retained frames keep their regions')
  end
  check(1920,1080);f.menu.panel_x=.1;f.menu.panel_y=.3;f.menu.size_scale=.8;check(1280,720)
  f.menu.draw(1280,720,true,true,{focus='TAB',hide='H'});assert(#f.commands==0,'Hidden controls cannot leave a blur quad behind')
+ assert(f.menu.blur_regions()==nil,'Hidden controls report no blurred area')
+ check(1280,720);assert(f.menu.hide_for_capture()and f.menu.blur_regions()==nil,'Capture reports no blurred area')
+ check(1280,720);f.menu.suspend();assert(f.menu.blur_regions()==nil,'Suspended menu reports no blurred area')
+ check(1280,720);f.menu.close();assert(f.menu.blur_regions()==nil,'Closed menu reports no blurred area')
+ f.view.menu_blur_material=function()return nil end;f.draw(1920,1080)
+ assert(f.menu.blur_regions()==nil,'No blur material: nothing to uncover')
 end
 
 -- User release omits unavailable rows, while registration and dynamic recovery

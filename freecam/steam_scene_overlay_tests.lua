@@ -172,3 +172,49 @@ do
  assert(scoped.release()and retirements==3 and next(live)==nil)
 end
 print('Scene world identity: equal userdata display strings cannot reuse a foreign GUI')
+-- Holes for the menu's blur. gui_blur draws the game's blur_behind_ui image in an earlier UI
+-- pass than this grade, so a full-screen grade hid it (live, 2026-10-29). The grade leaves
+-- out exactly the blurred backdrops; everything else, the panel gap included, stays graded.
+do
+ local W,H=1920,1080
+ local function area(pieces)local a=0;for _,p in ipairs(pieces)do a=a+(p[3]-p[1])*(p[4]-p[2])end;return a end
+ local function inside(x,y,r)return x>r.x and x<r.x+r.w and y>r.y and y<r.y+r.h end
+ local function covers(pieces,x,y)for _,p in ipairs(pieces)do if x>p[1]and x<p[3]and y>p[2]and y<p[4]then return true end end;return false end
+ local none=factory.pieces(W,H,nil);assert(#none==1 and none[1][1]==0 and none[1][2]==0 and none[1][3]==W and none[1][4]==H,'No holes: one full quad')
+ local panel,footer={x=500,y=400,w=760,h=440},{x=500,y=330,w=760,h=54}
+ local pieces=factory.pieces(W,H,{panel,footer})
+ assert(math.abs(area(pieces)-(W*H-panel.w*panel.h-footer.w*footer.h))<1e-6,'Exactly the screen minus both backdrops')
+ for _,pt in ipairs({{600,500},{1200,800},{600,350}})do assert(not covers(pieces,pt[1],pt[2]),'No grade over a blurred backdrop')end
+ for _,pt in ipairs({{600,392},{10,10},{1900,1070},{499,500},{1261,500}})do assert(covers(pieces,pt[1],pt[2]),'The gap and the rest stay graded')end
+ local clipped=factory.pieces(W,H,{{x=-100,y=-100,w=300,h=300},{x=5000,y=5000,w=10,h=10},{x=10,y=10,w=0,h=50}})
+ assert(math.abs(area(clipped)-(W*H-200*200))<1e-6,'Holes clip to the screen; empty or off-screen holes are ignored')
+ -- Through apply: every triangle maps u=x/W, v=y/H and none lands in a hole.
+ local tris={};local made,gone=0,0
+ local s={Application={can_get=function()return true end,main_world=function()return 1 end,worlds=function()return{1,2}end,time_since_launch=function()return 1 end,
+   render_setting=function()return true end},
+  World={create_screen_gui=function()return 7 end,destroy_gui=function()end},
+  Gui={create_material=function()return 33 end,resolution=function()return W,H end,material=function()return 33 end,
+   triangle=function(_,a,b,c,layer,_,_,ua,ub,uc)
+    for _,pair in ipairs({{a,ua},{b,ub},{c,uc}})do
+     local v,uv=pair[1],pair[2];assert(math.abs(uv[1]-v[1]/W)<1e-9 and math.abs(uv[2]-v[3]/H)<1e-9,'UV follows the screen position')
+    end
+    made=made+1;tris[made]={a,b,c};return made
+   end,destroy_triangle=function(_,id)gone=gone+1;tris[id]=nil end},
+  Material={set_scalar=function()end,set_resource=function()end,set_vector4=function()end},
+  Vector2=function(...)return{...}end,Vector3=function(...)return{...}end,Vector4=function(...)return{...}end,Color=function(...)return{...}end}
+ local depth_target={}
+ local d={binding_identity='a',available=function()return true end,get=function()return depth_target end,bind=function()return true end}
+ local graded=factory.new(s,d,true,{present=function()return true end},function()
+  return true,{resource=1,backing=2,id=33554433,format=19,width=W,height=H,mips=1,array=1,ui_brightness=200,hdr_enabled=true}end)
+ local grade={dof=false,dof_mode=1,scene_shader=1,exposure=.1,contrast=100,saturation=100}
+ assert(graded.apply(grade,.9)and made==2,'No holes: the same single quad as before')
+ assert(graded.apply(grade,.9,{panel,footer}))
+ local live=0;for _,t in pairs(tris)do live=live+1
+  local cx,cy=(t[1][1]+t[2][1]+t[3][1])/3,(t[1][3]+t[2][3]+t[3][3])/3
+  assert(not inside(cx,cy,panel)and not inside(cx,cy,footer),'No triangle over a blurred backdrop')
+ end
+ assert(live==2*#pieces and gone==2,'Holes rebuild the carrier once')
+ local before=made;assert(graded.apply(grade,.9,{{x=500,y=400,w=760,h=440},{x=500,y=330,w=760,h=54}})and made==before,'Unchanged holes keep the retained carrier')
+ assert(graded.apply(grade,.9,nil)and live and made==before+2,'Holes removed: the full quad returns')
+ print('Scene grade holes: exact backdrop cut-outs, graded gap, clipping, UV mapping, retention and full-quad fallback passed')
+end
