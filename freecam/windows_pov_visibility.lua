@@ -71,15 +71,49 @@ M.probes={'head','chest','spine1','hips','l_hand','r_hand','cape1'}
 function M.short(name)
  local text=tostring(name);return text:match('#ID%[(%x+)%]')or text
 end
-function M.classify(has)
+-- Bones a piece carries do not say where its geometry is. Live 2026-10-29: a helmet and two
+-- torso shells carried the same head, neck and shoulder bones. Their LOD meshes' bounds, in the
+-- body root's frame, did not overlap: helmet centred 1.74 m up (+-0.14), shells 1.28 m (0.84 to
+-- 1.72). Measured where the bones are ambiguous: a piece with the head, or one on the whole rig.
+local head_up=1.58 -- Above: a helmet. Below: a torso piece reaching the neck.
+local chest_up=1.05 -- A whole-rig piece centred below this is a whole suit (kept with the body).
+local function whole(has)return has.chest and has.l_hand and has.r_hand and has.hips end
+function M.ambiguous(has)return not has.cape1 and(whole(has)or has.head and not(has.l_hand or has.r_hand))end
+-- The piece's geometry centre in the body root's frame (right, forward, up), from the bounds most
+-- of its meshes share (its LODs); a proxy mesh with other bounds is outvoted. nil if unreadable.
+function M.geometry(sr,unit,meshes,root)
+ local H,V,B=sr.Mesh,sr.Vector3,sr.Matrix4x4
+ if not(H and V and type(H.bounding_volume_components)=='function'and type(H.world_pose)=='function')then return nil end
+ local ok,result=pcall(function()
+  local found={}
+  for i=1,math.min(meshes,8)do
+   local m=sr.Unit.mesh(unit,i);local lo,hi=H.bounding_volume_components(m)
+   local l={V.x(lo),V.y(lo),V.z(lo)};local h={V.x(hi),V.y(hi),V.z(hi)}
+   local p={B.to_elements(H.world_pose(m))};assert(#p==12,'Mesh pose shape changed')
+   local c={(l[1]+h[1])/2,(l[2]+h[2])/2,(l[3]+h[3])/2};local w={}
+   for k=1,3 do w[k]=p[9+k]+c[1]*p[k]+c[2]*p[3+k]+c[3]*p[6+k]-root[9+k]end
+   local b={};for a=0,2 do b[a+1]=w[1]*root[a*3+1]+w[2]*root[a*3+2]+w[3]*root[a*3+3]end
+   for _,v in ipairs(b)do assert(v==v and math.abs(v)<100,'Mesh bounds invalid')end
+   found[#found+1]=b
+  end
+  local best,votes
+  for _,a in ipairs(found)do
+   local n=0;for _,b in ipairs(found)do if math.abs(a[1]-b[1])<.02 and math.abs(a[2]-b[2])<.02 and math.abs(a[3]-b[3])<.02 then n=n+1 end end
+   if not votes or n>votes then best,votes=a,n end
+  end
+  return best and{right=best[1],forward=best[2],up=best[3]}
+ end)
+ return ok and result or nil
+end
+function M.classify(has,geometry)
  if has.cape1 then return'cape'end
  -- Some armours author their chest shells on the whole rig: both arms, the legs and the head
  -- (live 2026-10-29: three such pieces and no chest-only piece, so Hide Torso hid nothing).
- if has.chest and has.l_hand and has.r_hand and has.hips then return'torso'end
+ if whole(has)then return geometry and geometry.up<chest_up and'body'or'torso'end
  -- One arm, or the hips without the chest: arm, leg and waist pieces. A chest piece that
  -- reaches the hips is still a torso shell.
  if has.l_hand or has.r_hand or has.hips and not has.chest then return'body'end
- if has.head then return'helmet'end
+ if has.head then return geometry and geometry.up<head_up and'torso'or'helmet'end
  if has.chest or has.spine1 then return'torso'end
 end
 function M.association(sr,log,clock)
@@ -110,7 +144,10 @@ function M.association(sr,log,clock)
      if matched>0 and matched==named then
       bound=bound+1
       local flags={};for _,name in ipairs(M.probes)do if has[name]then flags[#flags+1]=name end end
-      local short=M.short(U.resource_name(unit));seen[#seen+1]=short..'['..table.concat(flags,'+')..']'
+      local geometry=M.ambiguous(has)and M.geometry(sr,unit,meshes,pose(frame.root_handle,1))or nil
+      local class=M.classify(has,geometry)
+      local short=M.short(U.resource_name(unit))
+      seen[#seen+1]=short..'['..table.concat(flags,'+')..(geometry and string.format('@%.2f',geometry.up)or'')..']'
       -- Every skeleton bone the piece carries, once per resource: evidence for classifying
       -- pieces the probes cannot tell apart (an armour collar and a helmet both carry the head).
       if log and type(frame.rig_nodes)=='table'and not described[short]then
@@ -118,9 +155,26 @@ function M.association(sr,log,clock)
        for _,node in ipairs(frame.rig_nodes)do
         if type(node.name)=='string'and U.has_node(unit,node.name)then carried[#carried+1]=node.name end
        end
-       log('POV outfit piece: '..short..' meshes='..meshes..' class='..tostring(M.classify(has))..' bones='..table.concat(carried,'+'))
+       log('POV outfit piece: '..short..' meshes='..meshes..' class='..tostring(class)..' bones='..table.concat(carried,'+'))
+       -- Where each mesh's bounds sit in the body's frame (right, forward, up from the root), and
+       -- their half sizes: evidence for a geometric torso/helmet rule. Read-only.
+       local ok,why=pcall(function()
+        local H,V=sr.Mesh,sr.Vector3;local r=pose(frame.root_handle,1);local parts={}
+        for i=1,math.min(meshes,8)do
+         local m=U.mesh(unit,i);local lo,hi=H.bounding_volume_components(m)
+         local l={V.x(lo),V.y(lo),V.z(lo)};local h={V.x(hi),V.y(hi),V.z(hi)}
+         local p={B.to_elements(H.world_pose(m))};assert(#p==12,'Mesh pose shape changed')
+         local c={(l[1]+h[1])/2,(l[2]+h[2])/2,(l[3]+h[3])/2};local w={}
+         for k=1,3 do w[k]=p[9+k]+c[1]*p[k]+c[2]*p[3+k]+c[3]*p[6+k]-r[9+k]end
+         local b={};for a=0,2 do b[a+1]=w[1]*r[a*3+1]+w[2]*r[a*3+2]+w[3]*r[a*3+3]end
+         parts[#parts+1]=string.format('m%d=%s c=%.2f,%.2f,%.2f h=%.2f,%.2f,%.2f',i,tostring(H.name(m)),b[1],b[2],b[3],
+          (h[1]-l[1])/2,(h[2]-l[2])/2,(h[3]-l[3])/2)
+        end
+        return table.concat(parts,' ')
+       end)
+       log('POV outfit piece geometry: '..short..' '..tostring(why)..(ok and''or' (unavailable)'))
       end
-      if M.classify(has)==group then
+      if class==group then
        assert(#result<32,'POV outfit discovery exceeds bound')
        local indices={};for index=1,meshes do indices[index]=index end
        result[#result+1]={unit=unit,world=frame.world,resource=tostring(U.resource_name(unit)),indices=indices}

@@ -345,25 +345,35 @@ print('Observed holstered variant: resource/layout, local-root parent, nested of
 do
  local world={}
  local root={nodes={head=1,chest=1,spine1=1,hips=1,l_hand=1,r_hand=1,cape1=1}}
- local function unit(name,nodes,meshes,offset)return{name=name,nodes=nodes,meshes=meshes,offset=offset or 0}end
- local all={unit('helmet',{head=1},5),unit('collar',{head=1,chest=1,spine1=1},6),unit('chest',{chest=1,spine1=1},5),
+ -- up: where the piece's LOD meshes sit (bounds centre, metres above the root); proxy: a first mesh
+ -- with other bounds, as live pieces have.
+ local function unit(name,nodes,meshes,offset,up,proxy)return{name=name,nodes=nodes,meshes=meshes,offset=offset or 0,up=up or 1,proxy=proxy}end
+ local all={unit('helmet',{head=1},5,0,1.74),unit('collar',{head=1,chest=1,spine1=1},6,0,1.66),unit('chest',{chest=1,spine1=1},5),
   unit('arm',{chest=1,spine1=1,l_hand=1},5),unit('legs',{hips=1},5),unit('cape',{head=1,chest=1,cape1=1},4),
   unit('other_helmet',{head=1},5,7),unit('prop',{},3),unit('empty',{head=1},0),
   -- Live 2026-10-29: a chest shell authored on the whole rig, one reaching the hips, and a waist piece.
-  unit('shell',{head=1,chest=1,spine1=1,hips=1,l_hand=1,r_hand=1},5),unit('vest',{chest=1,spine1=1,hips=1},5),unit('waist',{spine1=1,hips=1},5)}
+  unit('shell',{head=1,chest=1,spine1=1,hips=1,l_hand=1,r_hand=1},5,0,1.30),unit('vest',{chest=1,spine1=1,hips=1},5),unit('waist',{spine1=1,hips=1},5),
+  -- Live: a torso shell with the helmet's bones (its geometry 1.28 m up, a proxy mesh at 2.70), and
+  -- a whole-rig suit centred at the hips.
+  unit('neck_shell',{head=1,chest=1,spine1=1},5,0,1.28,2.70),unit('suit',{head=1,chest=1,spine1=1,hips=1,l_hand=1,r_hand=1},5,0,.95)}
  local logged={}
  local sr={IdString64={from_hex=function(s)return s end},Matrix4x4={to_elements=function(m)return unpack(m)end},
   World={units_by_resource=function()return{}end,units=function(w)assert(w==world);return all end},
   Unit={alive=function()return true end,world=function()return world end,resource_name=function(u)return u.name end,
    num_meshes=function(u)return u.meshes end,node=function(_,n)return n end,
    has_node=function(u,n)if u==root then return root.nodes[n]~=nil end;return u.nodes[n]~=nil end,
-   world_pose=function(u,n)return{1,0,0,0,1,0,0,0,1,u==root and 0 or u.offset,#n,0}end}}
+   world_pose=function(u,n)return{1,0,0,0,1,0,0,0,1,u==root and 0 or u.offset,type(n)=='number'and 0 or #n,0}end,
+   mesh=function(u,i)return{u=u,i=i}end},
+  Mesh={world_pose=function()return{1,0,0,0,1,0,0,0,1,0,0,0}end,
+   bounding_volume_components=function(m)local up=m.i==1 and m.u.proxy or m.u.up;return{-.2,-.1,up-.3},{.2,.1,up+.3},.4 end},
+  Vector3={x=function(v)return v[1]end,y=function(v)return v[2]end,z=function(v)return v[3]end}}
  local rows=P.association(sr,function(m)logged[#logged+1]=m end,function()return 0 end)
  local frame={explicit_subject=true,identity='other outfit',root_handle=root,world=world}
  local function names(group)local r={};for _,row in ipairs(rows(frame,group))do r[#r+1]=row.resource..':'..#row.indices end;table.sort(r);return table.concat(r,',')end
  local helmet,torso,cape,body=names('helmet'),names('torso'),names('cape'),names('body')
- assert(helmet=='collar:6,helmet:5',helmet);assert(torso=='chest:5,shell:5,vest:5',torso);assert(cape=='cape:4',cape);assert(body=='arm:5,legs:5,waist:5',body)
- assert(#logged==4 and logged[1]:find('POV outfit discovery: helmet=2 of 9 bound units',1,true)and logged[1]:find('collar[head+chest+spine1]',1,true),#logged..' '..table.concat(logged,' | '))
+ assert(helmet=='collar:6,helmet:5',helmet);assert(torso=='chest:5,neck_shell:5,shell:5,vest:5',torso);assert(cape=='cape:4',cape)
+ assert(body=='arm:5,legs:5,suit:5,waist:5',body)
+ assert(#logged==4 and logged[1]:find('POV outfit discovery: helmet=2 of 11 bound units',1,true)and logged[1]:find('collar[head+chest+spine1@1.66]',1,true),#logged..' '..table.concat(logged,' | '))
  assert(not rows(frame,'helmet').unsettled,'A bound outfit is settled')
  -- Caught mid-update (no unit on the skeleton yet): flagged for a retry, not an empty hide.
  for _,u in ipairs(all)do u.offset=u.offset+3 end
@@ -373,5 +383,10 @@ do
  assert(P.classify({head=true,chest=true,cape1=true})=='cape'and P.classify({chest=true,r_hand=true})=='body'and P.classify({})==nil)
  assert(P.classify({head=true,chest=true,spine1=true,hips=true,l_hand=true,r_hand=true})=='torso','A whole-rig chest shell is torso')
  assert(P.classify({chest=true,spine1=true,hips=true})=='torso'and P.classify({spine1=true,hips=true})=='body','Chest reaching the hips is torso; a waist is body')
+ -- Geometry decides only where bones are ambiguous; without it the bone rules stand.
+ assert(P.classify({head=true,chest=true},{up=1.28})=='torso'and P.classify({head=true,chest=true},{up=1.74})=='helmet','Head pieces by height')
+ assert(P.classify({chest=true,hips=true,l_hand=true,r_hand=true},{up=.95})=='body','A whole-rig suit at the hips stays with the body')
+ assert(P.ambiguous({head=true})and P.ambiguous({chest=true,hips=true,l_hand=true,r_hand=true})and not P.ambiguous({chest=true,l_hand=true})and not P.ambiguous({head=true,cape1=true}))
+ assert(P.geometry({Unit={}},{},5,{})==nil,'No mesh natives: no geometry, bone rules')
  print('Other outfits: skeleton-bound units grouped into helmet, torso, cape and body; foreign and mesh-less units refused passed')
 end
