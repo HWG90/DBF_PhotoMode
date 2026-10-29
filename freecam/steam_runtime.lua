@@ -752,11 +752,14 @@ function M.new(host,sr,deps,service)
    -- old body (a manual Reset, then Apply, fixed the cape, live 2026-10-29). The settled
    -- call repeats the releases above, as holds may re-engage while it waits. A field, not a
    -- local: M.new is at Lua 5.1's 200-local limit.
+   -- Only the first pose waits: a held pose's reset refreshes the body itself, so a change
+   -- between poses resets and applies at once, with no gap (user: "the reset only needs to
+   -- be done on the first pose change").
    if not settled then
+    local first=not subject_holds
     local reset,reason=subject_call('reset')
     if not reset then return false,reason end
-    self.pending_pose={id=value,updates=2}
-    return true,'Applying the pose'
+    if first then self.pending_pose={id=value,updates=2};return true,'Applying the pose'end
    end
   end
   local ok,why=subject_call(method,value)

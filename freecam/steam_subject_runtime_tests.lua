@@ -519,19 +519,23 @@ end
 print('Subject session lifecycle: no idle polling, explicit refresh requalification and fresh entry selection passed')
 
 do
- local f=fixture();f.enable();f.select();f.pose(2);f.events={}
+ local f=fixture();f.enable();f.select();f.events={}
  local writes=f.node_writes
- assert(f.action('subject_pose_play'))
- -- The new pose waits two updates for the reset body to settle: the cape placement is
+ assert(f.runtime.handle.set('subject_pose',2));assert(f.action('subject_pose_play'))
+ -- The first pose waits two updates for the released body to settle: the cape placement is
  -- captured at its first write (a same-frame Reset+Apply left the cape wrong, live).
- assert(index_of(f.events,'mode:position_and_rotation')and not index_of(f.events,'mode:ignore'),'Apply resets now')
- local reset_writes=f.node_writes;f.step(.016,1)
- assert(not index_of(f.events,'mode:ignore')and f.node_writes==reset_writes,'Nothing is written on the first update')
+ assert(not index_of(f.events,'mode:ignore')and f.node_writes==writes,'The first pose is not written at once')
  f.step(.016,1)
- assert(index_of(f.events,'mode:position_and_rotation')<index_of(f.events,'mode:ignore')and f.subject.status().state=='posed','The pose is applied on the second update')
+ assert(not index_of(f.events,'mode:ignore')and f.node_writes==writes,'Nothing is written on the first update')
+ f.step(.016,1)
+ assert(index_of(f.events,'mode:ignore')and f.subject.status().state=='posed','The first pose is applied on the second update')
+ f.events={}
+ assert(f.action('subject_pose_play'))
+ assert(index_of(f.events,'mode:position_and_rotation')<index_of(f.events,'mode:ignore')and f.subject.status().state=='posed','Reapplying a held pose resets and applies at once')
  f.events={};local before=f.decodes
- assert(f.runtime.handle.set('subject_pose',3));f.settle()
- assert(f.decodes==before+1 and index_of(f.events,'mode:position_and_rotation')<index_of(f.events,'mode:ignore'),'Changing a held pose resets, then applies once settled')
+ assert(f.runtime.handle.set('subject_pose',3))
+ assert(f.decodes==before+1 and index_of(f.events,'mode:position_and_rotation')<index_of(f.events,'mode:ignore')and f.subject.status().state=='posed',
+  'Changing a held pose resets and applies at once: only the first pose waits')
  local writes=f.node_writes;local reset=f.subject.reset
  f.subject.reset=function()return false,'Fixture restoration refused'end
  assert(not f.action('subject_pose_play')and f.node_writes==writes,'Failed reset must prevent the next pose write')
