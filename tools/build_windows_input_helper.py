@@ -107,9 +107,11 @@ s=patch_once(s,'''static void test_identity_and_ownership(void) {''','''static v
 static void test_identity_and_ownership(void) {''','collision fixture')
 s=patch_once(s,'test_registration_rollback();test_identity_and_ownership();','test_registration_rollback();test_shared_shortcuts();test_identity_and_ownership();','fixture order')
 p.write_text(s)
+# Steam build 26251122. WJL never reads game memory: these hashes only name the install
+# whose layout and stock renderer (engine_render_contract.lua) were checked for this build.
 p=native/'steam_files.c';s=p.read_text()
-s=re.sub(r'(static const char EXE_SHA\[\] = ")[^"]+',r'\g<1>0acc07debe04714ae04281e1a66bd2eb9d3d85232953e32a93c8a3dd0874eabe',s)
-s=re.sub(r'(static const char GAME_SHA\[\] = ")[^"]+',r'\g<1>6d1d4d3bc6fc84801d9f8f1b310e13a603d07409f3d9495d74b42e1d0bb1c08f',s);p.write_text(s)
+s=re.sub(r'(static const char EXE_SHA\[\] = ")[^"]+',r'\g<1>257fd7de21a04e8668e02e5c820edf3435176fbde3569765255cc52a5ea20f9d',s)
+s=re.sub(r'(static const char GAME_SHA\[\] = ")[^"]+',r'\g<1>61dcfcd201dacbf3545c97beb8a5a6186e9850d2670bf60b0e058320b477f6df',s);p.write_text(s)
 p=native/'steam_service.c';s=p.read_text();s=s.replace('        if (reply[1]) goto done;\n        if (keyboard.state == LLL_KEYBOARD_ACTIVE)', '''        if (reply[1]) goto done;
         {
             static uint32_t last_generation, last_state;
