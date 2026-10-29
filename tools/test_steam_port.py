@@ -23,7 +23,7 @@ FEATURE_FIXTURES=('cinema_camera_tests.lua','cinema_controls_tests.lua','cinema_
                   'saved_camera_tests.lua','director_tests.lua','photo_lights_tests.lua','photo_light_presets_tests.lua',
                   'subject_poses_tests.lua','subject_pose_cape_tests.lua','ragdoll_pause_tests.lua','photo_menu_cache_tests.lua','photo_menu_interaction_tests.lua','photo_light_gizmos_tests.lua')
 
-FIXTURES+=('windows_input_service_tests.lua','steam_light_sync_tests.lua','windows_lens_tests.lua','windows_freeze_tests.lua','windows_font_tests.lua','wjl_helper_startup_tests.lua','engine_scene_resources_tests.lua','windows_dof_runtime_tests.lua','windows_font_view_tests.lua')
+FIXTURES+=('windows_input_service_tests.lua','windows_capture_tests.lua','steam_light_sync_tests.lua','windows_lens_tests.lua','windows_freeze_tests.lua','windows_font_tests.lua','wjl_helper_startup_tests.lua','engine_scene_resources_tests.lua','windows_dof_runtime_tests.lua','windows_font_view_tests.lua')
 FIXTURES+=('windows_native_dof_tests.lua','windows_native_dof_selftest_tests.lua','windows_dof_override_tests.lua')
 FIXTURES+=('windows_freeze_observer_tests.lua',)
 FIXTURES+=('windows_freeze_root_hold_tests.lua','windows_freeze_root_runtime_tests.lua','windows_freeze_world_anchor_tests.lua','windows_freeze_transfer_runtime_tests.lua')

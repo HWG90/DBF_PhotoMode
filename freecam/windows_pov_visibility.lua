@@ -62,8 +62,170 @@ local weapon_nodes={};for i=1,40 do weapon_nodes[i]=i end
 for _,item in ipairs({{'309f7e645a8d2b56',4,14},{'66781fc94b2db0e0',5,13},{'244d6938e49be6b9',4,18}})do
  models[#models+1]={group='equipment',resource=item[1],count=item[2],nodes=item[3],parent='b80951732a5f58f4',parent_nodes=40,parent_anchors=weapon_nodes,local_bind=true,optional=true}
 end
-function M.association(sr)
+-- Any outfit: the render units bound to the selected skeleton (every probed bone the unit
+-- shares with it sits on the same world matrix, which only an attached unit can), grouped
+-- by the bones they carry. A cape carries cape1; arm and leg pieces a hand or the hips
+-- (the body, kept in POV); a helmet the head; a torso piece the chest or spine.
+M.probes={'head','chest','spine1','hips','l_hand','r_hand','cape1'}
+-- A resource name as its 16 hex digits, for the log.
+function M.short(name)
+ local text=tostring(name);return text:match('#ID%[(%x+)%]')or text
+end
+-- Bones a piece carries do not say where its geometry is. Live 2026-10-29: a helmet and two
+-- torso shells carried the same head, neck and shoulder bones. Their LOD meshes' bounds did not
+-- overlap: helmet centred 1.74 m up (+-0.14), shells 1.28 m (0.84 to 1.72). Measured where the
+-- bones are ambiguous: a piece with the head, or one on the whole rig.
+local head_up=1.58 -- Above: a helmet. Below: a torso piece reaching the neck.
+local chest_up=1.05 -- A whole-rig piece centred below this is a whole suit (kept with the body).
+local function whole(has)return has.chest and has.l_hand and has.r_hand and has.hips end
+function M.ambiguous(has)return not has.cape1 and(whole(has)or has.head and not(has.l_hand or has.r_hand))end
+-- The piece's geometry centre in the body root's frame (right, forward, up), from the bounds most
+-- of its meshes share (its LODs); a proxy mesh with other bounds is outvoted. nil if unreadable.
+-- Stored bounds come in two frames. Bounds stored away from the mesh's origin are already in the
+-- body's frame, and the mesh's world pose is not applied: live, torso LODs stored 1.29 m up while
+-- their poses sat 0.93-0.96 m below the root. Bounds around the mesh's own origin are local to
+-- the node it hangs on, and need that pose: live 10:47, a helmet's meshes stored centre 0 and sat
+-- on the head at 1.74 m. Read as stored, every helmet measured 0 m and Hide Helmet hid nothing.
+function M.geometry(sr,unit,meshes,root)
+ local H,V,B=sr.Mesh,sr.Vector3,sr.Matrix4x4
+ if not(H and V and type(H.bounding_volume_components)=='function')then return nil end
+ local ok,result=pcall(function()
+  local found={}
+  for i=1,math.min(meshes,8)do
+   local m=sr.Unit.mesh(unit,i);local lo,hi=H.bounding_volume_components(m)
+   local l={V.x(lo),V.y(lo),V.z(lo)};local h={V.x(hi),V.y(hi),V.z(hi)}
+   local c={(l[1]+h[1])/2,(l[2]+h[2])/2,(l[3]+h[3])/2}
+   if l[1]<=0 and h[1]>=0 and l[2]<=0 and h[2]>=0 and l[3]<=0 and h[3]>=0 then
+    assert(root and type(H.world_pose)=='function','Mesh pose unavailable')
+    local p={B.to_elements(H.world_pose(m))};assert(#p==12,'Mesh pose shape changed')
+    local w={};for k=1,3 do w[k]=p[9+k]+c[1]*p[k]+c[2]*p[3+k]+c[3]*p[6+k]-root[9+k]end
+    c={};for a=0,2 do c[a+1]=w[1]*root[a*3+1]+w[2]*root[a*3+2]+w[3]*root[a*3+3]end
+   end
+   for _,v in ipairs(c)do assert(v==v and math.abs(v)<100,'Mesh bounds invalid')end
+   found[#found+1]=c
+  end
+  local best,votes
+  for _,a in ipairs(found)do
+   local n=0;for _,b in ipairs(found)do if math.abs(a[1]-b[1])<.02 and math.abs(a[2]-b[2])<.02 and math.abs(a[3]-b[3])<.02 then n=n+1 end end
+   if not votes or n>votes then best,votes=a,n end
+  end
+  return best and{right=best[1],forward=best[2],up=best[3]}
+ end)
+ return ok and result or nil
+end
+-- Region markers: every armour piece seen live (63 pieces, 2026-10-29) carries one or two small
+-- meshes whose names are the same on every armour and say which body region it covers. They decide
+-- first; height (M.geometry) and bones are the fallback. Their measured positions are not trusted
+-- (one chest marker read 2.70 m), only their names. Markers also fixed what bones got wrong: sleeves
+-- without the hand bone and waist pieces reaching the chest had been filed as torso.
+M.markers={[-1507809972]='torso',[-393632797]='torso',[1019278452]='torso', -- chest, shoulders
+ [-2146726238]='helmet', -- head
+ [-2045232359]='body',[-1149790933]='body',[-842808422]='body', -- pelvis, thighs
+ [-298288038]='body',[-646512891]='body', -- upper arms
+ [-13682950]='cape'}
+-- The region its markers name; torso wins over the head marker (a collar carries both). nil if
+-- the piece has none or names are unreadable.
+function M.marker_class(sr,unit,meshes)
+ local H=sr.Mesh
+ if not(H and type(H.name)=='function')then return nil end
+ local ok,found=pcall(function()
+  local f={};for i=1,math.min(meshes,16)do local r=M.markers[H.name(sr.Unit.mesh(unit,i))];if r then f[r]=true end end;return f
+ end)
+ if not ok then return nil end
+ for _,region in ipairs({'cape','torso','helmet','body'})do if found[region]then return region end end
+end
+function M.classify(has,geometry)
+ if has.cape1 then return'cape'end
+ -- Some armours author their chest shells on the whole rig: both arms, the legs and the head
+ -- (live 2026-10-29: three such pieces and no chest-only piece, so Hide Torso hid nothing).
+ if whole(has)then return geometry and geometry.up<chest_up and'body'or'torso'end
+ -- One arm, or the hips without the chest: arm, leg and waist pieces. A chest piece that
+ -- reaches the hips is still a torso shell.
+ if has.l_hand or has.r_hand or has.hips and not has.chest then return'body'end
+ if has.head then return geometry and geometry.up<head_up and'torso'or'helmet'end
+ if has.chest or has.spine1 then return'torso'end
+end
+function M.association(sr,log,clock)
  local U,W,B=sr.Unit,sr.World,sr.Matrix4x4
+ clock=clock or os.clock
+ local described={}
+ local function discover(frame,group,pose)
+  assert(type(W.units)=='function','POV hiding is not available for this outfit')
+  local started=clock()
+  local units=W.units(frame.world);assert(type(units)=='table','POV outfit discovery unavailable')
+  local result,scanned,bound,seen={},0,0,{}
+  for key,unit in pairs(units)do
+   scanned=scanned+1
+   assert(type(key)=='number'and key%1==0 and key>=1 and scanned<=16384,'POV outfit discovery exceeds bound')
+   if unit~=frame.root_handle and U.alive(unit)and U.world(unit)==frame.world then
+    local meshes=U.num_meshes(unit)
+    if type(meshes)=='number'and meshes%1==0 and meshes>0 and meshes<=128 then
+     local has,named,matched={},0,0
+     for _,name in ipairs(M.probes)do if U.has_node(unit,name)then
+      has[name]=true
+      if U.has_node(frame.root_handle,name)then
+       named=named+1
+       local a,b=pose(unit,U.node(unit,name)),pose(frame.root_handle,U.node(frame.root_handle,name));local same=true
+       for i=1,12 do if math.abs(a[i]-b[i])>1e-4 then same=false;break end end
+       if same then matched=matched+1 end
+      end
+     end end
+     if matched>0 and matched==named then
+      bound=bound+1
+      local flags={};for _,name in ipairs(M.probes)do if has[name]then flags[#flags+1]=name end end
+      local marked=not has.cape1 and M.marker_class(sr,unit,meshes)or nil
+      local geometry=not marked and M.ambiguous(has)and M.geometry(sr,unit,meshes,pose(frame.root_handle,1))or nil
+      local class=marked or M.classify(has,geometry)
+      local short=M.short(U.resource_name(unit))
+      seen[#seen+1]=short..'['..table.concat(flags,'+')..(marked and'='..marked or geometry and string.format('@%.2f',geometry.up)or'')..']'
+      -- Every skeleton bone the piece carries, once per resource: evidence for classifying
+      -- pieces the probes cannot tell apart (an armour collar and a helmet both carry the head).
+      if log and type(frame.rig_nodes)=='table'and not described[short]then
+       described[short]=true;local carried={}
+       for _,node in ipairs(frame.rig_nodes)do
+        if type(node.name)=='string'and U.has_node(unit,node.name)then carried[#carried+1]=node.name end
+       end
+       log('POV outfit piece: '..short..' meshes='..meshes..' class='..tostring(class)..' bones='..table.concat(carried,'+'))
+       -- Per mesh: its stored bounds centre (s, what the classifier reads), half sizes (h), and
+       -- where its world pose sits from the body root in the root's frame (o), plus the piece
+       -- root's own offset. Evidence for the geometric rule. Read-only.
+       local ok,why=pcall(function()
+        local H,V=sr.Mesh,sr.Vector3;local r=pose(frame.root_handle,1);local parts={}
+        local function rel(t)
+         local d={t[1]-r[10],t[2]-r[11],t[3]-r[12]};local out={}
+         for a=0,2 do out[a+1]=d[1]*r[a*3+1]+d[2]*r[a*3+2]+d[3]*r[a*3+3]end
+         return string.format('%.2f,%.2f,%.2f',out[1],out[2],out[3])
+        end
+        local u=pose(unit,1);parts[1]='root='..rel({u[10],u[11],u[12]})
+        for i=1,math.min(meshes,8)do
+         local m=U.mesh(unit,i);local lo,hi=H.bounding_volume_components(m)
+         local l={V.x(lo),V.y(lo),V.z(lo)};local h={V.x(hi),V.y(hi),V.z(hi)}
+         local p={B.to_elements(H.world_pose(m))};assert(#p==12,'Mesh pose shape changed')
+         parts[#parts+1]=string.format('m%d=%s s=%.2f,%.2f,%.2f h=%.2f,%.2f,%.2f o=%s',i,tostring(H.name(m)),
+          (l[1]+h[1])/2,(l[2]+h[2])/2,(l[3]+h[3])/2,(h[1]-l[1])/2,(h[2]-l[2])/2,(h[3]-l[3])/2,rel({p[10],p[11],p[12]}))
+        end
+        return table.concat(parts,' ')
+       end)
+       log('POV outfit piece geometry: '..short..' '..tostring(why)..(ok and''or' (unavailable)'))
+      end
+      if class==group then
+       assert(#result<32,'POV outfit discovery exceeds bound')
+       local indices={};for index=1,meshes do indices[index]=index end
+       result[#result+1]={unit=unit,world=frame.world,resource=tostring(U.resource_name(unit)),indices=indices}
+      end
+     end
+    end
+   end
+  end
+  if log then
+   local names={};for _,row in ipairs(result)do names[#names+1]=M.short(row.resource)..'x'..#row.indices end
+   log(string.format('POV outfit discovery: %s=%d of %d bound units (%s); bound: %s; scanned=%d ms=%.3f',group,#result,bound,table.concat(names,','),table.concat(seen,' '),scanned,(clock()-started)*1000))
+  end
+  -- No unit bound at all: the outfit was caught mid-update (the frame a freeze releases the
+  -- skeleton). The caller retries on later frames instead of hiding nothing.
+  result.unsettled=bound==0
+  return result
+ end
  local function read_pose(u,node)
   local p={B.to_elements(U.world_pose(u,node))};assert(#p==12,'POV pose shape changed')
   for _,v in ipairs(p)do assert(type(v)=='number'and v==v and math.abs(v)<1e8,'POV pose invalid')end
@@ -153,7 +315,8 @@ function M.association(sr)
      end
     end
    end
-   assert(#found>0 or model.optional,'POV hiding is not yet available for this outfit')
+   -- Another outfit than the one this catalog was verified with: discover it instead.
+   if #found==0 and not model.optional then return discover(frame,group,pose)end
    for _,found in ipairs(found)do
     if model.graph then assert(U.num_scene_graph_items(found)==model.graph,'POV equipment graph changed')end
     local count=model.count or #model.names
@@ -177,7 +340,7 @@ end
 function M.skeleton_scan(sr,frame,parents,clock,log,weapons_only)
  local U,W,B=sr.Unit,sr.World,sr.Matrix4x4
  local state={world=frame.world,root=frame.root_handle,identity=frame.identity,rig=frame.rig_nodes,
-  parents=parents or{},rows={},new_rows={},seen={},max_ms=0,round=1};local self={}
+  parents=parents or{},rows={},new_rows={},seen={},missed={},max_ms=0,round=1};local self={}
  clock=clock or os.clock
  local function pose(unit,node)
   local a={B.to_elements(U.world_pose(unit,node))};assert(#a==12,'Full hide pose shape changed')
@@ -239,7 +402,7 @@ function M.skeleton_scan(sr,frame,parents,clock,log,weapons_only)
      -- A holster can apply an authored offset to the weapon root. Recover
      -- its parent frame from local * parent = world before comparing every
      -- selected bone. Do not move the unit or assume it still uses the hand.
-     local bind_match=false
+     local bind_match,derived_pose=false,nil
      if not root_match and type(U.local_pose)=='function'and type(B.inverse)=='function'and type(B.multiply)=='function'and type(B.from_elements)=='function'then
       local ok,derived=pcall(function()
        local a={B.to_elements(U.local_pose(unit,1))};assert(#a==12,'Weapon local pose shape changed')
@@ -251,7 +414,7 @@ function M.skeleton_scan(sr,frame,parents,clock,log,weapons_only)
        for _,v in ipairs(result)do assert(type(v)=='number'and v==v and math.abs(v)<1e8,'Weapon parent pose invalid')end
        return result
       end)
-      if ok then for _,a in ipairs(anchors)do if same(derived,a.pose)then bind_match=true;break end end end
+      if ok then derived_pose=derived;for _,a in ipairs(anchors)do if same(derived,a.pose)then bind_match=true;break end end end
      end
      if (not weapons_only or names<2)and(root_match or bind_match or matches>=2 and matches==names)then
       assert(#s.rows<48,'Full hide additional-unit budget exceeded')
@@ -259,6 +422,25 @@ function M.skeleton_scan(sr,frame,parents,clock,log,weapons_only)
       local row={unit=unit,world=s.world,resource=tostring(U.resource_name(unit)),indices=indices,parent_candidate=(root_match or bind_match)and names<2}
       s.rows[#s.rows+1]=row;s.new_rows[#s.new_rows+1]=row;s.seen[unit]=true;s.added=true
       if log then log('Full hide skeleton match: resource='..row.resource..' meshes='..count..' bones='..matches..' root='..tostring(root_match)..' local_bind='..tostring(bind_match))end
+     elseif weapons_only and log and names<2 then
+      -- Evidence for weapons left visible: a meshed unit within 3 m that no anchor matched,
+      -- with how far its root (and holster-derived parent) is from the closest anchor.
+      local d2=(root[10]-body[10])^2+(root[11]-body[11])^2+(root[12]-body[12])^2
+      local resource=M.short(U.resource_name(unit))
+      if d2<9 and not s.missed[resource]then
+       s.missed[resource]=true
+       local function nearest(p)
+        if not p then return'none'end
+        local best,label=math.huge,'?'
+        for _,a in ipairs(anchors)do
+         local e=0;for i=1,12 do e=math.max(e,math.abs(p[i]-a.pose[i]))end
+         if e<best then best,label=e,a.name or'attachment'end
+        end
+        return string.format('%.4f@%s',best,label)
+       end
+       log(string.format('Weapon scan near miss: resource=%s meshes=%d graph=%s distance_m=%.2f root=%s bind=%s bones=%d',resource,count,
+        tostring(U.num_scene_graph_items(unit)),math.sqrt(d2),nearest(root),nearest(derived_pose),names))
+      end
      end
     end
    end
@@ -280,15 +462,15 @@ end
 function M.new(sr,selected,lease_factory,log,clock)
  local U,W,B=sr.Unit,sr.World,sr.Matrix4x4;local groups={'helmet','torso','cape','body','equipment'};local pov_groups={'helmet','torso','cape'};local leases={}
  for _,group in ipairs(groups)do leases[group]=lease_factory.new(sr)end
- local desired,dirty,owners={},{},{};local requested={};local full=false;local scan;local equipment_settle=0;local extra=lease_factory.new(sr)
- local self={status='POV visibility off',max_apply_ms=0};clock=clock or os.clock
+ local desired,dirty,owners,unsettled={},{},{},{};local requested={};local full=false;local scan;local equipment_settle=0;local extra=lease_factory.new(sr)
+ local self={status='Helmet, torso and cape hiding off',max_apply_ms=0};clock=clock or os.clock
  local function count_owned()local n=extra.count();for _,group in ipairs(groups)do n=n+leases[group].count()end;return n end
  local function report(started,ok,why)
   local elapsed=(clock()-started)*1000;self.max_apply_ms=math.max(self.max_apply_ms,elapsed)
   if log then log('POV visibility: '..self.status..'; transition_ms='..string.format('%.3f',elapsed)..'; owned_meshes='..count_owned()..'; max_equipment_render_ms='..string.format('%.3f',self.max_maintain_ms or 0))end
   return ok,why
  end
- local rows=M.association(sr)
+ local rows=M.association(sr,log,clock)
  function self.queue(group,value)
   -- Boolean form retained for internal all-group callers.
   if type(group)=='boolean'then for _,name in ipairs(pov_groups)do self.queue(name,group)end;return end
@@ -325,7 +507,7 @@ function M.new(sr,selected,lease_factory,log,clock)
    local ok,why=leases[group].release()
    if ok then owners[group]=nil else success=false;reason=why end
   end
-  self.status=success and'POV visibility off'or('POV restoration pending: '..tostring(reason))
+  self.status=success and'Helmet, torso and cape hiding off'or('POV restoration pending: '..tostring(reason))
   if started then return report(started,success,reason)end
   return success,reason
  end
@@ -393,6 +575,11 @@ function M.new(sr,selected,lease_factory,log,clock)
     local restored,why=leases[group].release();assert(restored,why);owners[group]=nil
     if desired[group]then
      local hidden,issue=leases[group].hide(plans[group]);assert(hidden,issue);owners[group]=identities[group]
+     if plans[group].unsettled and(unsettled[group]or 0)<60 then unsettled[group]=(unsettled[group]or 0)+1;dirty[group]=true
+     else
+      if plans[group].unsettled and log then log('POV outfit discovery: '..group..' found no attached pieces in 60 frames')end
+      unsettled[group]=nil
+     end
     end
    end end
   end)
@@ -402,7 +589,7 @@ function M.new(sr,selected,lease_factory,log,clock)
    return report(started,false,self.status)
   end
   local active={};for _,group in ipairs(groups)do if desired[group]then active[#active+1]=group end end
-  self.status=#active==0 and'POV visibility off'or('POV hidden: '..table.concat(active,', '))
+  self.status=#active==0 and'Helmet, torso and cape hiding off'or('Hidden: '..table.concat(active,', '))
   return report(started,true)
  end
  return self

@@ -45,6 +45,35 @@ function M.uniforms(o,fov,ui_white)
  }
 end
 function M.active(options)return M.uniforms(options).active end
+-- The screen minus the menu's blurred backdrops, as {x0,y0,x1,y1} pieces. gui_blur draws the
+-- game's blur_behind_ui image in an earlier UI pass than this grade, so a full-screen grade
+-- hides it; the grade leaves those areas uncovered instead. No holes: one full-screen piece.
+local function finite(v)return type(v)=='number'and v==v and math.abs(v)<math.huge end
+function M.pieces(w,h,holes)
+ local cut={}
+ for _,r in ipairs(type(holes)=='table'and holes or{})do
+  if type(r)=='table'and finite(r.x)and finite(r.y)and finite(r.w)and finite(r.h)then
+   local x0,y0,x1,y1=math.max(0,r.x),math.max(0,r.y),math.min(w,r.x+r.w),math.min(h,r.y+r.h)
+   if x1>x0 and y1>y0 then cut[#cut+1]={x0,y0,x1,y1}end
+  end
+ end
+ if #cut==0 then return{{0,0,w,h}}end
+ local ys={0,h};for _,c in ipairs(cut)do ys[#ys+1]=c[2];ys[#ys+1]=c[4]end
+ table.sort(ys)
+ local pieces={}
+ for i=1,#ys-1 do
+  local ya,yb=ys[i],ys[i+1]
+  if yb>ya then
+   local spans={}
+   for _,c in ipairs(cut)do if c[2]<=ya and c[4]>=yb then spans[#spans+1]={c[1],c[3]}end end
+   table.sort(spans,function(a,b)return a[1]<b[1]end)
+   local x=0
+   for _,s in ipairs(spans)do if s[1]>x then pieces[#pieces+1]={x,ya,s[1],yb}end;x=math.max(x,s[2])end
+   if x<w then pieces[#pieces+1]={x,ya,w,yb}end
+  end
+ end
+ return pieces
+end
 function M.new(sr,depth,allow_candidate,registration,verify_color)
  local self={combined_scene_dof_candidate=true,shader_dof_active=false,scene_active=false}
  local shader_path,material_path,sdr_shader_path,sdr_material_path=M.paths(depth.binding_contract or depth.global_binding)
@@ -115,13 +144,15 @@ function M.new(sr,depth,allow_candidate,registration,verify_color)
   end
   gui,world,signature,bound=nil,nil,nil,nil;self.color_binding_identity=nil;self.ui_brightness=nil;self.hdr_enabled=nil;return true
  end
- function self.apply(options,fov)
+ -- holes: screen rectangles {x,y,w,h} the menu currently blurs (nil when it draws none).
+ function self.apply(options,fov,holes)
   -- The caller may suppress native DoF only if the returned third value is
   -- true. No native flag is written by this draw module.
   self.shader_dof_active,self.scene_active=false,false
   local uniforms=M.uniforms(options,fov)
   if not uniforms.active then local done,why=self.release();return done,why,false end
   local w,h=sr.Gui.resolution()
+  local pieces=M.pieces(w,h,holes)
   local read_hdr,hdr=pcall(sr.Application.render_setting,'hdr_enabled')
   local key=tostring(w)..'x'..tostring(h)..'|'..tostring(read_hdr and hdr)..'|'..tostring(options and options.dof==true and options.dof_mode==2)
   local clock=sr.Application.time_since_launch;local now=type(clock)=='function'and clock()or nil
@@ -182,16 +213,19 @@ function M.new(sr,depth,allow_candidate,registration,verify_color)
     for _,value in ipairs(values)do fields[#fields+1]=value end
    end
    fields[#fields+1]=tostring(target);fields[#fields+1]=tostring(depth.binding_identity);fields[#fields+1]=tostring(color_binding_identity)
+   for _,p in ipairs(pieces)do for i=1,4 do fields[#fields+1]=p[i]end end
    local draw_key=table.concat(fields,'|')
    if bound.draw_key~=draw_key then
     local previous=bound.ids
     if not bound.late_binding then for _,id in ipairs(previous)do sr.Gui.destroy_triangle(gui,id)end end
     bound.ids={}
-    local a,b,c,d=sr.Vector3(0,0,0),sr.Vector3(w,0,0),sr.Vector3(w,0,h),sr.Vector3(0,0,h)
     local color=sr.Color(255,255,255,255)
-    local ua,ub,uc,ud=sr.Vector2(0,0),sr.Vector2(1,0),sr.Vector2(1,1),sr.Vector2(0,1)
-    bound.ids[#bound.ids+1]=assert(sr.Gui.triangle(gui,a,b,c,M.layer,color,material,ua,ub,uc))
-    bound.ids[#bound.ids+1]=assert(sr.Gui.triangle(gui,a,c,d,M.layer,color,material,ua,uc,ud))
+    for _,p in ipairs(pieces)do
+     local a,b,c,d=sr.Vector3(p[1],0,p[2]),sr.Vector3(p[3],0,p[2]),sr.Vector3(p[3],0,p[4]),sr.Vector3(p[1],0,p[4])
+     local ua,ub,uc,ud=sr.Vector2(p[1]/w,p[2]/h),sr.Vector2(p[3]/w,p[2]/h),sr.Vector2(p[3]/w,p[4]/h),sr.Vector2(p[1]/w,p[4]/h)
+     bound.ids[#bound.ids+1]=assert(sr.Gui.triangle(gui,a,b,c,M.layer,color,material,ua,ub,uc))
+     bound.ids[#bound.ids+1]=assert(sr.Gui.triangle(gui,a,c,d,M.layer,color,material,ua,uc,ud))
+    end
     if bound.late_binding then
      -- Keep at least one assigned primitive alive throughout replacement.
      -- Bind the material that the final retained quad actually owns, after

@@ -31,6 +31,11 @@ local function fixture(options)
  local temps={}
  local function temp(v)local h=newproxy();temps[h]={epoch=f.epoch,value=copy(v)};return h end
  local function value(h)local t=assert(temps[h]);assert(t.epoch==f.epoch,'Scratch matrix retained across callbacks');return t.value end
+ -- Unit.resource_name and IdString64.from_hex return engine scratch ids too: only
+ -- their string form outlives the callback (game build 26251122, Pose Stop).
+ local ids={}
+ local function id(hex)local h=newproxy(true);getmetatable(h).__tostring=function()return'IdString64 [0x'..hex..']'end;ids[h]={epoch=f.epoch,hex=hex};return h end
+ local function id_value(h)local t=assert(ids[h],'Not an IdString64');assert(t.epoch==f.epoch,'Scratch IdString64 retained across callbacks');return t.hex end
  local function world_pose(u,n)
   f.reads=(f.reads or 0)+1
   if u==body then if n==1 then return identity()end;assert(n==35);return copy(f.anchor)end
@@ -39,7 +44,7 @@ local function fixture(options)
   return multiply(f.values[n],world_pose(cape,parent))
  end
  local U={alive=function(u)return u==body or f.alive end,world=function()return world end,
-  resource_name=function()return f.resource end,num_scene_graph_items=function(u)return u==body and 107 or 50 end,
+  resource_name=function()return id(f.resource)end,num_scene_graph_items=function(u)return u==body and 107 or 50 end,
   num_meshes=function()return 4 end,mesh=function(u,i)return f.meshes[i]end,
   has_node=function(u,name)return u==body and name=='cape1'or u==cape and names[name]~=nil end,
   node=function(u,name)return u==body and 35 or names[name]end,
@@ -58,7 +63,7 @@ local function fixture(options)
   multiply=function(a,b)return temp(multiply(value(a),value(b)))end,inverse=function(a)return temp(inverse(value(a)))end}
  f.current_world=world;f.session=newproxy()
  local sr={Unit=U,Application={main_world=function()return f.current_world end},Network={game_session=function()return f.session end},World={update_unit=function(w,u)assert(w==world and u==cape);f.updates=f.updates+1 end},
-  Matrix4x4=X,IdString64={equal=function(a,b)return a==b end,from_hex=function(h)return h end},
+  Matrix4x4=X,IdString64={equal=function(a,b)return id_value(a)==id_value(b)end,from_hex=function(h)return id(h)end},
   Mesh={visibility=function()return true end,
    world_pose=function(h)for i,m in ipairs(f.meshes)do if m==h then return temp(world_pose(cape,mesh_nodes[i]))end end;error('Stale Mesh')end,
    node=function(h)for i,m in ipairs(f.meshes)do if m==h then return mesh_nodes[i]end end;error('Stale Mesh')end}}

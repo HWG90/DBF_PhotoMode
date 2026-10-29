@@ -217,3 +217,24 @@ do
  angle=.300001;native.World.debug_camera_pose=function()return pose(.4,p)end
  assert(camera.open()==false,'No exact pose must remain ambiguous')
 end
+-- Follow cameras for action shots (user: "Follow Player - Pivot / Pin").
+do
+ local L=dofile('freecam/look.lua')
+ local function near(a,b,what)for i=1,3 do assert(math.abs(a[i]-b[i])<1e-9,what..' ['..i..'] '..a[i]..' vs '..b[i])end end
+ -- Pivot: the camera stays put and turns with the subject, keeping it where it was framed.
+ local s=L.follow_start('pivot',{0,0,1.5},{1,0,0},{5,0,1.5},{5,0,0})
+ local pos,f,r=L.follow_step(s,{0,5,1.5},{0,5,0})
+ near(pos,{0,0,1.5},'Pivot stays put');near(f,{0,1,0},'Pivot looks at the subject');near(r,{1,0,0},'Level right axis')
+ local c,sn=math.cos(math.rad(10)),math.sin(math.rad(10))
+ local framed=L.follow_start('pivot',{0,0,1.5},{c,-sn,0},{5,0,1.5},{5,0,0})
+ pos,f=L.follow_step(framed,{0,5,1.5},{0,5,0})
+ near(f,{sn,c,0},'Pivot keeps the subject where it was framed')
+ local still=L.follow_start('pivot',{0,0,1.5},{1,0,0},{0,0,1.5},{0,0,0})
+ pos,f=L.follow_step(still,{0,0,1.52},{0,0,0});near(f,{1,0,0},'A subject on the camera keeps the view')
+ -- Pin: the camera keeps its offset from the subject and its orientation in space.
+ local p=L.follow_start('pin',{0,-3,1.6},{0,1,0},{0,0,1.7},{0,0,0})
+ pos,f,r=L.follow_step(p,{4,4,1.7},{4,4,0})
+ near(pos,{4,1,1.6},'Pin moves with the subject');near(f,{0,1,0},'Pin keeps its orientation');near(r,{1,0,0},'Pin right axis')
+ assert(not pcall(L.follow_start,'orbit',{0,0,0},{1,0,0},{1,0,0},{1,0,0}),'Unknown follow modes are refused')
+ print('Follow cameras: pivot stays put and keeps the framing, pin keeps offset and orientation passed')
+end

@@ -17,6 +17,7 @@ import zipfile
 from verify_installed_modules import audit, IMPORT
 from test_steam_port import run
 from build_steam_candidate import NATIVE_LIBRARIES
+from build_steam_archive import build_id
 
 ROOT=Path(__file__).resolve().parents[1]
 MOD_ID='dbf_freecam'
@@ -50,7 +51,11 @@ def build(output):
                      'restart_only':False,'retain_until_exit':False},
               'license_files':['LICENSE-Link.txt','LICENSE-Bingus.txt'],
               'native_libraries':list(NATIVE_LIBRARIES)}
-    files={'main.lua':entry.encode('utf-8'),'manifest.json':(json.dumps(manifest,indent=2)+'\n').encode(),
+    # LLL's mod table carries no version; the Photo menu shows the one stamped here.
+    build=build_id()
+    stamp=('-- Stamped by build_proton_candidate.py: the version and build the Photo menu shows.\n'
+           'if type(mod)=="table"then mod.version=mod.version or '+json.dumps(version)+';mod.build=mod.build or '+json.dumps(build)+' end\n')
+    files={'main.lua':(stamp+entry).encode('utf-8'),'manifest.json':(json.dumps(manifest,indent=2)+'\n').encode(),
            'config/defaults.cfg':b'{}\n'}
     for name in NATIVE_LIBRARIES:files[name]=(ROOT/'freecam/native'/name).read_bytes()
     for label in manifest['license_files']:files[label]=(ROOT/'freecam/vendor'/label).read_bytes()
@@ -63,7 +68,7 @@ def build(output):
             # LLL refuses a script with a literal ffi/bit require on non-FFI hosts.
             assert not re.search(r"\brequire\s*\(\s*['\"](?:ffi|bit)['\"]",source),name+': pass ffi/bit through a variable'
             for compile_lua in compilers:compile_lua(source,'@'+name)
-    provenance={'version':version,'runtime':'LuaJIT 2.1 under LLL (Proton); Lua 5.1 compatible','candidate_only':True,
+    provenance={'version':version,'build':build,'runtime':'LuaJIT 2.1 under LLL (Proton); Lua 5.1 compatible','candidate_only':True,
                 'publication_performed':False,'source_sha256':{name:digest(body)for name,body in files.items()},
                 'ffi':'optional; enemy behavior only, through cffi or LuaJIT ffi',
                 'native_bridges':list(NATIVE_LIBRARIES),'modules':len(modules)}

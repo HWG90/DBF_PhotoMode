@@ -263,6 +263,36 @@ function M.new(sr,memory)
   assert(self.unit_lifetime(handle,frame.world) and frame.owner_key==owner_key(owner()),'Handycam player changed during read')
   return frame
  end
+ -- Saved shots anchor on a bone of the local player (root, hips, chest, head) with its full
+ -- axes, as {p,x,y,z} in world space. Read-only stock reads; a bone that cannot be read is
+ -- left out, so its shots report it, and the frame alone still serves body-yaw shots.
+ function self.anchor_frame()
+  local frame=self.frame();local handle=frame.root_handle
+  local read,bones=pcall(function()
+   assert(self.unit_lifetime(handle,frame.world),'Anchor player lifetime changed')
+   local U,M,V=sr.Unit,sr.Matrix4x4,sr.Vector3;local count=U.num_scene_graph_items(handle)
+   local function vector(v)
+    local value={V.x(v),V.y(v),V.z(v)}
+    for i=1,3 do assert(type(value[i])=='number'and value[i]==value[i]and math.abs(value[i])<1e8,'Anchor bone transform invalid')end
+    return value
+   end
+   local function bone(index)
+    local m=U.world_pose(handle,index)
+    return{p=vector(M.translation(m)),x=vector(M.right(m)),y=vector(M.forward(m)),z=vector(M.up(m))}
+   end
+   local result={root=bone(1)}
+   for _,name in ipairs({'hips','chest','head'})do
+    if U.has_node(handle,name)==true then
+     local index=U.node(handle,name)
+     if type(index)=='number'and index%1==0 and index>=1 and index<=count then result[name]=bone(index)end
+    end
+   end
+   assert(self.unit_lifetime(handle,frame.world)and frame.owner_key==owner_key(owner()),'Anchor player changed during read')
+   return result
+  end)
+  if read then frame.bones=bones end
+  return frame
+ end
  -- The public bone-mode getter dereferences Unit+168 without a null check.
  -- This is distinct from the animation state machine at Unit+178.
  local function pose_component(unit)

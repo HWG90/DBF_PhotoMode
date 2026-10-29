@@ -1,7 +1,12 @@
 -- Normal Lua 5.1 extension: no LuaJIT or CFFI dependency.
 local M={};local native
 -- Folder installs keep the bridges in port51/; the archive build sets mod.native_dir.
-function M.library(name)return(mod.native_dir or mod.dir..'/port51')..'/'..name end
+-- The Windows build (Boot Mod Loader) loads none: Windows refuses unsigned DLLs (error 577), and
+-- Proton runs of that build must fail the same way, not take a path Windows never has.
+function M.library(name)
+ if mod.native_libraries==false then error('In-process native libraries are not used by the Windows build',2)end
+ return(mod.native_dir or mod.dir..'/port51')..'/'..name
+end
 function M.open()
  if not native then
   local open,why=package.loadlib(M.library('hd2_nativeinfo_f6d3465944c1aea1.dll'),'luaopen_hd2_nativeinfo')

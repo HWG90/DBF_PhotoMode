@@ -275,6 +275,14 @@ function M.new(adapter,bank,is_frozen)
   if type(adapter.tracking_frame)~='function'then return nil,'Selected-subject tracking unavailable'end
   return adapter.tracking_frame(selected,bank.rig)
  end
+ -- Saved and remembered shots are offsets from the selected Helldiver, the one chosen
+ -- automatically on open included. Only position and facing are read.
+ function self.anchor_frame()
+  if not selected then return nil,'Select a Helldiver in Subject'end
+  if type(adapter.anchor_frame)=='function'then return adapter.anchor_frame(selected,bank.rig)end
+  if type(adapter.tracking_frame)~='function'then return nil,'Selected-subject tracking unavailable'end
+  return adapter.tracking_frame(selected,bank.rig)
+ end
  function self.select_camera(unit,point)
   if lease or type(adapter.camera_target)~='function'then return false end
   local called,target,basis=pcall(adapter.camera_target,unit,bank.rig,point)

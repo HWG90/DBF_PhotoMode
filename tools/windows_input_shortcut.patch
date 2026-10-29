@@ -41,13 +41,15 @@
      HANDLE thread, ready, stop, process;
      HWND target, window;
      HWINEVENTHOOK foreground_hook;
-@@ -36,14 +36,14 @@
+@@ -36,14 +36,16 @@
      DWORD pid;
      uint32_t client, generation, state, error, terminal, mask[8];
      ULONGLONG started, heartbeat, register_ms;
 -    int registrations[LLL_KEYBOARD_MAX_TUPLES];
 +    int registrations[WJL_KEYBOARD_MAX_TUPLES];
      unsigned int registration_count;
++    unsigned int shared_count; /* tuples another application already owns */
++    uint32_t shared[8];        /* the first eight: key | modifiers << 8 */
      int revoking;
 -} LLLSteamKeyboardLease;
 -typedef struct LLLSteamKeyboardRetired {
@@ -60,7 +62,7 @@
  
  /* This exact whitelist is shared with Lua. Side modifier bits are aliases:
   * requesting any member requires generic + left + right; only generic VKs
-@@ -52,69 +52,72 @@
+@@ -52,69 +54,72 @@
   * omitted. The owned-window 39-tuple W/Space/generic-modifier proof passed;
   * the complete matrix and integrated gameplay behavior remain unqualified.
   * A successful registration alone does not establish suppression. */
@@ -176,7 +178,7 @@
      if (key >= 160 && key <= 165) return 0;
      if ((modifiers & MOD_ALT) && (key == VK_TAB || key == VK_ESCAPE || key == VK_F4 ||
          key == VK_RETURN || key == VK_SPACE)) return 0;
-@@ -122,27 +125,27 @@
+@@ -122,27 +127,27 @@
      if ((modifiers & (MOD_CONTROL | MOD_ALT)) == (MOD_CONTROL | MOD_ALT) && key == VK_DELETE) return 0;
      return 1;
  }
@@ -213,7 +215,7 @@
      HANDLE file = CreateFileW(path, FILE_READ_ATTRIBUTES,
          FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, 0, NULL);
      DWORD count;
-@@ -151,7 +154,7 @@
+@@ -151,7 +156,7 @@
      CloseHandle(file);
      return count > 0 && count < 32768;
  }
@@ -222,7 +224,7 @@
      wchar_t actual[32768], canonical_actual[32768], canonical_expected[32768];
      DWORD count = 32768, error = ERROR_ACCESS_DENIED;
      FILETIME exited, kernel, user;
-@@ -162,7 +165,7 @@
+@@ -162,7 +167,7 @@
      if (!handle) return GetLastError();
      if (GetProcessTimes(handle, creation, &exited, &kernel, &user) &&
          QueryFullProcessImageNameW(handle, 0, actual, &count) &&
@@ -231,7 +233,7 @@
          CompareStringOrdinal(canonical_actual, -1, canonical_expected, -1, TRUE) == CSTR_EQUAL &&
          WaitForSingleObject(handle, 0) == WAIT_TIMEOUT) {
          *process = handle;
-@@ -171,80 +174,80 @@
+@@ -171,80 +176,80 @@
      CloseHandle(handle);
      return error;
  }
@@ -353,7 +355,7 @@
      MSG message;
      for (unsigned int count = 0; count < 64 && PeekMessageW(&message, NULL, 0, 0, PM_REMOVE); ++count) {
          if (message.message == WM_QUIT) return 0;
-@@ -253,28 +256,28 @@
+@@ -253,28 +258,36 @@
      }
      return 1;
  }
@@ -390,11 +392,19 @@
 +            if (!WJL_KB_REGISTER(lease->window, id, modifiers | MOD_NOREPEAT, key)) {
                  DWORD error = GetLastError();
 -                lll_keyboard_stop_request(LLL_KEYBOARD_FAILED, error ? error : ERROR_HOTKEY_ALREADY_REGISTERED);
++                /* Another application owns this exact shortcut (GPU overlays,
++                 * recorders, chat). Windows delivers it to that owner, never to
++                 * the game, so it is isolated already. Keep the other keys. */
++                if (error == ERROR_HOTKEY_ALREADY_REGISTERED) {
++                    if (lease->shared_count < 8) lease->shared[lease->shared_count] = key | modifiers << 8;
++                    ++lease->shared_count;
++                    continue;
++                }
 +                wjl_keyboard_stop_request(WJL_KEYBOARD_FAILED, error ? error : ERROR_HOTKEY_ALREADY_REGISTERED);
                  return 0;
              }
              lease->registrations[lease->registration_count++] = id;
-@@ -283,46 +286,46 @@
+@@ -283,46 +296,46 @@
      /* The bulk reservation is not atomic. A key pressed before its tuple was
       * reserved may already be held by the game. Never claim ACTIVE in that
       * state, and never return to ARMING with existing IDs registered. */
@@ -461,7 +471,7 @@
      if (!lease->foreground_hook) goto setup_failed;
      waits[0] = lease->stop;
      waits[1] = lease->process;
-@@ -330,71 +333,71 @@
+@@ -330,71 +343,71 @@
          uint32_t state;
          ULONGLONG now, heartbeat;
          DWORD timeout, result;
@@ -566,7 +576,7 @@
      SetEvent(lease->ready);
      return 0;
  }
-@@ -402,13 +405,13 @@
+@@ -402,13 +415,13 @@
  /* Lifecycle lock held. Never close a handle or reset storage under a live
   * worker. Keeping one retired pair makes explicit release idempotent without
   * a token history; a stale pair can never close a new lease. */
@@ -585,7 +595,7 @@
      CloseHandle(lease->thread);
      CloseHandle(lease->ready);
      CloseHandle(lease->stop);
-@@ -416,61 +419,61 @@
+@@ -416,61 +429,61 @@
      ZeroMemory(lease, sizeof(*lease));
      return 1;
  }
@@ -676,7 +686,7 @@
      error = 0;
      goto done;
  failed_setup:
-@@ -480,112 +483,112 @@
+@@ -480,112 +493,112 @@
      ZeroMemory(lease, sizeof(*lease));
  done:
      if (process) CloseHandle(process);
@@ -840,7 +850,38 @@
  }
 --- a/native/test_steam_keyboard.c
 +++ b/native/test_steam_keyboard.c
-@@ -109,20 +109,20 @@
+@@ -24,7 +24,7 @@
+ static volatile LONG test_live[2049],test_keys[256];
+ static volatile LONG test_registers,test_unregisters,test_reads,test_focus_reads,test_identifies;
+ static volatile LONG test_hooks,test_unhooks,test_failure_at,test_fake_errors,test_block_unregister,test_block_hook,test_press_after;
+-static volatile LONG test_register_thread;
++static volatile LONG test_register_thread,test_successes,test_collide[2049];
+ static volatile LONG test_visible=1;
+ static volatile LONG64 test_clock=10000;
+ static PVOID volatile test_foreground_window;
+@@ -35,16 +35,18 @@
+ #define TEST_FOREIGN ((HWND)(ULONG_PTR)0x2222u)
+ 
+ static BOOL WINAPI test_register(HWND window,int id,UINT modifiers,UINT key) {
+-    LONG call=InterlockedIncrement(&test_registers);
++    LONG call=InterlockedIncrement(&test_registers),stored;
+     DWORD thread=GetCurrentThreadId();
+     DWORD owner=(DWORD)InterlockedCompareExchange(&test_register_thread,(LONG)thread,0);
+     (void)window;
+     if (owner&&owner!=thread) InterlockedIncrement(&test_fake_errors);
+     if (call==InterlockedCompareExchange(&test_failure_at,0,0)) {
+-        SetLastError(ERROR_HOTKEY_ALREADY_REGISTERED);return FALSE;
++        SetLastError(ERROR_NOT_ENOUGH_MEMORY);return FALSE;
+     }
+     if (call<1||call>2048||id<1||id>2048) { InterlockedIncrement(&test_fake_errors);return FALSE; }
+-    test_tuples[call-1].id=id;test_tuples[call-1].modifiers=modifiers;test_tuples[call-1].key=key;
++    if (InterlockedCompareExchange(&test_collide[id],0,0)) { SetLastError(ERROR_HOTKEY_ALREADY_REGISTERED);return FALSE; }
++    stored=InterlockedIncrement(&test_successes);
++    test_tuples[stored-1].id=id;test_tuples[stored-1].modifiers=modifiers;test_tuples[stored-1].key=key;
+     if (InterlockedExchange(&test_live[id],1)) InterlockedIncrement(&test_fake_errors);
+     if (call==InterlockedCompareExchange(&test_press_after,0,0)) InterlockedExchange(&test_keys['W'],0x8000);
+     return TRUE;
+@@ -109,20 +111,20 @@
      creation->dwHighDateTime=0x01234567u;creation->dwLowDateTime=test_creation_low;
      return 0;
  }
@@ -873,7 +914,7 @@
  
  static void wait_event(HANDLE event) { CHECK(WaitForSingleObject(event,5000)==WAIT_OBJECT_0); }
  static void key_bit(uint32_t mask[8],unsigned int key) { mask[key>>5]|=1u<<(key&31); }
-@@ -130,17 +130,17 @@
+@@ -130,20 +132,21 @@
      uint32_t any=0;for (unsigned int i=0;i<8;++i) any|=keys[i];return any==0;
  }
  static uint32_t current_state(void) {
@@ -897,8 +938,13 @@
 +    ZeroMemory(&wjl_keyboard_session_creation,sizeof(wjl_keyboard_session_creation));
      ZeroMemory(test_tuples,sizeof(test_tuples));ZeroMemory(test_removed,sizeof(test_removed));
      ZeroMemory((void *)test_keys,sizeof(test_keys));
-     test_registers=test_unregisters=test_reads=test_focus_reads=test_identifies=0;
-@@ -153,41 +153,41 @@
+-    test_registers=test_unregisters=test_reads=test_focus_reads=test_identifies=0;
++    test_registers=test_unregisters=test_reads=test_focus_reads=test_identifies=test_successes=0;
++    ZeroMemory((void *)test_collide,sizeof(test_collide));
+     test_hooks=test_unhooks=test_failure_at=test_block_unregister=test_block_hook=test_press_after=test_register_thread=0;
+     test_visible=1;test_creation_low=0x12345678u;
+     InterlockedExchange64(&test_clock,10000);
+@@ -153,41 +156,41 @@
  }
  static void direct_begin(const uint32_t mask[8]) {
      reset_fixture();
@@ -957,7 +1003,7 @@
      CHECK(test_hooks==test_unhooks&&test_registers==test_unregisters);
      CHECK(!test_fake_errors);
  }
-@@ -201,30 +201,32 @@
+@@ -201,30 +204,32 @@
                                         0x000300ffu,0xfc00003fu,0xf8000001u,0x00000004u};
      const unsigned int groups[3][3]={{VK_SHIFT,VK_LSHIFT,VK_RSHIFT},{VK_CONTROL,VK_LCONTROL,VK_RCONTROL},
                                     {VK_MENU,VK_LMENU,VK_RMENU}};
@@ -1004,7 +1050,7 @@
  }
  static void test_registration_rollback(void) {
      uint32_t mask[8]={0};unsigned int full_count;
-@@ -232,224 +234,224 @@
+@@ -232,224 +237,259 @@
      /* Exhaust every possible Nth failure for this key's eight modifier tuples. */
      for (LONG nth=1;nth<=8;++nth) {
          direct_begin(mask);test_failure_at=nth;
@@ -1047,6 +1093,41 @@
 -      CHECK(released==reply.generation&&!lll_keyboard_lease.thread); }
 +      CHECK(wjl_keyboard_release(test_pid,test_expected,1,reply.generation,&released)==0);
 +      CHECK(released==reply.generation&&!wjl_keyboard_lease.thread); }
++}
++static void test_shared_shortcuts(void) {
++    uint32_t mask[8]={0};
++    const uint32_t alt_r='R'|(uint32_t)MOD_ALT<<8,control_shift_s='S'|(uint32_t)(MOD_CONTROL|MOD_SHIFT)<<8;
++    key_bit(mask,'R');key_bit(mask,'S');
++    /* Alt+R and Ctrl+Shift+S belong to another application (GPU overlay
++     * defaults). They stay with it; the other 14 tuples are reserved. */
++    direct_begin(mask);test_collide[1+'R'*8+4]=1;test_collide[1+'S'*8+3]=1;
++    CHECK(wjl_keyboard_register_worker(&wjl_keyboard_lease));
++    CHECK(current_state()==WJL_KEYBOARD_ACTIVE);
++    CHECK(test_registers==16&&wjl_keyboard_lease.registration_count==14&&test_successes==14);
++    CHECK(wjl_keyboard_lease.shared_count==2&&wjl_keyboard_lease.shared[0]==alt_r&&wjl_keyboard_lease.shared[1]==control_shift_s);
++    direct_end(14);
++    /* Every tuple of a key may be owned elsewhere; that key is simply not ours. */
++    direct_begin(mask);
++    for (unsigned int variant=0;variant<8;++variant) test_collide[1+'R'*8+variant]=1;
++    CHECK(wjl_keyboard_register_worker(&wjl_keyboard_lease));
++    CHECK(current_state()==WJL_KEYBOARD_ACTIVE&&wjl_keyboard_lease.registration_count==8&&wjl_keyboard_lease.shared_count==8);
++    direct_end(8);
++    /* More than eight: all are counted, the first eight are recorded. */
++    direct_begin(wjl_keyboard_allowed);
++    for (unsigned int key='A';key<='L';++key) test_collide[1+key*8]=1;
++    CHECK(wjl_keyboard_register_worker(&wjl_keyboard_lease));
++    CHECK(current_state()==WJL_KEYBOARD_ACTIVE&&wjl_keyboard_lease.shared_count==12&&wjl_keyboard_lease.registration_count==867);
++    CHECK(wjl_keyboard_lease.shared[0]=='A'&&wjl_keyboard_lease.shared[7]=='H');
++    direct_end(867);
++    /* Through the real worker thread: ACTIVE, then a clean release. */
++    reset_fixture();test_collide[1+'R'*8+4]=1;
++    { WJLSteamKeyboardReply reply;uint32_t released=0;
++      CHECK(wjl_keyboard_acquire(test_pid,test_expected,1,mask,&reply)==0);
++      wait_event(test_hook_seen);wait_event(wjl_keyboard_lease.ready);CHECK(current_state()==WJL_KEYBOARD_ACTIVE);
++      CHECK(wjl_keyboard_release(test_pid,test_expected,1,reply.generation,&released)==0);
++      CHECK(released==reply.generation&&!wjl_keyboard_lease.thread);
++      CHECK(test_registers==16&&test_successes==15&&test_unregisters==15&&test_hooks==test_unhooks);
++      CHECK(!test_fake_errors); }
  }
  static void test_identity_and_ownership(void) {
 -    uint32_t mask[8]={0},other[8]={0},released;LLLSteamKeyboardReply reply,next,repeat;
@@ -1353,7 +1434,7 @@
          CHECK(test_registers==registrations);finish_worker(&reply);
      }
      CHECK(GetProcessHandleCount(GetCurrentProcess(),&after));CHECK(after==baseline);
-@@ -459,9 +461,9 @@
+@@ -459,9 +499,9 @@
   * default fixture path. The reservation deadline is checked before each API
   * call; an individual Windows call cannot be preempted by this fixture. */
  static int test_real_registration(void) {
@@ -1365,7 +1446,7 @@
      unsigned int failure_key=0,failure_modifiers=0;int failure_id=0;
      DWORD setup_error=0,registration_error=0,cleanup_error=0;
      ULONGLONG opened=GetTickCount64(),begun=0,reservation_ms=0,cleanup_begun,cleanup_ms,total_ms;
-@@ -473,10 +475,10 @@
+@@ -473,10 +513,10 @@
      if (!window) { setup_error=GetLastError();goto cleanup; }
      begun=GetTickCount64();
      for (unsigned int key=0;key<256&&!registration_failed&&!budget_exhausted;++key) {
@@ -1379,7 +1460,7 @@
              if (GetTickCount64()-begun>=120) { budget_exhausted=TRUE;break; }
              ++attempts;
              if (!RegisterHotKey(window,id,modifiers|MOD_NOREPEAT,key)) {
-@@ -504,8 +506,8 @@
+@@ -504,8 +544,8 @@
          DWORD error=GetLastError();cleanup_ok=FALSE;if (!cleanup_error) cleanup_error=error;
      }
      cleanup_ms=GetTickCount64()-cleanup_begun;total_ms=GetTickCount64()-opened;
@@ -1390,9 +1471,12 @@
             "\"attempts\":%u,\"registered\":%u,\"registration_failed\":%s,\"setup_error\":%lu,"
             "\"failure_vk\":%u,\"failure_modifiers\":%u,\"failure_id\":%d,\"registration_error\":%lu,"
             "\"reservation_budget_ms\":120,\"budget_exhausted\":%s,\"reservation_ms\":%llu,"
-@@ -527,7 +529,7 @@
+@@ -525,9 +565,9 @@
+     test_async_seen=CreateEventW(NULL,TRUE,FALSE,NULL);
+     test_unregister_seen=CreateEventW(NULL,TRUE,FALSE,NULL);test_unregister_gate=CreateEventW(NULL,TRUE,FALSE,NULL);
      CHECK(test_hook_seen&&test_hook_gate&&test_async_seen&&test_unregister_seen&&test_unregister_gate);
-     reset_fixture();test_masks_and_tuples();test_registration_rollback();test_identity_and_ownership();test_counter_limits();
+-    reset_fixture();test_masks_and_tuples();test_registration_rollback();test_identity_and_ownership();test_counter_limits();
++    reset_fixture();test_masks_and_tuples();test_registration_rollback();test_shared_shortcuts();test_identity_and_ownership();test_counter_limits();
      test_press_during_registration();test_held_and_expiry();test_full_preset_sample();
 -    test_obsolete_deadline();test_focus_revocation();test_retirement_and_handles();CHECK(lll_keyboard_shutdown());
 +    test_obsolete_deadline();test_focus_revocation();test_retirement_and_handles();CHECK(wjl_keyboard_shutdown());
@@ -1407,8 +1491,8 @@
  #define MAX_REQUEST (64u * 1024u * 1024u)
 -static const char EXE_SHA[] = "2ce8b3d74c5573088e4211b060ced0963f1fc1e74526e2645399780b8fb13ff7";
 -static const char GAME_SHA[] = "a457433f0eb766fbe15a6de5a16f0fbbb1fd3c840c5607a5f0b2ebf53b112949";
-+static const char EXE_SHA[] = "0acc07debe04714ae04281e1a66bd2eb9d3d85232953e32a93c8a3dd0874eabe";
-+static const char GAME_SHA[] = "6d1d4d3bc6fc84801d9f8f1b310e13a603d07409f3d9495d74b42e1d0bb1c08f";
++static const char EXE_SHA[] = "257fd7de21a04e8668e02e5c820edf3435176fbde3569765255cc52a5ea20f9d";
++static const char GAME_SHA[] = "61dcfcd201dacbf3545c97beb8a5a6186e9850d2670bf60b0e058320b477f6df";
  static wchar_t home[MAX_PATH], request_file[MAX_PATH], response_file[MAX_PATH], events_file[MAX_PATH];
  static wchar_t executable[32768], game_root[32768];
  static int initialized, supported;
@@ -1482,7 +1566,7 @@
          if (fields[1]) goto header_only;
          encoded=WideCharToMultiByte(CP_UTF8,WC_ERR_INVALID_CHARS,status.output_path,-1,NULL,0,NULL,NULL);
          if (encoded<=0||strlen(status.id)!=32) { fields[1]=ERROR_INVALID_DATA;goto header_only; }
-@@ -177,24 +177,35 @@
+@@ -177,24 +177,43 @@
          (operation == 18 && extra != 8)) goto done;
      memcpy(fields, bytes + 12 + path_size, extra);
      if (operation == 16) {
@@ -1508,11 +1592,19 @@
 +        {
 +            static uint32_t last_generation, last_state;
 +            if (last_generation != keyboard.generation || last_state != keyboard.state) {
-+                char message[192]; DWORD keyboard_error;
++                char message[384]; DWORD keyboard_error; uint32_t shared_count, shared[8]; int written;
 +                AcquireSRWLockShared(&wjl_keyboard_data);
 +                keyboard_error = wjl_keyboard_lease.error;
++                shared_count = wjl_keyboard_lease.shared_count;
++                memcpy(shared, wjl_keyboard_lease.shared, sizeof(shared));
 +                ReleaseSRWLockShared(&wjl_keyboard_data);
-+                sprintf_s(message, sizeof(message), "Keyboard generation=%u state=%u error=%lu", keyboard.generation, keyboard.state, (unsigned long)keyboard_error);
++                written = sprintf_s(message, sizeof(message), "Keyboard generation=%u state=%u error=%lu shared=%u", keyboard.generation, keyboard.state, (unsigned long)keyboard_error, shared_count);
++                for (uint32_t i = 0; i < shared_count && i < 8 && written > 0; ++i) {
++                    uint32_t modifiers = shared[i] >> 8;
++                    int added = _snprintf_s(message + written, sizeof(message) - (size_t)written, _TRUNCATE, "%s%s%s%sVK 0x%02X", i ? ", " : " owned elsewhere: ",
++                        (modifiers & MOD_CONTROL) ? "Ctrl+" : "", (modifiers & MOD_SHIFT) ? "Shift+" : "", (modifiers & MOD_ALT) ? "Alt+" : "", shared[i] & 0xffu);
++                    written = added > 0 ? written + added : -1;
++                }
 +                note(message); last_generation=keyboard.generation; last_state=keyboard.state;
 +            }
 +        }
@@ -1528,7 +1620,7 @@
                  ZeroMemory(&pointer, sizeof(pointer)); ZeroMemory(keyboard.keys, sizeof(keyboard.keys));
              }
          }
-@@ -203,9 +214,9 @@
+@@ -203,9 +222,9 @@
          length = 88;
      } else {
          uint32_t generation = 0;
@@ -1540,7 +1632,7 @@
          }
      }
  done:
-@@ -267,13 +278,13 @@
+@@ -267,13 +286,13 @@
      if (path_size != sizeof(path) - 1 || size < 12 + path_size + 16 ||
          memcmp(bytes + 12, path, sizeof(path) - 1)) goto refused;
      memcpy(fields, bytes + 12 + path_size, sizeof(fields));
@@ -1558,7 +1650,34 @@
                               listing_bytes + 12, capacity, &reply[2]);
      if (reply[1]) { reply[2] = 0; goto refused; }
      memcpy(listing_bytes, reply, sizeof(reply));
-@@ -290,28 +301,28 @@
+@@ -283,6 +302,26 @@
+     return transfer(outgoing, &length, 4, 1) && transfer(outgoing, reply, length, 1) ? 2 : 0;
+ }
+ 
++static int send_layout(uint32_t nonce, const unsigned char *bytes, uint32_t size,
++                       uint32_t path_size, HANDLE outgoing) {
++    static const char path[] = "layout-v1";
++    static const UINT scancodes[6] = {0x11, 0x1E, 0x1F, 0x20, 0x10, 0x12};
++    uint32_t reply[10] = {nonce, ERROR_INVALID_DATA, 0}, length = 12;
++    DWORD owner = 0, thread = 0;
++    HWND window = GetForegroundWindow();
++    HKL layout;
++    if (path_size != sizeof(path) - 1 || size != 12 + path_size || memcmp(bytes + 12, path, sizeof(path) - 1)) goto refused;
++    if (window) thread = GetWindowThreadProcessId(window, &owner);
++    layout = GetKeyboardLayout(thread && owner == session_pid ? thread : 0);
++    for (int index = 0; index < 6; ++index) {
++        reply[3 + index] = MapVirtualKeyExW(scancodes[index], MAPVK_VSC_TO_VK, layout);
++        if (!reply[3 + index]) { reply[1] = ERROR_NOT_FOUND; goto refused; }
++    }
++    reply[1] = 0; reply[2] = 6; reply[9] = (uint32_t)(uintptr_t)layout; length = sizeof(reply);
++refused:
++    return transfer(outgoing, &length, 4, 1) && transfer(outgoing, reply, length, 1) ? 2 : 0;
++}
++
+ static int dispatch(const unsigned char *bytes, uint32_t size, HANDLE outgoing) {
+     uint32_t nonce, operation, path_size;
+     FILE *stream = NULL;
+@@ -290,28 +329,28 @@
      memcpy(&nonce,bytes,4);memcpy(&operation,bytes+4,4);memcpy(&path_size,bytes+8,4);
      if (operation==0) {
          if (size!=12 || nonce!=0 || path_size!=0) return 0;
@@ -1595,16 +1714,300 @@
          reply[0]=nonce;reply[1]=0;length=8;
          if (operation==8) {
              reply[2]=session_pid;reply[3]=watch_count;length=16+watch_count*4;
-@@ -348,7 +359,7 @@
+@@ -324,6 +363,7 @@
+     if (operation>=16 && operation<=18) return send_keyboard(nonce,operation,bytes,size,path_size,outgoing);
+     if (operation==19) return send_clipboard(nonce,bytes,size,path_size,outgoing);
+     if (operation==20) return send_codec(nonce,bytes,size,path_size,outgoing);
++    if (operation==21) return send_layout(nonce,bytes,size,path_size,outgoing);
+     if (operation==13||operation==14||operation==15) {
+         wchar_t path[32768];
+         return send_screenshot(nonce,operation,decode_path(bytes,size,path_size,path)?path:NULL,outgoing);
+@@ -348,13 +388,250 @@
      }
      if (_wfopen_s(&stream,request_file,L"wb")) return 0;
      if (fwrite(bytes,1,size,stream)!=size) { fclose(stream);return 0; }
 -    fclose(stream);lll_steam_request(NULL);return 1;
+-}
+-
 +    fclose(stream);wjl_steam_request(NULL);return 1;
- }
- 
++}
++
++#define WJL_CONTRACT_CHECKS 32u
++#define WJL_CONTRACT_BUDGET (16u * 1024u * 1024u)
++typedef struct WJLContractCheck { wchar_t file[64]; unsigned long long offset; DWORD size; char sha[65]; } WJLContractCheck;
++static wchar_t wjl_resolved_root[32768];
++static int wjl_decimal(const wchar_t *text, size_t length, unsigned long long limit, unsigned long long *value) {
++    unsigned long long total = 0;
++    if (!length || length > 20) return 0;
++    for (size_t index = 0; index < length; ++index) {
++        if (text[index] < L'0' || text[index] > L'9') return 0;
++        total = total * 10u + (unsigned long long)(text[index] - L'0');
++        if (total > limit) return 0;
++    }
++    *value = total; return 1;
++}
++static int wjl_hex_digit(wchar_t c) { return (c >= L'0' && c <= L'9') || (c >= L'a' && c <= L'f') || (c >= L'A' && c <= L'F'); }
++static int wjl_hex64(const wchar_t *text, unsigned long long *value) {
++    unsigned long long total = 0;
++    if (!text || wcslen(text) != 16) return 0;
++    for (size_t index = 0; index < 16; ++index) {
++        wchar_t c = text[index];
++        if (!wjl_hex_digit(c)) return 0;
++        total = total << 4 | (unsigned long long)(c <= L'9' ? c - L'0' : (c | 0x20) - L'a' + 10);
++    }
++    *value = total; return 1;
++}
++static int wjl_lower_hex(const wchar_t *text, size_t length) {
++    if (!text || wcslen(text) != length) return 0;
++    for (size_t index = 0; index < length; ++index) if (!((text[index] >= L'0' && text[index] <= L'9') || (text[index] >= L'a' && text[index] <= L'f'))) return 0;
++    return 1;
++}
++/* The game's own image, read with query-only access; the installation is the
++ * folder above its bin folder. */
++static int wjl_game_root(const wchar_t *text, DWORD *pid, wchar_t root[32768]) {
++    unsigned long long value;
++    DWORD size = 32768;
++    HANDLE process;
++    wchar_t *end;
++    int ok = 0;
++    if (!text || !wjl_decimal(text, wcslen(text), 0xffffffffu, &value) || !value) return 0;
++    process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, (DWORD)value);
++    if (!process) return 0;
++    if (QueryFullProcessImageNameW(process, 0, root, &size)) {
++        end = wcsrchr(root, L'\\');
++        if (end) { *end = 0; end = wcsrchr(root, L'\\'); ok = end && !_wcsicmp(end, L"\\bin"); if (ok) *end = 0; }
++    }
++    CloseHandle(process);
++    *pid = (DWORD)value;
++    return ok;
++}
++/* bundles.nxa or bundles.<digits>.nxa:offset:size:sha256 */
++static int wjl_contract_check(const wchar_t *text, WJLContractCheck *check) {
++    const wchar_t *colon[3] = {NULL, NULL, NULL};
++    unsigned long long value;
++    size_t found = 0, length;
++    for (const wchar_t *at = text; *at; ++at) if (*at == L':') { if (found == 3) return 0; colon[found++] = at; }
++    if (found != 3) return 0;
++    length = (size_t)(colon[0] - text);
++    if (!length || length >= 64) return 0;
++    wmemcpy(check->file, text, length); check->file[length] = 0;
++    if (wcscmp(check->file, L"bundles.nxa")) {
++        if (length < 13 || wcsncmp(check->file, L"bundles.", 8) || wcscmp(check->file + length - 4, L".nxa")) return 0;
++        for (size_t index = 8; index < length - 4; ++index) if (check->file[index] < L'0' || check->file[index] > L'9') return 0;
++    }
++    if (!wjl_decimal(colon[0] + 1, (size_t)(colon[1] - colon[0] - 1), 9007199254740991ull, &check->offset)) return 0;
++    if (!wjl_decimal(colon[1] + 1, (size_t)(colon[2] - colon[1] - 1), WJL_CONTRACT_BUDGET, &value) || !value) return 0;
++    check->size = (DWORD)value;
++    if (!wjl_lower_hex(colon[2] + 1, 64)) return 0;
++    for (size_t index = 0; index < 64; ++index) check->sha[index] = (char)colon[2][1 + index];
++    check->sha[64] = 0;
++    return 1;
++}
++static int wjl_hash_range(const wchar_t *path, unsigned long long offset, DWORD size, char output[65]) {
++    BCRYPT_ALG_HANDLE algorithm = NULL;
++    BCRYPT_HASH_HANDLE hash = NULL;
++    HANDLE file;
++    LARGE_INTEGER length, at;
++    unsigned char buffer[65536], value[32];
++    DWORD count, want;
++    int ok = 0;
++    file = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, 0, NULL);
++    if (file == INVALID_HANDLE_VALUE) return 0;
++    at.QuadPart = (LONGLONG)offset;
++    if (!GetFileSizeEx(file, &length) || (unsigned long long)length.QuadPart < offset + size || !SetFilePointerEx(file, at, NULL, FILE_BEGIN)) goto done;
++    if (BCryptOpenAlgorithmProvider(&algorithm, BCRYPT_SHA256_ALGORITHM, NULL, 0) < 0) goto done;
++    if (BCryptCreateHash(algorithm, &hash, NULL, 0, NULL, 0, 0) < 0) goto done;
++    while (size) {
++        want = size < (DWORD)sizeof(buffer) ? size : (DWORD)sizeof(buffer);
++        if (!ReadFile(file, buffer, want, &count, NULL) || count != want) goto done;
++        if (BCryptHashData(hash, buffer, count, 0) < 0) goto done;
++        size -= count;
++    }
++    if (BCryptFinishHash(hash, value, sizeof(value), 0) < 0) goto done;
++    for (count = 0; count < 32; ++count) sprintf_s(output + count * 2, 3, "%02x", value[count]);
++    ok = 1;
++done:
++    CloseHandle(file);
++    if (hash) BCryptDestroyHash(hash);
++    if (algorithm) BCryptCloseAlgorithmProvider(algorithm, 0);
++    return ok;
++}
++/* <16 hex>.patch_<digits>, as the game names archive patches. */
++static int wjl_patch_name(const wchar_t *name) {
++    size_t length = wcslen(name);
++    if (length < 24 || wcsncmp(name + 16, L".patch_", 7)) return 0;
++    for (size_t index = 0; index < 16; ++index) if (!wjl_hex_digit(name[index])) return 0;
++    for (size_t index = 23; index < length; ++index) if (name[index] < L'0' || name[index] > L'9') return 0;
++    return 1;
++}
++/* No installed patch may replace the stock renderer configuration. The limits bound the
++ * work for very large mod setups (1.3.1's 128 patches / 8,192 entries refused ordinary
++ * ones and hid every scene effect); entry tables are read in 4,096-row blocks. */
++#define WJL_RENDER_PATCHES 4096u
++#define WJL_RENDER_TYPES 1024u
++#define WJL_RENDER_ENTRIES 262144u
++#define WJL_RENDER_TOTAL 4194304u
++static unsigned char wjl_render_rows[4096 * 80];
++static int wjl_renderer_untouched(const wchar_t *data, unsigned long long resource, unsigned long long type) {
++    WIN32_FIND_DATAW found;
++    wchar_t pattern[32768], path[32768];
++    HANDLE search;
++    unsigned int patches = 0, total = 0;
++    int ok = 1;
++    swprintf_s(pattern, 32768, L"%s\\*.patch_*", data);
++    search = FindFirstFileW(pattern, &found);
++    if (search == INVALID_HANDLE_VALUE) return GetLastError() == ERROR_FILE_NOT_FOUND;
++    for (;;) {
++        if (!(found.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) && wjl_patch_name(found.cFileName)) {
++            HANDLE file;
++            unsigned char head[72];
++            DWORD count;
++            uint32_t magic = 0, types = 0, entries = 0;
++            LARGE_INTEGER length, at;
++            length.QuadPart = 0;
++            if (++patches > WJL_RENDER_PATCHES) { ok = 0; break; }
++            swprintf_s(path, 32768, L"%s\\%s", data, found.cFileName);
++            file = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, 0, NULL);
++            if (file == INVALID_HANDLE_VALUE) { ok = 0; break; }
++            ok = ReadFile(file, head, 72, &count, NULL) && count == 72 && GetFileSizeEx(file, &length);
++            if (ok) {
++                memcpy(&magic, head, 4); memcpy(&types, head + 4, 4); memcpy(&entries, head + 8, 4);
++                ok = magic == 0xf0000011u && types <= WJL_RENDER_TYPES && entries <= WJL_RENDER_ENTRIES;
++            }
++            if (ok) { total += entries; ok = total <= WJL_RENDER_TOTAL && 72ull + 32ull * types + 80ull * entries <= (unsigned long long)length.QuadPart; }
++            if (ok) { at.QuadPart = 72 + 32 * (LONGLONG)types; ok = SetFilePointerEx(file, at, NULL, FILE_BEGIN); }
++            for (uint32_t done = 0; ok && done < entries;) {
++                const uint32_t block = entries - done < 4096u ? entries - done : 4096u;
++                ok = ReadFile(file, wjl_render_rows, block * 80u, &count, NULL) && count == block * 80u;
++                for (uint32_t index = 0; ok && index < block; ++index) {
++                    unsigned long long name, kind;
++                    memcpy(&name, wjl_render_rows + index * 80u, 8); memcpy(&kind, wjl_render_rows + index * 80u + 8, 8);
++                    if (name == resource && kind == type) ok = 0;
++                }
++                done += block;
++            }
++            CloseHandle(file);
++            if (!ok) break;
++        }
++        if (!FindNextFileW(search, &found)) { ok = GetLastError() == ERROR_NO_MORE_FILES; break; }
++    }
++    FindClose(search);
++    return ok;
++}
++static int wjl_verify_contract(const wchar_t *root, const WJLContractCheck *checks, unsigned int count,
++                               unsigned long long resource, unsigned long long type) {
++    wchar_t data[32768], path[32768];
++    char hash[65];
++    unsigned long long total = 0;
++    swprintf_s(data, 32768, L"%s\\data", root);
++    for (unsigned int index = 0; index < count; ++index) {
++        total += checks[index].size;
++        if (total > WJL_CONTRACT_BUDGET) return 0;
++        swprintf_s(path, 32768, L"%s\\%s", data, checks[index].file);
++        if (!wjl_hash_range(path, checks[index].offset, checks[index].size, hash) || strcmp(hash, checks[index].sha)) return 0;
++    }
++    return wjl_renderer_untouched(data, resource, type);
++}
++/* The proof Lua reads: <contract id>|<pipe token>, removed first so a stale
++ * proof never survives a failed check. */
++static void wjl_contract_proof(DWORD pid, const wchar_t *id, const wchar_t *token, int verified) {
++    wchar_t path[MAX_PATH];
++    char text[192];
++    size_t length = 0;
++    FILE *stream = NULL;
++    DWORD size = GetEnvironmentVariableW(L"APPDATA", path, MAX_PATH);
++    if (!size || size + 64 >= MAX_PATH) return;
++    swprintf_s(path + size, MAX_PATH - size, L"\\Arrowhead\\Helldivers2\\wjl-render-contract-%lu.txt", (unsigned long)pid);
++    DeleteFileW(path);
++    if (!verified) return;
++    for (const wchar_t *at = id; *at && length < 64; ++at) text[length++] = (char)*at;
++    text[length++] = '|';
++    for (const wchar_t *at = token; *at && length < sizeof(text) - 1; ++at) text[length++] = (char)*at;
++    if (_wfopen_s(&stream, path, L"wb") || !stream) return;
++    fwrite(text, 1, length, stream);
++    fclose(stream);
++}
++/* --launch: start the service as a detached copy of this executable with the
++ * same arguments, then wait for its readiness event or its exit. */
++static int wjl_launch(LPWSTR *arguments, int count, const wchar_t *token) {
++    wchar_t module[32768], name[160], *line;
++    size_t size;
++    STARTUPINFOW startup;
++    PROCESS_INFORMATION process;
++    HANDLE ready, waits[2];
++    DWORD length = GetModuleFileNameW(NULL, module, 32768);
++    int result = 1;
++    if (!length || length >= 32768) return 1;
++    size = wcslen(module) + 3;
++    for (int index = 1; index < count; ++index) {
++        if (!wcscmp(arguments[index], L"--launch")) continue;
++        if (wcspbrk(arguments[index], L" \t\"")) return 1;
++        size += wcslen(arguments[index]) + 1;
++    }
++    line = calloc(size + 1, sizeof(wchar_t));
++    if (!line) return 1;
++    swprintf_s(line, size + 1, L"\"%s\"", module);
++    for (int index = 1; index < count; ++index) {
++        if (!wcscmp(arguments[index], L"--launch")) continue;
++        wcscat_s(line, size + 1, L" "); wcscat_s(line, size + 1, arguments[index]);
++    }
++    swprintf_s(name, 160, L"Local\\WJL_Steam_Ready_%s", token);
++    ready = CreateEventW(NULL, TRUE, FALSE, name);
++    ZeroMemory(&startup, sizeof(startup)); startup.cb = sizeof(startup);
++    ZeroMemory(&process, sizeof(process));
++    if (ready && CreateProcessW(module, line, NULL, NULL, FALSE, 0, NULL, NULL, &startup, &process)) {
++        waits[0] = ready; waits[1] = process.hProcess;
++        result = WaitForMultipleObjects(2, waits, FALSE, 15000) == WAIT_OBJECT_0 ? 0 : 1;
++        CloseHandle(process.hThread); CloseHandle(process.hProcess);
++    }
++    if (ready) CloseHandle(ready);
++    free(line);
++    return result;
++}
  int WINAPI wWinMain(HINSTANCE instance,HINSTANCE previous,PWSTR command,int show) {
-@@ -375,7 +386,7 @@
+     int count, result=1;
+     LPWSTR *arguments=CommandLineToArgvW(GetCommandLineW(),&count);
+-    const wchar_t *root=NULL,*token=NULL;
++    const wchar_t *root=NULL,*token=NULL,*game_pid_text=NULL,*contract_id=NULL,*contract_resource=NULL,*contract_type=NULL;
++    WJLContractCheck checks[WJL_CONTRACT_CHECKS];
++    unsigned int check_count=0;
++    unsigned long long resource_value=0,type_value=0;
++    DWORD game_pid=0;
++    int launch=0;
+     wchar_t incoming_name[256],outgoing_name[256],log_path[MAX_PATH],dll[32768];
+     char hash[65];
+     HANDLE incoming=INVALID_HANDLE_VALUE,outgoing=INVALID_HANDLE_VALUE;
+@@ -365,17 +642,34 @@
+     DWORD peer=0;
+     (void)instance;(void)previous;(void)command;(void)show;
+     if (!arguments) return 1;
+-    for (int index=1;index+1<count;index+=2) {
++    for (int index=1;index<count;) {
++        if (!wcscmp(arguments[index],L"--launch")) { launch=1;++index;continue; }
++        if (index+1>=count) goto done;
+         if (!wcscmp(arguments[index],L"--game")) root=arguments[index+1];
++        else if (!wcscmp(arguments[index],L"--game-pid")) game_pid_text=arguments[index+1];
+         else if (!wcscmp(arguments[index],L"--pipe")) token=arguments[index+1];
+-        else goto done;
+-    }
++        else if (!wcscmp(arguments[index],L"--contract")) contract_id=arguments[index+1];
++        else if (!wcscmp(arguments[index],L"--contract-resource")) contract_resource=arguments[index+1];
++        else if (!wcscmp(arguments[index],L"--contract-type")) contract_type=arguments[index+1];
++        else if (!wcscmp(arguments[index],L"--check")) {
++            if (check_count>=WJL_CONTRACT_CHECKS || !wjl_contract_check(arguments[index+1],&checks[check_count])) goto done;
++            ++check_count;
++        } else goto done;
++        index+=2;
++    }
++    if (game_pid_text) {
++        if (root || !wjl_game_root(game_pid_text,&game_pid,wjl_resolved_root)) goto done;
++        root=wjl_resolved_root;
++    }
++    if (contract_id && (!game_pid || !wjl_lower_hex(contract_id,64) || !wjl_hex64(contract_resource,&resource_value) ||
++        !wjl_hex64(contract_type,&type_value) || !check_count)) goto done;
+     if (!root || !token || wcslen(root)>32000 || wcslen(token)>96 || wcslen(token)<16) goto done;
+     for (size_t index=0;index<wcslen(token);++index) if (!((token[index]>=L'a'&&token[index]<=L'z')||(token[index]>=L'0'&&token[index]<=L'9')||token[index]==L'_')) goto done;
++    if (launch) { result=game_pid?wjl_launch(arguments,count,token):1;goto done; }
      initialize();  /* Establish only the transport's ordinary output paths. */
      inline_events=1;
      if (!home[0] || !response_file[0]) goto done;
@@ -1613,7 +2016,25 @@
          (unsigned long long)resource_hash((const unsigned char *)home,wcslen(home)*sizeof(wchar_t)));
      single_instance=CreateMutexW(NULL,FALSE,mutex_name);
      if (!single_instance || GetLastError()==ERROR_ALREADY_EXISTS) goto done;
-@@ -395,7 +406,7 @@
+@@ -387,6 +681,17 @@
+     supported=hash_file(executable,hash)&&!strcmp(hash,EXE_SHA)&&hash_file(dll,hash)&&!strcmp(hash,GAME_SHA);
+     if (!supported) { note("Refused: installed game hashes do not match this service build");goto done; }
+     note("Stock game hashes verified; awaiting local Lua filesystem client");
++    if (contract_id) {
++        int verified=wjl_verify_contract(root,checks,check_count,resource_value,type_value);
++        wjl_contract_proof(game_pid,contract_id,token,verified);
++        note(verified?"Stock renderer contract verified without GPU readback":"Scene backend unavailable: stock renderer contract not verified");
++    }
++    {
++        /* WJ: the engine writes its DDS screenshot into this folder before asking for
++         * the PNG, so it must exist before the first job (which would create it). */
++        wchar_t shots[MAX_PATH];DWORD shots_length=GetEnvironmentVariableW(L"LOCALAPPDATA",shots,MAX_PATH);
++        if (shots_length&&shots_length<MAX_PATH-40&&!wcscat_s(shots,MAX_PATH,L"\\WJL\\Helldivers2\\Screenshots")) CreateDirectoryW(shots,NULL);
++    }
+     swprintf_s(incoming_name,256,L"\\\\.\\pipe\\%s_request",token);
+     swprintf_s(outgoing_name,256,L"\\\\.\\pipe\\%s_response",token);
+     io_event=CreateEventW(NULL,TRUE,FALSE,NULL);if (!io_event) goto done;
+@@ -395,7 +700,7 @@
      outgoing=CreateNamedPipeW(outgoing_name,PIPE_ACCESS_OUTBOUND|FILE_FLAG_FIRST_PIPE_INSTANCE|FILE_FLAG_OVERLAPPED,
          PIPE_TYPE_BYTE|PIPE_READMODE_BYTE|PIPE_WAIT|PIPE_REJECT_REMOTE_CLIENTS,1,65536,65536,0,NULL);
      if (incoming==INVALID_HANDLE_VALUE || outgoing==INVALID_HANDLE_VALUE) { note("Cannot create exclusive local pipes");goto done; }
@@ -1622,7 +2043,7 @@
      ready_event=CreateEventW(NULL,TRUE,FALSE,ready_name);
      if (!ready_event || !SetEvent(ready_event)) { note("Cannot signal filesystem service readiness");goto done; }
      if (!connect_pipe(incoming)||!connect_pipe(outgoing)) { note("No complete client connection within startup timeout");goto done; }
-@@ -418,13 +429,13 @@
+@@ -418,13 +723,13 @@
      if (ready_event) ResetEvent(ready_event);
      if (incoming!=INVALID_HANDLE_VALUE) { CloseHandle(incoming);incoming=INVALID_HANDLE_VALUE; }
      if (outgoing!=INVALID_HANDLE_VALUE) { CloseHandle(outgoing);outgoing=INVALID_HANDLE_VALUE; }
@@ -1641,3 +2062,654 @@
      if (incoming!=INVALID_HANDLE_VALUE) CloseHandle(incoming);
      if (outgoing!=INVALID_HANDLE_VALUE) CloseHandle(outgoing);
      if (io_event) CloseHandle(io_event);
+--- a/native/steam_pointer.c
++++ b/native/steam_pointer.c
+@@ -13,37 +13,37 @@
+ #include <limits.h>
+ #include <string.h>
+ 
+-typedef struct LLLSteamPointerSnapshot {
++typedef struct WJLSteamPointerSnapshot {
+     int32_t valid, x, y, width, height, buttons, wheel;
+-} LLLSteamPointerSnapshot;
++} WJLSteamPointerSnapshot;
+ 
+ /* Versioned extended sample. Keep the legacy seven-integer layout above. */
+-typedef struct LLLSteamPointerSample {
++typedef struct WJLSteamPointerSample {
+     int32_t valid, x, y, width, height, buttons, wheel, dx, dy;
+-} LLLSteamPointerSample;
+-
+-typedef struct LLLSteamPointerMotion {
++} WJLSteamPointerSample;
++
++typedef struct WJLSteamPointerMotion {
+     int32_t wheel, dx, dy;
+-} LLLSteamPointerMotion;
+-
+-typedef struct LLLSteamPointerState {
++} WJLSteamPointerMotion;
++
++typedef struct WJLSteamPointerState {
+     HANDLE thread, ready, stop;
+     HWND window;
+     DWORD pid;
+     LONG active;
+-    LLLSteamPointerMotion motion;
+-} LLLSteamPointerState;
+-
+-static SRWLOCK lll_pointer_lifecycle = SRWLOCK_INIT;
+-static SRWLOCK lll_pointer_data = SRWLOCK_INIT;
+-static LLLSteamPointerState lll_pointer_state;
+-static const wchar_t lll_pointer_class[] = L"LLLSteamExternalPointer";
+-
+-static int lll_pointer_owner(DWORD wanted, DWORD foreground) {
++    WJLSteamPointerMotion motion;
++} WJLSteamPointerState;
++
++static SRWLOCK wjl_pointer_lifecycle = SRWLOCK_INIT;
++static SRWLOCK wjl_pointer_data = SRWLOCK_INIT;
++static WJLSteamPointerState wjl_pointer_state;
++static const wchar_t wjl_pointer_class[] = L"WJLSteamExternalPointer";
++
++static int wjl_pointer_owner(DWORD wanted, DWORD foreground) {
+     return wanted != 0 && foreground == wanted;
+ }
+ 
+-static DWORD lll_pointer_foreground_pid(HWND *window) {
++static DWORD wjl_pointer_foreground_pid(HWND *window) {
+     DWORD pid = 0;
+     *window = GetForegroundWindow();
+     if (*window) GetWindowThreadProcessId(*window, &pid);
+@@ -52,7 +52,7 @@
+ 
+ /* A fixed upper bound avoids unbounded allocation or work. A pre-existing
+  * registration belongs to another component in this service process. */
+-static int lll_pointer_registration(RAWINPUTDEVICE *mouse) {
++static int wjl_pointer_registration(RAWINPUTDEVICE *mouse) {
+     RAWINPUTDEVICE devices[64];
+     UINT capacity = (UINT)(sizeof(devices) / sizeof(devices[0]));
+     UINT count = GetRegisteredRawInputDevices(devices, &capacity, sizeof(devices[0]));
+@@ -68,13 +68,13 @@
+ }
+ 
+ /* The same bounded decoder is used by WM_INPUT and standalone fixtures. */
+-static int lll_pointer_decode_motion(const void *bytes, size_t length,
+-                                    DWORD wanted, DWORD foreground, LLLSteamPointerMotion *out) {
++static int wjl_pointer_decode_motion(const void *bytes, size_t length,
++                                    DWORD wanted, DWORD foreground, WJLSteamPointerMotion *out) {
+     RAWINPUTHEADER header;
+     RAWMOUSE mouse;
+     const size_t end = offsetof(RAWINPUT, data.mouse) + sizeof(mouse);
+     ZeroMemory(out, sizeof(*out));
+-    if (!lll_pointer_owner(wanted, foreground) || length < end) return 0;
++    if (!wjl_pointer_owner(wanted, foreground) || length < end) return 0;
+     memcpy(&header, bytes, sizeof(header));
+     if (header.dwType != RIM_TYPEMOUSE || header.dwSize < end || header.dwSize > length) return 0;
+     memcpy(&mouse, (const unsigned char *)bytes + offsetof(RAWINPUT, data.mouse), sizeof(mouse));
+@@ -86,49 +86,49 @@
+     return 1;
+ }
+ 
+-static int32_t lll_pointer_sum(int32_t value, int32_t delta) {
++static int32_t wjl_pointer_sum(int32_t value, int32_t delta) {
+     int64_t sum = (int64_t)value + delta;
+     return sum > INT32_MAX ? INT32_MAX : sum < INT32_MIN ? INT32_MIN : (int32_t)sum;
+ }
+ 
+-static void lll_pointer_add_motion(const LLLSteamPointerMotion *delta) {
+-    AcquireSRWLockExclusive(&lll_pointer_data);
+-    lll_pointer_state.motion.wheel = lll_pointer_sum(lll_pointer_state.motion.wheel, delta->wheel);
+-    lll_pointer_state.motion.dx = lll_pointer_sum(lll_pointer_state.motion.dx, delta->dx);
+-    lll_pointer_state.motion.dy = lll_pointer_sum(lll_pointer_state.motion.dy, delta->dy);
+-    ReleaseSRWLockExclusive(&lll_pointer_data);
+-}
+-
+-static LLLSteamPointerMotion lll_pointer_take_motion(void) {
+-    LLLSteamPointerMotion motion;
+-    AcquireSRWLockExclusive(&lll_pointer_data);
+-    motion = lll_pointer_state.motion;
+-    ZeroMemory(&lll_pointer_state.motion, sizeof(lll_pointer_state.motion));
+-    ReleaseSRWLockExclusive(&lll_pointer_data);
++static void wjl_pointer_add_motion(const WJLSteamPointerMotion *delta) {
++    AcquireSRWLockExclusive(&wjl_pointer_data);
++    wjl_pointer_state.motion.wheel = wjl_pointer_sum(wjl_pointer_state.motion.wheel, delta->wheel);
++    wjl_pointer_state.motion.dx = wjl_pointer_sum(wjl_pointer_state.motion.dx, delta->dx);
++    wjl_pointer_state.motion.dy = wjl_pointer_sum(wjl_pointer_state.motion.dy, delta->dy);
++    ReleaseSRWLockExclusive(&wjl_pointer_data);
++}
++
++static WJLSteamPointerMotion wjl_pointer_take_motion(void) {
++    WJLSteamPointerMotion motion;
++    AcquireSRWLockExclusive(&wjl_pointer_data);
++    motion = wjl_pointer_state.motion;
++    ZeroMemory(&wjl_pointer_state.motion, sizeof(wjl_pointer_state.motion));
++    ReleaseSRWLockExclusive(&wjl_pointer_data);
+     return motion;
+ }
+ 
+-static LRESULT CALLBACK lll_pointer_proc(HWND window, UINT message, WPARAM wp, LPARAM lp) {
+-    if (message == WM_INPUT && InterlockedCompareExchange(&lll_pointer_state.active, 0, 0)) {
++static LRESULT CALLBACK wjl_pointer_proc(HWND window, UINT message, WPARAM wp, LPARAM lp) {
++    if (message == WM_INPUT && InterlockedCompareExchange(&wjl_pointer_state.active, 0, 0)) {
+         HWND foreground;
+-        DWORD pid = lll_pointer_foreground_pid(&foreground);
++        DWORD pid = wjl_pointer_foreground_pid(&foreground);
+         /* Do not read even a RawInput packet while another application owns
+          * the foreground. DefWindowProc still performs WM_INPUT cleanup. */
+-        if (lll_pointer_owner(lll_pointer_state.pid, pid)) {
++        if (wjl_pointer_owner(wjl_pointer_state.pid, pid)) {
+             RAWINPUT input;
+             UINT capacity = sizeof(input);
+             UINT length = GetRawInputData((HRAWINPUT)lp, RID_INPUT, &input, &capacity, sizeof(RAWINPUTHEADER));
+             if (length != (UINT)-1) {
+-                LLLSteamPointerMotion motion;
+-                if (lll_pointer_decode_motion(&input, length, lll_pointer_state.pid, pid, &motion) &&
+-                    (motion.wheel || motion.dx || motion.dy)) lll_pointer_add_motion(&motion);
++                WJLSteamPointerMotion motion;
++                if (wjl_pointer_decode_motion(&input, length, wjl_pointer_state.pid, pid, &motion) &&
++                    (motion.wheel || motion.dx || motion.dy)) wjl_pointer_add_motion(&motion);
+             }
+-        } else lll_pointer_take_motion();
++        } else wjl_pointer_take_motion();
+     }
+     return DefWindowProcW(window, message, wp, lp);
+ }
+ 
+-static DWORD WINAPI lll_pointer_thread(void *unused) {
++static DWORD WINAPI wjl_pointer_thread(void *unused) {
+     HINSTANCE instance = GetModuleHandleW(NULL);
+     WNDCLASSW type;
+     RAWINPUTDEVICE previous, device;
+@@ -136,14 +136,14 @@
+     int registered = 0, owns_class = 0;
+     (void)unused;
+     ZeroMemory(&type, sizeof(type));
+-    type.lpfnWndProc = lll_pointer_proc;
++    type.lpfnWndProc = wjl_pointer_proc;
+     type.hInstance = instance;
+-    type.lpszClassName = lll_pointer_class;
+-    if (lll_pointer_registration(&previous) != 0) goto done;
+-    if (WaitForSingleObject(lll_pointer_state.stop, 0) == WAIT_OBJECT_0) goto done;
++    type.lpszClassName = wjl_pointer_class;
++    if (wjl_pointer_registration(&previous) != 0) goto done;
++    if (WaitForSingleObject(wjl_pointer_state.stop, 0) == WAIT_OBJECT_0) goto done;
+     if (!RegisterClassW(&type)) goto done;
+     owns_class = 1;
+-    window = CreateWindowExW(0, lll_pointer_class, L"", 0, 0, 0, 0, 0,
++    window = CreateWindowExW(0, wjl_pointer_class, L"", 0, 0, 0, 0, 0,
+                              HWND_MESSAGE, NULL, instance, NULL);
+     if (!window) goto done;
+     device.usUsagePage = 1;
+@@ -152,12 +152,12 @@
+     device.hwndTarget = window;
+     if (!RegisterRawInputDevices(&device, 1, sizeof(device))) goto done;
+     registered = 1;
+-    lll_pointer_state.window = window;
+-    if (WaitForSingleObject(lll_pointer_state.stop, 0) == WAIT_OBJECT_0) goto done;
+-    InterlockedExchange(&lll_pointer_state.active, 1);
+-    SetEvent(lll_pointer_state.ready);
++    wjl_pointer_state.window = window;
++    if (WaitForSingleObject(wjl_pointer_state.stop, 0) == WAIT_OBJECT_0) goto done;
++    InterlockedExchange(&wjl_pointer_state.active, 1);
++    SetEvent(wjl_pointer_state.ready);
+     for (;;) {
+-        DWORD reason = MsgWaitForMultipleObjectsEx(1, &lll_pointer_state.stop,
++        DWORD reason = MsgWaitForMultipleObjectsEx(1, &wjl_pointer_state.stop,
+             INFINITE, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+         MSG message;
+         if (reason != WAIT_OBJECT_0 + 1) break;
+@@ -165,12 +165,12 @@
+             if (message.message == WM_QUIT) goto done;
+             TranslateMessage(&message);
+             DispatchMessageW(&message);
+-            if (WaitForSingleObject(lll_pointer_state.stop, 0) == WAIT_OBJECT_0) goto done;
++            if (WaitForSingleObject(wjl_pointer_state.stop, 0) == WAIT_OBJECT_0) goto done;
+         }
+     }
+ done:
+-    InterlockedExchange(&lll_pointer_state.active, 0);
+-    if (registered && lll_pointer_registration(&previous) == 1 && previous.hwndTarget == window) {
++    InterlockedExchange(&wjl_pointer_state.active, 0);
++    if (registered && wjl_pointer_registration(&previous) == 1 && previous.hwndTarget == window) {
+         device.usUsagePage = 1;
+         device.usUsage = 2;
+         device.dwFlags = RIDEV_REMOVE;
+@@ -178,87 +178,107 @@
+         RegisterRawInputDevices(&device, 1, sizeof(device));
+     }
+     if (window) DestroyWindow(window);
+-    if (owns_class) UnregisterClassW(lll_pointer_class, instance);
+-    lll_pointer_state.window = NULL;
+-    lll_pointer_take_motion();
+-    SetEvent(lll_pointer_state.ready);
++    if (owns_class) UnregisterClassW(wjl_pointer_class, instance);
++    wjl_pointer_state.window = NULL;
++    wjl_pointer_take_motion();
++    SetEvent(wjl_pointer_state.ready);
+     return 0;
+ }
+ 
+ /* Lifecycle lock held. Timed-out threads retain their owned handles until a
+  * later call can reap them; no handle is closed beneath a running thread. */
+-static int lll_pointer_stop_locked(DWORD timeout) {
+-    if (!lll_pointer_state.thread) return 1;
+-    InterlockedExchange(&lll_pointer_state.active, 0);
+-    SetEvent(lll_pointer_state.stop);
+-    if (WaitForSingleObject(lll_pointer_state.thread, timeout) != WAIT_OBJECT_0) return 0;
+-    CloseHandle(lll_pointer_state.thread);
+-    CloseHandle(lll_pointer_state.ready);
+-    CloseHandle(lll_pointer_state.stop);
+-    ZeroMemory(&lll_pointer_state, sizeof(lll_pointer_state));
++static int wjl_pointer_stop_locked(DWORD timeout) {
++    if (!wjl_pointer_state.thread) return 1;
++    InterlockedExchange(&wjl_pointer_state.active, 0);
++    SetEvent(wjl_pointer_state.stop);
++    if (WaitForSingleObject(wjl_pointer_state.thread, timeout) != WAIT_OBJECT_0) return 0;
++    CloseHandle(wjl_pointer_state.thread);
++    CloseHandle(wjl_pointer_state.ready);
++    CloseHandle(wjl_pointer_state.stop);
++    ZeroMemory(&wjl_pointer_state, sizeof(wjl_pointer_state));
+     return 1;
+ }
+ 
+-int lll_pointer_start(DWORD pid) {
++int wjl_pointer_start(DWORD pid) {
+     int ok = 0;
+     ULONGLONG deadline = GetTickCount64() + 1000;
+-    AcquireSRWLockExclusive(&lll_pointer_lifecycle);
++    AcquireSRWLockExclusive(&wjl_pointer_lifecycle);
+     if (!pid) goto done;
+-    if (lll_pointer_state.thread && lll_pointer_state.pid == pid &&
+-        InterlockedCompareExchange(&lll_pointer_state.active, 0, 0)) {
++    if (wjl_pointer_state.thread && wjl_pointer_state.pid == pid &&
++        InterlockedCompareExchange(&wjl_pointer_state.active, 0, 0)) {
+         ok = 1;
+         goto done;
+     }
+-    if (!lll_pointer_stop_locked(0)) goto done;
+-    lll_pointer_state.pid = pid;
+-    lll_pointer_state.ready = CreateEventW(NULL, TRUE, FALSE, NULL);
+-    lll_pointer_state.stop = CreateEventW(NULL, TRUE, FALSE, NULL);
+-    if (!lll_pointer_state.ready || !lll_pointer_state.stop) {
+-        if (lll_pointer_state.ready) CloseHandle(lll_pointer_state.ready);
+-        if (lll_pointer_state.stop) CloseHandle(lll_pointer_state.stop);
+-        ZeroMemory(&lll_pointer_state, sizeof(lll_pointer_state));
++    if (!wjl_pointer_stop_locked(0)) goto done;
++    wjl_pointer_state.pid = pid;
++    wjl_pointer_state.ready = CreateEventW(NULL, TRUE, FALSE, NULL);
++    wjl_pointer_state.stop = CreateEventW(NULL, TRUE, FALSE, NULL);
++    if (!wjl_pointer_state.ready || !wjl_pointer_state.stop) {
++        if (wjl_pointer_state.ready) CloseHandle(wjl_pointer_state.ready);
++        if (wjl_pointer_state.stop) CloseHandle(wjl_pointer_state.stop);
++        ZeroMemory(&wjl_pointer_state, sizeof(wjl_pointer_state));
+         goto done;
+     }
+-    lll_pointer_state.thread = CreateThread(NULL, 0, lll_pointer_thread, NULL, 0, NULL);
+-    if (!lll_pointer_state.thread) {
+-        CloseHandle(lll_pointer_state.ready);
+-        CloseHandle(lll_pointer_state.stop);
+-        ZeroMemory(&lll_pointer_state, sizeof(lll_pointer_state));
++    wjl_pointer_state.thread = CreateThread(NULL, 0, wjl_pointer_thread, NULL, 0, NULL);
++    if (!wjl_pointer_state.thread) {
++        CloseHandle(wjl_pointer_state.ready);
++        CloseHandle(wjl_pointer_state.stop);
++        ZeroMemory(&wjl_pointer_state, sizeof(wjl_pointer_state));
+         goto done;
+     }
+-    if (WaitForSingleObject(lll_pointer_state.ready, 800) == WAIT_OBJECT_0)
+-        ok = InterlockedCompareExchange(&lll_pointer_state.active, 0, 0) != 0;
++    if (WaitForSingleObject(wjl_pointer_state.ready, 800) == WAIT_OBJECT_0)
++        ok = InterlockedCompareExchange(&wjl_pointer_state.active, 0, 0) != 0;
+     if (!ok) {
+         ULONGLONG now = GetTickCount64();
+-        lll_pointer_stop_locked(now < deadline ? (DWORD)(deadline - now) : 0);
++        wjl_pointer_stop_locked(now < deadline ? (DWORD)(deadline - now) : 0);
+     }
+ done:
+-    ReleaseSRWLockExclusive(&lll_pointer_lifecycle);
++    ReleaseSRWLockExclusive(&wjl_pointer_lifecycle);
+     return ok;
+ }
+ 
+-int lll_pointer_snapshot_extended(LLLSteamPointerSample *out) {
++/* WJ: keep the cursor inside the game's client area while Photo Mode owns the
++ * pointer. Windows and games drop a clip on focus and mode changes, so every
++ * sample re-applies it. A clip that already keeps the cursor inside the window
++ * (the game's own) is left alone, and release removes only a clip set here. */
++static RECT wjl_pointer_clip;
++static int wjl_pointer_clipped;
++static void wjl_pointer_unconfine(void) {
++    RECT current;
++    if (!wjl_pointer_clipped) return;
++    wjl_pointer_clipped = 0;
++    if (GetClipCursor(&current) && EqualRect(&current, &wjl_pointer_clip)) ClipCursor(NULL);
++}
++static void wjl_pointer_confine(HWND window, const RECT *client) {
++    POINT origin = {0, 0};
++    RECT wanted, frame, current;
++    if (!ClientToScreen(window, &origin) || !GetWindowRect(window, &frame) || !GetClipCursor(&current)) return;
++    if (current.left >= frame.left && current.top >= frame.top && current.right <= frame.right && current.bottom <= frame.bottom) return;
++    SetRect(&wanted, origin.x, origin.y, origin.x + (client->right - client->left), origin.y + (client->bottom - client->top));
++    if (ClipCursor(&wanted)) { wjl_pointer_clip = wanted; wjl_pointer_clipped = 1; }
++}
++int wjl_pointer_snapshot_extended(WJLSteamPointerSample *out) {
+     static const int keys[] = {VK_LBUTTON, VK_RBUTTON, VK_MBUTTON, VK_XBUTTON1, VK_XBUTTON2};
+-    HWND foreground, after;
++    HWND foreground = NULL, after;
+     POINT point;
+-    RECT bounds;
++    RECT bounds = {0, 0, 0, 0};
+     DWORD pid;
+     int ok = 0, buttons = 0;
+-    LLLSteamPointerMotion motion;
++    WJLSteamPointerMotion motion;
+     if (!out) return 0;
+     ZeroMemory(out, sizeof(*out));
+-    AcquireSRWLockShared(&lll_pointer_lifecycle);
+-    if (!InterlockedCompareExchange(&lll_pointer_state.active, 0, 0)) goto done;
++    AcquireSRWLockShared(&wjl_pointer_lifecycle);
++    if (!InterlockedCompareExchange(&wjl_pointer_state.active, 0, 0)) goto done;
+     ok = 1;
+-    motion = lll_pointer_take_motion();
+-    pid = lll_pointer_foreground_pid(&foreground);
+-    if (!lll_pointer_owner(lll_pointer_state.pid, pid)) goto done;
++    motion = wjl_pointer_take_motion();
++    pid = wjl_pointer_foreground_pid(&foreground);
++    if (!wjl_pointer_owner(wjl_pointer_state.pid, pid)) goto done;
+     if (!GetCursorPos(&point) || !ScreenToClient(foreground, &point) ||
+         !GetClientRect(foreground, &bounds) || bounds.right <= bounds.left || bounds.bottom <= bounds.top) goto done;
+     for (unsigned int index = 0; index < sizeof(keys) / sizeof(keys[0]); ++index)
+         if (GetAsyncKeyState(keys[index]) & 0x8000) buttons |= 1 << index;
+-    pid = lll_pointer_foreground_pid(&after);
+-    if (after != foreground || !lll_pointer_owner(lll_pointer_state.pid, pid)) goto done;
++    pid = wjl_pointer_foreground_pid(&after);
++    if (after != foreground || !wjl_pointer_owner(wjl_pointer_state.pid, pid)) goto done;
+     out->valid = 1;
+     out->x = point.x;
+     out->y = point.y;
+@@ -269,25 +289,27 @@
+     out->dx = motion.dx;
+     out->dy = motion.dy;
+ done:
+-    ReleaseSRWLockShared(&lll_pointer_lifecycle);
++    if (out->valid) wjl_pointer_confine(foreground, &bounds); else wjl_pointer_unconfine();
++    ReleaseSRWLockShared(&wjl_pointer_lifecycle);
+     return ok;
+ }
+ 
+-int lll_pointer_snapshot(LLLSteamPointerSnapshot *out) {
+-    LLLSteamPointerSample sample;
++int wjl_pointer_snapshot(WJLSteamPointerSnapshot *out) {
++    WJLSteamPointerSample sample;
+     int ok;
+     if (!out) return 0;
+-    ok = lll_pointer_snapshot_extended(&sample);
++    ok = wjl_pointer_snapshot_extended(&sample);
+     /* Legacy clients consume the same atomic sample and discard raw motion.
+      * Shared consumers must fan out one extended sample per frame in Lua. */
+     memcpy(out, &sample, sizeof(*out));
+     return ok;
+ }
+ 
+-int lll_pointer_release(void) {
++int wjl_pointer_release(void) {
+     int ok;
+-    AcquireSRWLockExclusive(&lll_pointer_lifecycle);
+-    ok = lll_pointer_stop_locked(1000);
+-    ReleaseSRWLockExclusive(&lll_pointer_lifecycle);
++    AcquireSRWLockExclusive(&wjl_pointer_lifecycle);
++    wjl_pointer_unconfine();
++    ok = wjl_pointer_stop_locked(1000);
++    ReleaseSRWLockExclusive(&wjl_pointer_lifecycle);
+     return ok;
+ }
+--- a/native/steam_screenshot.cpp
++++ b/native/steam_screenshot.cpp
+@@ -15,6 +15,8 @@
+ #include <winrt/Windows.Graphics.DirectX.h>
+ #include <winrt/Windows.Graphics.DirectX.Direct3D11.h>
+ #include <algorithm>
++#include <array>
++#include <cmath>
+ #include <cstddef>
+ #include <cwchar>
+ #include <filesystem>
+@@ -28,6 +30,7 @@
+ namespace d3d = winrt::Windows::Graphics::DirectX::Direct3D11;
+ namespace {
+ constexpr ULONGLONG kDeadlineMs = 5000;
++constexpr ULONGLONG kConvertMs = 60000;
+ constexpr uint64_t kMaxPixels = 64ull * 1024 * 1024;
+ 
+ void require(bool condition, DWORD error = ERROR_INVALID_DATA) {
+@@ -38,21 +41,22 @@
+     throw winrt::hresult_error(HRESULT_FROM_WIN32(error ? error : ERROR_GEN_FAILURE));
+ }
+ struct Operation {
+-    const LLLScreenshotRequest& request;
++    const WJLScreenshotRequest& request;
+     const ULONGLONG begun = GetTickCount64();
++    const ULONGLONG deadline = kDeadlineMs;
+     void check() const {
+         const DWORD waited = WaitForSingleObject(request.cancel_event, 0);
+         if (waited == WAIT_FAILED) last_error();
+         require(waited == WAIT_TIMEOUT &&
+-                InterlockedCompareExchange(request.publication, LLL_SCREENSHOT_OPEN, LLL_SCREENSHOT_OPEN) == LLL_SCREENSHOT_OPEN,
++                InterlockedCompareExchange(request.publication, WJL_SCREENSHOT_OPEN, WJL_SCREENSHOT_OPEN) == WJL_SCREENSHOT_OPEN,
+                 ERROR_CANCELLED);
+-        require(GetTickCount64() - begun < kDeadlineMs, ERROR_TIMEOUT);
++        require(GetTickCount64() - begun < deadline, ERROR_TIMEOUT);
+     }
+     DWORD remaining() const {
+         check();
+         const ULONGLONG elapsed = GetTickCount64() - begun;
+-        require(elapsed < kDeadlineMs, ERROR_TIMEOUT);
+-        return static_cast<DWORD>(kDeadlineMs - elapsed);
++        require(elapsed < deadline, ERROR_TIMEOUT);
++        return static_cast<DWORD>(deadline - elapsed);
+     }
+ };
+ struct Apartment {
+@@ -131,13 +135,13 @@
+             ERROR_INVALID_EXE_SIGNATURE);
+ }
+ struct Identity {
+-    const LLLScreenshotRequest& request;
++    const WJLScreenshotRequest& request;
+     const std::wstring executable;
+     winrt::handle process;
+     HWND window = nullptr;
+     DWORD thread = 0;
+     Geometry bounds;
+-    explicit Identity(const LLLScreenshotRequest& value) : request(value), executable(value.executable) {
++    explicit Identity(const WJLScreenshotRequest& value) : request(value), executable(value.executable) {
+         require(std::filesystem::path(executable).is_absolute() &&
+                 _wcsicmp(std::filesystem::path(executable).filename().c_str(), L"helldivers2.exe") == 0,
+                 ERROR_INVALID_EXE_SIGNATURE);
+@@ -280,16 +284,16 @@
+         rename->FileNameLength = static_cast<DWORD>(path.size() * sizeof(wchar_t));
+         std::copy(path.begin(), path.end(), rename->FileName);
+         operation.check();
+-        require(InterlockedCompareExchange(operation.request.publication, LLL_SCREENSHOT_PUBLISHING, LLL_SCREENSHOT_OPEN) == LLL_SCREENSHOT_OPEN,
++        require(InterlockedCompareExchange(operation.request.publication, WJL_SCREENSHOT_PUBLISHING, WJL_SCREENSHOT_OPEN) == WJL_SCREENSHOT_OPEN,
+                 ERROR_CANCELLED);
+         if (!SetFileInformationByHandle(file.get(), FileRenameInfo, rename, static_cast<DWORD>(bytes))) last_error();
+         FILE_DISPOSITION_INFO_EX keep{FILE_DISPOSITION_FLAG_ON_CLOSE};
+         if (!SetFileInformationByHandle(file.get(), FileDispositionInfoEx, &keep, sizeof(keep))) last_error();
+         file.close();
+-        InterlockedExchange(operation.request.publication, LLL_SCREENSHOT_PUBLISHED);
+-    }
+-};
+-void save_window(const LLLScreenshotRequest& request, LLLScreenshotResult& result, const Operation& operation) {
++        InterlockedExchange(operation.request.publication, WJL_SCREENSHOT_PUBLISHED);
++    }
++};
++void save_window(const WJLScreenshotRequest& request, WJLScreenshotResult& result, const Operation& operation) {
+     operation.check();
+     const std::wstring path = output_path(request.output_path);
+     ThreadDpiContext dpi;
+@@ -393,9 +397,150 @@
+     output.publish(path, operation);
+     result.width = crop.width; result.height = crop.height;
+ }
++// WJ: the engine's DDS screenshot, converted to the PNG beside it.
++uint32_t dds_word(const uint8_t* bytes) {
++    return uint32_t(bytes[0]) | (uint32_t(bytes[1]) << 8) | (uint32_t(bytes[2]) << 16) | (uint32_t(bytes[3]) << 24);
++}
++float dds_pq_nits(float encoded) {
++    // SMPTE ST 2084 EOTF. PQ is absolute: normalized 1.0 means 10,000 nits.
++    constexpr double m1 = 2610.0 / 16384.0, m2 = 2523.0 / 32.0;
++    constexpr double c1 = 3424.0 / 4096.0, c2 = 2413.0 / 128.0, c3 = 2392.0 / 128.0;
++    const double power = std::pow(static_cast<double>(encoded), 1.0 / m2);
++    return static_cast<float>(10000.0 * std::pow(std::max(power - c1, 0.0) / (c2 - c3 * power), 1.0 / m1));
++}
++using DdsColor = std::array<float, 3>;
++using DdsMatrix = std::array<DdsColor, 3>;
++DdsColor dds_multiply(const DdsMatrix& matrix, const DdsColor& color) {
++    DdsColor value{};
++    for (size_t i = 0; i < value.size(); ++i)
++        value[i] = matrix[i][0] * color[0] + matrix[i][1] * color[1] + matrix[i][2] * color[2];
++    return value;
++}
++void dds_native_sdr(float r, float g, float b, uint8_t& red, uint8_t& green, uint8_t& blue) {
++    // The game's SDR final compositor converts the already tone-mapped PQ scene with
++    // these exact float32 constants (aaac81ae5fbabc7c-ace8 final-compositor DXBC).
++    constexpr DdsMatrix pre{{
++        {{0.9599400162696838F, 0.010470000095665455F, 0.007029999978840351F}},
++        {{0.0016199999954551458F, 0.9996899962425232F, 0.0014900000533089042F}},
++        {{0.005289999768137932F, 0.023830000311136246F, 1.0501600503921509F}}
++    }};
++    constexpr DdsMatrix xyz{{
++        {{0.6624541878700256F, 0.13400420546531677F, 0.15618768334388733F}},
++        {{0.2722287178039551F, 0.6740817427635193F, 0.053689517080783844F}},
++        {{-0.005574649665504694F, 0.00406073359772563F, 1.0103391408920288F}}
++    }};
++    constexpr DdsMatrix adapt{{
++        {{1.6410233974456787F, -0.32480329275131226F, -0.23642469942569733F}},
++        {{-0.663662850856781F, 1.6153316497802734F, 0.016756348311901093F}},
++        {{0.011721894145011902F, -0.008284442126750946F, 0.9883948564529419F}}
++    }};
++    constexpr DdsMatrix rgb{{
++        {{3.2409698963165283F, -1.5373831987380981F, -0.4986107647418976F}},
++        {{-0.9692436456680298F, 1.8759675025939941F, 0.04155505821108818F}},
++        {{0.05563008040189743F, -0.20397695899009705F, 1.056971549987793F}}
++    }};
++    DdsColor value = dds_multiply(pre, DdsColor{{r, g, b}});
++    for (float& channel : value) channel = (channel - 0.001F) * 0.0036363769322633743F;
++    value = dds_multiply(xyz, value);
++    const float sum = std::max(value[0] + value[1] + value[2], 0.0001F);
++    const float x = value[0] / sum, y = value[1] / sum;
++    const float luminance = std::pow(std::clamp(value[1], 0.0F, 65504.0F), 0.9811000227928162F);
++    const float ratio = luminance / std::max(y, 0.0001F);
++    value = DdsColor{{ratio * x, luminance, ratio * (1.0F - x - y)}};
++    value = dds_multiply(rgb, dds_multiply(xyz, dds_multiply(adapt, value)));
++    auto byte = [](float channel) {
++        return static_cast<uint8_t>(std::floor(std::pow(std::clamp(channel, 0.0F, 1.0F), 0.4544999897480011F) * 255.0F + 0.5F));
++    };
++    red = byte(value[0]); green = byte(value[1]); blue = byte(value[2]);
++}
++std::wstring dds_sibling(const std::wstring& png) { return png.substr(0, png.size() - 4) + L".dds"; }
++bool dds_present(const wchar_t* png) {
++    if (!png) return false;
++    const std::wstring path(png);
++    if (path.size() < 5 || _wcsicmp(path.c_str() + path.size() - 4, L".png")) return false;
++    const DWORD attributes = GetFileAttributesW(dds_sibling(path).c_str());
++    return attributes != INVALID_FILE_ATTRIBUTES && !(attributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT));
++}
++void dds_read(HANDLE file, void* buffer, DWORD count) {
++    DWORD read = 0;
++    if (!ReadFile(file, buffer, count, &read, nullptr)) last_error();
++    require(read == count, ERROR_HANDLE_EOF);
++}
++void convert_dds(const WJLScreenshotRequest& request, WJLScreenshotResult& result, const Operation& operation) {
++    operation.check();
++    const std::wstring path = output_path(request.output_path);
++    const HANDLE opened = CreateFileW(dds_sibling(path).c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
++                                      FILE_FLAG_SEQUENTIAL_SCAN | FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
++    if (opened == INVALID_HANDLE_VALUE) last_error();
++    winrt::handle input{opened};
++    LARGE_INTEGER size{};
++    if (!GetFileSizeEx(input.get(), &size)) last_error();
++    uint8_t header[148]{};
++    require(size.QuadPart >= 148, ERROR_BAD_FORMAT);
++    dds_read(input.get(), header, 148);
++    const uint32_t flags = dds_word(header + 8), height = dds_word(header + 12), width = dds_word(header + 16);
++    require(dds_word(header) == 0x20534444 && dds_word(header + 4) == 124 && (flags & 0x1007) == 0x1007 &&
++            dds_word(header + 76) == 32 && (dds_word(header + 80) & 4) && dds_word(header + 84) == 0x30315844 &&
++            width && height && width <= 16384 && height <= 16384 && uint64_t(width) * height <= kMaxPixels &&
++            dds_word(header + 24) <= 1 && dds_word(header + 28) <= 1 && !(dds_word(header + 112) & 0x20fe00) &&
++            dds_word(header + 132) == 3 && !(dds_word(header + 136) & 4) && dds_word(header + 140) == 1, ERROR_BAD_FORMAT);
++    uint32_t format = dds_word(header + 128);
++    switch (format) {
++    case 27: format = 28; break; case 90: format = 87; break; case 92: format = 88; break; case 23: format = 24; break;
++    default: break;
++    }
++    // The engine writes SDR as BGRA bytes, labelled 87 once War Journalist corrected the
++    // header, or 28 (its own label) when it could not; HDR as RGB10A2 HDR10 (PQ, BT.2020).
++    require(format == 87 || format == 88 || format == 91 || format == 93 || format == 28 || format == 29 || format == 24,
++            ERROR_NOT_SUPPORTED);
++    const uint32_t pitch = (flags & 8) ? dds_word(header + 20) : width * 4;
++    require(pitch >= width * 4 && pitch <= 16384u * 4 + 4096 &&
++            uint64_t(pitch) * height + 148 <= static_cast<uint64_t>(size.QuadPart), ERROR_BAD_FORMAT);
++    std::array<float, 1024> pq{};
++    if (format == 24) for (size_t i = 0; i < pq.size(); ++i) pq[i] = dds_pq_nits(static_cast<float>(i) / 1023.0F);
++    std::vector<uint8_t> source(pitch), pixels(size_t(width) * height * 4);
++    for (uint32_t row = 0; row < height; ++row) {
++        if (!(row & 63)) operation.check();
++        dds_read(input.get(), source.data(), pitch);
++        uint8_t* out = pixels.data() + size_t(row) * width * 4;
++        for (uint32_t column = 0; column < width; ++column) {
++            const uint8_t* in = source.data() + size_t(column) * 4;
++            uint8_t red, green, blue;
++            if (format == 24) {
++                const uint32_t packed = dds_word(in);
++                dds_native_sdr(pq[packed & 1023], pq[(packed >> 10) & 1023], pq[(packed >> 20) & 1023], red, green, blue);
++            } else { blue = in[0]; green = in[1]; red = in[2]; }
++            out[size_t(column) * 4] = blue; out[size_t(column) * 4 + 1] = green;
++            out[size_t(column) * 4 + 2] = red; out[size_t(column) * 4 + 3] = 255;
++        }
++    }
++    input.close();
++    D3D11_MAPPED_SUBRESOURCE mapped{};
++    mapped.pData = pixels.data(); mapped.RowPitch = width * 4;
++    operation.check();
++    auto png = encode_png(width, height, mapped);
++    STATSTG status{}; winrt::check_hresult(png->Stat(&status, STATFLAG_NONAME));
++    require(status.cbSize.QuadPart > 8 && status.cbSize.QuadPart <= 512ull * 1024 * 1024);
++    LARGE_INTEGER beginning{}; winrt::check_hresult(png->Seek(beginning, STREAM_SEEK_SET, nullptr));
++    ExclusiveOutput output(path);
++    uint64_t remaining = status.cbSize.QuadPart;
++    std::vector<BYTE> buffer(65536);
++    while (remaining) {
++        operation.check();
++        const ULONG requested = static_cast<ULONG>(std::min<uint64_t>(buffer.size(), remaining));
++        ULONG read = 0; winrt::check_hresult(png->Read(buffer.data(), requested, &read));
++        require(read == requested, ERROR_HANDLE_EOF);
++        DWORD written = 0;
++        if (!WriteFile(output.file.get(), buffer.data(), read, &written, nullptr)) last_error();
++        require(written == read, ERROR_WRITE_FAULT); remaining -= read;
++    }
++    if (!FlushFileBuffers(output.file.get())) last_error();
++    output.publish(path, operation);
++    result.width = width; result.height = height;
++}
+ } // namespace
+ 
+-extern "C" DWORD lll_steam_screenshot_capture(const LLLScreenshotRequest* request, LLLScreenshotResult* result) {
++extern "C" DWORD wjl_steam_screenshot_capture(const WJLScreenshotRequest* request, WJLScreenshotResult* result) {
+     if (!result) return ERROR_INVALID_PARAMETER;
+     *result = {};
+     const ULONGLONG begun = GetTickCount64();
+@@ -405,7 +550,10 @@
+         const Operation operation{*request};
+         operation.check();
+         Apartment apartment;
+-        save_window(*request, *result, operation);
++        if (dds_present(request->output_path)) {
++            const Operation conversion{*request, GetTickCount64(), kConvertMs};
++            convert_dds(*request, *result, conversion);
++        } else save_window(*request, *result, operation);
+     } catch (const winrt::hresult_error& error) { result->error = static_cast<uint32_t>(error.code().value); }
+       catch (const std::bad_alloc&) { result->error = static_cast<uint32_t>(E_OUTOFMEMORY); }
+       catch (...) { result->error = static_cast<uint32_t>(E_FAIL); }

@@ -580,6 +580,16 @@ function M.new(host,sr,deps,service)
    return values
   end
  end
+ -- F11 was Handycam's default through 1.3.2, but Steam records with Ctrl+F11. Handycam now
+ -- starts on Page Down, and a saved F11 becomes Page Down (saves hold every value, defaults included).
+ do
+  local load=store.load
+  store.load=function(id)
+   local values=load(id)
+   if id=='dbf_freecam'and type(values)=='table'and values.handycam_key==122 then values.handycam_key=34 end
+   return values
+  end
+ end
  -- An enabled MCM hosts these pages, Controls included, as in 1.2.1. Values
  -- stay in this mod's own settings file through MCM's per-mod storage.
  local mcm=deps.mcm
@@ -700,11 +710,18 @@ function M.new(host,sr,deps,service)
   if listed and type(choices)=='table'and #choices<=4 then subject_choices=choices
   else subject_fault='Subject choices are unavailable'end
   sync_subject()
+  local detail=ok~=true and subject_status and subject_status.detail
+  detail=type(detail)=='string'and detail:gsub('%c',' '):sub(1,512)or nil
   if method=='refresh' then
-   local detail=ok~=true and subject_status and subject_status.detail
-   detail=type(detail)=='string'and detail:gsub('%c',' '):sub(1,512)or nil
    if detail and detail~=self.subject_discovery_detail then pcall(host.log,'Subject discovery detail: '..detail)end
    self.subject_discovery_detail=detail
+  else
+   -- Reset, recover and pose refusals share generic messages: name each refused
+   -- check once until a subject action succeeds (Stop alternates reset/recover).
+   local logged=self.subject_failure_details or{};self.subject_failure_details=logged
+   local line=detail and'Subject '..method..' detail: '..detail
+   if line and not logged[line]then logged[line]=true;pcall(host.log,line)end
+   if ok==true then self.subject_failure_details=nil end
   end
   if ok~=true then notice(why or subject_message)end
   return ok==true,why or subject_message
@@ -746,7 +763,7 @@ function M.new(host,sr,deps,service)
   end
   return not subject_holds,subject_message
  end
- local function subject_action(method,value,preferred)
+ local function subject_action(method,value,preferred,settled)
   if not subject then return false,'Refresh subjects first'end
   if method~='recover'and(not subject_opt_in or not self.active or pending_cleanup or self.mode=='shot'or shot and shot.handycam)then
    return false,'Subject controls are unavailable'
@@ -763,13 +780,33 @@ function M.new(host,sr,deps,service)
    if not(simulation and simulation.owns_zero())then return false,'True-zero Freeze Action is required'end
    -- Match the explicit Reset -> Apply workflow. Never layer the next pose
    -- over the previous lease, or apply after an unacknowledged restoration.
-   local reset,reason=subject_call('reset')
-   if not reset then return false,reason end
+   -- Apply two updates later, once the reset body has settled: the cape placement is
+   -- captured at the first pose write, and a same-frame Reset+Apply captured it against the
+   -- old body (a manual Reset, then Apply, fixed the cape, live 2026-10-29). The settled
+   -- call repeats the releases above, as holds may re-engage while it waits. A field, not a
+   -- local: M.new is at Lua 5.1's 200-local limit.
+   -- Only the first pose waits: a held pose's reset refreshes the body itself, so a change
+   -- between poses resets and applies at once, with no gap (user: "the reset only needs to
+   -- be done on the first pose change").
+   if not settled then
+    local first=not subject_holds
+    local reset,reason=subject_call('reset')
+    if not reset then return false,reason end
+    if first then self.pending_pose={id=value,updates=2};return true,'Applying the pose'end
+   end
   end
   local ok,why=subject_call(method,value,preferred)
   if method=='recover'and ok and not subject_opt_in then close_subject(false)end
   if method=='recover'and ok and pending_cleanup then self.close(nil,true)end
   return ok,why
+ end
+ -- Each update with a pose waiting after its reset; it applies on the second. A method, not
+ -- inline in tick: tick is at Lua 5.1's 60-upvalue limit.
+ function self.settle_pose()
+  local wanted=self.pending_pose;wanted.updates=wanted.updates-1
+  if wanted.updates>0 then return end
+  self.pending_pose=nil
+  local ok,why=subject_action('apply',wanted.id,nil,true);if not ok then notice(why)end
  end
  local function load_subject()
   if not self.active or pending_cleanup or subject_pending or type(deps.load_subject)~='function'then return false,'Subject controls are unavailable'end
@@ -786,7 +823,7 @@ function M.new(host,sr,deps,service)
     if self.tracking_backend and self.tracking_backend.release then self.tracking_backend.release()end
     subject=nil;subject_status=nil;subject_fault=nil;subject_opt_in=false;subject_choices={}
     subject_pending=false;subject_holds=false;subject_cleanup_attempted=false;subject_close_started=false
-    self.subject_discovery_detail=nil
+    self.subject_discovery_detail=nil;self.subject_failure_details=nil
     pcall(host.log,'Subject session changed: previous leases released; requalifying on explicit action')
    end
   end
@@ -986,7 +1023,15 @@ function M.new(host,sr,deps,service)
  local director
  local function player_frame()
   if deps.player_frame then return deps.player_frame()end
-  if subject_backend then return subject_backend.frame()end
+  -- The native local player, with its bones when they read, so shots follow the bone they
+  -- were saved on as under Boot Mod Loader.
+  if subject_backend then return(subject_backend.anchor_frame or subject_backend.frame)()end
+  -- No native player backend (Boot Mod Loader): shots are relative to the selected Helldiver.
+  if subject and type(subject.anchor_frame)=='function'then
+   local frame,why=subject.anchor_frame()
+   if type(frame)~='table'then return nil,why or'Select a Helldiver in Subject'end
+   return{local_owner=true,identity=frame.identity,yaw=frame.yaw,position=frame.position,bones=frame.bones}
+  end
   return nil,'Local player unavailable'
  end
  if deps.director then director=deps.director.new(director_photo,player_frame,host.config_dir..'/director-shots.ini',host.log)end
@@ -995,20 +1040,45 @@ function M.new(host,sr,deps,service)
   if controls.director_slot then controls.director_slot.choices=director.list()end
   if texts.director_status then texts.director_status.label=director.status end
  end
- local function director_action(action)
-  if not director or not photo or not self.active or pending_cleanup or self.mode=='shot'then return false,'Place the Photo camera first'end
-  if not stop_path()or not flush_roll()then return false,self.reason end
+ -- The Photo camera as Director input, and a Director placement back onto the camera, in one
+ -- table: M.new is at Lua 5.1's 200-local limit.
+ local director_bridge={}
+ function director_bridge.input()
   director_photo.active=true;director_photo.pos=copy(photo.pos)
   director_photo.view={yaw=math.atan2(photo.forward[2],photo.forward[1]),pitch=math.asin(math.max(-1,math.min(1,photo.forward[3])))}
   director_photo.options={fov=handle.get('fov'),roll=handle.get('roll')};director_photo.input={sequence=sample_sequence}
+ end
+ function director_bridge.output()
+  photo.pos=copy(director_photo.pos);photo.view=director_photo.view;photo.target=nil
+  local yaw,pitch=photo.view.yaw,photo.view.pitch;local c=math.cos(pitch)
+  photo.forward={math.cos(yaw)*c,math.sin(yaw)*c,math.sin(pitch)}
+  photo.right={math.sin(yaw),-math.cos(yaw),0}
+ end
+ local function director_action(action)
+  if not director or not photo or not self.active or pending_cleanup or self.mode=='shot'then return false,'Place the Photo camera first'end
+  if not stop_path()or not flush_roll()then return false,self.reason end
+  director_bridge.input()
   local ok,why=director[action](handle.get('director_slot'),handle)
-  if ok and action=='recall'then
-   photo.pos=copy(director_photo.pos);photo.view=director_photo.view;photo.target=nil
-   local yaw,pitch=photo.view.yaw,photo.view.pitch;local c=math.cos(pitch)
-   photo.forward={math.cos(yaw)*c,math.sin(yaw)*c,math.sin(pitch)}
-   photo.right={math.sin(yaw),-math.cos(yaw),0}
-  end
+  if ok and action=='recall'then director_bridge.output()end
   director_status();if not ok then notice(why)end;return ok,why
+ end
+ -- Closing remembers the camera relative to the player (the selected Helldiver under Boot
+ -- Mod Loader) so the next open returns there. It never holds up the close.
+ function director_bridge.remember()
+  if not director or not photo or not self.active or pending_cleanup or self.mode=='shot'or not handle.get('return_to_last_camera')then return end
+  local called,ok,why=pcall(function()
+   if not stop_path()or not flush_roll()then return false,self.reason end
+   director_bridge.input();return director.remember()
+  end)
+  if not called or not ok then host.log('Last camera not remembered: '..tostring(called and why or ok))end
+ end
+ -- Opening returns to that camera, relative to the player as it stands now. A method, not a
+ -- local: open() is at Lua 5.1's 60-upvalue limit.
+ function self.return_to_last_camera()
+  if not director or not handle.get('return_to_last_camera')then return end
+  director_bridge.input()
+  local called,returned=pcall(director.return_to_last,handle)
+  if called and returned then director_bridge.output();photo.roll=nil end
  end
  function self.native_lens_status()return native_lens and native_lens.message or'Native lens inactive',native_lens and native_lens.ready or false end
  local function unhook()
@@ -1074,7 +1144,8 @@ function M.new(host,sr,deps,service)
  end
  self.capture=capture
  function self.close(clear_time,automatic,subject_retry)
-  deferred_shot=nil
+  director_bridge.remember()
+  deferred_shot=nil;self.pending_pose=nil
   if handycam then handycam.reset()end
   if photo then photo.handy_roll=nil end
   if capture then capture.close('Photo Mode closed')end
@@ -1217,20 +1288,22 @@ function M.new(host,sr,deps,service)
    if not c.disabled and c.default~=nil and(deps.options.defaults[id]~=nil or id=='light_subject_distance')then handle.set(id,c.default)end
   end
  end
+ -- WASD and Q/E by key position (Z/Q/S/D and A/E on AZERTY) when the helper read the layout.
+ local keys=host.key_positions or{}
  local bindings={
   {id='toggle_key',type='keybind',label='Photo mode toggle',default=80},
-  {id='handycam_key',type='keybind',label='Start / end Handycam',default=122,disabled=not handycam},
+  {id='handycam_key',type='keybind',label='Start / end Handycam',default=34,retired=122,disabled=not handycam},
   {id='focus_key',type='keybind',label='Switch camera / menu focus',default=9},
   {id='hide_controls_key',type='keybind',label='Show / hide photo controls',default=72},
   {id='lock_camera_key',type='keybind',label='Lock / unlock camera',default=76},
-  {id='forward_key',type='keybind',label='Move forward',default=87},
-  {id='back_key',type='keybind',label='Move backward',default=83},
-  {id='left_key',type='keybind',label='Move left',default=65},
-  {id='right_key',type='keybind',label='Move right',default=68},
+  {id='forward_key',type='keybind',label='Move forward',default=keys.forward or 87},
+  {id='back_key',type='keybind',label='Move backward',default=keys.back or 83},
+  {id='left_key',type='keybind',label='Move left',default=keys.left or 65},
+  {id='right_key',type='keybind',label='Move right',default=keys.right or 68},
   {id='up_key',type='keybind',label='Move up',default=16},
   {id='down_key',type='keybind',label='Move down',default=17},
-  {id='roll_left_key',type='keybind',label='Roll left',default=81},
-  {id='roll_right_key',type='keybind',label='Roll right',default=69},
+  {id='roll_left_key',type='keybind',label='Roll left',default=keys.roll_left or 81},
+  {id='roll_right_key',type='keybind',label='Roll right',default=keys.roll_right or 69},
   {id='screenshot_key',type='keybind',label='Screenshot key',default=19,disabled=not capture},
   {id='slowmo_key',type='keybind',label='Slow-motion key',default=220,disabled=not simulation},
   {id='recover_input_key',type='keybind',label='Recovery key (Ctrl+Shift)',default=121},
@@ -1327,6 +1400,17 @@ function M.new(host,sr,deps,service)
    end
    if visibility and not self.pov_visibility then local ready,why=visibility.ready();if not ready then notice(why);return false,why end end
   end
+  -- Follow player: Pivot stays where it was placed and turns with the selected Helldiver;
+  -- Pin keeps its offset and orientation and moves with it.
+  local follow=not handheld and({'pivot','pin'})[(handle.get('action_camera_mode')or 1)-2]
+  if follow then
+   if play_path then return false,'Choose Placed camera for a recorded path'end
+   local backend=self.tracking_backend or subject_backend
+   if not backend then return false,'Select a Helldiver in Subject to follow'end
+   local called,frame=pcall(backend.head_frame)
+   if not called then notice(frame);return false,frame end
+   follow=deps.look.follow_start(follow,photo.pos,photo.forward,frame.head,frame.position);follow.identity=frame.identity
+  end
   if play_path and(not path or path.count()<2)then notice('Record at least two camera points');return false,self.reason end
   if not stop_path()then return false,self.reason end
   flush_roll()
@@ -1347,7 +1431,7 @@ function M.new(host,sr,deps,service)
   if continuing then shot.refreeze=was_frozen
   else
    shot={world=world,generation=generation,session=session,refreeze=was_frozen,started=now,check_at=now}
-   shot.handycam=handheld;shot.player_identity=head and head.identity
+   shot.handycam=handheld;shot.player_identity=head and head.identity;shot.follow=follow or nil
   end
   if handheld and not continuing then
    handycam.reset()
@@ -1493,7 +1577,7 @@ function M.new(host,sr,deps,service)
    if not ok and subject_pending then ok,why=subject_action('recover')end
    return ok,why
   end,
-  cinema_begin=function()return self.begin_shot()end,
+  cinema_begin=function()local ok,why=self.begin_shot();if not ok and why then notice(why)end;return ok,why end,
   cinema_reposition=function()if self.mode=='shot'then return self.reposition_shot()else return self.focus()end end,
   cinema_end=function()return self.close()end,
   path_change=function(id)
@@ -1582,7 +1666,7 @@ function M.new(host,sr,deps,service)
  if handycam then supported.handycam_intensity=true;supported.handycam_lag_ms=true;supported.handycam_forward_cm=true;supported.handycam_up_cm=true;supported.handycam_right_cm=true;supported.handycam_yaw_deg=true;supported.handycam_pitch_deg=true;supported.handycam_position_handle=true;supported.handycam_aim=deps.subject_backend~=nil end
  if self.pov_visibility then if self.pov_visibility.queue_player then supported.hide_player=true end;if self.pov_visibility.queue_weapons then supported.hide_weapons=true end;supported.handycam_hide_helmet=true;supported.handycam_hide_torso=true;supported.handycam_hide_cape=true end
  if visibility then for _,id in ipairs({'hide_player','hide_armour','hide_weapons','hide_cape'})do supported[id]=true end end
- if director then for _,id in ipairs({'director_slot','director_save','director_recall','director_clear'})do supported[id]=true end end
+ if director then for _,id in ipairs({'director_slot','director_save','director_recall','director_clear','return_to_last_camera'})do supported[id]=true end end
  if bookmark then supported.save_camera=true;supported.clear_saved_camera=true end
  if simulation then supported.freeze_player=true;supported.slowmo_speed=true end
  if type(deps.load_subject)=='function'then for _,id in ipairs({'subject_refresh','subject_select_1','subject_select_2',
@@ -1604,13 +1688,16 @@ function M.new(host,sr,deps,service)
    controls[c.id]=c
   elseif c.id and c.id:match('_status$')then texts[c.id]=c end
  end end
- local spec={id='dbf_freecam',name='War Journalist',pages=pages,storage=mcm and store or nil}
- if mcm then
-  local ok,value=pcall(mcm.register,spec)
-  if ok then handle=value
-  else host.log('MCM registration failed; settings stay in the Photo panel: '..tostring(value));mcm=nil;spec.storage=nil;core=deps.core.new(store,core_log)end
+ -- A block, not a top-level local: M.new is at Lua 5.1's 200-local limit.
+ do
+  local spec={id='dbf_freecam',name='War Journalist',pages=pages,storage=mcm and store or nil}
+  if mcm then
+   local ok,value=pcall(mcm.register,spec)
+   if ok then handle=value
+   else host.log('MCM registration failed; settings stay in the Photo panel: '..tostring(value));mcm=nil;spec.storage=nil;core=deps.core.new(store,core_log)end
+  end
+  if not mcm then handle=core.register(spec)end
  end
- if not mcm then handle=core.register(spec)end
  self.settings_host=mcm and'MCM'or'Photo panel'
  controls=core.mods.dbf_freecam.controls
  screenshot_label()
@@ -1626,7 +1713,7 @@ function M.new(host,sr,deps,service)
  if deps.hosted_bindings then
   local rows={}
   for _,c in ipairs(bindings)do
-   if c.type=='keybind'and controls[c.id]and not controls[c.id].disabled then rows[#rows+1]={id=c.id,label=c.label,default=handle.get(c.id)}end
+   if c.type=='keybind'and controls[c.id]and not controls[c.id].disabled then rows[#rows+1]={id=c.id,label=c.label,default=handle.get(c.id),retired=c.retired}end
   end
   hosted=deps.hosted_bindings.factory.new(deps.hosted_bindings.api,rows,deps.input.key_names,host.log)
   for _,row in ipairs(rows)do if hosted.hosted(row.id)then
@@ -1672,7 +1759,7 @@ function M.new(host,sr,deps,service)
   end
   sync_dof()
  end
- controls.action_camera_mode.choices={'Placed camera',handycam and'First-person handycam'or'First-person handycam (player unavailable)'}
+ controls.action_camera_mode.choices={'Placed camera',handycam and'First-person handycam'or'First-person handycam (player unavailable)','Follow player - Pivot','Follow player - Pin'}
  texts.cinema_status.label='Place a camera, then begin an action shot'
  for _,page in ipairs(core.mods.dbf_freecam.pages)do for _,c in ipairs(page.controls)do if c.id=='cinema_hint'then
   c.label='Move and fight while the camera holds its shot. Your Photo Mode key returns to placement and restores Freeze Action.'
@@ -1776,6 +1863,7 @@ function M.new(host,sr,deps,service)
  end
  deps.menu.legend_factory=deps.legend
  menu=deps.menu.new(view,{focus=self.focus,hide=hide,exit=self.close,hide_unavailable=deps.engine_time_only==true,
+  version=host.version and('v'..host.version..(host.build and(' build '..host.build)or''))or nil,
   handycam_adjust=function(values,finish)
    if not values then
     local saved=self.handycam_drag_values;self.handycam_drag_values=nil;options_revision=nil
@@ -1976,6 +2064,12 @@ function M.new(host,sr,deps,service)
    end)
    if not ok then notice(reason);self.close(true);return end
   end
+  if shot and shot.follow then
+   local called,frame=pcall((self.tracking_backend or subject_backend).head_frame)
+   if called and type(frame)=='table'and frame.identity==shot.follow.identity then
+    photo.pos,photo.forward,photo.right=deps.look.follow_step(shot.follow,frame.head,frame.position)
+   elseif not shot.follow.lost then shot.follow.lost=true;notice('Follow camera: subject unavailable; the camera holds still')end
+  end
   local f,r=photo.forward,photo.right
   local roll=shot and shot.handycam and(photo.handy_roll or 0)or(photo.path_roll or photo.roll or o.roll)
   local up=deps.lens.up(f,r,roll)
@@ -1995,7 +2089,13 @@ function M.new(host,sr,deps,service)
    scene_retry_at=nil;ensure_scene()
   end
   if scene_enabled then
-   local called,ok,why,shader_dof=pcall(scene.render,o,fov)
+   -- gui_blur draws in an earlier UI pass than the grade, so the grade leaves the menu's
+   -- blurred backdrops uncovered: only while the panel is shown, never on capture frames.
+   local holes
+   if self.mode~='shot'and not(capture and capture.active())and not o.hide_controls and not o.clean_view and handoff==nil and menu.blur_regions then
+    holes=menu.blur_regions()
+   end
+   local called,ok,why,shader_dof=pcall(scene.render,o,fov,holes)
    if not called or not ok then
     -- Keep Photo Mode open: drop the effect, report it and retry boundedly.
     local reason=tostring(called and why or ok);scene.release();scene_enabled=false;scene_status('Scene effects paused: '..reason)
@@ -2125,7 +2225,7 @@ function M.new(host,sr,deps,service)
    end
   end
   if handycam then
-   if controls.action_camera_mode then controls.action_camera_mode.choices={'Placed camera','First-person handycam'}end
+   if controls.action_camera_mode then controls.action_camera_mode.choices={'Placed camera','First-person handycam','Follow player - Pivot','Follow player - Pin'}end
    if controls.handycam_intensity then controls.handycam_intensity.disabled=false end
    if controls.handycam_lag_ms then controls.handycam_lag_ms.disabled=false end
   end
@@ -2150,9 +2250,10 @@ function M.new(host,sr,deps,service)
    light_revision=nil;sync_light()
   end
   checkpoint('open: saved camera')
+  local saved_restored=false
   if bookmark then
    local restored,problem=bookmark.restore(bookmark_context(),handle.get('saved_camera_radius'),handle)
-   if restored then photo=restored elseif problem then notice(problem)end
+   if restored then photo=restored;saved_restored=true elseif problem then notice(problem)end
    bookmark_status()
   end
   checkpoint('open: visibility readiness')
@@ -2178,6 +2279,8 @@ function M.new(host,sr,deps,service)
     end
    end
   end
+  -- Now that the Helldiver is selected; an explicitly saved camera position takes priority.
+  if not saved_restored then self.return_to_last_camera()end
   checkpoint('open: renderer flags')
   if bloom then local ok,why=bloom.open(handle.get('bloom'));sync_bloom();if not ok then notice(why)end end
   if dof then local ok,why=dof.open(handle.get('dof'));sync_dof();if not ok then notice(why)end end
@@ -2376,7 +2479,8 @@ function M.new(host,sr,deps,service)
   if slow_edge and not handoff and not(menu.editing_key()or menu.editing_text()or menu.bound_key)then self.toggle_slowmo()end
   local handycam_edge=handycam and edge('handycam_key')
   if handycam_edge and not handoff and not(menu.editing_key()or menu.editing_text()or menu.bound_key)and not(capture and capture.active())then
-   self.toggle_handycam();return
+   -- Say why Handycam did not start; a refusal must not look like an ignored key.
+   local ok,why=self.toggle_handycam();if not ok and why then notice(why)end;return
   end
   if edge('toggle_key')then
    if self.mode=='shot'and self.active then self.reposition_shot()
@@ -2412,6 +2516,7 @@ function M.new(host,sr,deps,service)
    self.begin_shot(wanted.play_path,wanted.refreeze);return
   end
   if not self.active then return end
+  if self.pending_pose then self.settle_pose()end
   if self.tracking_backend and self.tracking_backend.tick then self.tracking_backend.tick()end
   if hover and simulation and simulation.owns_zero()then
    local ok,why=hover.hold();if not ok then notice(why)end

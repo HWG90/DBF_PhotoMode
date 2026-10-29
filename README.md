@@ -1,11 +1,13 @@
 ![War Journalist](docs/artwork/war-journalist-0.9.7-cover.png)
 
-# War Journalist 1.3.0
+# War Journalist 1.3.3
 
 Photo Mode for Helldivers 2: compose shots with a free camera, lighting,
 subject poses, camera paths and first-person Handycam.
 
-**[Download War Journalist 1.3.0 for Boot Mod Loader](https://github.com/HWG90/DBF_PhotoMode/releases/tag/v1.3.0).** This is the first pass of a total Lua rewrite with incomplete parity. Import the complete ZIP into HD2 Arsenal, enable War Journalist and Assets, deploy with the game closed, then launch normally. No manual helper or Python setup is required.
+**[Download War Journalist 1.3.3 for Boot Mod Loader](https://github.com/HWG90/DBF_PhotoMode/releases/tag/v1.3.3).** This is the first pass of a total Lua rewrite with incomplete parity. Import the complete ZIP into HD2 Arsenal, enable War Journalist and Assets, deploy with the game closed, then launch normally. No manual helper or Python setup is required.
+
+**New in 1.3.3:** works with the 29 October 2026 game update (build 26251122), Pose Stop restores your Helldiver again, Handycam moves to Page Down so Steam's Ctrl+F11 recording works, the menu stays blurred with scene options on, Saved Shots work under Boot Mod Loader and follow the bone they were saved on, the camera returns where you left it, Follow player - Pivot and Pin cameras, Freeze holds a running Helldiver, and Hide Torso, Hide Helmet and Hide carried weapons work on more armours. See the [1.3.3 notes](docs/RELEASE-1.3.3.md).
 
 ## Current runtime
 

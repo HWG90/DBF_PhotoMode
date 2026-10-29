@@ -115,12 +115,27 @@ local w=fixture(false,setup);w.open();w.menu.handle.set('action_camera_mode',2);
 assert(w.runtime.reposition_shot());w.session={};w.step(1.1,1)
 assert(not w.runtime.active and not w.hidden and not w.lease,'Session retirement is checked even in settings')
 w.finish()
--- F11 starts from gameplay, toggles once per press and explicitly ends even
--- while settings are open; editing and foreground guards consume held edges.
+-- Handycam starts on Page Down: Steam records with Ctrl+F11, F11's old default. A saved F11
+-- becomes Page Down at load. A bound key starts from gameplay, toggles once per press and
+-- explicitly ends even while settings are open; editing and foreground guards consume held edges.
 do
  local k=fixture(false,setup)
  local function press(key)k.pressed[key]=true;k.step(.016,1);k.pressed[key]=false;k.step(.016,1)end
- assert(k.runtime.handle.get('handycam_key')==122)
+ assert(k.runtime.handle.get('handycam_key')==34,'Handycam defaults to Page Down')
+ press('f11');assert(not k.runtime.active and not k.lease,'F11 is not a Handycam key by default')
+ press('page down');assert(k.runtime.active and k.runtime.mode=='shot'and not k.lease,'Page Down starts Handycam')
+ press('page down');assert(not k.runtime.active and not k.lease,'Page Down ends Handycam')
+ k.finish()
+ local saved=fixture(false,function(f,deps)setup(f,deps);f.saved.handycam_key=122 end)
+ assert(saved.runtime.handle.get('handycam_key')==34,'A saved F11 from 1.3.2 becomes Page Down at load')
+ saved.finish()
+ local unbound=fixture(false,function(f,deps)setup(f,deps);f.saved.handycam_key=0 end)
+ assert(unbound.runtime.handle.get('handycam_key')==0,'A key the player unbound stays unbound')
+ unbound.finish()
+ local kept=fixture(false,function(f,deps)setup(f,deps);f.saved.handycam_key=120 end)
+ assert(kept.runtime.handle.get('handycam_key')==120,'Other saved Handycam keys are kept')
+ kept.finish()
+ k=fixture(false,setup);k.runtime.handle.set('handycam_key',122)
  press('f11');assert(k.runtime.active and k.runtime.mode=='shot'and not k.lease)
  k.pressed.f11=true;k.step(.016,1);assert(not k.runtime.active and not k.lease)
  for _=1,60 do k.step(.016,1)end;assert(not k.runtime.active,'Held F11 cannot restart')
@@ -135,7 +150,7 @@ do
  k.runtime.handle.set('handycam_key',120);press('f11');assert(not k.runtime.active)
  press('f9');assert(k.runtime.mode=='shot','Custom binding replaces F11')
  k.finish()
- local missing=fixture(false,setup);missing.head_error=true
+ local missing=fixture(false,setup);missing.head_error=true;missing.runtime.handle.set('handycam_key',122)
  missing.pressed.f11=true;missing.step(.016,1)
  assert(missing.runtime.mode=='menu'and missing.lease,'Missing target leaves selection available without retrying each frame')
  local reads=missing.head_reads;for _=1,10 do missing.step(.016,1)end;assert(missing.head_reads==reads)
@@ -225,4 +240,33 @@ do
  t.foreground=true;t.step(.016,1);t.movement_event={'d',true};t.step(.016,1);assert(t.probe_owned)
  t.probe_refuse=true;assert(not t.runtime.close(true),'Failed experiment restoration blocks successful cleanup reporting')
  t.probe_refuse=false;assert(t.runtime.close(true)and not t.probe_owned);t.finish()
+end
+-- Follow player shots: Pivot stays where it was placed and turns with the subject, keeping the
+-- framing; Pin keeps its offset and orientation and moves with the subject.
+do
+ local function follow_setup(f,deps)
+  setup(f,deps);f.anchor={0,0,0}
+  deps.subject_backend={new=function()return{head_frame=function()return{identity=f.head_identity,head=f.head,position=f.anchor}end}end}
+  local old=deps.camera.new;deps.camera.new=function(...)
+   local c=old(...);local write=c.write_view
+   c.write_view=function(pos,forward,...)f.forward={unpack(forward)};return write(pos,forward,...)end;return c
+  end
+ end
+ local function angle(f,from,to)
+  local d={to[1]-from[1],to[2]-from[2],to[3]-from[3]};local n=math.sqrt(d[1]^2+d[2]^2+d[3]^2)
+  return math.acos(math.max(-1,math.min(1,(f[1]*d[1]+f[2]*d[2]+f[3]*d[3])/n)))
+ end
+ local p=fixture(false,follow_setup);p.open();assert(p.menu.handle.set('action_camera_mode',3))
+ assert(p.runtime.begin_shot());p.step(.016,1);local start={unpack(p.position)};local framing=angle(p.forward,start,p.head)
+ p.head={start[1]+10,start[2]+10,2};p.anchor={start[1]+10,start[2]+10,0};p.step(.016,1)
+ assert(p.position[1]==start[1]and p.position[2]==start[2]and p.position[3]==start[3],'Pivot stays where it was placed')
+ assert(math.abs(angle(p.forward,start,p.head)-framing)<1e-6,'Pivot keeps the subject where it was framed')
+ p.finish()
+ local q=fixture(false,follow_setup);q.open();assert(q.menu.handle.set('action_camera_mode',4))
+ assert(q.runtime.begin_shot());q.step(.016,1);local s0,f0={unpack(q.position)},{unpack(q.forward)}
+ q.anchor={5,6,0};q.head={5,6,2};q.step(.016,1)
+ assert(math.abs(q.position[1]-(s0[1]+5))<1e-9 and math.abs(q.position[2]-(s0[2]+6))<1e-9 and q.position[3]==s0[3],'Pin moves with the subject')
+ assert(q.forward[1]==f0[1]and q.forward[2]==f0[2]and q.forward[3]==f0[3],'Pin keeps its orientation')
+ q.finish()
+ print('Follow player shots: pivot holds position and framing, pin follows with fixed orientation passed')
 end

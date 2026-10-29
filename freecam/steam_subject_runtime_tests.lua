@@ -93,8 +93,13 @@ local function configure(f,deps,sr)
     same(r.before,before)and same(r.target,value)and same(r.current,current))
    return true
   end
+  adapter.tracking_frame=function(t)
+   count();assert(valid(t));local p=t.nodes[1].p
+   return{explicit_subject=true,identity=t.identity,root_handle=t,world=f.world,position={p[1],p[2],p[3]},head={p[1],p[2],p[3]+1.6},yaw=0}
+  end
   adapter.commit=function(t)
    count();f.commits=f.commits+1;assert(valid(t));event('commit')
+   if f.commit_error then return false,f.commit_error end
    if f.foreign_commit then f.foreign_commit=false;sr.Application.set_time_step_policy('external_multiplier',.6)end
    return true
   end
@@ -123,10 +128,12 @@ local function fixture(extra)
   assert(f.subject.status().selected==nil and f.controls.subject_pose_play.disabled,'Refresh must never select a sole or first avatar')
   assert(f.action('subject_select_2'));assert(f.subject.status().selected=='Helldiver B')
  end
+ -- Apply resets now and applies two updates later, once the reset body has settled.
+ function f.settle()for _=1,2 do f.step(.016,1)end end
  function f.pose(index)
-  local before=f.decodes
   assert(f.runtime.handle.set('subject_pose',index or 1))
-  if f.decodes==before then assert(f.action('subject_pose_play'))end
+  if f.subject.status().state~='posed'then assert(f.action('subject_pose_play'))end
+  f.settle()
   assert(f.subject.status().state=='posed')
  end
  function f.restored()
@@ -148,6 +155,32 @@ do
  f.discovery_error=nil;assert(f.action('subject_refresh'))
  f.discovery_error='Fixture inventory changed\nreason';assert(not f.action('subject_refresh'))
  assert(count()==2,'A recovered discovery allows a subsequent failure to be diagnosed')
+end
+do
+ -- Stop and Recover share generic pending messages; the log must name the refused check.
+ local messages={}
+ local f=fixture(function(f)f.log=function(s)messages[#messages+1]=s end end)
+ f.enable();f.select();f.pose()
+ f.commit_error='Subject changed during scene refresh\nnode 23'
+ for i=1,3 do assert(not f.action('subject_pose_stop'))end
+ local function count(line)local n=0;for _,s in ipairs(messages)do if s==line then n=n+1 end end;return n end
+ assert(count('Subject reset detail: Subject changed during scene refresh node 23')==1,'A refused Stop names its check once')
+ assert(count('Subject recover detail: Subject changed during scene refresh node 23')==1,'The automatic recovery names its check once')
+ f.commit_error=nil;assert(f.action('subject_pose_stop'));f.restored()
+end
+do
+ -- Boot Mod Loader has no native player backend: Saved Shots anchor on the selected
+ -- Helldiver, the one selected automatically on open included.
+ local D=dofile('freecam/director.lua');local rows={}
+ local f=fixture(function(f,deps)
+  deps.director={new=function(photo,context,path,log)
+   return D.new(photo,context,path,log,{load=function()return rows end,save=function(v)rows=v;return true end})
+  end}
+ end)
+ f.enable();assert(f.subject.status().selected~=nil,'Opening selects a Helldiver automatically')
+ local ok,why=f.action('director_save');assert(ok,'Save against the selected Helldiver: '..tostring(why))
+ assert(rows[1]and math.abs(rows[1].up-(-3))<10,'The shot is stored relative to the Helldiver')
+ ok,why=f.action('director_recall');assert(ok,'Recall against the selected Helldiver: '..tostring(why))
 end
 local function index_of(events,value)
  for i,item in ipairs(events)do if item==value then return i end end
@@ -212,7 +245,9 @@ do
 end
 do
  local f=fixture();f.enable();f.select();f.partial=true;f.fail_node=13
- assert(not f.action('subject_pose_play')and f.controls.subject_recover.disabled==false)
+ -- Apply is scheduled; the failing write lands two updates later and offers recovery.
+ assert(f.action('subject_pose_play'));f.settle()
+ assert(f.subject.status().pending and f.controls.subject_recover.disabled==false)
  local writes=f.node_writes;f.events={};assert(not f.runtime.close(true))
  assert(not f.runtime.active and not f.camera_open and not f.lease and f.runtime.state=='closing'and f.rate==0)
  assert(f.b.mode=='position_and_rotation'and f.node_writes==writes and not index_of(f.events,'time:1'),
@@ -234,7 +269,7 @@ do
 end
 do
  local f=fixture();f.enable();f.select();f.partial=true;f.fail_node=13
- assert(not f.action('subject_pose_play'));local writes=f.node_writes
+ assert(f.action('subject_pose_play'));f.settle();assert(f.subject.status().pending);local writes=f.node_writes
  assert(f.runtime.handle.set('freeze_player',false)and f.runtime.handle.get('freeze_player')and f.rate==0,
   'Refused resume keeps Freeze preference synchronized with true-zero state')
  assert(f.runtime.active and f.b.mode=='position_and_rotation'and f.node_writes==writes)
@@ -339,7 +374,7 @@ for _,failure in ipairs({'nil','throw'})do
    return make_input(native,service)
   end
  end)
- f.enable();f.select();f.partial=true;f.fail_node=13;assert(not f.action('subject_pose_play'))
+ f.enable();f.select();f.partial=true;f.fail_node=13;assert(f.action('subject_pose_play'));f.settle();assert(f.subject.status().pending)
  local ok,why=f.runtime.close(true)
  assert(not ok and why==problem and f.lease and not f.camera_open and f.release_calls==1,
   'Unconfirmed captured release preserves the exact error and its cleanup lease')
@@ -485,12 +520,23 @@ end
 print('Subject session lifecycle: no idle polling, explicit refresh requalification and fresh entry selection passed')
 
 do
- local f=fixture();f.enable();f.select();f.pose(2);f.events={}
+ local f=fixture();f.enable();f.select();f.events={}
+ local writes=f.node_writes
+ assert(f.runtime.handle.set('subject_pose',2));assert(f.action('subject_pose_play'))
+ -- The first pose waits two updates for the released body to settle: the cape placement is
+ -- captured at its first write (a same-frame Reset+Apply left the cape wrong, live).
+ assert(not index_of(f.events,'mode:ignore')and f.node_writes==writes,'The first pose is not written at once')
+ f.step(.016,1)
+ assert(not index_of(f.events,'mode:ignore')and f.node_writes==writes,'Nothing is written on the first update')
+ f.step(.016,1)
+ assert(index_of(f.events,'mode:ignore')and f.subject.status().state=='posed','The first pose is applied on the second update')
+ f.events={}
  assert(f.action('subject_pose_play'))
- assert(index_of(f.events,'mode:position_and_rotation')<index_of(f.events,'mode:ignore'),'Apply resets before reapplying the selected pose')
+ assert(index_of(f.events,'mode:position_and_rotation')<index_of(f.events,'mode:ignore')and f.subject.status().state=='posed','Reapplying a held pose resets and applies at once')
  f.events={};local before=f.decodes
  assert(f.runtime.handle.set('subject_pose',3))
- assert(f.decodes==before+1 and index_of(f.events,'mode:position_and_rotation')<index_of(f.events,'mode:ignore'),'Changing a held pose resets and applies in one action')
+ assert(f.decodes==before+1 and index_of(f.events,'mode:position_and_rotation')<index_of(f.events,'mode:ignore')and f.subject.status().state=='posed',
+  'Changing a held pose resets and applies at once: only the first pose waits')
  local writes=f.node_writes;local reset=f.subject.reset
  f.subject.reset=function()return false,'Fixture restoration refused'end
  assert(not f.action('subject_pose_play')and f.node_writes==writes,'Failed reset must prevent the next pose write')

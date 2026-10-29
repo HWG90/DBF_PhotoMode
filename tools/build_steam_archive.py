@@ -28,15 +28,18 @@ local game=assert(env('APPDATA'),'APPDATA unavailable')..'/Arrowhead/Helldivers2
 local lll=env('LOCALAPPDATA')and env('LOCALAPPDATA')..'/LLL/Helldivers2'
 -- The project surface LLL gives folder mods. LLL's folders when they exist, else the
 -- game's own settings folder, which every install has.
-local mod={id=ID,name=TITLE,release_mode=RELEASE_MODE,native_dir=lll and writable(lll..'/Native')and lll..'/Native'or game,
+local mod={id=ID,name=TITLE,version=VERSION,build=BUILD,release_mode=RELEASE_MODE,native_dir=lll and writable(lll..'/Native')and lll..'/Native'or game,
  config_dir=lll and writable(lll..'/Settings/'..ID)and lll..'/Settings/'..ID or game}
 function mod.log(message)
  print('['..TITLE..'] '..tostring(message))
  local f=io.open(game..'/war_journalist_lua51.log','ab');if f then f:write(os.date('%Y-%m-%d %H:%M:%S '),tostring(message),'\n');f:close()end
 end
+-- Boot Mod Loader runs the Windows build. Windows refuses unsigned in-process DLLs (error 577),
+-- so under it no bridge is written or loaded, under Proton too: it behaves as it does on Windows.
+mod.native_libraries=rawget(_G,'LiveLuaLoader')~=nil
 -- Bridges are content-addressed: install a missing one, refuse one whose size differs.
 local function size_of(path)local f=io.open(path,'rb');if not f then return nil end;local size=f:seek('end');f:close();return size end
-for _,library in ipairs(LIBRARIES)do
+for _,library in ipairs(mod.native_libraries and LIBRARIES or{})do
  local path=mod.native_dir..'/'..library.name;local size=size_of(path)
  if size==nil then
   local data=library.hex:gsub('%x%x',function(h)return string.char(tonumber(h,16))end)
@@ -77,19 +80,22 @@ if rawget(_G,'LiveLuaLoader')then return entry end
 local bindings=rawget(_G,'ModBindingsMenu')
 if not(type(bindings)=='table'and type(bindings.register_binding)=='function'and type(bindings.is_down)=='function'and type(bindings.binding)=='function')then bindings=nil end
 if dev_module then bindings=dev_module.bindings(bindings)end
-local input_service,input_driver
-local connected,why=pcall(function()input_service,input_driver=mod.require('src/windows_input_service.lua').connect(mod,stingray)end)
-if not connected then
+local function clock()local ok,t=pcall(function()return stingray.Application.time_since_launch()end);return ok and type(t)=='number'and t or os.clock()end
+-- WJL starts beside the game: the game never waits on it, here or on any later frame.
+-- Photo Mode starts once the helper answers, or without it once it is known unavailable.
+local input_service,input_driver,input_pending
+local function without_helper(why)
  mod.log('Input helper unavailable: '..tostring(why))
- input_service=mod.require('src/engine_input.lua').new(stingray,mod.log)
+ return mod.require('src/engine_input.lua').new(stingray,mod.log)
 end
+local launched,why=pcall(function()input_pending=mod.require('src/windows_input_service.lua').start(mod,stingray,clock)end)
+if not launched then input_service=without_helper(why)end
 mod.host_loader={engine_input=true,require_keyboard=true,input_service=input_service,bindings=bindings,capabilities={revision='boot-mod-loader-r34-input.1'}}
 local state='waiting'
 -- Read-only native diagnostics at start and twice later, while subject/hover fail here.
 local diagnose_at,started_at=RELEASE_MODE and{}or{0,30,120}
 local hud_probe,hud_probe_at=nil,0
 if RELEASE_MODE then hud_probe=false end
-local function clock()local ok,t=pcall(function()return stingray.Application.time_since_launch()end);return ok and type(t)=='number'and t or os.clock()end
 local dev_reload=dev_module and dev_module.new(mod,entry,clock,os.clock,nil,{directory=game,pinned=dev_pinned})
 if dev_reload then mod.log('Dev reload enabled: Lua-only, explicit file requests; resident input helper retained')end
 local function stop(reason)
@@ -110,6 +116,13 @@ local function frame(dt,...)
   if paused then return ... end
  end
  if state=='waiting'then
+  if input_pending then
+   local ok,service,driver,screenshots=pcall(input_pending)
+   if ok and service==nil then return ... end
+   input_pending=nil
+   if ok then input_service,input_driver=service,driver else input_service=without_helper(service)end
+   mod.host_loader.input_service,mod.host_loader.helper_screenshots=input_service,ok and screenshots or nil
+  end
   local ok,why=pcall(entry.on_enable)
   if ok then state='running';started_at=clock();mod.log('Photo Mode started on Boot Mod Loader')else state='failed';mod.log('Photo Mode did not start: '..tostring(why))end
  elseif state=='running'then
@@ -148,6 +161,17 @@ def long_string(text):
         level += 1
 
 
+def build_id():
+    """Shown under Photo Mode: the UTC build time and source commit, '+' when the tree has
+    uncommitted changes (the CRLF-noisy shader sources excepted)."""
+    import datetime, subprocess
+    stamp = datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%d.%H%M')
+    git = lambda *a: subprocess.run(['git', *a], cwd=ROOT, capture_output=True, text=True).stdout.strip()
+    commit = git('rev-parse', '--short=7', 'HEAD') or 'nogit'
+    dirty = any(line and 'freecam/assets/shaders/' not in line for line in git('status', '--porcelain').splitlines())
+    return stamp + '-' + commit + ('+' if dirty else '')
+
+
 def bundle(candidate):
     manifest = json.loads((candidate / 'manifest.json').read_text())
     assert manifest['id'] == MOD_ID
@@ -163,7 +187,8 @@ def bundle(candidate):
             '-- ' + TITLE + ' ' + manifest['version'] + ': LLL project ' + MOD_ID + ' packed as one archive addon.\n'
             '-- Generated by tools/build_steam_archive.py from the audited candidate; edit freecam/ instead.\n'
             'local ID,TITLE=' + json.dumps(MOD_ID) + ',' + json.dumps(TITLE) + '\n'
-            'local RELEASE_MODE=' + ('true' if manifest.get('public_release') else 'false') + '\n')
+            'local RELEASE_MODE=' + ('true' if manifest.get('public_release') else 'false') + '\n'
+            'local VERSION,BUILD=' + json.dumps(manifest['version']) + ',' + json.dumps(build_id()) + '\n')
     source_block = 'local SOURCES={}\n' + ''.join(
         'SOURCES[' + json.dumps(path) + ']=' + long_string(text) + '\n' for path, text in sources.items())
     library_block = 'local LIBRARIES={\n' + ''.join(
@@ -178,6 +203,8 @@ def verify(text, head, source_block, library_block, sources, libraries):
     assert lua.eval('_VERSION') == 'Lua 5.1' and lua.eval('jit==nil')
     compile_lua = lua.eval('function(s,n) local f,e=loadstring(s,n);assert(f,e);return f end')
     compile_lua(text, '@' + RESOURCE)
+    # The menu shows this version and build at its bottom right.
+    assert re.search(r'local VERSION,BUILD="\d+\.\d+\.\d+[^"]*","\d{8}\.\d{4}-[0-9a-f]{7}\+?"\n', head), 'Version and build stamp missing'
     # Every embedded module and bridge must read back byte for byte.
     got = compile_lua(head + source_block + 'return SOURCES', '=sources')()
     assert sorted(got.keys()) == sorted(sources), 'Module list differs'
@@ -197,18 +224,34 @@ ModBindingsMenu={window='HD2 Mod Setting GUI',is_down=function()return false end
  register_binding=function(id,label,slot,options)registered[#registered+1]=id..'='..options.default.button;return true end}
 update=function(dt)calls=calls+1;return 'game',dt end
 shutdown=function()shut=true end
+-- The WJL launcher: recorded, never run. Its helper refuses this (fake) game at once, as
+-- on an unsupported build. Closing the handle would wait for cmd.exe; the game never may.
+launches,closes={},0
+-- No helper pipes here. On Linux, opening a pipe name to write would create a stray file.
+local file_open=io.open
+io.open=function(path,mode)
+ if type(path)=='string'and path:sub(1,9)=='\\\\\\\\.\\\\pipe\\\\'then return nil,'pipe not found'end
+ return file_open(path,mode)
+end
+io.popen=function(command,mode)
+ launches[#launches+1]=command
+ local log=assert(io.open(os.getenv('LOCALAPPDATA')..'/WJL/Helldivers2/Steam/service.log','wb'))
+ log:write('Refused: installed game hashes do not match this service build\\n');log:close()
+ return{close=function()closes=closes+1;return true end}
+end
 stingray={Gui={resolution=function()return 1920,1080 end},
  Unit={alive=function()return false end,world=nop,resource_name=nop,num_scene_graph_items=nop,
   local_pose=nop,set_local_pose=nop,animation_bone_mode=nop,set_animation_bone_mode=nop,has_node=nop,node=nop},
  World={update_unit=nop},
- Application={time_since_launch=function()return os.clock()end,render_setting=function()return false end,save_render_target=nop},
+ Application={time_since_launch=function()return os.clock()end,render_setting=function()return false end,save_render_target=nop,
+  process_id=function()return 4242 end},
  Window={mouse_focus=function()return true end,show_cursor=function()return false end,clip_cursor=function()return true end,
   set_mouse_focus=nop,set_show_cursor=nop,set_clip_cursor=nop,has_focus=function()return true end},
  Mouse={axis_id=function(n)return({mouse=0,wheel=1,cursor=2})[n]end,button_id=function()return 0 end,axis=nop,button=function()return 0 end},
  Keyboard={button_id=function()return 0 end,button=function()return 0 end}}
 local entry=assert(loadstring(text,'@archive'))()
 local a,b=update(.5);for _=1,5 do update(1/60)end;shutdown()
-return entry,a,b,calls,shut,table.concat(registered,'|')
+return entry,a,b,calls,shut,table.concat(registered,'|'),table.concat(launches,'\\n'),closes
 """
     with tempfile.TemporaryDirectory() as temp:
         game = Path(temp) / 'Roaming/Arrowhead/Helldivers2'
@@ -218,17 +261,67 @@ return entry,a,b,calls,shut,table.concat(registered,'|')
         os.environ['APPDATA'], os.environ['LOCALAPPDATA'] = str(Path(temp) / 'Roaming'), str(Path(temp) / 'Local')
         os.environ['USERPROFILE'] = str(Path(temp) / 'Profile')
         try:
-            # Without LLL's folders the bridges go to the game's settings folder.
-            entry, a, b, calls, shut, keys = LuaRuntime().execute(host, text)
-            assert entry['live_lua_api'] == 1 and (a, b, calls, shut) == ('game', 0.5, 6, True), 'Update/shutdown wrapping'
-            for name, data in libraries.items():
-                assert (game / name).read_bytes() == data, name
+            (Path(temp) / 'Local/WJL/Helldivers2/Steam').mkdir(parents=True)
+            # A helper that answers: its pipes appear two frames after the launch, as on a
+            # PC where it takes a moment. Photo Mode waits for it, then PNGs through it.
+            answering = host.replace("io.popen=function(command,mode)", r"""
+local pipes,frames_after_launch={},nil
+local real_open=io.open
+local function le(n)return string.char(n%256,math.floor(n/256)%256,math.floor(n/65536)%256,math.floor(n/16777216)%256)end
+local function word(s,i)local a,b,c,d=s:byte(i,i+3);return a+b*256+c*65536+d*16777216 end
+local queue=''
+io.open=function(path,mode)
+ if type(path)~='string'or path:sub(1,9)~='\\\\.\\pipe\\'then return real_open(path,mode)end
+ if not frames_after_launch or frames_after_launch<2 then return nil,'pipe not found'end
+ if path:match('_request$')then
+  local buffer=''
+  return{setvbuf=function()end,flush=function()return true end,close=function()end,write=function(_,...)
+   buffer=buffer..table.concat({...})
+   while #buffer>=4 and #buffer>=4+word(buffer,1)do
+    local size=word(buffer,1);local frame=buffer:sub(5,4+size);buffer=buffer:sub(5+size)
+    local seq,op=word(frame,1),word(frame,5)
+    local reply=op==0 and le(0)..le(0)..le(4242)..le(1)..'x'..le(6)..'C:/hd2'or le(seq)..le(0)..string.rep(le(0),16)
+    queue=queue..le(#reply)..reply
+   end
+   return true end}
+ end
+ return{setvbuf=function()end,close=function()end,read=function(_,count)
+  local part=queue:sub(1,count);queue=queue:sub(count+1);return part end}
+end
+local game_update=update
+update=function(dt)if frames_after_launch then frames_after_launch=frames_after_launch+1 end;return game_update(dt)end
+io.popen=function(command,mode)
+ frames_after_launch=0
+ launches[#launches+1]=command
+ return{close=function()closes=closes+1;return true end}
+end
+local unused_popen=function(command,mode)""", 1)
+            entry, a, b, calls, shut, keys, launches, closes = LuaRuntime().execute(answering, text)
+            assert (a, b, calls, shut) == ('game', 0.5, 6, True), 'Update/shutdown wrapping with a helper'
+            assert launches.startswith('""') and closes == 1, ('The launcher is closed once, after the helper answered', closes)
             log = (game / 'war_journalist_lua51.log').read_text()
+            assert 'WJL helper ready' in log and 'Input: WJL keyboard service connected' in log, log
+            assert 'WJL PNG screenshots selected (engine DDS converted by WJL): ' + str(game).replace('\\', '/') in log, log
+            assert 'Photo Mode started on Boot Mod Loader' in log and 'Input helper unavailable' not in log, log
+            (game / 'war_journalist_lua51.log').unlink()
+            # Boot Mod Loader: the Windows build, with no bridges.
+            entry, a, b, calls, shut, keys, launches, closes = LuaRuntime().execute(host, text)
+            assert entry['live_lua_api'] == 1 and (a, b, calls, shut) == ('game', 0.5, 6, True), 'Update/shutdown wrapping'
+            # WJL starts once through cmd.exe itself (never start), and the game never waits on it.
+            assert len(launches.split('\n')) == 1 and launches.startswith('""') and '--launch' in launches, launches
+            assert 'start "' not in launches and 'powershell' not in launches.lower() and closes == 0, (launches, closes)
+            # The Windows build never writes or loads an in-process bridge.
+            for name in libraries:
+                assert not (game / name).exists(), 'Boot Mod Loader wrote a bridge: ' + name
+            log = (game / 'war_journalist_lua51.log').read_text()
+            assert 'In-process native libraries are not used by the Windows build' in log, 'A bridge load was attempted, not refused'
             # Boot Mod Loader's Mod Bindings Menu holds the keys once Photo Mode starts.
             hosted = dict(item.split('=', 1) for item in keys.split('|'))
             assert all(k.startswith('war_journalist.') for k in hosted) and hosted.get('war_journalist.toggle_key') == 'p' and len(hosted) >= 13, keys
             # On a bare engine the runtime starts with its native features reported unavailable.
             assert 'Photo Mode started on Boot Mod Loader' in log and 'stopped after an error' not in log and 'cleanup failed' not in log, log
+            # A refusing helper hands Photo Mode the engine input on the first frame.
+            assert 'Input helper unavailable: Refused: installed game hashes do not match' in log, log
             public_release = 'local RELEASE_MODE=true' in head
             if public_release:
                 assert 'Native diagnostics (' not in log and 'Windows engine namespaces:' not in log, 'Public startup must not run development inventories'
@@ -263,6 +356,9 @@ shutdown()
 ''')
             (game / 'wj-dev-fixture2.lua-pack').write_bytes(packed)
             if public_release:
+                # Live reload is a development tool: public packages carry no reload module at
+                # all, and an armed marker left from a dev build changes nothing.
+                assert not any(name.endswith('windows_dev_reload.lua') for name in sources), 'Public packages must not carry live reload'
                 before_log = (game / 'war_journalist_lua51.log').read_text()
                 (game / 'wj-native-dof-selftest.request').write_text('native-dof-override-v1\n')
                 LuaRuntime().execute(host, text)
@@ -270,13 +366,15 @@ shutdown()
                 assert 'Dev reload enabled' not in public_log and 'self-test' not in public_log
                 assert (game / 'wj-native-dof-selftest.request').is_file(), 'Public mode must ignore old dev markers'
                 (game / 'wj-native-dof-selftest.request').unlink()
-            private_text = text.replace('local RELEASE_MODE=true', 'local RELEASE_MODE=false', 1)
-            _, a, b, reload_calls, shut, keys = LuaRuntime().execute(reload_host, private_text)
-            assert (a, b, reload_calls, shut) == ('game', .5, 332, True)
-            reload_log = (game / 'war_journalist_lua51.log').read_text()
-            assert 'Dev reload: loaded fixture;' in reload_log and 'Dev reload: loaded fixture2;' in reload_log, reload_log
-            assert 'fixture failed generation' in reload_log and 'Photo Mode resumed after explicit Lua reload' in reload_log, reload_log
-            assert len(keys.split('|')) == len(hosted), 'Reload duplicated hosted bindings'
+            else:
+                # Development builds reload their Lua live; prove it on this exact archive.
+                _, a, b, reload_calls, shut, keys, _, _ = LuaRuntime().execute(reload_host, text)
+                assert (a, b, reload_calls, shut) == ('game', .5, 332, True)
+                reload_log = (game / 'war_journalist_lua51.log').read_text()
+                assert 'Dev reload enabled' in reload_log, reload_log
+                assert 'Dev reload: loaded fixture;' in reload_log and 'Dev reload: loaded fixture2;' in reload_log, reload_log
+                assert 'fixture failed generation' in reload_log and 'Photo Mode resumed after explicit Lua reload' in reload_log, reload_log
+                assert len(keys.split('|')) == len(hosted), 'Reload duplicated hosted bindings'
             (game / 'wj-dev-reload.enabled').unlink()
             # LLL: its folders, and the entry handed back for LLL to drive.
             (lll / 'Native').mkdir(parents=True)
@@ -293,7 +391,10 @@ shutdown()
             name, data = next(iter(libraries.items()))
             (lll / 'Native' / name).write_bytes(data[:-1])
             try:
-                LuaRuntime().eval(run)(text)
+                # Only LLL installs bridges; it refuses one that differs from this build.
+                lua_lll = LuaRuntime()
+                lua_lll.execute('LiveLuaLoader={}')
+                lua_lll.eval(run)(text)
             except Exception as error:
                 assert 'Native bridge differs' in str(error), error
             else:
@@ -331,17 +432,17 @@ def build(candidate, output):
     assets = folder / 'Assets'
     shutil.copytree(ASSETS, assets)
     description = ('War Journalist Photo Mode for Boot Mod Loader on the Lua 5.1 game, with its assets. No FFI, so no '
-                   'Enemy behavior. Its keys are set in HD2 Mod Setting GUI or the Photo panel. On Linux/Proton its native '
-                   'bridges add subject poses, the native lens, hiding the game HUD and keeping Photo Mode\'s keys from the '
-                   'game; they install into LLL\'s Native folder or the game\'s settings folder on first load. On Windows, '
-                   'the bundled WJL helper starts automatically for Photo Mode input capture; no separate helper setup or '
-                   'Python is required. Native bridge features remain unavailable where DLL loading is refused. Windows '
+                   'Enemy behavior. Its keys are set in HD2 Mod Setting GUI or the Photo panel. Under Boot Mod Loader it is the '
+                   'Windows build on Windows and Proton alike: the bundled WJL helper starts automatically for Photo Mode '
+                   'input capture, with no separate helper setup, Python or PowerShell, and no in-process native bridge is '
+                   'written or loaded, as Windows refuses them. Under LLL its native bridges install into LLL\'s Native '
+                   'folder. Windows '
                    'DoF and scene effects are renderer-checked test candidates awaiting visual verification. Screenshots '
                    'are PNG through the War Journalist Linux capture worker where it runs, else DDS from the engine. Settings '
                    'live in LLL/Helldivers2/Settings/' + MOD_ID + ' when that folder exists, else in the game\'s settings '
                    'folder. Also runs as an LLL archive mod. Use one War Journalist at a time.')
     if manifest.get('public_release'):
-        description = 'War Journalist 1.3.0 Lua rewrite for Boot Mod Loader. Native DoF works; WJL starts automatically. AI control and depth shaders are unavailable. Cape, selection, equipment hiding and hoverpack limitations remain. See release notes.'
+        description = 'War Journalist 1.3.3: for the 29 October 2026 game update (build 26251122); Pose Stop fixed, Handycam on Page Down (Steam Ctrl+F11 works), Saved Shots and Follow player cameras, for the Lua rewrite for Boot Mod Loader. Native DoF, Handycam and automatic WJL startup. AI control and depth shaders are unavailable. Cape, subject selection, equipment hiding and hoverpack limitations remain; see release notes.'
     arsenal = {'Version': 1, 'Guid': GUID, 'Name': TITLE + ' ' + manifest['version'], 'Description': description,
                'Options': [{'Name': TITLE, 'Description': 'Photo Mode and its assets.', 'Include': [OPTION, 'Assets']}]}
     (folder / 'manifest.json').write_text(json.dumps(arsenal, indent=2, ensure_ascii=False) + '\n')
@@ -352,7 +453,7 @@ def build(candidate, output):
                   'modules': len(sources) - 1, 'native_bridges': {name: digest(b) for name, b in libraries.items()},
                   'assets': {p.relative_to(assets).as_posix(): digest(p.read_bytes()) for p in sorted(assets.iterdir())},
                   'verified': ['modules and bridges read back exactly', 'Boot Mod Loader: wraps update/shutdown, passes the game results through, starts, ticks and cleans up on a bare engine, registers its keys with ModBindingsMenu, selects engine DDS capture without LLL or the Linux worker',
-                               'no LLL: bridges go to the game settings folder', 'LLL: returns the API 1 entry, uses LLL folders',
+                               'Boot Mod Loader (the Windows build): no bridge written or loaded, as Windows refuses them', 'LLL: returns the API 1 entry, uses LLL folders',
                                'installs missing bridges', 'refuses a differing bridge'],
                   'registered': False, 'deployed': False, 'live_acceptance': 'pending'}
     (folder / 'PROVENANCE.json').write_text(json.dumps(provenance, indent=2) + '\n')

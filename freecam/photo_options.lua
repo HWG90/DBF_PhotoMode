@@ -1,6 +1,6 @@
 -- Stored photo controls; existing movement and toggle ids remain stable.
 local M={}
-M.defaults={fov=0,focal_preset=1,roll=0,roll_preset=1,saved_camera_radius=60,lock_camera=false,camera_smoothing=false,smoothing_strength=50,action_camera_mode=1,handycam_intensity=50,handycam_lag_ms=0,handycam_forward_cm=14,handycam_up_cm=7,handycam_right_cm=0,handycam_yaw_deg=0,handycam_pitch_deg=0,handycam_aim=true,cinema_notification=false,dof=false,dof_mode=1,dof_quality=1,dof_strength=4,bokeh_shape=1,focus_mode=1,focus_distance=5,aperture=5.6,
+M.defaults={fov=0,focal_preset=1,roll=0,roll_preset=1,saved_camera_radius=60,return_to_last_camera=true,lock_camera=false,camera_smoothing=false,smoothing_strength=50,action_camera_mode=1,handycam_intensity=50,handycam_lag_ms=0,handycam_forward_cm=14,handycam_up_cm=7,handycam_right_cm=0,handycam_yaw_deg=0,handycam_pitch_deg=0,handycam_aim=true,cinema_notification=false,dof=false,dof_mode=1,dof_quality=1,dof_strength=4,bokeh_shape=1,focus_mode=1,focus_distance=5,aperture=5.6,
  filter=1,filter_strength=25,exposure=0,saturation=100,contrast=100,bloom=true,
  shader=1,shader_opacity=10,shader_scale=1,shader_animate=true,scene_shader=1,scene_strength=100,fog_distance=25,fog_density=50,scene_depth_range=100,vignette=0,vignette_width=18,grain=0,grain_size=1.5,
  frame=1,grid=1,logo=1,logo_size=100,logo_x=90,logo_y=8,logo_opacity=85,logo_color='#FFFFFF',clean_view=false,hide_hud=true,hide_controls=false,
@@ -87,6 +87,7 @@ function M.pages(reset,recenter,catalog,saved_actions)
  {id='save_camera',type='button',label='Save camera position',button_label='Save',disabled=not(saved_actions and saved_actions.save),on_activate=saved_actions and saved_actions.save or function()end},
  {id='clear_saved_camera',type='button',label='Clear saved camera position',button_label='Clear',disabled=not(saved_actions and saved_actions.clear),on_activate=saved_actions and saved_actions.clear or function()end},
  {id='recenter',type='button',label='Return to player',button_label='Return',on_activate=recenter},
+ toggle('return_to_last_camera','Reopen at the last camera, relative to the Helldiver'),
  slider('saved_camera_radius','Saved camera retention radius (m)',5,60,1),
  {id='saved_camera_status',type='text',label='Saved camera: none'}}
  -- Move the existing controller-owned movement/pause definitions intact. Their
@@ -168,7 +169,7 @@ function M.pages(reset,recenter,catalog,saved_actions)
  director_action('cinema_reposition','Reposition cinema camera','cinema_reposition'),
  director_action('cinema_end','Return to gameplay camera','cinema_end'),
  {id='cinema_status',type='text',label='Place a camera, then begin an action shot'},
- choice('action_camera_mode','Action camera mode',{'Placed camera','First-person handycam'}),
+ choice('action_camera_mode','Action camera mode',{'Placed camera','First-person handycam','Follow player - Pivot','Follow player - Pin'}),
  slider('handycam_intensity','Handycam shake intensity (%)',0,100,1),
  slider('handycam_lag_ms','Handycam movement lag (ms)',0,500,5),
  slider('handycam_forward_cm','POV camera forward (cm)',-30,30,1),
@@ -179,11 +180,7 @@ function M.pages(reset,recenter,catalog,saved_actions)
  toggle('handycam_aim','Aim lock: center the view on your point of impact'),
  director_action('handycam_position_handle','Drag camera position','handycam_position_handle'),
  {id='handycam_drag_hint',type='text',label='Handle: M1 drag moves. Wheel: forward/back. MMB drag: yaw/pitch. Shift: fine.'},
- subject_control('handycam_hide_helmet','Hide helmet (POV)'),
- subject_control('handycam_hide_torso','Hide torso (POV)'),
- subject_control('handycam_hide_cape','Hide cape (POV)'),
- {id='handycam_pov_status',type='text',label='POV visibility off'},
- {id='handycam_hint',type='text',label='Handycam follows your selected subject. POV hiding keeps arms and weapons visible.'},
+ {id='handycam_hint',type='text',label='Handycam follows your selected subject and always hides the helmet. Other hiding is in Subject > Visibility.'},
  toggle('cinema_notification','Show Cinema camera notification'),
  {id='cinema_hint',type='text',label='The camera stays placed while you move and fight. Your Photo Mode key returns to placement; Screenshot still works.'},
  path_control(choice('path_point','Recorded camera point',{'No recorded points'})),
@@ -203,13 +200,15 @@ function M.pages(reset,recenter,catalog,saved_actions)
  {id='subject_pose_status',type='text',label='Subject poses are waiting for a verified local player'},
  {id='subject_pose_hint',type='text',label='Pause entire action to hold a fixed pose. Choosing a pose applies it; Reset restores the original pose.'},
  subject_control('hide_player','Hide entire player'),subject_control('hide_armour','Hide armour and helmet'),subject_control('hide_weapons','Hide carried weapons'),subject_control('hide_cape','Hide cape'),
+ subject_control('handycam_hide_helmet','Hide helmet'),subject_control('handycam_hide_torso','Hide torso'),subject_control('handycam_hide_cape','Hide cape'),
+ {id='handycam_pov_status',type='text',label='Helmet, torso and cape hiding off'},
  {id='subject_status',type='text',label='Subject controls are waiting for a verified player'},
  {id='subject_hint',type='text',label='Visibility is restored when Photo Mode closes.'}}}}
  -- Group existing rows without introducing stored settings or collapsible UI.
  -- Keep the original row objects so live gates and callbacks retain ownership.
  local sections={
  camera_tools={{'Camera tools','screenshot','lock_camera','recenter'},{'Movement','speed','look_sensitivity','wheel_step','roll_speed','camera_smoothing','smoothing_strength','freeze_player','slowmo_speed'},
-  {'Saved camera','save_camera','clear_saved_camera','saved_camera_radius','saved_camera_status'},
+  {'Saved camera','return_to_last_camera','save_camera','clear_saved_camera','saved_camera_radius','saved_camera_status'},
   {'Enemy behavior','ai_behavior','ai_reset','ai_status','ai_hint','ai_limits'},{'Reset','reset_photo'}},
  lens={{'Lens','fov','focal_preset','focal_length_status'},
   {'Focus & depth of field','dof','dof_mode','focus_mode','focus_distance','aperture','focus_status','focus_hint'},
@@ -228,11 +227,11 @@ function M.pages(reset,recenter,catalog,saved_actions)
   {'Logo','logo','logo_size','logo_color','logo_opacity','logo_x','logo_y'},
   {'Controls legend','show_legend','legend_open','legend_docked','legend_tab_y','legend_columns','legend_size','legend_x','legend_y'},
   {'Menu layout','tab_layout','menu_x','menu_y','menu_scale','menu_opacity'}},
- director={{'Action shots','cinema_begin','action_camera_mode','handycam_intensity','handycam_lag_ms','handycam_forward_cm','handycam_up_cm','handycam_right_cm','handycam_position_handle','handycam_yaw_deg','handycam_pitch_deg','handycam_aim','handycam_drag_hint','handycam_hide_helmet','handycam_hide_torso','handycam_hide_cape','handycam_pov_status','handycam_hint','cinema_reposition','cinema_end','cinema_status','cinema_notification','cinema_hint'},
+ director={{'Action shots','cinema_begin','action_camera_mode','handycam_intensity','handycam_lag_ms','handycam_forward_cm','handycam_up_cm','handycam_right_cm','handycam_position_handle','handycam_yaw_deg','handycam_pitch_deg','handycam_aim','handycam_drag_hint','handycam_hint','cinema_reposition','cinema_end','cinema_status','cinema_notification','cinema_hint'},
   {'Camera path','path_point','path_add','path_remove','path_duration','path_transition','path_play','path_clear','path_status','path_hint'},
   {'Saved shots','director_slot','director_recall','director_save','director_clear','director_status','director_hint'}},
  subject={{'Pose','subject_pose','subject_pose_play','subject_pose_stop','subject_pose_status','subject_pose_hint'},
-  {'Visibility','hide_player','hide_armour','hide_weapons','hide_cape','subject_status','subject_hint'}}}
+  {'Visibility','hide_player','hide_armour','handycam_hide_helmet','handycam_hide_torso','handycam_hide_cape','hide_cape','hide_weapons','handycam_pov_status','subject_status','subject_hint'}}}
  if saved_actions and saved_actions.without_depth_shaders then
   local removed={dof_quality=true,dof_strength=true,bokeh_shape=true,scene_depth_range=true,fog_distance=true,fog_density=true}
   for _,page in ipairs(definition)do
