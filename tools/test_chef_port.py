@@ -14,10 +14,10 @@ def run(source, sandbox, shared_fixtures=True):
     text = sandbox.read_text(encoding='utf-8').rstrip('\r\n') + '\n'
     raw = text.encode('utf-8')
     blob = hashlib.sha1(b'blob ' + str(len(raw)).encode() + b'\0' + raw).hexdigest()
-    assert blob == SANDBOX_BLOB, 'Use sandbox.lua from Chef commit 429516a243392bc724ce7b41ef2712cf4e5a0157'
+    assert blob == SANDBOX_BLOB, 'Use the unchanged Chef 1.2.3/1.2.4 sandbox blob 737728a5911189c3f02b13b21487ab8dbac97310'
     fixtures = ['chef/runtime_tests.lua', 'chef/camera_tests.lua', 'chef/controls_tests.lua', 'chef/simulation_tests.lua',
                 'chef/shots_tests.lua', 'chef/bloom_tests.lua', 'chef/composition_tests.lua','chef/lights_tests.lua',
-                'chef/director_tests.lua','chef/subject_tests.lua']
+                'chef/director_tests.lua','chef/subject_tests.lua','chef/parity_tests.lua']
     if shared_fixtures:
         fixtures += ['steam_camera_tests.lua', 'steam_view_tests.lua', 'steam_composition_asset_tests.lua','steam_path_tests.lua',
                      'steam_subject_tests.lua','steam_subject_native_tests.lua','steam_pose_bank_tests.lua']

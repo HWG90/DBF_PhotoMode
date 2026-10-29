@@ -9,9 +9,9 @@ from chef_archive import pack_candidate, unpack_candidate
 import photo_light_assets
 
 ROOT = Path(__file__).resolve().parents[1]
-UPSTREAM = '429516a243392bc724ce7b41ef2712cf4e5a0157'
+UPSTREAM = 'b7434c7289bbb9adbfeb2d3bdb57134218f2a509'
 RESOURCE = 'mods/goose/war_journalist'
-VERSION = '0.4.0-chef-preview.4'
+VERSION = '0.5.0-chef-preview.5'
 MODULES = {
     'wj.chef.runtime': 'chef/runtime.lua',
     'wj.chef.camera': 'chef/camera.lua',
@@ -24,6 +24,7 @@ MODULES = {
     'wj.chef.lights': 'chef/lights.lua',
     'wj.chef.light_setups': 'chef/light_setups.lua',
     'wj.chef.light_drag': 'chef/light_drag.lua',
+    'wj.chef.light_memory': 'chef/light_memory.lua',
     'wj.chef.subject': 'chef/subject.lua',
     'wj.steam_subject': 'steam_subject.lua',
     'wj.steam_subject_native': 'steam_subject_native.lua',
@@ -98,6 +99,10 @@ def build(output, sandbox):
                       for path in [*MODULES.values(), 'chef/main.lua', 'assets/logo_art.lua', 'assets/logos/runtime-manifest.json']}}
     provenance['build_sources_sha256'] = {path: digest((ROOT / 'tools' / path).read_bytes()) for path in
                                          ['build_chef_candidate.py', 'chef_archive.py', 'chef_crest.py', 'photo_assets.py', 'photo_light_assets.py']}
+    provenance['parity_reference'] = {'version': 'War Journalist 1.3.0 Steam Lua 5.1',
+        'source_sha256': {path: digest((ROOT / path).read_bytes()) for path in
+                         ['docs/RELEASE-1.3.0.md', 'freecam/steam_release/steam_runtime.lua',
+                          'freecam/steam_lighting.lua', 'freecam/steam_input.lua', 'freecam/photo_options.lua']}}
     files = {PATCH: pack_candidate(RESOURCE, source), PATCH + '.stream': b'', PATCH + '.gpu_resources': b'',
              'manifest.json': (json.dumps(manifest, indent=2) + '\n').encode(),
              'PROVENANCE.json': (json.dumps(provenance, indent=2) + '\n').encode(),
@@ -109,7 +114,7 @@ def build(output, sandbox):
     package = output / ('War-Journalist-' + VERSION + '.zip')
     with zipfile.ZipFile(package, 'w', zipfile.ZIP_DEFLATED) as archive:
         for name, data in sorted(files.items()):
-            info = zipfile.ZipInfo(name, (2026, 10, 26, 0, 0, 0))
+            info = zipfile.ZipInfo(name, (2026, 10, 27, 0, 0, 0))
             info.create_system = 3
             info.external_attr = 0o100644 << 16
             info.compress_type = zipfile.ZIP_DEFLATED
@@ -126,7 +131,7 @@ def build(output, sandbox):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--output', type=Path, default=ROOT / 'dist/releases/chef-preview.4')
+    parser.add_argument('--output', type=Path, default=ROOT / 'dist/releases/chef-preview.5')
     parser.add_argument('--sandbox', type=Path, required=True, help='Chef 1.2.3 sandbox.lua at the documented upstream revision')
     args = parser.parse_args()
     result = build(args.output, args.sandbox)

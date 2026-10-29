@@ -1,7 +1,9 @@
 # Chef Shared Loader port
 
-Development **preview 4**, 2026-10-26, targets Chef **1.2.3 / API 3** at
-[`429516a243392bc724ce7b41ef2712cf4e5a0157`](https://github.com/Th3chef/Chef-Shared-Loader/tree/429516a243392bc724ce7b41ef2712cf4e5a0157).
+Development **preview 5**, 2026-10-27, compares WJ **1.3.0 Steam Lua 5.1** with
+Chef **1.2.4 / API 3** at
+[`b7434c7289bbb9adbfeb2d3bdb57134218f2a509`](https://github.com/Th3chef/Chef-Shared-Loader/tree/b7434c7289bbb9adbfeb2d3bdb57134218f2a509).
+Minimum Chef stays 1.2.3; the sandbox blob and used service contracts are unchanged.
 The LLL/BSL/MDL graphs remain separate. Shader effects and AI controls are excluded.
 See the [feature matrix](CHEF-FEATURE-MATRIX.md) and [candidate instructions](CHEF-PREVIEW.txt).
 Nothing has been installed, published or validated in game.
@@ -34,12 +36,19 @@ Freecam has rebindable clutch/movement/look/roll/zoom, optional mouse look,
 smoothing, movement lock, FOV/focal shortcuts, horizon/portrait tilt and opening
 view recall. Menu/clutch handoffs reset smoothing and pending mouse deltas.
 Chef reads shared input; the game, native menus and chat can still react.
+Clutch-gated wheel speed, world-up elevation and independent roll/zoom rates are
+included. Optional P/Backslash gameplay shortcuts default off. Chef has no key
+event: these read two press bindings per enabled frame, with a focus check only
+on a press. There is no native chat guard. With shortcuts off, closed unmodified
+state still removes the update hook entirely.
 
 Freeze requests exact zero, slow motion selects 0.05-1x, and rate changes while
 frozen preserve freeze. Motion/paths use `Application.time_since_launch` because
 Chef's own clock advances with game dt. Cinema resumes gameplay while holding a
 placed/path camera, resets owned poses before thaw, and remembers pre-take freeze
-unless explicitly overridden. End/close/focus/world/session/stop request 1x.
+unless explicitly overridden. Manual end/close defaults to 1x; an opt-in setting
+instead thaws Freeze and retains selected slow motion. Focus/world/session/stop
+and explicit cleanup always request 1x. The three-second Cinema notice is optional.
 
 Time and pose edits require one visible peer. Time ownership checks at most 4 Hz;
 Chef exposes no peer-join event or synchronizing-peer inventory. Earlier join
@@ -57,6 +66,9 @@ Composition includes frames, guides, tint overlays, vignette/width, opt-in grain
 clean view, all 13 logo picker entries (including None), RGB and size/opacity/
 position. An optional movable legend refers to the bindings menu so it does not
 show stale keys after rebinding. Clean view hides guides/logo, not the game's HUD.
+External screenshot view hides WJ annotations but keeps photo artwork; it does
+not capture pixels or hide Chef's menu/notices. Invisible marker dragging is
+disabled. The mode resets on close. Clutch + Pause toggles it for external capture.
 
 ## Lighting and native switches
 
@@ -73,6 +85,11 @@ owned points and a captured camera plane; no raycast/scene scan. Shift gives 0.1
 precision. Spot aiming and Key/Fill/Rim, Portrait and Dramatic side rigs use a
 numeric target ahead of the camera, not inferred actor identity. Five setups
 save/recall relative to the current camera. Partial replacement attempts rollback.
+Selected settings can be loaded into Chef's rows and explicitly applied at the
+existing light anchor. Manual close removes the units and optionally remembers
+numeric definitions for reopening in the same world/generation/session. There
+is no closed light tick. Focus/world/stop discard that cache; failed restores
+remain explicitly retryable. Dragging resolves window-to-GUI scale once per press.
 
 Helpers reacquire light components for writes. WJ confirms destruction before
 releasing Chef's spawn ledger, because `chef.despawn` drops bookkeeping before
@@ -104,8 +121,10 @@ Visible pose acceptance is unverified; this feature stays experimental/default-o
 
 ## Cost and validation
 
-- Closed camera, unmodified time, settled flags, empty actions and hidden overlays
-  remove both callbacks. No background camera-open hotkey or subject polling.
+- Closed camera, unmodified time, settled flags, empty actions, hidden overlays
+  and disabled global shortcuts remove both callbacks. Enabled global shortcuts
+  perform two binding reads/frame; no scans, clocks or setters on idle frames.
+  Subject state has no background polling.
 - Camera acquisition takes one world inventory (32,768 handles maximum), examines
   at most 64 units/frame with a five-second unscaled deadline, and compares at most
   64 cameras. Inventory can still spike and needs deployed measurement.
@@ -130,9 +149,9 @@ py -3.14 tools/test_chef_port.py --sandbox dist/review/chef-upstream-current/src
 py -3.14 tools/build_chef_candidate.py --sandbox dist/review/chef-upstream-current/src/chef_loader/sandbox.lua
 ```
 
-Output: `dist/releases/chef-preview.4/War-Journalist-0.4.0-chef-preview.4.zip` and
-`BUILD-RECEIPT.json`. Seventeen source suites run: ten Chef and seven shared
-camera/view/composition/path/subject/native/bank suites. All ten Chef suites run
+Output: `dist/releases/chef-preview.5/War-Journalist-0.5.0-chef-preview.5.zip` and
+`BUILD-RECEIPT.json`. Eighteen source suites run: eleven Chef and seven shared
+camera/view/composition/path/subject/native/bank suites. All eleven Chef suites run
 again from decoded packaged Lua. They use the real pinned sandbox with mocked
 engine/input/services, checking contracts, ownership, partial/refused writes,
 idle behavior, transitions, persistence and exact restoration for all 213 poses.
@@ -142,6 +161,8 @@ empty GPU/stream payloads. Checksums cover every ZIP member. Provenance includes
 source, generated-art inputs and build hashes. Independent archive/corruption
 review is recorded beside the ZIP. Older candidates are retained. See
 [artwork credits](CHEF-ARTWORK-CREDITS.txt) for retained source attribution.
+Provenance also records the WJ 1.3.0 comparison inputs. The accepted Steam runtime
+is kept separate from newer experimental Subject work and is not modified here.
 
 Release acceptance still needs installed-byte/loader verification, direct camera
 and input observation, freeze/slow/Cinema transitions, saved-anchor behavior,

@@ -51,6 +51,7 @@ function chef_fixture(shared)
     local engine={
         ['Application.time_since_launch']=function() return s.now end,
         ['Application.main_world']=function() return s.world end,
+        ['Application.resolution']=function() return s.window_width or 1920,s.window_height or 1080 end,
         ['Window.has_focus']=function() return s.focused end,
         ['Network.game_session']=function() return s.session end,
         ['GameSession.peers']=function(session) assert(session==s.session);return s.peers end,

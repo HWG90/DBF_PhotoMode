@@ -15,6 +15,7 @@ return require('wj.chef.runtime').new(chef, {
     crest_fallback=require('wj.assets.crest_fallback'),
     logos=require('wj.assets.logos'),light_setups=require('wj.chef.light_setups'),
     light_drag=require('wj.chef.light_drag'),
+    light_memory=require('wj.chef.light_memory'),
     subject=require('wj.chef.subject'),load_subject=function()
         return {native=require('wj.steam_subject_native'),model=require('wj.steam_subject'),bank=require('wj.assets.poses')}
     end,
