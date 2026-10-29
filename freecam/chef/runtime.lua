@@ -11,14 +11,19 @@ function M.new(chef, deps)
     for _, capability in ipairs({'menu', 'events', 'share'}) do
         assert(chef.has(capability), 'Chef capability unavailable: ' .. capability)
     end
-    local self = {version = '0.5.0', capabilities = {
+    local self = {version = '0.6.0', capabilities = {
         composition = true, camera_adjustment = true, free_mouse_camera = false,
         input_capture = false, screenshot = false, simulation = true, subject = false,
         lighting = false, scene_effects = false, numeric_dof = false,
     }}
     local token = {owner = chef.name, version = self.version}
+    -- Chef 1.4.0 services are optional: each is used only when this loader has it.
+    local features = deps.loader_features and deps.loader_features.probe(chef) or {}
+    local capture
+    self.capabilities.mouse_hold = features.mouse_hold == true
+    self.capabilities.players_event = features.players_event == true
     local camera = deps.camera.new(chef, deps.portable_camera)
-    local simulation = deps.simulation.new(chef)
+    local simulation = deps.simulation.new(chef, features)
     local shots=deps.shots and deps.shots.new(chef,deps.path)
     local bloom=deps.bloom and deps.bloom.new(chef)
     local dof=deps.bloom and deps.bloom.new(chef,'dof_enabled')
@@ -32,7 +37,7 @@ function M.new(chef, deps)
     self.capabilities.cinema=true;self.capabilities.native_dof_switch=dof~=nil
     self.capabilities.subject_preview=subject~=nil
     if deps.logos then for index,art in pairs(deps.logos) do deps.composition.logo_art[index]=art end end
-    local controls,controls_reason = deps.controls.new(chef,deps.bindings)
+    local controls,controls_reason = deps.controls.new(chef,deps.bindings,features)
     self.capabilities.free_mouse_camera = controls ~= nil
     self.capabilities.keyboard_freecam = controls ~= nil
     local values, subscriptions, option_specs = {}, {}, {}
@@ -67,7 +72,7 @@ function M.new(chef, deps)
     local function hooks()
         self.update = not stopped and (state == 'opening' or state == 'active' or time_dirty or simulation.owned
             or values.global_shortcuts and controls or #actions>0 or bloom_dirty or bloom and bloom.waiting()
-            or dof_dirty or dof and dof.waiting()) and update or nil
+            or dof_dirty or dof and dof.waiting() or capture and capture.pending()) and update or nil
         self.render = not stopped and (values.overlay or state=='active' and
             not values.capture_view and (values.show_legend or values.light_markers or values.light_swatch)) and render or nil
     end
@@ -104,7 +109,9 @@ function M.new(chef, deps)
         log(message)
         if type(chef.notify)=='function' then chef.notify(message,3,255,230,90) end
     end
+    capture = features.capture and deps.loader_features.capture_queue(chef, features, notify) or nil
     local function run_action(item)
+        if capture and item.name=='capture_dds' then return capture.request() end
         if item.name=='camera_cleanup' then
             local closed=close();local ok,why=simulation.release(true)
             set('freeze',simulation.frozen);set('slow_motion',simulation.slow)
@@ -362,6 +369,9 @@ function M.new(chef, deps)
         if state=='closed' or state=='cleanup_pending' then
             drain_actions()
         end
+        if capture and capture.pending() then
+            local ok,why=capture.tick();if not ok then notify(why) end
+        end
         if bloom then
             local ok,why=true,nil
             if bloom_dirty then
@@ -491,6 +501,13 @@ function M.new(chef, deps)
     option('capture_view',{type='toggle',label='External screenshot view (hide WJ guides/controls)',default=false},function()
         geometry_dirty=true;hooks()
     end);set('capture_view',false)
+    if capture then
+        -- Saved by the loader itself, as DDS, only for a mod its TRUSTED list grants
+        -- screenshots; every other mod is told 'not available to this mod'.
+        option('capture_dds',{type='toggle',label='Save screenshot after menu closes (DDS, needs Chef grant)',default=false},
+            function(on) if on then enqueue('capture_dds') end end)
+        set('capture_dds',false)
+    end
     option('logo',{type='choice',label='Logo',default=1,choices={'None','Helldiver crest','DBF mark','Super Earth crest',
         'Helldivers 2','Arrowhead','Helldivers 2 wide','Helldivers 2 compact','Helldivers II crest',
         'Super Citizen Edition','Omens of Tyranny','Heart of Democracy','Into the Unjust'}})
@@ -676,6 +693,7 @@ function M.new(chef, deps)
         if stopped then return state == 'closed' and not simulation.owned and (not bloom or bloom.state=='closed') and
             (not dof or dof.state=='closed') and (not lights or lights.count()==0) end
         stopped = true
+        if capture then capture.cancel() end
         local ok = close(false)
         local time_ok = release_time()
         local bloom_ok=true
@@ -696,6 +714,7 @@ function M.new(chef, deps)
     function self.subject_status() return subject and subject.status() or nil end
     hooks()
     if controls_reason then log(controls_reason) end
+    if deps.loader_features then log(deps.loader_features.describe(features)) end
     log('Chef photo preview ready; input is shared with gameplay; live validation pending')
     return self
 end

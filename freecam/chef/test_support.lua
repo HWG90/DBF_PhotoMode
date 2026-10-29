@@ -1,6 +1,8 @@
 -- Fixture host only; never packaged. Each case executes only the bundled addon
 -- in Chef's pinned sandbox, with a small engine and menu contract supplied here.
-function chef_fixture(shared)
+-- profile '1.4.0' adds that loader's services as its MODDING.md and
+-- services/utilities.lua describe them; the default is the 1.2.3-1.3.1 set.
+function chef_fixture(shared,profile)
     local s={world={},generation=1,session=newproxy(),peers={local_peer=true},now=10,focused=true,
         writes={},counts={},rate=1,keys={},menu=false,values={},changes={},events={},specs={},logs={}}
     shared=shared or{}
@@ -9,6 +11,33 @@ function chef_fixture(shared)
         dev=true,logs=true,own_log=true,units=true,spawn=true,timers=true,budget=true,session=true,settings_file=true,
         shapes=true,sprite_sheets=true,notify=true,typed=true,key_labels=true,save_table=true,mods=true,health=true,index=true}
     function c.has(name) return capabilities[name]==true end
+    if profile=='1.4.0' then
+        for _,name in ipairs({'joining','mouse_hold','players_event','option_buttons','option_colors','option_headings',
+            'option_folds','menu_state','mod_stopped_event','bind_combos'}) do capabilities[name]=true end
+        s.holds,s.held,s.notices,s.captures,s.delta_reads,s.joining_reads={},false,{},0,0,0
+        -- The loader's shared hold: false and why when the game gave no dead zone.
+        function c.hold_mouse(on)
+            s.holds[#s.holds+1]=on~=false
+            if on~=false and s.hold_refuse then return false,s.hold_refuse end
+            s.held=on~=false;return true
+        end
+        function c.mouse_held() return s.held end
+        -- x right, y down; 0, 0 while the options menu has the mouse.
+        function c.mouse_delta()
+            s.delta_reads=s.delta_reads+1
+            if s.menu then return 0,0 end
+            return s.mdx or 0,s.mdy or 0
+        end
+        function c.joining() s.joining_reads=s.joining_reads+1;return s.joining or 0 end
+        function c.menu_open() return s.menu end
+        -- Every mod has it; only a TRUSTED entry with capture saves a picture.
+        function c.capture()
+            s.captures=s.captures+1
+            if s.capture_refuse then return nil,s.capture_refuse end
+            return string.format('goose_war_journalist_capture_%02d.dds',s.captures)
+        end
+        function c.notify(text) s.notices[#s.notices+1]=text end
+    end
     function c.title() end
     function c.log(fmt,...) s.logs[#s.logs+1]=string.format(fmt,...) end
     local option_specs={}

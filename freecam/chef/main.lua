@@ -10,6 +10,7 @@ return require('wj.chef.runtime').new(chef, {
     composition = composition,
     controls = require('wj.chef.controls'), bindings = rawget(_G, 'ModBindingsMenu'),
     motion = require('wj.chef.motion'), simulation = require('wj.chef.simulation'),
+    loader_features = require('wj.chef.loader_features'),
     shots=require('wj.chef.shots'), path=require('wj.steam_path'), bloom=require('wj.chef.bloom'),
     lights=require('wj.chef.lights'),
     crest_fallback=require('wj.assets.crest_fallback'),

@@ -1,6 +1,9 @@
 -- Chef's binding shim suppresses these reads while its own menu is open.
--- It does NOT intercept gameplay input. No window flags/dead zones are changed.
+-- It does NOT intercept gameplay input. No window flags/dead zones are changed
+-- by this addon: on Chef 1.4.0+ mouse look asks the loader's own mouse hold
+-- (chef.hold_mouse) while the clutch is held, so the game camera stays put.
 local M = {}
+local HOLD_RETRY = 2 -- seconds; the loader looks for the mouse axis again every 2 s
 local PREFIX = 'wj.chef.'
 local BINDINGS = {
     {'clutch', 'Hold to control camera', 'left alt'},
@@ -20,7 +23,7 @@ local COMMANDS={{'exit','Close camera / reposition Cinema','p'},{'freeze','Toggl
 local GLOBAL={{'global_camera','Photo camera shortcut (opt-in)','p'},
     {'global_slow','Slow motion shortcut (opt-in)','backslash'}}
 local function finite(v) return type(v) == 'number' and v == v and math.abs(v) < 1e12 end
-function M.new(chef, bindings)
+function M.new(chef, bindings, features)
     if type(bindings) ~= 'table' or type(bindings.register_binding) ~= 'function'
         or type(bindings.is_down) ~= 'function' then return nil, 'Chef binding service unavailable' end
     for _, b in ipairs(BINDINGS) do
@@ -45,6 +48,7 @@ function M.new(chef, bindings)
     local self, out = {}, {}
     local last, mouse_axis, mouse_first = nil, nil, true
     local global_ready=false
+    local hold={wanted=features and features.mouse_hold==true,held=false,retry_at=nil,reason=nil}
     local function down(id) return bindings.is_down(PREFIX .. id) == true end
     local function axis(positive, negative) return (down(positive) and 1 or 0) - (down(negative) and 1 or 0) end
     function self.drag() if not down('clutch') then return false,false end;return down('light_drag'),down('fast') end
@@ -52,7 +56,27 @@ function M.new(chef, bindings)
         if not down('clutch') then return nil end
         for _,item in ipairs(COMMANDS) do if down(item[1]) then return item[1] end end
     end
-    function self.reset() last, mouse_first = nil, true end
+    local function let_go()
+        if not hold.held then return end
+        hold.held=false
+        local called,why=pcall(chef.hold_mouse,false)
+        if not called then chef.log('%s','WJ: mouse hold release failed: '..tostring(why)) end
+    end
+    -- True when the loader holds the mouse for this mod (mouse_delta is then the
+    -- cursor's movement); false falls back to the shared engine delta axis.
+    local function take(now)
+        if hold.held then return true end
+        if not hold.wanted or hold.retry_at and now<hold.retry_at then return false end
+        local called,ok,why=pcall(chef.hold_mouse,true)
+        -- The held delta comes from the cursor: never mix its first frame with the axis.
+        if called and ok==true then hold.held,hold.retry_at,mouse_first=true,nil,true;return true end
+        why=tostring(called and why or ok)
+        if why~=hold.reason then chef.log('%s','WJ: mouse hold unavailable, the game camera may turn too: '..why) end
+        hold.reason,hold.retry_at=why,now+HOLD_RETRY
+        return false
+    end
+    function self.mouse_held() return hold.held end
+    function self.reset() last, mouse_first = nil, true;let_go() end
     function self.reset_global() global_ready=false end
     function self.global_command()
         if not global_ready then global_ready=true;return nil end
@@ -80,7 +104,15 @@ function M.new(chef, bindings)
             if not finite(value) or math.abs(value)>100 then self.reset();return nil,'Invalid wheel sample' end
             out.wheel=math.max(-8,math.min(8,value))
         end
-        if mouse then
+        if mouse and take(now) then
+            local called, x, y = pcall(chef.mouse_delta)
+            if not called then self.reset(); return nil, 'Mouse delta unavailable: '..tostring(x) end
+            if not finite(x) or not finite(y) or math.abs(x) > 2000 or math.abs(y) > 2000 then
+                self.reset(); return nil, 'Invalid mouse delta'
+            end
+            if not mouse_first then out.dx, out.dy = x, y end
+            mouse_first = false
+        elseif mouse then
             if mouse_axis == nil then
                 local index, reason = chef.call('Mouse.axis_index', 'mouse')
                 if not finite(index) or index < 0 or index % 1 ~= 0 then
@@ -96,7 +128,7 @@ function M.new(chef, bindings)
             end
             if not mouse_first then out.dx, out.dy = x, y end
             mouse_first = false
-        else mouse_first = true end
+        else mouse_first = true;let_go() end
         return out
     end
     return self

@@ -9,15 +9,18 @@ from chef_archive import pack_candidate, unpack_candidate
 import photo_light_assets
 
 ROOT = Path(__file__).resolve().parents[1]
-UPSTREAM = 'b7434c7289bbb9adbfeb2d3bdb57134218f2a509'
+# Chef Shared Loader v1.4.0 (2026-10-29). The addon still needs only 1.2.3: the
+# 1.4.0 services are probed at run time (freecam/chef/loader_features.lua).
+UPSTREAM = '418815244bd3a513cb357f7ad91d0df67549dfa7'
 RESOURCE = 'mods/goose/war_journalist'
-VERSION = '0.5.0-chef-preview.5'
+VERSION = '0.6.0-chef-lite-dev.1'
 MODULES = {
     'wj.chef.runtime': 'chef/runtime.lua',
     'wj.chef.camera': 'chef/camera.lua',
     'wj.chef.controls': 'chef/controls.lua',
     'wj.chef.motion': 'chef/motion.lua',
     'wj.chef.simulation': 'chef/simulation.lua',
+    'wj.chef.loader_features': 'chef/loader_features.lua',
     'wj.chef.shots': 'chef/shots.lua',
     'wj.steam_path': 'steam_path.lua',
     'wj.chef.bloom': 'chef/bloom.lua',
@@ -81,15 +84,15 @@ def verify(package, expected=None):
     return source
 
 
-def build(output, sandbox):
+def build(output, sandboxes):
     from test_chef_port import run
     output = output.resolve()
     assert output.is_relative_to(ROOT / 'dist/releases'), 'Keep release artifacts under dist/releases'
     source = bundle()
-    tests = run(source, sandbox)
+    tests = [run(source, sandbox) for sandbox in sandboxes]
     manifest = {'Version': 1, 'Guid': '7b18fc08-a506-4cd3-a506-dbed18445576',
                 'Name': 'War Journalist ' + VERSION,
-                'Description': 'Development preview for Chef 1.2.3+. Freecam, solo time, Cinema, paths, presets, composition, native render switches, photo lighting and experimental selected-subject poses. No shader effects or AI controls. In-game validation pending.',
+                'Description': 'Development build for Chef 1.2.3+; on Chef 1.4.0 it also uses the loader mouse hold, players event and (when the loader grants it) chef.capture. Freecam, solo time, Cinema, paths, presets, composition, native render switches, photo lighting and experimental selected-subject poses. No shader effects or AI controls. In-game validation pending.',
                 'Options': [{'Name': 'War Journalist (core)', 'Description': 'Chef preview addon.', 'Include': ['core']}]}
     provenance = {'version': VERSION, 'upstream': UPSTREAM, 'resource': RESOURCE,
                   'runtime': 'Lua 5.1 source', 'candidate_only': True, 'live_game_verified': False,
@@ -99,9 +102,9 @@ def build(output, sandbox):
                       for path in [*MODULES.values(), 'chef/main.lua', 'assets/logo_art.lua', 'assets/logos/runtime-manifest.json']}}
     provenance['build_sources_sha256'] = {path: digest((ROOT / 'tools' / path).read_bytes()) for path in
                                          ['build_chef_candidate.py', 'chef_archive.py', 'chef_crest.py', 'photo_assets.py', 'photo_light_assets.py']}
-    provenance['parity_reference'] = {'version': 'War Journalist 1.3.0 Steam Lua 5.1',
+    provenance['parity_reference'] = {'version': 'War Journalist 1.3.3 Boot Mod Loader Lua 5.1',
         'source_sha256': {path: digest((ROOT / path).read_bytes()) for path in
-                         ['docs/RELEASE-1.3.0.md', 'freecam/steam_release/steam_runtime.lua',
+                         ['docs/RELEASE-1.3.3.md', 'docs/CHEF-COMPATIBILITY-AUDIT.md', 'freecam/steam_runtime.lua',
                           'freecam/steam_lighting.lua', 'freecam/steam_input.lua', 'freecam/photo_options.lua']}}
     files = {PATCH: pack_candidate(RESOURCE, source), PATCH + '.stream': b'', PATCH + '.gpu_resources': b'',
              'manifest.json': (json.dumps(manifest, indent=2) + '\n').encode(),
@@ -121,7 +124,7 @@ def build(output, sandbox):
             archive.writestr(info, data, compresslevel=9)
     packaged = verify(package, source)
     # Execute the bytes reconstructed from the archive; no external modules.
-    packaged_tests = run(packaged, sandbox, shared_fixtures=False)
+    packaged_tests = [run(packaged, sandbox, shared_fixtures=False) for sandbox in sandboxes]
     report = {'package': str(package), 'sha256': digest(package.read_bytes()),
               'tests': tests, 'packaged_tests': packaged_tests,
               'installed': False, 'published': False, 'live_game_verified': False}
@@ -131,8 +134,9 @@ def build(output, sandbox):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--output', type=Path, default=ROOT / 'dist/releases/chef-preview.5')
-    parser.add_argument('--sandbox', type=Path, required=True, help='Chef 1.2.3 sandbox.lua at the documented upstream revision')
+    parser.add_argument('--output', type=Path, default=ROOT / 'dist/releases/chef-lite-dev.1')
+    parser.add_argument('--sandbox', type=Path, required=True, action='append',
+                        help='Chef src/chef_loader/sandbox.lua (1.2.3/1.2.4, 1.3.x or 1.4.0); repeat for each version')
     args = parser.parse_args()
     result = build(args.output, args.sandbox)
     print(json.dumps({key: value for key, value in result.items() if key not in ('tests', 'packaged_tests')}, indent=2))

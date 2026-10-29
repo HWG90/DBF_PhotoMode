@@ -1,6 +1,21 @@
-War Journalist 0.5.0-chef-preview.5
+War Journalist 0.6.0-chef-lite-dev.1
 
-Candidate for Chef 1.2.3+ (API 3); reviewed against Chef 1.2.4 and WJ 1.3.0 Steam.
+Development build for Chef 1.2.3+ (API 3); reviewed against Chef 1.4.0 and
+WJ 1.3.3. Not for players: nothing in it has been run in the game.
+
+CHEF 1.4.0
+On Chef 1.4.0 or newer, three loader services are used when the loader has them
+(the log's "Chef 1.4 services:" line says which):
+- Mouse look holds the loader's mouse while the clutch is held, so the game
+  camera should stay put. If the loader refuses, mouse look works as before and
+  the game camera may turn too.
+- Freeze and slow motion end as soon as the loader reports another player or
+  someone joining, and never start while someone joins.
+- Save screenshot after menu closes: the loader saves a DDS picture in
+  %APPDATA%\Arrowhead\Helldivers2 if its trusted list grants War Journalist
+  screenshots; otherwise the menu says why. No PNG.
+Older Chef versions keep the preview 5 behaviour.
+
 Shader effects and AI controls are excluded. Some native legacy features still
 need APIs Chef does not provide. Offline fixtures and package checks do not
 establish visible functionality or runtime performance in the game.
@@ -40,7 +55,8 @@ unscaled clock. Time controls start off. Close/focus/world/session/stop release
 time to 1x. The optional Keep chosen slow motion after manual close setting
 thaws Freeze but retains the slow rate; focus/world/session/stop and Retry photo
 cleanup still request 1x. One visible peer is required. Checks run four times per
-second while time is owned; Chef cannot expose earlier joining stages. Use solo
+second while time is owned; before Chef 1.4.0 earlier joining stages can't be
+seen (1.4.0's players event and joining count can see them). Use solo
 testing and avoid other time mods: no previous multiplier can be read.
 
 Begin placed action shot holds the camera while you control gameplay; Begin

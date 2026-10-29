@@ -1,5 +1,9 @@
 # War Journalist to Chef: preview 5 feature matrix
 
+2026-10-29 update: the Chef 1.4.0 rows below (mouse hold, players event,
+screenshot) are in the 0.6.0 development build. The WJ 1.3.3 and Chef 1.3.1/1.4.0
+comparison is in [the compatibility audit](CHEF-COMPATIBILITY-AUDIT.md).
+
 2026-10-27. Compared against WJ 1.3.0 Steam Lua 5.1 and Chef 1.2.4/API 3,
 revision `b7434c7289bbb9adbfeb2d3bdb57134218f2a509`. Minimum Chef remains 1.2.3;
 the sandbox blob is unchanged. [Copyable BBCode](CHEF-FEATURE-MATRIX.bbcode).
@@ -9,10 +13,11 @@ is live-game acceptance. Shader effects and AI are excluded by the requested sco
 | Workflow | Chef candidate | Boundary/adaptation |
 | --- | --- | --- |
 | Freecam, mouse, speed, rotation/roll/zoom | Implemented | Rebindable clutch; shared gameplay input; opens in Chef menu |
+| Mouse look without game camera turning | Implemented on Chef 1.4.0+, unverified | Loader `chef.hold_mouse` while the clutch is held; shared axis on older loaders |
 | Smoothing, lock, reset, level/portrait tilt | Implemented | Unscaled clock; immediate reset on input handoff |
 | Wheel speed/world-up elevation/independent roll and zoom rates | Implemented | Clutch-gated wheel and adjustable step |
 | Focal shortcuts | Implemented | 24 mm sensor-height convention; vertical FOV |
-| Freeze/resume/slow rate | Implemented, solo preview | Exact-zero request, visible-peer checks; cleanup to 1x |
+| Freeze/resume/slow rate | Implemented, solo preview | Exact-zero request, visible-peer checks; cleanup to 1x; Chef 1.4.0 players event and joining count end it at once |
 | Placed/path Cinema | Implemented | Pose reset before thaw, remembered freeze, return/end actions |
 | Camera paths with segment editing | Implemented | Maximum 32 points; session-local; Smooth/Cut |
 | Five scene bookmarks | Implemented | Expire on camera close |
@@ -41,6 +46,7 @@ is live-game acceptance. Shader effects and AI are excluded by the requested sco
 | External screenshot view | Adapted | Hides WJ annotations, keeps artwork; uses an external capture key |
 | Gameplay suppression/cursor confinement | Unavailable | Chef has input reads, not the native input broker |
 | WJ PNG capture/housekeeping | Unavailable | No capture descriptor/helper or supported file-output contract |
+| Loader screenshot (DDS) | Implemented on Chef 1.4.0+, unverified | `chef.capture` after the menu closes; saves only if the loader's trusted list grants it (1.4.0 lists WJ) |
 | Game HUD hiding | Unavailable | No verified readable ownership/restore contract |
 | Shader effects/custom compositor/bokeh | Excluded | User scope; no shader resources packaged |
 | AI/passive/enemy controls | Excluded | User scope; no AI actions implemented |
