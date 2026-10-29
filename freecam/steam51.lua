@@ -191,8 +191,8 @@ entry={live_lua_api=1,name='War Journalist',
    -- Pinning the animation (options.pin_animation) made a body frozen while running worse:
    -- the game reset it every frame and ~46 bones were fought per frame (live). Off.
    deps.freeze_pose_hold=skeleton.new(stingray,mod.log,deps.operation_clock or os.clock,
-    {continuous=true,exclude_cape=true,claim_transfer=true})
-   mod.log('Freeze skeleton hold: body-only coherent hold after game render; own ignore mode until Resume; cape bones and separate cape units untouched; hoverpack fallback retained')
+    {continuous=true,exclude_cape=true,exclude_carry=true,claim_transfer=true})
+   mod.log('Freeze skeleton hold: body-only coherent hold after game render; own ignore mode until Resume; cape bones, carry sockets and separate cape units untouched; hoverpack fallback retained')
    if not mod.release_mode then
    local physics_probe=mod.require('src/windows_freeze_physics_probe.lua')
    if physics_probe.consume(mod.config_dir,type(stingray.Application.process_id)=='function'and stingray.Application.process_id()or 0)then

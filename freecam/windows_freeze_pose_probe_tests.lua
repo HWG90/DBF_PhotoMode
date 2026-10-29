@@ -1,6 +1,8 @@
 assert(_VERSION=='Lua 5.1')
 local Probe=dofile('freecam/windows_freeze_pose_probe.lua')
 local function copy(t)local c={};for k,v in pairs(t)do c[k]=v end;return c end
+-- The rig's carry sockets (steam_subject_poses indices).
+local carry={attach_samplepouch=23,attach_intelpad=24,target_designator=25,sling=28,support_mg=31,support=32}
 local function fixture(options)
  local f={epoch=1,reads=0,writes=0,modes=0,updates=0,alive=true,count=107,mode='position_and_rotation',poses={},logs={}}
  f.unit=newproxy();f.world=newproxy();f.session=newproxy();f.current_world=f.world;f.current_session=f.session
@@ -12,8 +14,8 @@ local function fixture(options)
  local U={alive=function(u)read(u);return f.alive end,world=function(u)read(u);return f.world end,
   num_scene_graph_items=function(u)read(u);return f.count end,
   resource_name=function(u)read(u);return temp(f.resource or'4d1c334d294dfa97')end,
-  has_node=function(u,n)read(u);local i=tonumber(n:match('^cape(%d)$'));return i~=nil and i>=1 and i<=8 end,
-  node=function(u,n)read(u);return 34+assert(tonumber(n:match('^cape(%d)$')))+(f.bad_cape and 1 or 0)end,
+  has_node=function(u,n)read(u);if carry[n]then return true end;local i=tonumber(n:match('^cape(%d)$'));return i~=nil and i>=1 and i<=8 end,
+  node=function(u,n)read(u);if carry[n]then return carry[n]+(f.bad_carry and 1 or 0)end;return 34+assert(tonumber(n:match('^cape(%d)$')))+(f.bad_cape and 1 or 0)end,
   animation_bone_mode=function(u)read(u);return f.mode end,
   -- The body's animation state machine (nil: none); the game only fights a hold while it runs.
   has_animation_state_machine=function(u)read(u);return f.machine~=nil end,
@@ -118,6 +120,23 @@ do
  assert(not bad.probe.prepare(bad.subject,0)and bad.writes==0,'A changed cape rig cannot silently write cape nodes')
 end
 print('Freeze pose hold: coherent capture, copied scalars, body-only cape exclusion, idle write silence, exact-zero gate, trial/continuous lifetime and cleanup passed')
+
+-- The game re-places the carry sockets every frame; gear linked to them shows the game's value.
+-- The hold leaves them alone so the body's sockets and the gear stay equal for Hide carried weapons.
+do
+ local f=fixture({continuous=true,exclude_cape=true,exclude_carry=true})
+ assert(f.probe.prepare(f.subject,0))
+ for i=1,107 do f.poses[i][10]=i+500 end
+ assert(f.render(.1)and f.writes==93,'99 body nodes less six carry sockets: '..f.writes)
+ for _,i in pairs(carry)do assert(not f.by_node[i]and f.poses[i][10]==i+500,'Carry sockets are never rewritten')end
+ for step=1,50 do for _,i in pairs(carry)do f.poses[i][10]=i+step end;assert(f.render(.1+step*.01))end
+ assert(f.writes==93 and f.updates==1,'Socket changes alone trigger no writes or scene refresh')
+ assert(f.logs[1]:find('nodes=93; cape_bones=excluded; carry_sockets=excluded',1,true),f.logs[1])
+ assert(f.probe.release('Resume'))
+ local bad=fixture({continuous=true,exclude_cape=true,exclude_carry=true});bad.bad_carry=true
+ assert(not bad.probe.prepare(bad.subject,0)and bad.writes==0,'A moved carry socket cannot silently release another node')
+end
+print('Freeze pose hold: carry sockets left to the game, checked against the rig, passed')
 
 -- Cape placement follows body scene refresh and keeps cleanup obligations on failure.
 do

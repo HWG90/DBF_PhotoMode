@@ -15,6 +15,11 @@ function M.new(sr,log,measure,options)
  local continuous=options and options.continuous==true
  local claim_transfer=not continuous or options and options.claim_transfer==true
  local exclude_cape=options and options.exclude_cape==true
+ -- Carry sockets the game re-places every frame while frozen (live 2026-10-29: the hold took back
+ -- 23,24,25,28,31,32 in every sample). Nothing is skinned to them; linked gear shows the game's
+ -- value, so holding them only split the body's sockets from the gear and Hide carried weapons,
+ -- which matches gear to sockets exactly, missed the slung primary. Left to the game, like the cape.
+ local carry=options and options.exclude_carry==true and{attach_samplepouch=23,attach_intelpad=24,target_designator=25,sling=28,support_mg=31,support=32}
  local pause_animation=options and options.pause_animation==true
  local pin_animation=options and options.pin_animation==true
  local U,W,A,N,I,B=sr.Unit,sr.World,sr.Application,sr.Network,sr.IdString64,sr.Matrix4x4
@@ -22,7 +27,7 @@ function M.new(sr,log,measure,options)
  for _,name in ipairs({'alive','world','resource_name','num_scene_graph_items','local_pose','set_local_pose','animation_bone_mode','set_animation_bone_mode'})do
   assert(type(U[name])=='function','Pose trial API unavailable: '..name);bindings[name]=U[name]
  end
- if exclude_cape then for _,name in ipairs({'has_node','node'})do
+ if exclude_cape or carry then for _,name in ipairs({'has_node','node'})do
   assert(type(U[name])=='function','Cape exclusion API unavailable: '..name);bindings[name]=U[name]
  end end
  local update=W.update_unit;assert(type(update)=='function','Pose trial scene refresh unavailable')
@@ -127,7 +132,11 @@ function M.new(sr,log,measure,options)
     local name='cape'..i
     assert(U.has_node(w.unit,name)==true and U.node(w.unit,name)==34+i,'Cape exclusion rig changed')
    end end
-   for index=1,107 do if not(exclude_cape and index>=35 and index<=42)then
+   local released={}
+   if carry then for name,index in pairs(carry)do
+    assert(U.has_node(w.unit,name)==true and U.node(w.unit,name)==index,'Carry socket rig changed');released[index]=true
+   end end
+   for index=1,107 do if not(exclude_cape and index>=35 and index<=42 or released[index])then
     w.indices[#w.indices+1]=index;w.poses[index]=matrix(w,index)
    end end
    assert(valid(w)and U.animation_bone_mode(w.unit)==w.mode,'Pose trial capture changed')
@@ -142,7 +151,7 @@ function M.new(sr,log,measure,options)
   end)
   if not ok then return false,tostring(value)end
   attempts=attempts+1;work=value
-  emit(string.format('captured selected skeleton; nodes=%d; cape_bones=%s; %s; capture_ms=%.3f; separate cape/accessory root writes=0; awaiting owned render',#work.indices,exclude_cape and'excluded'or'included',(continuous and'before zero; until Resume'or'six seconds')..'; claim_transfer='..tostring(claim_transfer==true),work.max_ms))
+  emit(string.format('captured selected skeleton; nodes=%d; cape_bones=%s; carry_sockets=%s; %s; capture_ms=%.3f; separate cape/accessory root writes=0; awaiting owned render',#work.indices,exclude_cape and'excluded'or'included',carry and'excluded'or'included',(continuous and'before zero; until Resume'or'six seconds')..'; claim_transfer='..tostring(claim_transfer==true),work.max_ms))
   return true
  end
  if continuous then function self.prepare(subject,now)
