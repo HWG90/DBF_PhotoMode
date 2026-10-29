@@ -115,12 +115,22 @@ local w=fixture(false,setup);w.open();w.menu.handle.set('action_camera_mode',2);
 assert(w.runtime.reposition_shot());w.session={};w.step(1.1,1)
 assert(not w.runtime.active and not w.hidden and not w.lease,'Session retirement is checked even in settings')
 w.finish()
--- F11 starts from gameplay, toggles once per press and explicitly ends even
--- while settings are open; editing and foreground guards consume held edges.
+-- Handycam starts unbound: Steam records with Ctrl+F11, F11's old default. A saved F11
+-- is cleared at load. A bound key starts from gameplay, toggles once per press and
+-- explicitly ends even while settings are open; editing and foreground guards consume held edges.
 do
  local k=fixture(false,setup)
  local function press(key)k.pressed[key]=true;k.step(.016,1);k.pressed[key]=false;k.step(.016,1)end
- assert(k.runtime.handle.get('handycam_key')==122)
+ assert(k.runtime.handle.get('handycam_key')==0,'Handycam has no default key')
+ press('f11');assert(not k.runtime.active and not k.lease,'F11 is not a Handycam key by default')
+ k.finish()
+ local saved=fixture(false,function(f,deps)setup(f,deps);f.saved.handycam_key=122 end)
+ assert(saved.runtime.handle.get('handycam_key')==0,'A saved F11 from 1.3.2 is cleared at load')
+ saved.finish()
+ local kept=fixture(false,function(f,deps)setup(f,deps);f.saved.handycam_key=120 end)
+ assert(kept.runtime.handle.get('handycam_key')==120,'Other saved Handycam keys are kept')
+ kept.finish()
+ k=fixture(false,setup);k.runtime.handle.set('handycam_key',122)
  press('f11');assert(k.runtime.active and k.runtime.mode=='shot'and not k.lease)
  k.pressed.f11=true;k.step(.016,1);assert(not k.runtime.active and not k.lease)
  for _=1,60 do k.step(.016,1)end;assert(not k.runtime.active,'Held F11 cannot restart')
@@ -135,7 +145,7 @@ do
  k.runtime.handle.set('handycam_key',120);press('f11');assert(not k.runtime.active)
  press('f9');assert(k.runtime.mode=='shot','Custom binding replaces F11')
  k.finish()
- local missing=fixture(false,setup);missing.head_error=true
+ local missing=fixture(false,setup);missing.head_error=true;missing.runtime.handle.set('handycam_key',122)
  missing.pressed.f11=true;missing.step(.016,1)
  assert(missing.runtime.mode=='menu'and missing.lease,'Missing target leaves selection available without retrying each frame')
  local reads=missing.head_reads;for _=1,10 do missing.step(.016,1)end;assert(missing.head_reads==reads)

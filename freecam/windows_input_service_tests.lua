@@ -2,7 +2,7 @@ local adapter=dofile('freecam/windows_input_service.lua')
 local function n(x)return string.char(x%256,math.floor(x/256)%256,math.floor(x/65536)%256,math.floor(x/16777216)%256)end
 local function u(s,i)local a,b,c,d=s:byte(i,i+3);return a+b*256+c*65536+d*16777216 end
 local operations,release_refused={},false
-local mask=('00331f08ffe1ff03feffff27fffffff7ff0003003f0000fc010000f804000000'):gsub('%x%x',function(x)return string.char(tonumber(x,16))end)
+local mask=('00331f08ffe1ff03feffff27fffffff3ff0003003f0000fc010000f804000000'):gsub('%x%x',function(x)return string.char(tonumber(x,16))end)
 local transport={exchange=function(bytes)
  local seq,op=u(bytes,1),u(bytes,5);operations[#operations+1]=op
  local prefix=n(seq)..n(0)
@@ -17,6 +17,9 @@ end}
 local sr={Application={process_id=function()return 17 end,time_since_launch=function()return 1 end}}
 assert(not pcall(adapter.new,{Application={process_id=function()return 18 end}},transport,function()end),'Wrong process must refuse')
 local platform=adapter.new(sr,transport,function()end)
+-- F11 and F12 stay with the game and Steam's overlay (Ctrl+F11 records, F12 screenshots).
+for _,vk in ipairs({122,123})do assert(math.floor(platform.base_keyboard_capture_mask:byte(math.floor(vk/8)+1)/2^(vk%8))%2==0,'VK '..vk..' must not be captured')end
+assert(math.floor(platform.base_keyboard_capture_mask:byte(16)/2)%2==1,'F10 stays captured')
 local focus,cursor,clip=true,false,true
 local writes=0
 local window={has_focus=function()return true end,mouse_focus=function()return focus end,show_cursor=function()return cursor end,clip_cursor=function()return clip end,

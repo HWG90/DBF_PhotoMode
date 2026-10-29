@@ -173,8 +173,10 @@ Fixtures cover separate group leases, untouched-group writes, idle behavior,
 restoration, axes, defaults, negative/zero offsets, nonaccumulation and attached
 menu edits. The user confirmed independent toggles and framing with yes in `dist/review/windows-pov-controls`.
 
-F11 is the default Start / end Handycam binding, editable in Controls and shared
-with the loader binding menu. From gameplay it opens Photo Mode, performs the
+Start / end Handycam is unbound by default, editable in Controls and shared
+with the loader binding menu. It was F11 through 1.3.2; Steam records with
+Ctrl+F11, so a saved F11 is cleared at load and WJL no longer reserves F11
+while Photo Mode holds the keyboard. From gameplay the key opens Photo Mode, performs the
 existing automatic subject selection, and starts Handycam. From an attached
 shot or its settings it explicitly ends the shot and restores gameplay. The
 Photo Mode key still opens/resumes Handycam settings. Editing, input handoff,

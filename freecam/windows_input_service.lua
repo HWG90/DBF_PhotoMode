@@ -164,10 +164,13 @@ function P.camera_snapshot()
     camera_pointer.dx,camera_pointer.dy=signed(reply,37),signed(reply,41)
     return camera_pointer
 end
-local keyboard_mask=('00331f08ffe1ff03feffff27fffffff7ff0003003f0000fc010000f804000000'):gsub('%x%x',function(value)return string.char(tonumber(value,16))end)
+-- The helper's whitelist without F11 (byte 16, 0xf7 -> 0xf3). A reserved key never reaches
+-- the game, so Steam's overlay missed Ctrl+F11 (record) while Photo Mode was open; F12
+-- (screenshot) was never in the whitelist.
+local keyboard_mask=('00331f08ffe1ff03feffff27fffffff3ff0003003f0000fc010000f804000000'):gsub('%x%x',function(value)return string.char(tonumber(value,16))end)
 P.keyboard_capture_mask=keyboard_mask
 P.base_keyboard_capture_mask=keyboard_mask
-P.keyboard_scope='registered gameplay key whitelist; F12/Win/system shortcuts excluded'
+P.keyboard_scope='registered gameplay key whitelist; F11/F12/Win/system shortcuts excluded'
 local keyboard_owner,keyboard_client=nil,0
 local function keyboard_owned(handle)
     return handle~=nil and keyboard_owner and keyboard_owner.handle==handle and keyboard_owner
