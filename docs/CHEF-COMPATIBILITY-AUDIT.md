@@ -9,7 +9,7 @@ and source. Boot Mod Loader remains War Journalist's only supported loader.
 
 | What | Revision |
 | --- | --- |
-| War Journalist 1.3.3 (Boot Mod Loader build, 86 modules, no Chef files) | `a7f3bb1` on `release/1.3.3` (not yet on GitHub; `main` there is 1.3.2) |
+| War Journalist 1.3.3 (Boot Mod Loader build, 86 modules, no Chef files) | `a7f3bb1`, tag `v1.3.3`, published 2026-10-29 and on `main` |
 | WJ Chef track | preview 5 `0.5.0` (`47a4647`, GitHub pre-release `v0.5.0-chef-preview.5`); `main` and 1.3.3 still carry the older `0.4.0` copy |
 | Chef Shared Loader 1.3.1 | tag `v1.3.1`, `4fe1aa0`, `sandbox.lua` blob `78769389` (same as 1.3.0) |
 | Chef Shared Loader 1.4.0 | tag `v1.4.0`, `4188152`, published 2026-10-29 08:43 UTC, `sandbox.lua` blob `ebdcfafc` |
@@ -86,7 +86,7 @@ but hasn't been attempted, so treat it as unknown.
 | AI controls | none | none | D (excluded) |
 | Running the BML ZIP itself under Chef's BML look-alikes | it would start without WJL (no isolation, PNG or scene effects), and file swaps fail | also no `save_render_target` | not supported, untested |
 
-## What this branch adds (`claude/wj-chef-lite`, Chef runtime 0.6.0)
+## What this branch adds (`codex/chef-preview-5`, Chef runtime 0.6.0)
 
 Base: 1.3.3 release commit `a7f3bb1` plus preview 5's Chef sources. The addon
 still declares `chef-shared-loader >= 1.2.3`, and the BML build is unchanged:
