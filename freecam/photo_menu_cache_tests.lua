@@ -194,6 +194,14 @@ do
    assert(a.w<w and a.h<h,'Blur cannot cover the viewport')
   end
   assert(strip.y+strip.h<blur.y,'Keep the footer gap unblurred')
+  -- Live, with Exposure/Contrast/Saturation or a filter on, the scene grade covered every
+  -- GUI layer up to 300 (the blur backdrop and the panel tint) while 301 and above stayed
+  -- on top. The whole panel stays above that, and below the legend (330+) and pointer.
+  for _,c in ipairs(f.commands)do
+   if c.ui_role~='photo_pointer'and c.ui_role~='photo_pointer_outline'then
+    assert(c.layer>301 and c.layer<330,'Panel layer '..tostring(c.layer)..' ('..tostring(c.ui_role)..') must sit above the scene grade and below the legend')
+   end
+  end
   local commands=f.commands;f.draw(w,h);assert(f.commands==commands,'Static decorated/blurred menu stays retained')
  end
  check(1920,1080);f.menu.panel_x=.1;f.menu.panel_y=.3;f.menu.size_scale=.8;check(1280,720)
