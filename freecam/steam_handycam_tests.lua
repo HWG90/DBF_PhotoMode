@@ -241,3 +241,32 @@ do
  t.probe_refuse=true;assert(not t.runtime.close(true),'Failed experiment restoration blocks successful cleanup reporting')
  t.probe_refuse=false;assert(t.runtime.close(true)and not t.probe_owned);t.finish()
 end
+-- Follow player shots: Pivot stays where it was placed and turns with the subject, keeping the
+-- framing; Pin keeps its offset and orientation and moves with the subject.
+do
+ local function follow_setup(f,deps)
+  setup(f,deps);f.anchor={0,0,0}
+  deps.subject_backend={new=function()return{head_frame=function()return{identity=f.head_identity,head=f.head,position=f.anchor}end}end}
+  local old=deps.camera.new;deps.camera.new=function(...)
+   local c=old(...);local write=c.write_view
+   c.write_view=function(pos,forward,...)f.forward={unpack(forward)};return write(pos,forward,...)end;return c
+  end
+ end
+ local function angle(f,from,to)
+  local d={to[1]-from[1],to[2]-from[2],to[3]-from[3]};local n=math.sqrt(d[1]^2+d[2]^2+d[3]^2)
+  return math.acos(math.max(-1,math.min(1,(f[1]*d[1]+f[2]*d[2]+f[3]*d[3])/n)))
+ end
+ local p=fixture(false,follow_setup);p.open();assert(p.menu.handle.set('action_camera_mode',3))
+ assert(p.runtime.begin_shot());p.step(.016,1);local start={unpack(p.position)};local framing=angle(p.forward,start,p.head)
+ p.head={start[1]+10,start[2]+10,2};p.anchor={start[1]+10,start[2]+10,0};p.step(.016,1)
+ assert(p.position[1]==start[1]and p.position[2]==start[2]and p.position[3]==start[3],'Pivot stays where it was placed')
+ assert(math.abs(angle(p.forward,start,p.head)-framing)<1e-6,'Pivot keeps the subject where it was framed')
+ p.finish()
+ local q=fixture(false,follow_setup);q.open();assert(q.menu.handle.set('action_camera_mode',4))
+ assert(q.runtime.begin_shot());q.step(.016,1);local s0,f0={unpack(q.position)},{unpack(q.forward)}
+ q.anchor={5,6,0};q.head={5,6,2};q.step(.016,1)
+ assert(math.abs(q.position[1]-(s0[1]+5))<1e-9 and math.abs(q.position[2]-(s0[2]+6))<1e-9 and q.position[3]==s0[3],'Pin moves with the subject')
+ assert(q.forward[1]==f0[1]and q.forward[2]==f0[2]and q.forward[3]==f0[3],'Pin keeps its orientation')
+ q.finish()
+ print('Follow player shots: pivot holds position and framing, pin follows with fixed orientation passed')
+end

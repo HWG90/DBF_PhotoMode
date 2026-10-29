@@ -1360,6 +1360,17 @@ function M.new(host,sr,deps,service)
    end
    if visibility then local ready,why=visibility.ready();if not ready then notice(why);return false,why end end
   end
+  -- Follow player: Pivot stays where it was placed and turns with the selected Helldiver;
+  -- Pin keeps its offset and orientation and moves with it.
+  local follow=not handheld and({'pivot','pin'})[(handle.get('action_camera_mode')or 1)-2]
+  if follow then
+   if play_path then return false,'Choose Placed camera for a recorded path'end
+   local backend=self.tracking_backend or subject_backend
+   if not backend then return false,'Select a Helldiver in Subject to follow'end
+   local called,frame=pcall(backend.head_frame)
+   if not called then notice(frame);return false,frame end
+   follow=deps.look.follow_start(follow,photo.pos,photo.forward,frame.head,frame.position);follow.identity=frame.identity
+  end
   if play_path and(not path or path.count()<2)then notice('Record at least two camera points');return false,self.reason end
   if not stop_path()then return false,self.reason end
   flush_roll()
@@ -1380,7 +1391,7 @@ function M.new(host,sr,deps,service)
   if continuing then shot.refreeze=was_frozen
   else
    shot={world=world,generation=generation,session=session,refreeze=was_frozen,started=now,check_at=now}
-   shot.handycam=handheld;shot.player_identity=head and head.identity
+   shot.handycam=handheld;shot.player_identity=head and head.identity;shot.follow=follow or nil
   end
   if handheld and not continuing then
    handycam.reset()
@@ -1693,7 +1704,7 @@ function M.new(host,sr,deps,service)
   end
   sync_dof()
  end
- controls.action_camera_mode.choices={'Placed camera',handycam and'First-person handycam'or'First-person handycam (player unavailable)'}
+ controls.action_camera_mode.choices={'Placed camera',handycam and'First-person handycam'or'First-person handycam (player unavailable)','Follow player - Pivot','Follow player - Pin'}
  texts.cinema_status.label='Place a camera, then begin an action shot'
  for _,page in ipairs(core.mods.dbf_freecam.pages)do for _,c in ipairs(page.controls)do if c.id=='cinema_hint'then
   c.label='Move and fight while the camera holds its shot. Your Photo Mode key returns to placement and restores Freeze Action.'
@@ -1982,6 +1993,12 @@ function M.new(host,sr,deps,service)
    end)
    if not ok then notice(reason);self.close(true);return end
   end
+  if shot and shot.follow then
+   local called,frame=pcall((self.tracking_backend or subject_backend).head_frame)
+   if called and type(frame)=='table'and frame.identity==shot.follow.identity then
+    photo.pos,photo.forward,photo.right=deps.look.follow_step(shot.follow,frame.head,frame.position)
+   elseif not shot.follow.lost then shot.follow.lost=true;notice('Follow camera: subject unavailable; the camera holds still')end
+  end
   local f,r=photo.forward,photo.right
   local roll=shot and shot.handycam and(photo.handy_roll or 0)or(photo.path_roll or photo.roll or o.roll)
   local up=deps.lens.up(f,r,roll)
@@ -2137,7 +2154,7 @@ function M.new(host,sr,deps,service)
    end
   end
   if handycam then
-   if controls.action_camera_mode then controls.action_camera_mode.choices={'Placed camera','First-person handycam'}end
+   if controls.action_camera_mode then controls.action_camera_mode.choices={'Placed camera','First-person handycam','Follow player - Pivot','Follow player - Pin'}end
    if controls.handycam_intensity then controls.handycam_intensity.disabled=false end
    if controls.handycam_lag_ms then controls.handycam_lag_ms.disabled=false end
   end

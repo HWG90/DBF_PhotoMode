@@ -169,7 +169,7 @@ function M.pages(reset,recenter,catalog,saved_actions)
  director_action('cinema_reposition','Reposition cinema camera','cinema_reposition'),
  director_action('cinema_end','Return to gameplay camera','cinema_end'),
  {id='cinema_status',type='text',label='Place a camera, then begin an action shot'},
- choice('action_camera_mode','Action camera mode',{'Placed camera','First-person handycam'}),
+ choice('action_camera_mode','Action camera mode',{'Placed camera','First-person handycam','Follow player - Pivot','Follow player - Pin'}),
  slider('handycam_intensity','Handycam shake intensity (%)',0,100,1),
  slider('handycam_lag_ms','Handycam movement lag (ms)',0,500,5),
  slider('handycam_forward_cm','POV camera forward (cm)',-30,30,1),
