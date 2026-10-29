@@ -167,6 +167,10 @@ function M.new(sr,log,measure,options)
    local trace=w.cape and cape.trace and now>=w.next_at
    if trace then cape.trace(w.cape,'sample'..(w.samples+1)..'_before_body')end
    local changed=0;local root_changed=false;local changed_indices=now>=w.next_at and{}or nil
+   -- With the animation paused, the game still places the root (bone 1) every frame where
+   -- the moving body got to; writing the captured root back jittered (flicker). The root is
+   -- the game's; the other bones stay held relative to it.
+   if w.machine_paused then w.poses[1]=matrix(w,1)end
    for _,index in ipairs(w.indices)do
     if not equal(matrix(w,index),w.poses[index])then
      local desired=B.from_elements(unpack(w.poses[index]))

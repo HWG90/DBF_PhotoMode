@@ -183,6 +183,16 @@ do
  game_frame();assert(m.probe.tick(true,.015)and m.machine==false and m.mode=='ignore','The first update takeback pauses the animation')
  local modes=m.modes;for i=1,20 do game_frame();assert(m.probe.tick(true,.02+i/100)and m.render(.02+i/100))end
  assert(m.modes==modes and m.machine_calls==1,'A paused animation no longer fights the hold')
+ -- With the animation paused, the game still places the body's root (bone 1) every frame
+ -- where the moving body got to; writing the captured root back jittered (flicker, live).
+ -- The root is the game's; every other bone stays held relative to it.
+ local function root_count()return m.by_node and m.by_node[1]or 0 end
+ local root_writes,held20=root_count(),m.poses[20][10]
+ for i=1,10 do m.poses[1][10]=m.poses[1][10]+.01;local game_root=m.poses[1][10];m.poses[20][10]=held20+3
+  assert(m.probe.tick(true,.3+i/100)and m.render(.3+i/100))
+  assert(m.poses[1][10]==game_root,'The game keeps the root');assert(m.poses[20][10]==held20,'The body stays held')
+ end
+ assert(root_count()==root_writes,'No root writes while the animation is paused')
  assert(m.probe.release('Resume')and m.machine==true and m.mode=='position_and_rotation','Resume restores the animation, then the mode')
  local r=fixture({continuous=true,exclude_cape=true,claim_transfer=true});r.machine=true
  assert(r.probe.prepare(r.subject,0)and r.render(.01));r.mode='position_and_rotation'
