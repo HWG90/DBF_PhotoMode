@@ -552,12 +552,12 @@ function M.new(host,sr,deps,service)
   end
  end
  -- F11 was Handycam's default through 1.3.2, but Steam records with Ctrl+F11. Handycam now
- -- starts unbound, and a saved F11 is cleared (saves hold every value, defaults included).
+ -- starts on Page Down, and a saved F11 becomes Page Down (saves hold every value, defaults included).
  do
   local load=settings.load
   settings.load=function(id)
    local values=load(id)
-   if id=='dbf_freecam'and type(values)=='table'and values.handycam_key==122 then values.handycam_key=0 end
+   if id=='dbf_freecam'and type(values)=='table'and values.handycam_key==122 then values.handycam_key=34 end
    return values
   end
  end
@@ -1203,7 +1203,7 @@ function M.new(host,sr,deps,service)
  local keys=host.key_positions or{}
  local bindings={
   {id='toggle_key',type='keybind',label='Photo mode toggle',default=80},
-  {id='handycam_key',type='keybind',label='Start / end Handycam',default=0,disabled=not handycam},
+  {id='handycam_key',type='keybind',label='Start / end Handycam',default=34,retired=122,disabled=not handycam},
   {id='focus_key',type='keybind',label='Switch camera / menu focus',default=9},
   {id='hide_controls_key',type='keybind',label='Show / hide photo controls',default=72},
   {id='lock_camera_key',type='keybind',label='Lock / unlock camera',default=76},
@@ -1598,7 +1598,7 @@ function M.new(host,sr,deps,service)
  if deps.hosted_bindings then
   local rows={}
   for _,c in ipairs(bindings)do
-   if c.type=='keybind'and controls[c.id]and not controls[c.id].disabled then rows[#rows+1]={id=c.id,label=c.label,default=handle.get(c.id)}end
+   if c.type=='keybind'and controls[c.id]and not controls[c.id].disabled then rows[#rows+1]={id=c.id,label=c.label,default=handle.get(c.id),retired=c.retired}end
   end
   hosted=deps.hosted_bindings.factory.new(deps.hosted_bindings.api,rows,deps.input.key_names,host.log)
   for _,row in ipairs(rows)do if hosted.hosted(row.id)then

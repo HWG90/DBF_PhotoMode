@@ -6,12 +6,13 @@ assert(B.spec(80,names).button=='p'and B.spec(80,names).trigger=='hold'and B.spe
 assert(B.spec(4,names).device=='mouse'and B.spec(4,names).button=='middle'and B.spec(0,names).button=='','Mouse buttons and no key')
 -- Boot Mod Loader's look-alike, reduced: held state per id, a guard, and the window's value.
 local function helper()
- local api={window='HD2 Mod Setting GUI',registered={},order={},down={},values={},blocked=false,refuse={}}
+ local api={window='HD2 Mod Setting GUI',registered={},order={},down={},values={},blocked=false,refuse={},saved={}}
  function api.register_binding(id,label,slot,options)
   if api.refuse[label]then return false,'binding already registered differently'end
   assert(slot==nil and options.category=='War Journalist'and options.default.trigger=='hold')
   api.registered[id]={label=label,default=options.default};api.order[#api.order+1]=id
-  api.values[id]=options.default.button;return true
+  -- The loader's settings file keeps every key, defaults included, across releases.
+  api.values[id]=api.saved[id]or options.default.button;return true
  end
  function api.is_down(id)return api.registered[id]~=nil and api.down[id]==true and not api.blocked end
  function api.binding(id)local v=api.values[id];if v==''then return{}end;return{{api.registered[id].default.device,v,modifiers={},trigger='hold'}}end
@@ -32,6 +33,21 @@ do
  -- Each hosted binding maps back to its virtual key, for an isolated keyboard.
  api.values['war_journalist.toggle_key']='o';assert(hosted.code('toggle_key')==79 and hosted.code('up_key')==16 and hosted.code('roll_left_key')==nil)
  api.values['war_journalist.toggle_key']='';assert(hosted.code('toggle_key')==nil,'No key, no code')
+end
+do
+ -- A retired default the loader still holds (F11 from 1.3.2) moves to the new default once;
+ -- a key the player chose, or unbound, stays.
+ local function case(saved)
+  local api=helper();api.saved['war_journalist.handycam_key']=saved;local lines={}
+  local hosted=B.new(api,{{id='handycam_key',label='Start / end Handycam',default=34,retired=122}},names,function(m)lines[#lines+1]=m end)
+  return api.values['war_journalist.handycam_key'],hosted,lines
+ end
+ local value,hosted,lines=case('f11')
+ assert(value=='page down'and hosted.code('handycam_key')==34,'A saved F11 becomes Page Down')
+ assert(#lines==1 and lines[1]:find('F11',1,true)and lines[1]:find('PAGE DOWN',1,true),'The move is logged once')
+ value,_,lines=case('f9');assert(value=='f9'and #lines==0,'A chosen key is kept')
+ value,_,lines=case('');assert(value==''and #lines==0,'An unbound key stays unbound')
+ value,_,lines=case(nil);assert(value=='page down'and #lines==0,'A new install gets the default')
 end
 -- The runtime with a hosted helper: the minimal harness of steam_runtime_tests.
 local function runtime_case(api,saved,virtual_cursor,extra,log,custom_service,key_positions)

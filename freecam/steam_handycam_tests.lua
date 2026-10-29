@@ -115,18 +115,23 @@ local w=fixture(false,setup);w.open();w.menu.handle.set('action_camera_mode',2);
 assert(w.runtime.reposition_shot());w.session={};w.step(1.1,1)
 assert(not w.runtime.active and not w.hidden and not w.lease,'Session retirement is checked even in settings')
 w.finish()
--- Handycam starts unbound: Steam records with Ctrl+F11, F11's old default. A saved F11
--- is cleared at load. A bound key starts from gameplay, toggles once per press and
+-- Handycam starts on Page Down: Steam records with Ctrl+F11, F11's old default. A saved F11
+-- becomes Page Down at load. A bound key starts from gameplay, toggles once per press and
 -- explicitly ends even while settings are open; editing and foreground guards consume held edges.
 do
  local k=fixture(false,setup)
  local function press(key)k.pressed[key]=true;k.step(.016,1);k.pressed[key]=false;k.step(.016,1)end
- assert(k.runtime.handle.get('handycam_key')==0,'Handycam has no default key')
+ assert(k.runtime.handle.get('handycam_key')==34,'Handycam defaults to Page Down')
  press('f11');assert(not k.runtime.active and not k.lease,'F11 is not a Handycam key by default')
+ press('page down');assert(k.runtime.active and k.runtime.mode=='shot'and not k.lease,'Page Down starts Handycam')
+ press('page down');assert(not k.runtime.active and not k.lease,'Page Down ends Handycam')
  k.finish()
  local saved=fixture(false,function(f,deps)setup(f,deps);f.saved.handycam_key=122 end)
- assert(saved.runtime.handle.get('handycam_key')==0,'A saved F11 from 1.3.2 is cleared at load')
+ assert(saved.runtime.handle.get('handycam_key')==34,'A saved F11 from 1.3.2 becomes Page Down at load')
  saved.finish()
+ local unbound=fixture(false,function(f,deps)setup(f,deps);f.saved.handycam_key=0 end)
+ assert(unbound.runtime.handle.get('handycam_key')==0,'A key the player unbound stays unbound')
+ unbound.finish()
  local kept=fixture(false,function(f,deps)setup(f,deps);f.saved.handycam_key=120 end)
  assert(kept.runtime.handle.get('handycam_key')==120,'Other saved Handycam keys are kept')
  kept.finish()

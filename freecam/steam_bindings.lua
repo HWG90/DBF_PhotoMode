@@ -49,6 +49,15 @@ function M.new(api,rows,names,log)
   if type(first)~='table'or type(first[2])~='string'or first[2]==''then return'NONE'end
   return first[1]=='mouse'and mouse_labels[first[2]]or string.upper(first[2])
  end
+ -- rows[i].retired: an old default. The loader's settings file keeps every key, defaults
+ -- included, so a retired default it still holds moves to the row's default once; a key the
+ -- player chose, or unbound, stays.
+ for _,row in ipairs(rows)do
+  if row.retired and row.retired~=row.default and self.code(row.id)==row.retired then
+   local old=self.label(row.id);local ok,why=self.set(row.id,row.default)
+   if log then log('Key "'..row.label..'" moved from its old default '..old..' to '..(ok and self.label(row.id)or'nothing: '..tostring(why)))end
+  end
+ end
  return self
 end
 return M
