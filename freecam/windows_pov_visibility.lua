@@ -73,13 +73,19 @@ function M.short(name)
 end
 function M.classify(has)
  if has.cape1 then return'cape'end
- if has.l_hand or has.r_hand or has.hips then return'body'end
+ -- Some armours author their chest shells on the whole rig: both arms, the legs and the head
+ -- (live 2026-10-29: three such pieces and no chest-only piece, so Hide Torso hid nothing).
+ if has.chest and has.l_hand and has.r_hand and has.hips then return'torso'end
+ -- One arm, or the hips without the chest: arm, leg and waist pieces. A chest piece that
+ -- reaches the hips is still a torso shell.
+ if has.l_hand or has.r_hand or has.hips and not has.chest then return'body'end
  if has.head then return'helmet'end
  if has.chest or has.spine1 then return'torso'end
 end
 function M.association(sr,log,clock)
  local U,W,B=sr.Unit,sr.World,sr.Matrix4x4
  clock=clock or os.clock
+ local described={}
  local function discover(frame,group,pose)
   assert(type(W.units)=='function','POV hiding is not available for this outfit')
   local started=clock()
@@ -104,7 +110,16 @@ function M.association(sr,log,clock)
      if matched>0 and matched==named then
       bound=bound+1
       local flags={};for _,name in ipairs(M.probes)do if has[name]then flags[#flags+1]=name end end
-      seen[#seen+1]=M.short(U.resource_name(unit))..'['..table.concat(flags,'+')..']'
+      local short=M.short(U.resource_name(unit));seen[#seen+1]=short..'['..table.concat(flags,'+')..']'
+      -- Every skeleton bone the piece carries, once per resource: evidence for classifying
+      -- pieces the probes cannot tell apart (an armour collar and a helmet both carry the head).
+      if log and type(frame.rig_nodes)=='table'and not described[short]then
+       described[short]=true;local carried={}
+       for _,node in ipairs(frame.rig_nodes)do
+        if type(node.name)=='string'and U.has_node(unit,node.name)then carried[#carried+1]=node.name end
+       end
+       log('POV outfit piece: '..short..' meshes='..meshes..' class='..tostring(M.classify(has))..' bones='..table.concat(carried,'+'))
+      end
       if M.classify(has)==group then
        assert(#result<32,'POV outfit discovery exceeds bound')
        local indices={};for index=1,meshes do indices[index]=index end
@@ -237,7 +252,7 @@ end
 function M.skeleton_scan(sr,frame,parents,clock,log,weapons_only)
  local U,W,B=sr.Unit,sr.World,sr.Matrix4x4
  local state={world=frame.world,root=frame.root_handle,identity=frame.identity,rig=frame.rig_nodes,
-  parents=parents or{},rows={},new_rows={},seen={},max_ms=0,round=1};local self={}
+  parents=parents or{},rows={},new_rows={},seen={},missed={},max_ms=0,round=1};local self={}
  clock=clock or os.clock
  local function pose(unit,node)
   local a={B.to_elements(U.world_pose(unit,node))};assert(#a==12,'Full hide pose shape changed')
@@ -299,7 +314,7 @@ function M.skeleton_scan(sr,frame,parents,clock,log,weapons_only)
      -- A holster can apply an authored offset to the weapon root. Recover
      -- its parent frame from local * parent = world before comparing every
      -- selected bone. Do not move the unit or assume it still uses the hand.
-     local bind_match=false
+     local bind_match,derived_pose=false,nil
      if not root_match and type(U.local_pose)=='function'and type(B.inverse)=='function'and type(B.multiply)=='function'and type(B.from_elements)=='function'then
       local ok,derived=pcall(function()
        local a={B.to_elements(U.local_pose(unit,1))};assert(#a==12,'Weapon local pose shape changed')
@@ -311,7 +326,7 @@ function M.skeleton_scan(sr,frame,parents,clock,log,weapons_only)
        for _,v in ipairs(result)do assert(type(v)=='number'and v==v and math.abs(v)<1e8,'Weapon parent pose invalid')end
        return result
       end)
-      if ok then for _,a in ipairs(anchors)do if same(derived,a.pose)then bind_match=true;break end end end
+      if ok then derived_pose=derived;for _,a in ipairs(anchors)do if same(derived,a.pose)then bind_match=true;break end end end
      end
      if (not weapons_only or names<2)and(root_match or bind_match or matches>=2 and matches==names)then
       assert(#s.rows<48,'Full hide additional-unit budget exceeded')
@@ -319,6 +334,25 @@ function M.skeleton_scan(sr,frame,parents,clock,log,weapons_only)
       local row={unit=unit,world=s.world,resource=tostring(U.resource_name(unit)),indices=indices,parent_candidate=(root_match or bind_match)and names<2}
       s.rows[#s.rows+1]=row;s.new_rows[#s.new_rows+1]=row;s.seen[unit]=true;s.added=true
       if log then log('Full hide skeleton match: resource='..row.resource..' meshes='..count..' bones='..matches..' root='..tostring(root_match)..' local_bind='..tostring(bind_match))end
+     elseif weapons_only and log and names<2 then
+      -- Evidence for weapons left visible: a meshed unit within 3 m that no anchor matched,
+      -- with how far its root (and holster-derived parent) is from the closest anchor.
+      local d2=(root[10]-body[10])^2+(root[11]-body[11])^2+(root[12]-body[12])^2
+      local resource=M.short(U.resource_name(unit))
+      if d2<9 and not s.missed[resource]then
+       s.missed[resource]=true
+       local function nearest(p)
+        if not p then return'none'end
+        local best,label=math.huge,'?'
+        for _,a in ipairs(anchors)do
+         local e=0;for i=1,12 do e=math.max(e,math.abs(p[i]-a.pose[i]))end
+         if e<best then best,label=e,a.name or'attachment'end
+        end
+        return string.format('%.4f@%s',best,label)
+       end
+       log(string.format('Weapon scan near miss: resource=%s meshes=%d graph=%s distance_m=%.2f root=%s bind=%s bones=%d',resource,count,
+        tostring(U.num_scene_graph_items(unit)),math.sqrt(d2),nearest(root),nearest(derived_pose),names))
+      end
      end
     end
    end

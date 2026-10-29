@@ -348,7 +348,9 @@ do
  local function unit(name,nodes,meshes,offset)return{name=name,nodes=nodes,meshes=meshes,offset=offset or 0}end
  local all={unit('helmet',{head=1},5),unit('collar',{head=1,chest=1,spine1=1},6),unit('chest',{chest=1,spine1=1},5),
   unit('arm',{chest=1,spine1=1,l_hand=1},5),unit('legs',{hips=1},5),unit('cape',{head=1,chest=1,cape1=1},4),
-  unit('other_helmet',{head=1},5,7),unit('prop',{},3),unit('empty',{head=1},0)}
+  unit('other_helmet',{head=1},5,7),unit('prop',{},3),unit('empty',{head=1},0),
+  -- Live 2026-10-29: a chest shell authored on the whole rig, one reaching the hips, and a waist piece.
+  unit('shell',{head=1,chest=1,spine1=1,hips=1,l_hand=1,r_hand=1},5),unit('vest',{chest=1,spine1=1,hips=1},5),unit('waist',{spine1=1,hips=1},5)}
  local logged={}
  local sr={IdString64={from_hex=function(s)return s end},Matrix4x4={to_elements=function(m)return unpack(m)end},
   World={units_by_resource=function()return{}end,units=function(w)assert(w==world);return all end},
@@ -360,8 +362,8 @@ do
  local frame={explicit_subject=true,identity='other outfit',root_handle=root,world=world}
  local function names(group)local r={};for _,row in ipairs(rows(frame,group))do r[#r+1]=row.resource..':'..#row.indices end;table.sort(r);return table.concat(r,',')end
  local helmet,torso,cape,body=names('helmet'),names('torso'),names('cape'),names('body')
- assert(helmet=='collar:6,helmet:5',helmet);assert(torso=='chest:5',torso);assert(cape=='cape:4',cape);assert(body=='arm:5,legs:5',body)
- assert(#logged==4 and logged[1]:find('POV outfit discovery: helmet=2 of 6 bound units',1,true)and logged[1]:find('collar[head+chest+spine1]',1,true),#logged..' '..table.concat(logged,' | '))
+ assert(helmet=='collar:6,helmet:5',helmet);assert(torso=='chest:5,shell:5,vest:5',torso);assert(cape=='cape:4',cape);assert(body=='arm:5,legs:5,waist:5',body)
+ assert(#logged==4 and logged[1]:find('POV outfit discovery: helmet=2 of 9 bound units',1,true)and logged[1]:find('collar[head+chest+spine1]',1,true),#logged..' '..table.concat(logged,' | '))
  assert(not rows(frame,'helmet').unsettled,'A bound outfit is settled')
  -- Caught mid-update (no unit on the skeleton yet): flagged for a retry, not an empty hide.
  for _,u in ipairs(all)do u.offset=u.offset+3 end
@@ -369,5 +371,7 @@ do
  for _,u in ipairs(all)do u.offset=u.offset-3 end
  assert(M_short==nil and P.short('[IdString64 "#ID[a5ba6eec2f15cf2d]" 0xa5ba]')=='a5ba6eec2f15cf2d')
  assert(P.classify({head=true,chest=true,cape1=true})=='cape'and P.classify({chest=true,r_hand=true})=='body'and P.classify({})==nil)
+ assert(P.classify({head=true,chest=true,spine1=true,hips=true,l_hand=true,r_hand=true})=='torso','A whole-rig chest shell is torso')
+ assert(P.classify({chest=true,spine1=true,hips=true})=='torso'and P.classify({spine1=true,hips=true})=='body','Chest reaching the hips is torso; a waist is body')
  print('Other outfits: skeleton-bound units grouped into helmet, torso, cape and body; foreign and mesh-less units refused passed')
 end
