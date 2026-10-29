@@ -146,5 +146,17 @@ do
  for i=1,100 do assert(not h.render(i))end
  assert(h.reads==reads,'Failed transfer cleanup remains idle until explicit retry')
  h.restore_fail=false;assert(h.probe.release('Explicit retry',true)and h.mode=='position_and_rotation')
+ -- Frozen mid-stride (live, 2026-10-29): the game's own animation puts the body's original
+ -- mode back. Freeze takes it back and rewrites the held pose until Resume; any other mode
+ -- is still a foreign owner (preserved above).
+ local k=fixture({continuous=true,exclude_cape=true,claim_transfer=true})
+ assert(k.probe.prepare(k.subject,0));for i=1,107 do k.poses[i][10]=i+100 end
+ assert(k.render(.01)and k.mode=='ignore'and k.modes==1);local held=k.poses[20][10]
+ k.mode='position_and_rotation';k.poses[20][10]=held+7
+ assert(k.render(.02),'The game resetting the original mode does not stop Freeze')
+ assert(k.mode=='ignore'and k.modes==2 and k.probe.active(),'Freeze takes the mode back')
+ assert(k.poses[20][10]==held,'The held pose is written back')
+ for i=1,5 do k.mode='position_and_rotation';assert(k.render(.02+i/100))end
+ assert(k.probe.release('Resume')and k.mode=='position_and_rotation','Resume still restores the original mode')
 end
 print('Continuous transfer lease: single ignore acquisition, body-only replay, idle/foreign ownership, partial failure and resume restoration passed')

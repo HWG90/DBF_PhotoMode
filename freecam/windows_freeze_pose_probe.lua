@@ -126,7 +126,15 @@ function M.new(sr,log,measure,options)
     assert(mode==w.mode,'Pose trial bone mode changed before acquisition')
     w.issued=true -- A setter may mutate then throw: retain cleanup responsibility.
     assert(U.set_animation_bone_mode(w.unit,'ignore')~=false,'Pose trial bone mode refused')
-   else assert(mode=='ignore','Pose trial bone transfer ownership lost')end
+   elseif mode~='ignore'then
+    -- A body frozen mid-stride: the game's own animation puts its original mode back.
+    -- Freeze holds this body until Resume, so take it back; any other mode is a foreign
+    -- owner (ragdoll and the like) and is left alone.
+    assert(mode==w.mode,'Pose trial bone transfer ownership lost to '..tostring(mode))
+    assert(U.set_animation_bone_mode(w.unit,'ignore')~=false,'Pose trial bone mode refused')
+    if not w.reclaims then emit('bone mode taken back from the game\'s own animation (body frozen while moving)')end
+    w.reclaims=(w.reclaims or 0)+1
+   end
    local expected_mode=claim_transfer and'ignore'or w.mode
    assert(U.animation_bone_mode(w.unit)==expected_mode,'Pose trial bone transfer unconfirmed')
    local trace=w.cape and cape.trace and now>=w.next_at
@@ -145,11 +153,21 @@ function M.new(sr,log,measure,options)
    if w.cape and(changed>0 or now>=w.next_at)then cape.apply(w.cape,frame)end
    assert(valid(w)and U.animation_bone_mode(w.unit)==expected_mode,'Pose trial ownership changed during replay')
    if now>=w.next_at then
-    local mismatches=0
-    for _,index in ipairs(w.indices)do if not equal(matrix(w,index),w.poses[index])then mismatches=mismatches+1 end end
+    local mismatches,detail=0,{}
+    for _,index in ipairs(w.indices)do
+     local now_pose,held=matrix(w,index),w.poses[index]
+     if not equal(now_pose,held)then
+      mismatches=mismatches+1
+      -- Which bone, and by how much: largest element difference and translation shift.
+      local worst,shift=0,0
+      for i=1,12 do worst=math.max(worst,math.abs(now_pose[i]-held[i]))end
+      for i=10,12 do shift=shift+(now_pose[i]-held[i])^2 end
+      if #detail<8 then detail[#detail+1]=string.format('%d:%.3g/%.3gm',index,worst,math.sqrt(shift))end
+     end
+    end
     w.samples=w.samples+1;w.next_at=w.samples==1 and now+.5 or w.samples==2 and w.started+2 or w.samples==3 and w.started+4 or math.huge
     emit(string.format('sample=%d changed_nodes=%d root_changed=%s mismatches=%d indices=%s; cape_bones=%s; cape_placement_writes=%d',w.samples,changed,tostring(root_changed),mismatches,table.concat(changed_indices,','),exclude_cape and'excluded'or'included',w.cape and w.cape.writes or 0))
-    assert(mismatches==0,'Pose trial readback mismatch')
+    assert(mismatches==0,'Pose trial readback mismatch: '..table.concat(detail,' '))
    end
    w.renders=w.renders+1;w.max_ms=math.max(w.max_ms,(clock()-began)*1000)
    assert(w.max_ms<=8,'Pose replay exceeded eight millisecond budget')
