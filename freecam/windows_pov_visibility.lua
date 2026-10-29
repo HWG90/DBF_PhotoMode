@@ -72,29 +72,29 @@ function M.short(name)
  local text=tostring(name);return text:match('#ID%[(%x+)%]')or text
 end
 -- Bones a piece carries do not say where its geometry is. Live 2026-10-29: a helmet and two
--- torso shells carried the same head, neck and shoulder bones. Their LOD meshes' bounds, in the
--- body root's frame, did not overlap: helmet centred 1.74 m up (+-0.14), shells 1.28 m (0.84 to
--- 1.72). Measured where the bones are ambiguous: a piece with the head, or one on the whole rig.
+-- torso shells carried the same head, neck and shoulder bones. Their LOD meshes' bounds did not
+-- overlap: helmet centred 1.74 m up (+-0.14), shells 1.28 m (0.84 to 1.72). Measured where the
+-- bones are ambiguous: a piece with the head, or one on the whole rig.
 local head_up=1.58 -- Above: a helmet. Below: a torso piece reaching the neck.
 local chest_up=1.05 -- A whole-rig piece centred below this is a whole suit (kept with the body).
 local function whole(has)return has.chest and has.l_hand and has.r_hand and has.hips end
 function M.ambiguous(has)return not has.cape1 and(whole(has)or has.head and not(has.l_hand or has.r_hand))end
--- The piece's geometry centre in the body root's frame (right, forward, up), from the bounds most
--- of its meshes share (its LODs); a proxy mesh with other bounds is outvoted. nil if unreadable.
-function M.geometry(sr,unit,meshes,root)
- local H,V,B=sr.Mesh,sr.Vector3,sr.Matrix4x4
- if not(H and V and type(H.bounding_volume_components)=='function'and type(H.world_pose)=='function')then return nil end
+-- The piece's geometry centre (right, forward, up from its root), from the stored bounds most of
+-- its meshes share (its LODs); a proxy mesh with other bounds is outvoted. nil if unreadable.
+-- The bounds are read as stored, root-relative: a mesh's world pose is not applied. Live, the
+-- same meshes read the same heights as stored (chest marker 1.35, torso LODs 1.28) in every
+-- armour, while some meshes' world poses sat 0.93 m below or 1.35 m above the root and moved
+-- them to 0.35 or 2.70.
+function M.geometry(sr,unit,meshes)
+ local H,V=sr.Mesh,sr.Vector3
+ if not(H and V and type(H.bounding_volume_components)=='function')then return nil end
  local ok,result=pcall(function()
   local found={}
   for i=1,math.min(meshes,8)do
-   local m=sr.Unit.mesh(unit,i);local lo,hi=H.bounding_volume_components(m)
-   local l={V.x(lo),V.y(lo),V.z(lo)};local h={V.x(hi),V.y(hi),V.z(hi)}
-   local p={B.to_elements(H.world_pose(m))};assert(#p==12,'Mesh pose shape changed')
-   local c={(l[1]+h[1])/2,(l[2]+h[2])/2,(l[3]+h[3])/2};local w={}
-   for k=1,3 do w[k]=p[9+k]+c[1]*p[k]+c[2]*p[3+k]+c[3]*p[6+k]-root[9+k]end
-   local b={};for a=0,2 do b[a+1]=w[1]*root[a*3+1]+w[2]*root[a*3+2]+w[3]*root[a*3+3]end
-   for _,v in ipairs(b)do assert(v==v and math.abs(v)<100,'Mesh bounds invalid')end
-   found[#found+1]=b
+   local lo,hi=H.bounding_volume_components(sr.Unit.mesh(unit,i))
+   local c={(V.x(lo)+V.x(hi))/2,(V.y(lo)+V.y(hi))/2,(V.z(lo)+V.z(hi))/2}
+   for _,v in ipairs(c)do assert(v==v and math.abs(v)<100,'Mesh bounds invalid')end
+   found[#found+1]=c
   end
   local best,votes
   for _,a in ipairs(found)do
@@ -144,7 +144,7 @@ function M.association(sr,log,clock)
      if matched>0 and matched==named then
       bound=bound+1
       local flags={};for _,name in ipairs(M.probes)do if has[name]then flags[#flags+1]=name end end
-      local geometry=M.ambiguous(has)and M.geometry(sr,unit,meshes,pose(frame.root_handle,1))or nil
+      local geometry=M.ambiguous(has)and M.geometry(sr,unit,meshes)or nil
       local class=M.classify(has,geometry)
       local short=M.short(U.resource_name(unit))
       seen[#seen+1]=short..'['..table.concat(flags,'+')..(geometry and string.format('@%.2f',geometry.up)or'')..']'
@@ -156,19 +156,23 @@ function M.association(sr,log,clock)
         if type(node.name)=='string'and U.has_node(unit,node.name)then carried[#carried+1]=node.name end
        end
        log('POV outfit piece: '..short..' meshes='..meshes..' class='..tostring(class)..' bones='..table.concat(carried,'+'))
-       -- Where each mesh's bounds sit in the body's frame (right, forward, up from the root), and
-       -- their half sizes: evidence for a geometric torso/helmet rule. Read-only.
+       -- Per mesh: its stored bounds centre (s, what the classifier reads), half sizes (h), and
+       -- where its world pose sits from the body root in the root's frame (o), plus the piece
+       -- root's own offset. Evidence for the geometric rule. Read-only.
        local ok,why=pcall(function()
         local H,V=sr.Mesh,sr.Vector3;local r=pose(frame.root_handle,1);local parts={}
+        local function rel(t)
+         local d={t[1]-r[10],t[2]-r[11],t[3]-r[12]};local out={}
+         for a=0,2 do out[a+1]=d[1]*r[a*3+1]+d[2]*r[a*3+2]+d[3]*r[a*3+3]end
+         return string.format('%.2f,%.2f,%.2f',out[1],out[2],out[3])
+        end
+        local u=pose(unit,1);parts[1]='root='..rel({u[10],u[11],u[12]})
         for i=1,math.min(meshes,8)do
          local m=U.mesh(unit,i);local lo,hi=H.bounding_volume_components(m)
          local l={V.x(lo),V.y(lo),V.z(lo)};local h={V.x(hi),V.y(hi),V.z(hi)}
          local p={B.to_elements(H.world_pose(m))};assert(#p==12,'Mesh pose shape changed')
-         local c={(l[1]+h[1])/2,(l[2]+h[2])/2,(l[3]+h[3])/2};local w={}
-         for k=1,3 do w[k]=p[9+k]+c[1]*p[k]+c[2]*p[3+k]+c[3]*p[6+k]-r[9+k]end
-         local b={};for a=0,2 do b[a+1]=w[1]*r[a*3+1]+w[2]*r[a*3+2]+w[3]*r[a*3+3]end
-         parts[#parts+1]=string.format('m%d=%s c=%.2f,%.2f,%.2f h=%.2f,%.2f,%.2f',i,tostring(H.name(m)),b[1],b[2],b[3],
-          (h[1]-l[1])/2,(h[2]-l[2])/2,(h[3]-l[3])/2)
+         parts[#parts+1]=string.format('m%d=%s s=%.2f,%.2f,%.2f h=%.2f,%.2f,%.2f o=%s',i,tostring(H.name(m)),
+          (l[1]+h[1])/2,(l[2]+h[2])/2,(l[3]+h[3])/2,(h[1]-l[1])/2,(h[2]-l[2])/2,(h[3]-l[3])/2,rel({p[10],p[11],p[12]}))
         end
         return table.concat(parts,' ')
        end)

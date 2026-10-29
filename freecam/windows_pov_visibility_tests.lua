@@ -347,12 +347,14 @@ do
  local root={nodes={head=1,chest=1,spine1=1,hips=1,l_hand=1,r_hand=1,cape1=1}}
  -- up: where the piece's LOD meshes sit (bounds centre, metres above the root); proxy: a first mesh
  -- with other bounds, as live pieces have.
- local function unit(name,nodes,meshes,offset,up,proxy)return{name=name,nodes=nodes,meshes=meshes,offset=offset or 0,up=up or 1,proxy=proxy}end
- local all={unit('helmet',{head=1},5,0,1.74),unit('collar',{head=1,chest=1,spine1=1},6,0,1.66),unit('chest',{chest=1,spine1=1},5),
+ -- origin: where the engine says the meshes sit; live, some armours' meshes reported 0.93 m below
+ -- the root while their stored bounds matched every other armour's.
+ local function unit(name,nodes,meshes,offset,up,proxy,origin)return{name=name,nodes=nodes,meshes=meshes,offset=offset or 0,up=up or 1,proxy=proxy,origin=origin or 0}end
+ local all={unit('helmet',{head=1},5,0,1.74),unit('collar',{head=1,chest=1,spine1=1},6,0,1.66,nil,-.93),unit('chest',{chest=1,spine1=1},5),
   unit('arm',{chest=1,spine1=1,l_hand=1},5),unit('legs',{hips=1},5),unit('cape',{head=1,chest=1,cape1=1},4),
   unit('other_helmet',{head=1},5,7),unit('prop',{},3),unit('empty',{head=1},0),
   -- Live 2026-10-29: a chest shell authored on the whole rig, one reaching the hips, and a waist piece.
-  unit('shell',{head=1,chest=1,spine1=1,hips=1,l_hand=1,r_hand=1},5,0,1.30),unit('vest',{chest=1,spine1=1,hips=1},5),unit('waist',{spine1=1,hips=1},5),
+  unit('shell',{head=1,chest=1,spine1=1,hips=1,l_hand=1,r_hand=1},5,0,1.30,nil,-.93),unit('vest',{chest=1,spine1=1,hips=1},5),unit('waist',{spine1=1,hips=1},5),
   -- Live: a torso shell with the helmet's bones (its geometry 1.28 m up, a proxy mesh at 2.70), and
   -- a whole-rig suit centred at the hips.
   unit('neck_shell',{head=1,chest=1,spine1=1},5,0,1.28,2.70),unit('suit',{head=1,chest=1,spine1=1,hips=1,l_hand=1,r_hand=1},5,0,.95)}
@@ -364,7 +366,7 @@ do
    has_node=function(u,n)if u==root then return root.nodes[n]~=nil end;return u.nodes[n]~=nil end,
    world_pose=function(u,n)return{1,0,0,0,1,0,0,0,1,u==root and 0 or u.offset,type(n)=='number'and 0 or #n,0}end,
    mesh=function(u,i)return{u=u,i=i}end},
-  Mesh={world_pose=function()return{1,0,0,0,1,0,0,0,1,0,0,0}end,
+  Mesh={world_pose=function(m)return{1,0,0,0,1,0,0,0,1,0,0,m.u.origin}end,
    bounding_volume_components=function(m)local up=m.i==1 and m.u.proxy or m.u.up;return{-.2,-.1,up-.3},{.2,.1,up+.3},.4 end},
   Vector3={x=function(v)return v[1]end,y=function(v)return v[2]end,z=function(v)return v[3]end}}
  local rows=P.association(sr,function(m)logged[#logged+1]=m end,function()return 0 end)
