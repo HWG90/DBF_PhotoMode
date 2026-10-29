@@ -41,10 +41,13 @@ def atomic_write(path, data):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--directory', type=Path, default=Path(os.environ['APPDATA']) / 'Arrowhead/Helldivers2')
+    # The game's settings folder; on Linux pass the Proton prefix's copy (no APPDATA there).
+    parser.add_argument('--directory', type=Path)
     parser.add_argument('--enable', action='store_true', help='Arm development mode for the next game launch; does not request a reload.')
     parser.add_argument('--output', type=Path, help='Build a payload offline only; do not write a live request.')
     args = parser.parse_args()
+    if args.directory is None and not args.output:
+        args.directory = Path(os.environ['APPDATA']) / 'Arrowhead/Helldivers2'
     if args.enable:
         assert not args.output
         atomic_write(args.directory / 'wj-dev-reload.enabled', b'wjl-dev-reload-v1\n')
