@@ -407,8 +407,8 @@ local function factory(sr,policy,preview)
     acknowledged_mode(r,r.mode.attempt.before,actual_mode)
    end
    if r.refresh_expected then
-    check(actual_mode==r.refresh_expected.mode,'Failed scene refresh has unknown mode outcome')
-    for i,value in pairs(r.refresh_expected.nodes)do check(equal(nodes[i],value),'Failed scene refresh has unknown node outcome')end
+    check(actual_mode==r.refresh_expected.mode,'Failed scene refresh has unknown mode outcome: '..actual_mode..', expected '..r.refresh_expected.mode)
+    for i,value in pairs(r.refresh_expected.nodes)do check(equal(nodes[i],value),'Failed scene refresh has unknown node outcome: node '..i..', mode '..actual_mode)end
     r.refresh_expected=nil
    end
    r.captured=true
@@ -504,7 +504,7 @@ local function factory(sr,policy,preview)
    end
    for index,entry in pairs(r.nodes)do
     topology(r,index);local actual=read_node(r.unit,index)
-    if entry.attempt then check(known(entry,actual),'Node cleanup remains unknown');clear_attempt(entry);entry.value=copy(actual)end
+    if entry.attempt then check(known(entry,actual),'Node cleanup remains unknown: node '..index);clear_attempt(entry);entry.value=copy(actual)end
     if equal(actual,entry.base)or not equal(actual,entry.value)then r.nodes[index]=nil end
     expected_nodes[index]=copy(actual)
    end
@@ -520,7 +520,7 @@ local function factory(sr,policy,preview)
    local called=pack(pcall(W.update_unit,r.world,r.unit));status.last_commit=receipt(called)
    check(called[1]and called[2]~=false,called[1]and(called[3]or'Subject scene refresh refused')or called[2])
    current(r,nil,actual_mode)
-   for index,expected in pairs(expected_nodes)do topology(r,index);check(equal(read_node(r.unit,index),expected),'Subject changed during scene refresh')end
+   for index,expected in pairs(expected_nodes)do topology(r,index);check(equal(read_node(r.unit,index),expected),'Subject changed during scene refresh: node '..index..', mode '..actual_mode)end
    if r.cape then
     if next(r.nodes)or r.mode then apply_cape(r)else restore_cape(r)end
    elseif not next(r.nodes)and not r.mode then r.cape_capture_done=nil end

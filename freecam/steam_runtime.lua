@@ -667,11 +667,18 @@ function M.new(host,sr,deps,service)
   if listed and type(choices)=='table'and #choices<=4 then subject_choices=choices
   else subject_fault='Subject choices are unavailable'end
   sync_subject()
+  local detail=ok~=true and subject_status and subject_status.detail
+  detail=type(detail)=='string'and detail:gsub('%c',' '):sub(1,512)or nil
   if method=='refresh' then
-   local detail=ok~=true and subject_status and subject_status.detail
-   detail=type(detail)=='string'and detail:gsub('%c',' '):sub(1,512)or nil
    if detail and detail~=self.subject_discovery_detail then pcall(host.log,'Subject discovery detail: '..detail)end
    self.subject_discovery_detail=detail
+  else
+   -- Reset, recover and pose refusals share generic messages: name each refused
+   -- check once until a subject action succeeds (Stop alternates reset/recover).
+   local logged=self.subject_failure_details or{};self.subject_failure_details=logged
+   local line=detail and'Subject '..method..' detail: '..detail
+   if line and not logged[line]then logged[line]=true;pcall(host.log,line)end
+   if ok==true then self.subject_failure_details=nil end
   end
   if ok~=true then notice(why or subject_message)end
   return ok==true,why or subject_message
@@ -753,7 +760,7 @@ function M.new(host,sr,deps,service)
     if self.tracking_backend and self.tracking_backend.release then self.tracking_backend.release()end
     subject=nil;subject_status=nil;subject_fault=nil;subject_opt_in=false;subject_choices={}
     subject_pending=false;subject_holds=false;subject_cleanup_attempted=false;subject_close_started=false
-    self.subject_discovery_detail=nil
+    self.subject_discovery_detail=nil;self.subject_failure_details=nil
     pcall(host.log,'Subject session changed: previous leases released; requalifying on explicit action')
    end
   end

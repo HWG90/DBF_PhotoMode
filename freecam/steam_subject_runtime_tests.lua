@@ -94,6 +94,7 @@ local function configure(f,deps,sr)
   end
   adapter.commit=function(t)
    count();f.commits=f.commits+1;assert(valid(t));event('commit')
+   if f.commit_error then return false,f.commit_error end
    if f.foreign_commit then f.foreign_commit=false;sr.Application.set_time_step_policy('external_multiplier',.6)end
    return true
   end
@@ -147,6 +148,18 @@ do
  f.discovery_error=nil;assert(f.action('subject_refresh'))
  f.discovery_error='Fixture inventory changed\nreason';assert(not f.action('subject_refresh'))
  assert(count()==2,'A recovered discovery allows a subsequent failure to be diagnosed')
+end
+do
+ -- Stop and Recover share generic pending messages; the log must name the refused check.
+ local messages={}
+ local f=fixture(function(f)f.log=function(s)messages[#messages+1]=s end end)
+ f.enable();f.select();f.pose()
+ f.commit_error='Subject changed during scene refresh\nnode 23'
+ for i=1,3 do assert(not f.action('subject_pose_stop'))end
+ local function count(line)local n=0;for _,s in ipairs(messages)do if s==line then n=n+1 end end;return n end
+ assert(count('Subject reset detail: Subject changed during scene refresh node 23')==1,'A refused Stop names its check once')
+ assert(count('Subject recover detail: Subject changed during scene refresh node 23')==1,'The automatic recovery names its check once')
+ f.commit_error=nil;assert(f.action('subject_pose_stop'));f.restored()
 end
 local function index_of(events,value)
  for i,item in ipairs(events)do if item==value then return i end end
