@@ -38,6 +38,9 @@ MODULES+=('windows_capture.lua',)
 # Plain Lua 5.1 only: no cffi/ffi imports, ffi calls, cdef blocks or PORT51 adapters.
 FFI=re.compile(r"['\"]c?ffi['\"]|\bffi\s*\.|\bcdef\b|\bPORT51\b|luaopen_hd2_cffi")
 NATIVE_LIBRARIES=('port51/hd2_nativeinfo_f6d3465944c1aea1.dll', 'port51/hd2_nativeinfo_3139cc5f8ecb4078.dll', 'port51/hd2_nativeinfo_78b314de6177433d.dll', 'port51/hd2_nativeinfo_4aab2adfbc4090d6.dll', 'port51/hd2_nativeinfo_5e39eeeeb76b863a.dll')
+# Development builds are live-loadable (tools/request_windows_reload.py); public packages
+# are stripped of the reload module, not merely switched off.
+DEV_ONLY=('windows_dev_reload.lua',)
 
 def digest(data):return hashlib.sha256(data).hexdigest()
 def build(output,release=False):
@@ -48,8 +51,9 @@ def build(output,release=False):
     fixture=run()
     # A public build carries the plain version; everything else stays marked as a candidate.
     version=(ROOT/'VERSION').read_text().strip()+(''if release else'-steam51-dev')
+    modules=[name for name in MODULES if not(release and name in DEV_ONLY)]
     manifest={'id':MOD_ID,'name':'War Journalist (Lua 5.1)','version':version,'author':'Goose',
-              'lll':{'entry':'main.lua','defaults':'config/defaults.cfg','modules':['src/'+name for name in MODULES],
+              'lll':{'entry':'main.lua','defaults':'config/defaults.cfg','modules':['src/'+name for name in modules],
                      'restart_only':False,'retain_until_exit':False}}
     manifest['public_release']=bool(release)
     manifest['license_files']=['LICENSE-Link.txt','LICENSE-Bingus.txt']
@@ -58,7 +62,7 @@ def build(output,release=False):
            'config/defaults.cfg':b'{}\n'}
     for name in NATIVE_LIBRARIES:files[name]=(ROOT/'freecam/native'/name).read_bytes()
     for label in manifest['license_files']:files[label]=(ROOT/'freecam/vendor'/label).read_bytes()
-    for name in MODULES:files['src/'+name]=(ROOT/'freecam'/name).read_bytes()
+    for name in modules:files['src/'+name]=(ROOT/'freecam'/name).read_bytes()
     compile_lua=LuaRuntime().eval('function(s) return assert(loadstring(s)) end')
     for name,body in files.items():
         if name.endswith('.lua'):

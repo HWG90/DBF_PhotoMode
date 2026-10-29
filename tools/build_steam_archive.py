@@ -356,6 +356,9 @@ shutdown()
 ''')
             (game / 'wj-dev-fixture2.lua-pack').write_bytes(packed)
             if public_release:
+                # Live reload is a development tool: public packages carry no reload module at
+                # all, and an armed marker left from a dev build changes nothing.
+                assert not any(name.endswith('windows_dev_reload.lua') for name in sources), 'Public packages must not carry live reload'
                 before_log = (game / 'war_journalist_lua51.log').read_text()
                 (game / 'wj-native-dof-selftest.request').write_text('native-dof-override-v1\n')
                 LuaRuntime().execute(host, text)
@@ -363,13 +366,15 @@ shutdown()
                 assert 'Dev reload enabled' not in public_log and 'self-test' not in public_log
                 assert (game / 'wj-native-dof-selftest.request').is_file(), 'Public mode must ignore old dev markers'
                 (game / 'wj-native-dof-selftest.request').unlink()
-            private_text = text.replace('local RELEASE_MODE=true', 'local RELEASE_MODE=false', 1)
-            _, a, b, reload_calls, shut, keys, _, _ = LuaRuntime().execute(reload_host, private_text)
-            assert (a, b, reload_calls, shut) == ('game', .5, 332, True)
-            reload_log = (game / 'war_journalist_lua51.log').read_text()
-            assert 'Dev reload: loaded fixture;' in reload_log and 'Dev reload: loaded fixture2;' in reload_log, reload_log
-            assert 'fixture failed generation' in reload_log and 'Photo Mode resumed after explicit Lua reload' in reload_log, reload_log
-            assert len(keys.split('|')) == len(hosted), 'Reload duplicated hosted bindings'
+            else:
+                # Development builds reload their Lua live; prove it on this exact archive.
+                _, a, b, reload_calls, shut, keys, _, _ = LuaRuntime().execute(reload_host, text)
+                assert (a, b, reload_calls, shut) == ('game', .5, 332, True)
+                reload_log = (game / 'war_journalist_lua51.log').read_text()
+                assert 'Dev reload enabled' in reload_log, reload_log
+                assert 'Dev reload: loaded fixture;' in reload_log and 'Dev reload: loaded fixture2;' in reload_log, reload_log
+                assert 'fixture failed generation' in reload_log and 'Photo Mode resumed after explicit Lua reload' in reload_log, reload_log
+                assert len(keys.split('|')) == len(hosted), 'Reload duplicated hosted bindings'
             (game / 'wj-dev-reload.enabled').unlink()
             # LLL: its folders, and the entry handed back for LLL to drive.
             (lll / 'Native').mkdir(parents=True)
