@@ -42,6 +42,20 @@ function M.new(sr,log,measure,options)
   for i=1,12 do assert(finite(value[i]),'Pose trial matrix invalid')end;return value
  end
  function self.active()return work~=nil end
+ -- A body frozen mid-stride: the game's own animation keeps putting its original mode back.
+ -- Take it back, and on the first time pause the body's animation state machine until
+ -- release, so the game stops fighting the hold (taking it back every frame flickered and
+ -- left the arms in a weird pose, live 2026-10-29). Marked before the call: a setter may act
+ -- and then throw.
+ local function take_back(w,counter)
+  assert(U.set_animation_bone_mode(w.unit,'ignore')~=false,'Pose trial bone mode refused')
+  if not w.machine_paused and type(U.disable_animation_state_machine)=='function'and type(U.enable_animation_state_machine)=='function'and
+   type(U.has_animation_state_machine)=='function'and U.has_animation_state_machine(w.unit)==true then
+   w.machine_paused=true;U.disable_animation_state_machine(w.unit)
+   emit('animation paused on the frozen body until Resume (the game kept taking it back)')
+  elseif not w.reclaims and not w.update_reclaims then emit('bone mode taken back from the game\'s own animation (body frozen while moving)')end
+  w[counter]=(w[counter]or 0)+1
+ end
  function self.release(why,retry)
   if not work then return true end
   if pending and retry~=true then return false,pending end
@@ -49,7 +63,9 @@ function M.new(sr,log,measure,options)
   local ok,result=pcall(function()
    if w.cape then w.cape_writes=w.cape.writes;assert(cape.release(w.cape),'Cape restoration unavailable');w.cape=nil end
    if not w.issued then return 'no mode override' end
-   if not valid(w)then return 'subject retired' end
+   if not valid(w)then w.machine_paused=nil;return 'subject retired' end
+   -- The paused animation runs again before the original mode returns.
+   if w.machine_paused then U.enable_animation_state_machine(w.unit);w.machine_paused=nil end
    local current=U.animation_bone_mode(w.unit)
    assert(type(current)=='string','Pose trial cleanup mode unavailable')
    if current=='ignore'then
@@ -61,7 +77,7 @@ function M.new(sr,log,measure,options)
   end)
   if not ok then pending=tostring(result);emit('cleanup pending: '..pending);return false,pending end
   if w.cape_writes then emit('cape placement restored; writes='..w.cape_writes)end
-  emit(string.format('released: %s; reason=%s renders=%d writes=%d max_step_ms=%.3f; no pose rewind',result,tostring(why),w.renders,w.writes,w.max_ms))
+  emit(string.format('released: %s; reason=%s renders=%d writes=%d max_step_ms=%.3f; takebacks update=%d render=%d; no pose rewind',result,tostring(why),w.renders,w.writes,w.max_ms,w.update_reclaims or 0,w.reclaims or 0))
   work=nil;pending=nil;return true
  end
  function self.start(subject,now)
@@ -110,6 +126,19 @@ function M.new(sr,log,measure,options)
   if not work then return true end
   if pending then return false,pending end
   if not enabled or not finite(now)or now<work.started or now>=work.deadline then return self.release('trial ended')end
+  -- The game resets the body's mode during its update; taking it back only at render showed
+  -- one animated frame. Take it back here too, before the body is drawn. A foreign owner is
+  -- left for render to report.
+  local w=work
+  if claim_transfer and w.issued then
+   local called,problem=pcall(function()
+    if not valid(w)then return end
+    if U.animation_bone_mode(w.unit)==w.mode then
+     take_back(w,'update_reclaims')
+    end
+   end)
+   if not called and not w.update_fault then w.update_fault=true;emit('update takeback failed: '..tostring(problem))end
+  end
   return true
  end
  function self.render(enabled,now)
@@ -131,9 +160,7 @@ function M.new(sr,log,measure,options)
     -- Freeze holds this body until Resume, so take it back; any other mode is a foreign
     -- owner (ragdoll and the like) and is left alone.
     assert(mode==w.mode,'Pose trial bone transfer ownership lost to '..tostring(mode))
-    assert(U.set_animation_bone_mode(w.unit,'ignore')~=false,'Pose trial bone mode refused')
-    if not w.reclaims then emit('bone mode taken back from the game\'s own animation (body frozen while moving)')end
-    w.reclaims=(w.reclaims or 0)+1
+    take_back(w,'reclaims')
    end
    local expected_mode=claim_transfer and'ignore'or w.mode
    assert(U.animation_bone_mode(w.unit)==expected_mode,'Pose trial bone transfer unconfirmed')

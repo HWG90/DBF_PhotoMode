@@ -15,6 +15,10 @@ local function fixture(options)
   has_node=function(u,n)read(u);local i=tonumber(n:match('^cape(%d)$'));return i~=nil and i>=1 and i<=8 end,
   node=function(u,n)read(u);return 34+assert(tonumber(n:match('^cape(%d)$')))+(f.bad_cape and 1 or 0)end,
   animation_bone_mode=function(u)read(u);return f.mode end,
+  -- The body's animation state machine (nil: none); the game only fights a hold while it runs.
+  has_animation_state_machine=function(u)read(u);return f.machine~=nil end,
+  disable_animation_state_machine=function(u)read(u);f.machine_calls=(f.machine_calls or 0)+1;f.machine=false end,
+  enable_animation_state_machine=function(u)read(u);f.machine_calls=(f.machine_calls or 0)+1;f.machine=true end,
   set_animation_bone_mode=function(u,m)read(u);f.modes=f.modes+1
    if m=='position_and_rotation'and f.restore_fail then error('Restore refused')end
    f.mode=m;if m=='ignore'and f.mode_throw then error('Mode changed then threw')end
@@ -158,5 +162,36 @@ do
  assert(k.poses[20][10]==held,'The held pose is written back')
  for i=1,5 do k.mode='position_and_rotation';assert(k.render(.02+i/100))end
  assert(k.probe.release('Resume')and k.mode=='position_and_rotation','Resume still restores the original mode')
+
+ -- Taken back only at render, the body showed one animated frame each time (flicker). The
+ -- game resets the mode during its update, so the update takes it back too, before drawing.
+ local u=fixture({continuous=true,exclude_cape=true,claim_transfer=true})
+ assert(u.probe.prepare(u.subject,0)and u.render(.01)and u.mode=='ignore')
+ u.mode='position_and_rotation';assert(u.probe.tick(true,.015)and u.mode=='ignore','Update-time takeback')
+ assert(u.render(.02)and u.mode=='ignore')
+ u.mode='transform';assert(u.probe.tick(true,.025)and u.mode=='transform','A foreign owner is left alone at update')
+ local v=fixture({continuous=true,exclude_cape=true,claim_transfer=true})
+ assert(v.probe.prepare(v.subject,0)and v.render(.01));v.mode='position_and_rotation';assert(v.probe.tick(true,.015))
+ assert(v.probe.release('Resume')and v.mode=='position_and_rotation','Resume restores the original mode after an update takeback')
+
+ -- Taking the mode back every frame flickered and left the arms in a weird pose (live). After
+ -- the first takeback, at update or render, the body's animation state machine is paused
+ -- until release, which re-enables it before restoring the mode.
+ local m=fixture({continuous=true,exclude_cape=true,claim_transfer=true});m.machine=true
+ local function game_frame()if m.machine then m.mode='position_and_rotation'end end
+ assert(m.probe.prepare(m.subject,0)and m.render(.01)and m.mode=='ignore')
+ game_frame();assert(m.probe.tick(true,.015)and m.machine==false and m.mode=='ignore','The first update takeback pauses the animation')
+ local modes=m.modes;for i=1,20 do game_frame();assert(m.probe.tick(true,.02+i/100)and m.render(.02+i/100))end
+ assert(m.modes==modes and m.machine_calls==1,'A paused animation no longer fights the hold')
+ assert(m.probe.release('Resume')and m.machine==true and m.mode=='position_and_rotation','Resume restores the animation, then the mode')
+ local r=fixture({continuous=true,exclude_cape=true,claim_transfer=true});r.machine=true
+ assert(r.probe.prepare(r.subject,0)and r.render(.01));r.mode='position_and_rotation'
+ assert(r.render(.02)and r.machine==false and r.mode=='ignore','A render takeback pauses it too')
+ assert(r.probe.release('Photo Mode closed')and r.machine==true,'Close restores the animation')
+ -- Standing freezes are never fought, so their animation is never paused.
+ local n=fixture({continuous=true,exclude_cape=true,claim_transfer=true});n.machine=true
+ assert(n.probe.prepare(n.subject,0));for i=1,10 do assert(n.probe.tick(true,i/100)and n.render(i/100))end
+ assert(n.machine==true and n.machine_calls==nil,'No takeback, no pause')
+ assert(n.probe.release('Resume')and n.machine_calls==nil)
 end
 print('Continuous transfer lease: single ignore acquisition, body-only replay, idle/foreign ownership, partial failure and resume restoration passed')
