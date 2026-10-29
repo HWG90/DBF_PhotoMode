@@ -730,7 +730,7 @@ function M.new(host,sr,deps,service)
   end
   return not subject_holds,subject_message
  end
- local function subject_action(method,value)
+ local function subject_action(method,value,settled)
   if not subject then return false,'Refresh subjects first'end
   if method~='recover'and(not subject_opt_in or not self.active or pending_cleanup or self.mode=='shot'or shot and shot.handycam)then
    return false,'Subject controls are unavailable'
@@ -747,13 +747,30 @@ function M.new(host,sr,deps,service)
    if not(simulation and simulation.owns_zero())then return false,'True-zero Freeze Action is required'end
    -- Match the explicit Reset -> Apply workflow. Never layer the next pose
    -- over the previous lease, or apply after an unacknowledged restoration.
-   local reset,reason=subject_call('reset')
-   if not reset then return false,reason end
+   -- Apply two updates later, once the reset body has settled: the cape placement is
+   -- captured at the first pose write, and a same-frame Reset+Apply captured it against the
+   -- old body (a manual Reset, then Apply, fixed the cape, live 2026-10-29). The settled
+   -- call repeats the releases above, as holds may re-engage while it waits. A field, not a
+   -- local: M.new is at Lua 5.1's 200-local limit.
+   if not settled then
+    local reset,reason=subject_call('reset')
+    if not reset then return false,reason end
+    self.pending_pose={id=value,updates=2}
+    return true,'Applying the pose'
+   end
   end
   local ok,why=subject_call(method,value)
   if method=='recover'and ok and not subject_opt_in then close_subject(false)end
   if method=='recover'and ok and pending_cleanup then self.close(nil,true)end
   return ok,why
+ end
+ -- Each update with a pose waiting after its reset; it applies on the second. A method, not
+ -- inline in tick: tick is at Lua 5.1's 60-upvalue limit.
+ function self.settle_pose()
+  local wanted=self.pending_pose;wanted.updates=wanted.updates-1
+  if wanted.updates>0 then return end
+  self.pending_pose=nil
+  local ok,why=subject_action('apply',wanted.id,true);if not ok then notice(why)end
  end
  local function load_subject()
   if not self.active or pending_cleanup or subject_pending or type(deps.load_subject)~='function'then return false,'Subject controls are unavailable'end
@@ -1088,7 +1105,7 @@ function M.new(host,sr,deps,service)
  self.capture=capture
  function self.close(clear_time,automatic,subject_retry)
   director_bridge.remember()
-  deferred_shot=nil
+  deferred_shot=nil;self.pending_pose=nil
   if handycam then handycam.reset()end
   if photo then photo.handy_roll=nil end
   if capture then capture.close('Photo Mode closed')end
@@ -2399,6 +2416,7 @@ function M.new(host,sr,deps,service)
    self.begin_shot(wanted.play_path,wanted.refreeze);return
   end
   if not self.active then return end
+  if self.pending_pose then self.settle_pose()end
   if self.tracking_backend and self.tracking_backend.tick then self.tracking_backend.tick()end
   if hover and simulation and simulation.owns_zero()then
    local ok,why=hover.hold();if not ok then notice(why)end

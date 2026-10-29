@@ -127,10 +127,12 @@ local function fixture(extra)
   assert(f.subject.status().selected==nil and f.controls.subject_pose_play.disabled,'Refresh must never select a sole or first avatar')
   assert(f.action('subject_select_2'));assert(f.subject.status().selected=='Helldiver B')
  end
+ -- Apply resets now and applies two updates later, once the reset body has settled.
+ function f.settle()for _=1,2 do f.step(.016,1)end end
  function f.pose(index)
-  local before=f.decodes
   assert(f.runtime.handle.set('subject_pose',index or 1))
-  if f.decodes==before then assert(f.action('subject_pose_play'))end
+  if f.subject.status().state~='posed'then assert(f.action('subject_pose_play'))end
+  f.settle()
   assert(f.subject.status().state=='posed')
  end
  function f.restored()
@@ -242,7 +244,9 @@ do
 end
 do
  local f=fixture();f.enable();f.select();f.partial=true;f.fail_node=13
- assert(not f.action('subject_pose_play')and f.controls.subject_recover.disabled==false)
+ -- Apply is scheduled; the failing write lands two updates later and offers recovery.
+ assert(f.action('subject_pose_play'));f.settle()
+ assert(f.subject.status().pending and f.controls.subject_recover.disabled==false)
  local writes=f.node_writes;f.events={};assert(not f.runtime.close(true))
  assert(not f.runtime.active and not f.camera_open and not f.lease and f.runtime.state=='closing'and f.rate==0)
  assert(f.b.mode=='position_and_rotation'and f.node_writes==writes and not index_of(f.events,'time:1'),
@@ -264,7 +268,7 @@ do
 end
 do
  local f=fixture();f.enable();f.select();f.partial=true;f.fail_node=13
- assert(not f.action('subject_pose_play'));local writes=f.node_writes
+ assert(f.action('subject_pose_play'));f.settle();assert(f.subject.status().pending);local writes=f.node_writes
  assert(f.runtime.handle.set('freeze_player',false)and f.runtime.handle.get('freeze_player')and f.rate==0,
   'Refused resume keeps Freeze preference synchronized with true-zero state')
  assert(f.runtime.active and f.b.mode=='position_and_rotation'and f.node_writes==writes)
@@ -369,7 +373,7 @@ for _,failure in ipairs({'nil','throw'})do
    return make_input(native,service)
   end
  end)
- f.enable();f.select();f.partial=true;f.fail_node=13;assert(not f.action('subject_pose_play'))
+ f.enable();f.select();f.partial=true;f.fail_node=13;assert(f.action('subject_pose_play'));f.settle();assert(f.subject.status().pending)
  local ok,why=f.runtime.close(true)
  assert(not ok and why==problem and f.lease and not f.camera_open and f.release_calls==1,
   'Unconfirmed captured release preserves the exact error and its cleanup lease')
@@ -516,11 +520,18 @@ print('Subject session lifecycle: no idle polling, explicit refresh requalificat
 
 do
  local f=fixture();f.enable();f.select();f.pose(2);f.events={}
+ local writes=f.node_writes
  assert(f.action('subject_pose_play'))
- assert(index_of(f.events,'mode:position_and_rotation')<index_of(f.events,'mode:ignore'),'Apply resets before reapplying the selected pose')
+ -- The new pose waits two updates for the reset body to settle: the cape placement is
+ -- captured at its first write (a same-frame Reset+Apply left the cape wrong, live).
+ assert(index_of(f.events,'mode:position_and_rotation')and not index_of(f.events,'mode:ignore'),'Apply resets now')
+ local reset_writes=f.node_writes;f.step(.016,1)
+ assert(not index_of(f.events,'mode:ignore')and f.node_writes==reset_writes,'Nothing is written on the first update')
+ f.step(.016,1)
+ assert(index_of(f.events,'mode:position_and_rotation')<index_of(f.events,'mode:ignore')and f.subject.status().state=='posed','The pose is applied on the second update')
  f.events={};local before=f.decodes
- assert(f.runtime.handle.set('subject_pose',3))
- assert(f.decodes==before+1 and index_of(f.events,'mode:position_and_rotation')<index_of(f.events,'mode:ignore'),'Changing a held pose resets and applies in one action')
+ assert(f.runtime.handle.set('subject_pose',3));f.settle()
+ assert(f.decodes==before+1 and index_of(f.events,'mode:position_and_rotation')<index_of(f.events,'mode:ignore'),'Changing a held pose resets, then applies once settled')
  local writes=f.node_writes;local reset=f.subject.reset
  f.subject.reset=function()return false,'Fixture restoration refused'end
  assert(not f.action('subject_pose_play')and f.node_writes==writes,'Failed reset must prevent the next pose write')
