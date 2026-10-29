@@ -22,7 +22,7 @@ local function fixture(options)
   disable_animation_state_machine=function(u)read(u);f.machine_calls=(f.machine_calls or 0)+1;f.machine=false end,
   enable_animation_state_machine=function(u)read(u);f.machine_calls=(f.machine_calls or 0)+1;f.machine=true;f.anim={0,0,0}end,
   animation_get_state=function(u)read(u);return unpack(f.anim or{})end,
-  animation_set_state=function(u,...)read(u);f.anim={...};f.restores=(f.restores or 0)+1 end,
+  animation_set_state=function(u,...)read(u);if f.pin_refuse then error('State refused')end;f.anim={...};f.restores=(f.restores or 0)+1 end,
   set_animation_bone_mode=function(u,m)read(u);f.modes=f.modes+1
    if m=='position_and_rotation'and f.restore_fail then error('Restore refused')end
    f.mode=m;if m=='ignore'and f.mode_throw then error('Mode changed then threw')end
@@ -209,6 +209,26 @@ do
  assert(d.probe.prepare(d.subject,0)and d.render(.01));d.mode='position_and_rotation'
  assert(d.probe.tick(true,.015)and d.mode=='ignore'and d.machine==true and d.machine_calls==nil,'Taken back, never paused by default')
  assert(d.probe.release('Resume')and d.mode=='position_and_rotation')
+ -- Pinning (dev experiment): the animation keeps running but its state is put back to the
+ -- frozen instant every update, so whatever the game draws is the held moment; the arm logic
+ -- is never switched off, and the root is left to the game.
+ local g=fixture({continuous=true,exclude_cape=true,claim_transfer=true,pin_animation=true});g.machine=true;g.anim={3,0.25,7}
+ local function g_frame()g.anim={g.anim[1],g.anim[2]+.1,g.anim[3]};g.mode='position_and_rotation';g.poses[1][10]=g.poses[1][10]+.01 end
+ assert(g.probe.prepare(g.subject,0)and g.render(.01))
+ for i=1,10 do g_frame();local game_root=g.poses[1][10]
+  assert(g.probe.tick(true,.01+i/100)and g.render(.01+i/100))
+  assert(g.anim[1]==3 and g.anim[2]==.25 and g.anim[3]==7,'The animation is pinned to the frozen instant')
+  assert(g.poses[1][10]==game_root,'The root is left to the game')
+ end
+ assert(g.machine==true and g.machine_calls==nil,'Pinning never switches the animation off')
+ assert(g.probe.release('Resume')and g.mode=='position_and_rotation'and g.machine==true)
+ -- A refused pin stops pinning for that freeze; the hold carries on.
+ local e=fixture({continuous=true,exclude_cape=true,claim_transfer=true,pin_animation=true});e.machine=true;e.anim={1}
+ assert(e.probe.prepare(e.subject,0)and e.render(.01));e.pin_refuse=true
+ assert(e.probe.tick(true,.02)and e.render(.02)and e.probe.active())
+ local refused=0;for _,line in ipairs(e.logs)do if line:find('animation pin stopped',1,true)then refused=refused+1 end end
+ assert(refused==1,'A failed pin is reported once')
+ assert(e.probe.release('Resume'))
  -- Standing freezes are never fought, so their animation is never paused.
  local n=fixture({continuous=true,exclude_cape=true,claim_transfer=true});n.machine=true
  assert(n.probe.prepare(n.subject,0));for i=1,10 do assert(n.probe.tick(true,i/100)and n.render(i/100))end

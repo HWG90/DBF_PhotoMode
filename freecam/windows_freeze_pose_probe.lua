@@ -16,6 +16,7 @@ function M.new(sr,log,measure,options)
  local claim_transfer=not continuous or options and options.claim_transfer==true
  local exclude_cape=options and options.exclude_cape==true
  local pause_animation=options and options.pause_animation==true
+ local pin_animation=options and options.pin_animation==true
  local U,W,A,N,I,B=sr.Unit,sr.World,sr.Application,sr.Network,sr.IdString64,sr.Matrix4x4
  local bindings={}
  for _,name in ipairs({'alive','world','resource_name','num_scene_graph_items','local_pose','set_local_pose','animation_bone_mode','set_animation_bone_mode'})do
@@ -48,6 +49,23 @@ function M.new(sr,log,measure,options)
  -- release, so the game stops fighting the hold (taking it back every frame flickered and
  -- left the arms in a weird pose, live 2026-10-29). Marked before the call: a setter may act
  -- and then throw.
+ -- Where the body's animation is, as the engine's own state values (nil if unreadable).
+ local function animation_snapshot(w)
+  if type(U.animation_get_state)~='function'or type(U.animation_set_state)~='function'or
+   type(U.has_animation_state_machine)~='function'or U.has_animation_state_machine(w.unit)~=true then return nil end
+  local read,state=pcall(function()return{U.animation_get_state(w.unit)}end)
+  if not read or #state>128 then return nil end
+  for _,v in ipairs(state)do if type(v)~='number'or v~=v then return nil end end
+  return state
+ end
+ -- Pinning (options.pin_animation): the animation keeps running, but its state is put back to
+ -- the frozen instant every update, so the game only ever draws the held moment and the arm
+ -- logic is never switched off. A refused pin stops pinning for this freeze.
+ local function pin(w)
+  if not w.pin_state then return end
+  local ok,why=pcall(U.animation_set_state,w.unit,unpack(w.pin_state))
+  if ok then w.pins=(w.pins or 0)+1 else w.pin_state=nil;emit('animation pin stopped: '..tostring(why))end
+ end
  local function take_back(w,counter)
   assert(U.set_animation_bone_mode(w.unit,'ignore')~=false,'Pose trial bone mode refused')
   -- Off unless options.pause_animation: pausing broke the arms after Resume even with the
@@ -56,13 +74,7 @@ function M.new(sr,log,measure,options)
    type(U.has_animation_state_machine)=='function'and U.has_animation_state_machine(w.unit)==true then
    -- Snapshot where the animation is, so release resumes it there: re-enabling alone restarts
    -- it and left the arms in a weird pose (live).
-   if type(U.animation_get_state)=='function'and type(U.animation_set_state)=='function'then
-    local read,state=pcall(function()return{U.animation_get_state(w.unit)}end)
-    if read and #state<=128 then
-     local numeric=true;for _,v in ipairs(state)do if type(v)~='number'or v~=v then numeric=false end end
-     if numeric then w.machine_state=state end
-    end
-   end
+   w.machine_state=animation_snapshot(w)
    w.machine_paused=true;U.disable_animation_state_machine(w.unit)
    emit('animation paused on the frozen body until Resume (the game kept taking it back)')
   elseif not w.reclaims and not w.update_reclaims then emit('bone mode taken back from the game\'s own animation (body frozen while moving)')end
@@ -96,7 +108,7 @@ function M.new(sr,log,measure,options)
   end)
   if not ok then pending=tostring(result);emit('cleanup pending: '..pending);return false,pending end
   if w.cape_writes then emit('cape placement restored; writes='..w.cape_writes)end
-  emit(string.format('released: %s; reason=%s renders=%d writes=%d max_step_ms=%.3f; takebacks update=%d render=%d; no pose rewind',result,tostring(why),w.renders,w.writes,w.max_ms,w.update_reclaims or 0,w.reclaims or 0))
+  emit(string.format('released: %s; reason=%s renders=%d writes=%d max_step_ms=%.3f; takebacks update=%d render=%d; pins=%d; no pose rewind',result,tostring(why),w.renders,w.writes,w.max_ms,w.update_reclaims or 0,w.reclaims or 0,w.pins or 0))
   work=nil;pending=nil;return true
  end
  function self.start(subject,now)
@@ -119,6 +131,7 @@ function M.new(sr,log,measure,options)
     w.indices[#w.indices+1]=index;w.poses[index]=matrix(w,index)
    end end
    assert(valid(w)and U.animation_bone_mode(w.unit)==w.mode,'Pose trial capture changed')
+   if pin_animation then w.pin_state=animation_snapshot(w)end
    if cape then
     local captured,record=pcall(cape.capture,f)
     if captured then w.cape=record;emit('cape placement captured; nodes='..#record.meshes..'; authored-pose solver; shoulder_right_flip='..tostring(record.flip==true)..'; cloth simulation untouched')
@@ -155,6 +168,7 @@ function M.new(sr,log,measure,options)
     if U.animation_bone_mode(w.unit)==w.mode then
      take_back(w,'update_reclaims')
     end
+    pin(w)
    end)
    if not called and not w.update_fault then w.update_fault=true;emit('update takeback failed: '..tostring(problem))end
   end
@@ -189,7 +203,7 @@ function M.new(sr,log,measure,options)
    -- With the animation paused, the game still places the root (bone 1) every frame where
    -- the moving body got to; writing the captured root back jittered (flicker). The root is
    -- the game's; the other bones stay held relative to it.
-   if w.machine_paused then w.poses[1]=matrix(w,1)end
+   if w.machine_paused or w.pin_state then w.poses[1]=matrix(w,1)end
    for _,index in ipairs(w.indices)do
     if not equal(matrix(w,index),w.poses[index])then
      local desired=B.from_elements(unpack(w.poses[index]))
