@@ -86,7 +86,7 @@ but hasn't been attempted, so treat it as unknown.
 | AI controls | none | none | D (excluded) |
 | Running the BML ZIP itself under Chef's BML look-alikes | it would start without WJL (no isolation, PNG or scene effects), and file swaps fail | also no `save_render_target` | not supported, untested |
 
-## What this branch adds (`codex/chef-preview-5`, Chef runtime 0.6.0)
+## What this branch adds (`chefbuild`, Chef runtime 0.6.0)
 
 Base: 1.3.3 release commit `a7f3bb1` plus preview 5's Chef sources. The addon
 still declares `chef-shared-loader >= 1.2.3`, and the BML build is unchanged:
