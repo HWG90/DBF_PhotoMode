@@ -17,8 +17,9 @@ function M.retire_denied(service,token)
  if not loader or not loader.capabilities then return false end
  local revision=loader.capabilities.revision
  -- Insert-fix.2 embeds the identical input service and keyboard broker; only
- -- the manager shortcut handling changed. Keep qualification explicit.
- if revision~='R35-26088801-cffi-dev.2'and revision~='R35-26088801-cffi-insert-fix.2'then return false end
+ -- the manager shortcut handling changed. R38-26251122 is insert-fix.2 with
+ -- build 26251122's data (hashes, stamps, Lua API RVAs). Keep qualification explicit.
+ if revision~='R35-26088801-cffi-dev.2'and revision~='R35-26088801-cffi-insert-fix.2'and revision~='R38-26251122-luajit.1'then return false end
  if type(service)~='table'or service.version~=1 or service~=loader.input_service then return false end
  local close=up(service.release,'close_lease')
  local lease=up(close,'lease');local platform=up(close,'platform')

@@ -157,7 +157,7 @@ entry={live_lua_api=1,name='War Journalist',
   -- Development qualification is tied to the factory-lifetime repair. Do not
   -- silently re-enable the known-crashing API v1 helper after a loader rollback.
   local revision=loader.capabilities.revision
-  local capture_revision=revision=='R33-steam-screenshots-factoryfix-candidate'or revision=='R34-steam-lua51-preview.1'or revision=='R35-26088801-cffi-dev.2'or revision=='R35-26088801-cffi-insert-fix.2'or engine_host
+  local capture_revision=revision=='R33-steam-screenshots-factoryfix-candidate'or revision=='R34-steam-lua51-preview.1'or revision=='R35-26088801-cffi-dev.2'or revision=='R35-26088801-cffi-insert-fix.2'or revision=='R38-26251122-luajit.1'or engine_host
   local ready=capture_revision and
    type(capture)=='table'and capture.version==1 and type(caps)=='table'and
    caps.async==true and caps.max_jobs==1 and(caps.game_window==true and caps.format=='png'and caps.color_space=='sdr'or engine_host and(caps.format=='dds'or caps.format=='png'))and
@@ -171,7 +171,7 @@ entry={live_lua_api=1,name='War Journalist',
   -- Subject appearance remains a separate visual test. Native modules and
   -- the catalog load only on explicit session enable, never on entry/tick.
   local subject_qualification=revision=='R34-steam-lua51-preview.1'and'R34-unit-pose12-private-roundtrip-20261020-v1'or'R35-unit-pose12-private-roundtrip-20261023-v1'
-  if subject_qualification and(revision=='R34-steam-lua51-preview.1'or revision=='R35-26088801-cffi-insert-fix.2'or engine_host)then
+  if subject_qualification and(revision=='R34-steam-lua51-preview.1'or revision=='R35-26088801-cffi-insert-fix.2'or revision=='R38-26251122-luajit.1'or engine_host)then
    deps.load_subject=function(sr,is_frozen,subject_backend)
     local function pack(...)return{n=select('#',...),...}end
     local values=pack(sr.Network.game_session())
