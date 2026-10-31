@@ -1,13 +1,15 @@
 ![War Journalist](docs/artwork/war-journalist-0.9.7-cover.png)
 
-# War Journalist 1.3.3
+# War Journalist 1.3.4
 
 Photo Mode for Helldivers 2: set up shots with a free camera, lighting,
 poses, camera paths and a first-person Handycam.
 
-**[Download War Journalist 1.3.3 for Boot Mod Loader](https://github.com/HWG90/DBF_PhotoMode/releases/tag/v1.3.3).** This is still the first pass of a full rewrite, so not everything from the old version is back yet. Import the ZIP into HD2 Arsenal, enable War Journalist and Assets, Deploy with the game closed, then start the game. Nothing else to install.
+**[Download War Journalist 1.3.4 for Boot Mod Loader](https://github.com/HWG90/DBF_PhotoMode/releases/tag/v1.3.4).** This is still the first pass of a full rewrite, so not everything from the old version is back yet. Import the ZIP into HD2 Arsenal, enable War Journalist and Assets, Deploy with the game closed, then start the game. Nothing else to install.
 
-**New in 1.3.3:** works with the 29 October 2026 game update, Pose Stop works again, Handycam is now on Page Down so Steam's Ctrl+F11 recording works, the menu stays blurred with scene options on, Saved Shots work and stick to your Helldiver, the camera comes back where you left it, new Follow player - Pivot and Pin cameras, Freeze holds a running Helldiver, and Hide Torso, Hide Helmet and Hide carried weapons work on more armours. See the [1.3.3 notes](docs/RELEASE-1.3.3.md).
+**New in 1.3.4:** the helper that War Journalist starts on Windows is now called `war_journalist_helper.exe`, shows its name and version in its file details, and stays the same file across game updates. This follows a Windows Defender false alarm on 1.3.3. Center auto-focus now works at 4K: a Helldiver in the middle of the screen stays in focus as you move, and scenery comes into focus when the camera stops. See the [1.3.4 notes](docs/RELEASE-1.3.4.md).
+
+**New in 1.3.3:** works with the 29 October 2026 game update, Pose Stop works again, Handycam is now on Page Down so Steam's Ctrl+F11 recording works, Saved Shots work, the camera comes back where you left it, and new Follow player cameras. See the [1.3.3 notes](docs/RELEASE-1.3.3.md).
 
 ## What's in it
 
