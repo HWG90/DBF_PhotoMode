@@ -1067,7 +1067,8 @@ function M.new(host,sr,deps,service)
  local function capture_notice()
   local result=capture.result()
   if not result then return end
-  if result.state=='succeeded'then notice('Screenshot saved: '..result.output_path)
+  -- A backend that names its own files (Chef's chef.capture) says which one it wrote.
+  if result.state=='succeeded'then notice('Screenshot saved: '..(capture_backend.saved_name and capture_backend.saved_name(result.output_path)or result.output_path))
   elseif result.state=='cleanup_blocked'then notice('Screenshot cleanup unconfirmed; press Screenshot to retry')
   elseif result.state=='failed'then notice('Screenshot failed: '..tostring(result.reason))
   elseif result.state=='cancelled'then notice('Screenshot cancelled: '..tostring(result.reason))end

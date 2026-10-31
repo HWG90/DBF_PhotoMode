@@ -136,7 +136,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path, default=ROOT / 'dist/releases/chef-lite-dev.1')
     parser.add_argument('--sandbox', type=Path, required=True, action='append',
-                        help='Chef src/chef_loader/sandbox.lua (1.2.3/1.2.4, 1.3.x or 1.4.0); repeat for each version')
+                        help='Chef src/chef_loader/sandbox.lua (1.2.3/1.2.4, 1.3.x, 1.4.0 or 1.4.1); repeat for each version')
     args = parser.parse_args()
     result = build(args.output, args.sandbox)
     print(json.dumps({key: value for key, value in result.items() if key not in ('tests', 'packaged_tests')}, indent=2))

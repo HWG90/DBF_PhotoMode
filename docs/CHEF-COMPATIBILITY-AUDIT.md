@@ -1,4 +1,4 @@
-# War Journalist 1.3.3 and Chef Shared Loader 1.3.1 / 1.4.0
+# War Journalist 1.3.3 and Chef Shared Loader 1.3.1 / 1.4.0 / 1.4.1
 
 Compatibility audit, 2026-10-29. Nothing in this document has been run in the
 game. "Implemented" means source plus isolated Lua 5.1 fixtures inside Chef's
@@ -13,6 +13,7 @@ and source. Boot Mod Loader remains War Journalist's only supported loader.
 | WJ Chef track | preview 5 `0.5.0` (`47a4647`, GitHub pre-release `v0.5.0-chef-preview.5`); `main` and 1.3.3 still carry the older `0.4.0` copy |
 | Chef Shared Loader 1.3.1 | tag `v1.3.1`, `4fe1aa0`, `sandbox.lua` blob `78769389` (same as 1.3.0) |
 | Chef Shared Loader 1.4.0 | tag `v1.4.0`, `4188152`, published 2026-10-29 08:43 UTC, `sandbox.lua` blob `ebdcfafc` |
+| Chef Shared Loader 1.4.1 | tag `v1.4.1`, `6a361ab`, published 2026-10-30 00:26 UTC, `sandbox.lua` blob `6ee9f406` |
 | Chef 1.2.3/1.2.4 (preview 5's pin) | `sandbox.lua` blob `737728a5` |
 | Chefbo, Nexus conversation "Compatibility" | 2026-10-27 06:21 (input findings, offer of a shared mouse hold and a players event); 2026-10-28 23:18 (1.4.0 close, both added, will review the source for the trusted list) |
 
@@ -86,6 +87,27 @@ but hasn't been attempted, so treat it as unknown.
 | AI controls | none | none | D (excluded) |
 | Running the BML ZIP itself under Chef's BML look-alikes | it would start without WJL (no isolation, PNG or scene effects), and file swaps fail | also no `save_render_target` | not supported, untested |
 
+## Chef 1.4.1
+
+1.4.1 is a patch release. Nothing the addon calls changed, and the dev build
+needs no change for it:
+
+- The trusted list still has `mods/goose/war_journalist` with `capture = true`.
+  1.4.1 took away trusted mods' own files and game patch writes. WJ never had
+  either, so its entry now grants the same screenshots as before.
+- Every mod lost Steam's friend list, its lobby browser, its voice chat,
+  `Steam.user_id` and `Steam.open_url`. The addon uses none of them.
+- `chef.hold_mouse(true)` from a shutdown hook is now refused. The addon only
+  takes the hold while the clutch is down during an update. Its shutdown
+  releases the hold, and a refused hold already falls back to the shared axis.
+- Chef asks every addon to carry `-- HD2-Requires: chef-shared-loader`, so that
+  another loader deployed above it leaves the addon alone. `main.lua` and the
+  packaged resource already start with
+  `-- HD2-Requires: chef-shared-loader >= 1.2.3`.
+- Tests: all 19 fixtures pass in the 1.4.1 sandbox, as do the 12 run on the
+  packaged bytes. A rebuild gives a byte-identical zip (sha256 `03d9b860…`).
+  None of this has been run in the game.
+
 ## What this branch adds (`chefbuild`, Chef runtime 0.6.0)
 
 Base: 1.3.3 release commit `a7f3bb1` plus preview 5's Chef sources. The addon
@@ -116,10 +138,10 @@ its package carries no Chef files, and its port suite still passes.
   request. The result is a DDS, not a PNG.
 
 Tests: `tools/test_chef_port.py --sandbox <sandbox.lua>` (repeatable) accepts the
-1.2.3/1.2.4, 1.3.0/1.3.1 and 1.4.0 sandbox blobs. The new
+1.2.3/1.2.4, 1.3.0/1.3.1, 1.4.0 and 1.4.1 sandbox blobs. The new
 `freecam/chef/loader_features_tests.lua` covers both profiles. Removing the hold
 release, the players check, the joining check, or the capture's menu check each
-fails it. The other 18 fixtures run unchanged against all three sandboxes.
+fails it. The other 18 fixtures run unchanged against all four sandboxes.
 
 ## Not verified, and the next steps
 
