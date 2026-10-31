@@ -236,7 +236,7 @@ end
 io.popen=function(command,mode)
  launches[#launches+1]=command
  local log=assert(io.open(os.getenv('LOCALAPPDATA')..'/WJL/Helldivers2/Steam/service.log','wb'))
- log:write('Refused: installed game hashes do not match this service build\\n');log:close()
+ log:write('Refused: installed game hashes do not match the build War Journalist names\\n');log:close()
  return{close=function()closes=closes+1;return true end}
 end
 stingray={Gui={resolution=function()return 1920,1080 end},
