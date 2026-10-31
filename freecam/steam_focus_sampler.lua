@@ -130,7 +130,7 @@ function M.new(sr,depth,verify,options)
     captures=captures+1;max_capture=math.max(max_capture,self.last_capture_ms)
     if auto_budget and (self.last_capture_ms<0 or self.last_capture_ms>auto_budget)then
      if not auto_blocked then
-      auto_blocked='Centre autofocus paused: synchronous depth read exceeds frame budget; use manual or click focus'
+      auto_blocked='Center auto-focus paused to avoid stutter. Use Manual or Double-click to focus.'
       if options.log then options.log(string.format('Depth readback budget: %.3f ms; budget %.3f ms; continuous autofocus suspended',self.last_capture_ms,auto_budget))end
      end
     elseif captures==1 and options.log then options.log(string.format('Depth readback first sample: %.3f ms',self.last_capture_ms))end

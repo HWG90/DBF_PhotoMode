@@ -139,7 +139,7 @@ assert(timed.release()and not files[timed.path])
 measurement_mode='ok';now=60;timed_config.auto_budget_ms=8
 local budgeted=assert(factory.new(sr,nil,guard,timed_config));before=calls
 assert(budgeted.sample(.5,.5,false,true)==5 and calls==before+1)
-for i=1,20 do now=now+2;local v,why=budgeted.sample(.5,.5,false,true);assert(not v and why:find('frame budget',1,true))end
+for i=1,20 do now=now+2;local v,why=budgeted.sample(.5,.5,false,true);assert(not v and why:find('avoid stutter',1,true))end
 assert(calls==before+1 and budgeted.metrics().automatic_suspended,'Automatic retry must be idle after exceeding the budget')
 assert(budgeted.sample(.5,.5,true)==5 and calls==before+2,'Explicit clicks remain available')
 assert(budgeted.release());now=now+2
