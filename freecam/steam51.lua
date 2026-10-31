@@ -62,7 +62,7 @@ entry={live_lua_api=1,name='War Journalist',
      {now=sr.Application.time_since_launch,measure=deps.operation_clock,pid=sr.Application.process_id(),directory=folder,mkdir=function(path)return path==folder end,
       auto_budget_ms=8,log=mod.log})
     assert(sampler,why)
-    local scene=mod.require('src/steam_scene.lua').new(sr,resources,overlay,sampler,sr.Application.time_since_launch)
+    local scene=mod.require('src/steam_scene.lua').new(sr,resources,overlay,sampler,sr.Application.time_since_launch,deps.pick.new(sr))
     local release=scene.release
     scene.release=function()local ok,why=release();if not ok then return false,why end;return resources.release()end
     return scene
@@ -80,7 +80,7 @@ entry={live_lua_api=1,name='War Journalist',
     return true,target
    end,{now=sr.Application.time_since_launch,pid=native.focus_cache(),mkdir=function()native.focus_cache();return true end})
    assert(sampler,reason)
-   return mod.require('src/steam_scene.lua').new(sr,resources,overlay,sampler,sr.Application.time_since_launch)
+   return mod.require('src/steam_scene.lua').new(sr,resources,overlay,sampler,sr.Application.time_since_launch,deps.pick.new(sr))
   end
   if not engine_host then deps.load_hover=function(sr)
    local memory=mod.require('src/host_native.lua').memory()

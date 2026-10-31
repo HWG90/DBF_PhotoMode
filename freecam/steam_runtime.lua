@@ -2497,7 +2497,7 @@ function M.new(host,sr,deps,service)
    local message=scene.focus(o,sample,self.mode=='menu',menu.contains_pointer,menu.editing_text()or menu.editing_key(),function(value)
     if controls.focus_distance.disabled then return false,'Focus control is unavailable' end
     autofocus_write=true;local ok,why=handle.set('focus_distance',value);autofocus_write=false;return ok,why
-   end)
+   end,photo)
    if message and texts.focus_status then texts.focus_status.label=message end
   end
   if self.mode=='menu'and not(capture and capture.active())then
