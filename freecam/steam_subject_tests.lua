@@ -524,6 +524,7 @@ do -- apply_frame: edited frames share the lease; only changed nodes are written
  f.frozen=false;assert(select(2,f.controller.current_frame())=='True-zero Freeze Action is required');f.frozen=true
  f.adapter.node_position=function(target,rig,index)assert(index==70 and rig==f.bank.rig);return{1,2,3}end
  assert(f.controller.node_position(70)[3]==3)
+ assert(f.controller.node_parent(70)==69 and f.controller.node_parent(1)==0 and f.controller.node_parent(200)==nil,'Parent index from the rig')
  f.validation='unknown';assert(not f.controller.apply_frame(edited()),'Unknown lifetime refuses like apply')
 end
 print('Steam selected subject: explicit selection, zero idle work, exact PQS/matrix12 ownership, anchors, foreign/partial guards and recovery passed')

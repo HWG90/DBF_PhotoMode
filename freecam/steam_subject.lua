@@ -434,6 +434,10 @@ function M.new(adapter,bank,is_frozen)
   if not current then return nil,why or'Subject snapshot unavailable'end
   return{full_body=true,nodes=current.nodes}
  end
+ function self.node_parent(index)
+  local node=bank.rig.nodes[index];if not node then return nil end
+  return node.parent or 0
+ end
  function self.node_position(index)
   if not selected then return nil,'Select a photographic subject first'end
   if type(adapter.node_position)~='function'then return nil,'Node position unavailable'end

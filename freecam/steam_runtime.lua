@@ -2084,6 +2084,20 @@ function M.new(host,sr,deps,service)
    menu.light_gizmos.update(items,frame,fov,w,h,true)
   end
  end
+ if deps.pose_marker and deps.gizmos and deps.pose_editor then
+  -- Ring at the selected bone, dot at its parent: display only, read per draw.
+  menu.bone_marker=deps.pose_marker.new(deps.gizmos.project)
+  menu.prepare_bone_marker=function(w,h,focused,hidden)
+   local node=self.pose_editor and self.bone_node()
+   local shown=self.active and focused and not hidden and node~=nil and subject~=nil and handle.get('bone_marker')==true and subject_status~=nil and subject_status.selected~=nil
+   if not shown then menu.bone_marker.update(nil,nil,nil,w,h,nil,nil,false);return end
+   local bone=subject.node_position(node)
+   local parent_index=type(subject.node_parent)=='function'and subject.node_parent(node)or nil
+   local parent=bone and parent_index and parent_index>0 and subject.node_position(parent_index)or nil
+   local frame=light_frame();local o=read_options();local fov=photo.path_fov or(o.fov>0 and math.rad(o.fov)or initial.fov)
+   menu.bone_marker.update(frame,fov,w,h,bone,parent,bone~=nil)
+  end
+ end
  self.handle=handle
  function self.toggle_slowmo()
   if not simulation or pending_cleanup then

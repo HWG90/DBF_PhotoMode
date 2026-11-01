@@ -89,4 +89,22 @@ do -- preview discarded on bone change
  assert(f.menu.actions.bone_adjust(nil,true));assert(f.runtime.handle.get('bone_bend')==25,'Release commits the slider once')
  assert(f.action('subject_pose_stop'));f.restored()
 end
+do -- marker: ring at the selected bone while shown; hidden by the toggle or a failed read
+ -- The base fixture stubs the gizmo module; the marker needs its numeric projection.
+ local f=fixture(function(f,deps)deps.pose_marker=dofile('freecam/pose_marker.lua');deps.gizmos=deps.gizmos or{new=function()return{update=function()end,cancel=function()end,draw=function()end,tick=function()return false end}end};deps.gizmos.project=dofile('freecam/photo_light_gizmos.lua').project end)
+ f.enable();f.select();elbow(f)
+ assert(f.menu.prepare_bone_marker and f.menu.bone_marker,'Runtime installs the marker on the menu')
+ local seen;local update=f.menu.bone_marker.update
+ f.menu.bone_marker.update=function(frame,...)seen=frame;return update(frame,...)end
+ local ahead;f.subject.node_position=function(index)
+  if not f.b.alive then return nil,'Selected subject retired'end
+  if not ahead then return{0,0,0}end;return{ahead[1],ahead[2],ahead[3]+index/1000}
+ end
+ local function drawn()f.menu.prepare_bone_marker(1920,1080,true,false);local cmds={};f.menu.bone_marker.draw(cmds);local n=0;for _,c in ipairs(cmds)do if c.ui_role=='bone_marker'then n=n+1 end end;return n end
+ drawn();assert(seen and seen.position and seen.forward,'The marker projects with the Photo Mode camera frame')
+ ahead={};for i=1,3 do ahead[i]=seen.position[i]+seen.forward[i]*5 end
+ assert(drawn()==1,'Marker drawn for the selected bone in front of the camera')
+ assert(f.runtime.handle.set('bone_marker',false));assert(drawn()==0,'Toggle off hides it');assert(f.runtime.handle.set('bone_marker',true))
+ assert(drawn()==1);f.b.alive=false;assert(drawn()==0,'A failed read hides it without an error')
+end
 print('Pose editor runtime: settle, coalesced apply, slider sync, rebase, unfreeze, retire and enabled rules passed')

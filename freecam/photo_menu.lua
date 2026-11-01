@@ -243,6 +243,7 @@ function M.new(view,actions,existing)
   -- retained GUI/font planes; explicit focus loss still clears via suspend().
   if focused~=last_focus then suspend_input();last_focus=focused end
   if self.prepare_light_gizmos then self.prepare_light_gizmos(w,h,focused,hidden)end
+  if self.prepare_bone_marker then self.prepare_bone_marker(w,h,focused,hidden)end
   if hidden or not valid(w)or not valid(h)or not self.pages or #self.pages==0 then retained_commands=nil;finish_handle_drag(false);camera_middle_held=nil;finish_layout();if self.light_gizmos then self.light_gizmos.cancel()end;if legend then legend.clear()end;view.draw({});panel_bounds=nil;blur_regions=nil;hits={};resize=nil;scroll_drag=nil;move_panel=nil;return end
   refresh_text_cache(w,h)
   -- Recompose only when input, settings, availability or layout changes.
@@ -623,6 +624,7 @@ function M.new(view,actions,existing)
   end
   if legend then legend.draw(commands,w,h,focused,false,{x=x,y=bottom,w=width,h=top-bottom,scale=s})end
   if self.light_gizmos then self.light_gizmos.draw(commands,self.scene_pointer_blocked,self.scene_input_blocked())end
+  if self.bone_marker then self.bone_marker.draw(commands)end
   -- Hosts without an OS cursor (Boot Mod Loader's engine input) get an arrow drawn at the pointer.
   if self.draw_pointer and focused and pointer_x and pointer_y then
    local px,py,k=pointer_x,pointer_y,math.max(.75,h/1080)
