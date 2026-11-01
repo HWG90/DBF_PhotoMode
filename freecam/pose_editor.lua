@@ -2,6 +2,8 @@
 -- No engine access. Frames are the subject controller's numeric nodes
 -- (p, q xyzw, s, optional canonical pose); the editor changes only q.
 local M={BONE_FRAME_SIDE='right'}
+-- Carry sockets the game re-places every frame; the controller skips them for edits.
+M.GAME_OWNED={[23]='attach_samplepouch',[24]='attach_intelpad',[25]='target_designator',[28]='sling',[31]='support_mg',[32]='support'}
 local function finite(n)return type(n)=='number'and n==n and math.abs(n)<math.huge end
 local function fingers(side,first)
  -- first = node of thumb segment 1 for the thumb, then each finger's own first node.
@@ -18,7 +20,7 @@ M.GROUPS={
  {id='left_hand',label='Left hand',bones=fingers('l',{{node=62,label='Thumb'},{node=59,label='Index'},{node=56,label='Middle'},{node=53,label='Ring'},{node=50,label='Pinky'}})},
  {id='right_hand',label='Right hand',bones=fingers('r',{{node=87,label='Thumb'},{node=82,label='Index'},{node=79,label='Middle'},{node=76,label='Ring'},{node=73,label='Pinky'}})},
  {id='cape',label='Cape',bones={}},
- {id='gear',label='Aim and gear',bones={{node=9,label='Aim'},{node=92,label='Head aim'},{node=33,label='Weapon mount'},{node=34,label='Weapon aim'},{node=86,label='Hand aim'},{node=49,label='Left hand mount'},{node=85,label='Right hand mount'},{node=12,label='Pistol'},{node=30,label='Backpack'},{node=28,label='Sling'},{node=32,label='Support'},{node=31,label='Support MG'},{node=23,label='Pouch'},{node=24,label='Intel pad'},{node=25,label='Designator'},{node=26,label='Knife'}}},
+ {id='gear',label='Aim and gear',bones={{node=9,label='Aim'},{node=92,label='Head aim'},{node=33,label='Weapon mount'},{node=34,label='Weapon aim'},{node=86,label='Hand aim'},{node=49,label='Left hand mount'},{node=85,label='Right hand mount'},{node=12,label='Pistol'},{node=30,label='Backpack'},{node=26,label='Knife'}}},
 }
 for i=1,8 do M.GROUPS[8].bones[i]={node=34+i,label='Cape '..i}end
 M.rig_names={[8]='boss',[9]='boss_aim',[10]='hips',[11]='r_thigh',[12]='pistol',[13]='r_knee',[14]='r_foot',[15]='r_ball',[16]='r_toe',

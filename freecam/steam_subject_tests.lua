@@ -527,4 +527,20 @@ do -- apply_frame: edited frames share the lease; only changed nodes are written
  assert(f.controller.node_parent(70)==69 and f.controller.node_parent(1)==0 and f.controller.node_parent(200)==nil,'Parent index from the rig')
  f.validation='unknown';assert(not f.controller.apply_frame(edited()),'Unknown lifetime refuses like apply')
 end
+do -- edited frames tolerate the game's own carry sockets; a foreign write elsewhere still blocks
+ local f=fixture();f.select()
+ local function edited(x)local fr={full_body=true,nodes={}};for i=8,92 do fr.nodes[i]=copy(f.b.nodes[i])end;fr.nodes[70]={p=copy(f.b.nodes[70].p),q={0,0,math.sin(x),math.cos(x)},s={1,1,1}};return fr end
+ f.bank.rig.nodes[28].name='sling';f.bank.rig.nodes[23].name='attach_samplepouch'
+ assert(f.controller.apply_frame(edited(.4)))
+ -- The game re-places the sling every frame while frozen.
+ f.b.nodes[28].p[1]=999;f.b.nodes[23].p[2]=-5
+ assert(f.controller.apply_frame(edited(.5)),'Carry sockets moved by the game never block an edit')
+ assert(f.b.nodes[28].p[1]==999 and f.b.nodes[23].p[2]==-5,'Edits never write the game-owned sockets back')
+ local written=0;for _,i in ipairs(f.written)do if i==28 or i==23 then written=written+1 end end;assert(written==0)
+ assert(f.controller.reset());f.b.nodes[28].p[1]=f.original.nodes[28].p[1];f.b.nodes[23].p[2]=f.original.nodes[23].p[2];f.original_body()
+ assert(f.controller.apply_frame(edited(.4)))
+ f.b.nodes[47].q[1]=.3 -- someone else moved the left elbow
+ assert(not f.controller.apply_frame(edited(.5)))
+ local s=f.controller.status();assert(s.state=='pending'and s.message=='Subject body changed; recover without overwriting it'and tostring(s.detail):find('node 47',1,true),tostring(s.detail))
+end
 print('Steam selected subject: explicit selection, zero idle work, exact PQS/matrix12 ownership, anchors, foreign/partial guards and recovery passed')

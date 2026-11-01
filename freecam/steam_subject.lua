@@ -24,6 +24,11 @@
 -- as native Math/ID temporaries. A later native adapter requires ABI proof.
 local M={}
 local resource='4d1c334d294dfa97'
+-- Carry sockets the game re-places every frame even at zero time (live
+-- 2026-10-29 and 2026-11-01: nodes 23,24,25,28,31,32 taken back in every
+-- sample). Edited frames neither compare nor write them, or a second edit over
+-- a held lease reads the game's own writes as foreign.
+M.GAME_OWNED_NAMES={attach_samplepouch=true,attach_intelpad=true,target_designator=true,sling=true,support_mg=true,support=true}
 local function finite(n)return type(n)=='number'and n==n and math.abs(n)<math.huge end
 local function copy_vector(value,count)
  assert(type(value)=='table','Numeric subject vector unavailable')
@@ -355,7 +360,13 @@ function M.new(adapter,bank,is_frozen)
   end
   return{full_body=true,nodes=nodes}
  end
+ local function game_owned(key)
+  local owned={}
+  if key=='edited'then for i=8,92 do local node=bank.rig.nodes[i];if node and M.GAME_OWNED_NAMES[node.name]then owned[i]=true end end end
+  return owned
+ end
  local function apply_prepared(prepared,key,label_text)
+  local skip=game_owned(key)
   local current,why=snapshot()
   if current==false then finish(true);return false,status.message end
   if not current then
@@ -366,10 +377,10 @@ function M.new(adapter,bank,is_frozen)
    if current.matrix~=lease.original.matrix then return pending('Subject snapshot representation changed; recover without guessing ownership')end
    local expected_mode=lease.mode and lease.mode.value or lease.original.mode
    if current.mode~=expected_mode then lease.foreign=true;return pending('Subject mode changed; recover without overwriting it')end
-   for i=8,92 do
+   for i=8,92 do if not skip[i]then
     local expected=lease.nodes[i]and lease.nodes[i].value or lease.original.nodes[i]
-    if not same_node(current.nodes[i],expected)then lease.foreign=true;return pending('Subject body changed; recover without overwriting it')end
-   end
+    if not same_node(current.nodes[i],expected)then lease.foreign=true;return pending('Subject body changed; recover without overwriting it','node '..i)end
+   end end
    if key~='edited'and pose==key then return true end
   end
   local nodes=prepared.nodes
@@ -383,7 +394,7 @@ function M.new(adapter,bank,is_frozen)
   if not lease then lease={original=current,nodes={},commit_pending=false}end
   pose=nil
   if current.mode~='ignore'and not write_mode(current.mode,'ignore')then return false,status.message end
-  for i=8,92 do if not same_node(current.nodes[i],nodes[i])then
+  for i=8,92 do if not skip[i]and not same_node(current.nodes[i],nodes[i])then
    if not write_node(i,current.nodes[i],nodes[i],'ignore')then return false,status.message end
   end end
   if not commit()then return false,status.message end

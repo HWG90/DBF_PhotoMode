@@ -5,7 +5,8 @@ local E=dofile('freecam/pose_editor.lua');local bank=dofile('freecam/assets/stea
 local seen={};for _,g in ipairs(E.GROUPS)do for _,b in ipairs(g.bones)do
  assert(not seen[b.node],'Node listed twice: '..b.node);seen[b.node]=true
  assert(bank.rig.nodes[b.node].name==E.rig_names[b.node],'Rig name mismatch at '..b.node)end end
-for i=8,92 do assert(seen[i],'Node not grouped: '..i)end
+for i=8,92 do assert(seen[i]or E.GAME_OWNED[i],'Node not grouped: '..i);assert(not(seen[i]and E.GAME_OWNED[i]),'Game-owned node offered: '..i)end
+for node,name in pairs(E.GAME_OWNED)do assert(bank.rig.nodes[node].name==name,'Game-owned name mismatch at '..node)end
 assert(#E.GROUPS==9 and E.GROUPS[1].id=='body'and E.GROUPS[9].id=='gear')
 -- Quaternion maths against known values.
 local function near(a,b)for i=1,4 do if math.abs(a[i]-b[i])>1e-9 then return false end end;return true end
