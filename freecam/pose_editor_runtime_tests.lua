@@ -142,4 +142,40 @@ do -- marker drag: grabbing the ring previews Bend/Swing, wheel twists, release 
  assert(m.tick({x=x+300,y=y+300,click=true},down,nil,false)==false,'A press away from the ring is not captured')
  assert(f.action('subject_pose_stop'));f.restored()
 end
+do -- F1: after the subject retires, Refresh and Select with nothing selected keep the working pose
+ local f=fixture();f.enable();f.select();elbow(f)
+ f.runtime.handle.set('bone_bend',40);f.step(.016,1);f.settle();assert(f.subject.status().pose=='edited')
+ f.b.alive=false;f.runtime.handle.set('bone_bend',45);f.step(.016,1);assert(f.subject.status().state=='retired')
+ -- The double keeps the retired body's nodes; a Helldiver that comes back is a fresh body.
+ for i=1,107 do local o=f.original_b[i];f.b.nodes[i]={p={o.p[1],o.p[2],o.p[3]},q={o.q[1],o.q[2],o.q[3],o.q[4]},s={o.s[1],o.s[2],o.s[3]}}end;f.b.mode='position_and_rotation'
+ f.b.alive=true;local listed=f.discoveries
+ assert(f.action('subject_refresh'));assert(f.runtime.handle.get('bone_bend')==45,'Refresh with nothing selected keeps the working pose')
+ assert(f.action('subject_select_2'));assert(f.runtime.handle.get('bone_bend')==45,'Selecting when nothing was selected keeps it too')
+ assert(f.action('bone_apply'));for _=1,3 do f.step(.016,1)end
+ assert(f.subject.status().pose=='edited'and near(f.b.nodes[70].q,E.compose(f.original_b[70].q,45,0,0)),'Apply edits lands on the chosen Helldiver')
+ assert(f.discoveries==listed+1,'No hidden automatic re-select: only the explicit Refresh listed subjects')
+ assert(f.action('subject_pose_stop'));f.restored()
+end
+do -- F2: reopening Photo Mode resyncs the bone rows and rescans pose files
+ local F=dofile('freecam/pose_files.lua');local files={}
+ local fs={open=function(p,m)if m=='rb'then local c=files[p];if c==nil then return nil end;return{read=function()return c end,close=function()end}end;local b={};return{write=function(_,s)b[#b+1]=s;return true end,close=function()files[p]=table.concat(b);return true end}end,
+  rename=function(a,b)files[b]=files[a];files[a]=nil;return true end,remove=function(p)files[p]=nil;return true end}
+ local f=fixture(function(f,deps)deps.pose_files={storage=function()return F.storage('C:/cfg',fs)end}end)
+ f.enable();f.select();elbow(f)
+ f.runtime.handle.set('bone_bend',30);f.step(.016,1);f.settle();assert(f.subject.status().pose=='edited')
+ assert(f.runtime.close(true));f.restored()
+ local fr={full_body=true,nodes={}};for i=8,92 do fr.nodes[i]=f.original_b[i]end
+ files['C:/cfg/wj-pose-07.txt']=F.encode(fr,{label='Dropped in',source='file'})
+ f.open()
+ assert(f.runtime.handle.get('bone_bend')==0,'Reopen shows the cleared editor, not the stale slider')
+ assert(f.controls.pose_file.choices[1]=='07 — Dropped in',tostring(f.controls.pose_file.choices[1]))
+end
+do -- F3: a continuous first drag applies with a single reset and lands the last value
+ local f=fixture();f.enable();f.select();elbow(f)
+ local resets=f.subject_calls.reset or 0
+ for i=1,6 do f.runtime.handle.set('bone_bend',10+i);f.step(.016,1)end
+ assert(f.subject.status().pose=='edited'and near(f.b.nodes[70].q,E.compose(f.original_b[70].q,16,0,0)),'The drag applies while it continues and the last value lands')
+ assert((f.subject_calls.reset or 0)==resets+1,'One reset for the whole first drag, got '..tostring((f.subject_calls.reset or 0)-resets))
+ assert(f.action('subject_pose_stop'));f.restored()
+end
 print('Pose editor runtime: settle, coalesced apply, slider sync, rebase, unfreeze, retire and enabled rules passed')

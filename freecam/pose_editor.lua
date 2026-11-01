@@ -53,6 +53,8 @@ function M.compose(base_q,bend,swing,twist)
  return M.quat_normalize(M.quat_multiply(delta,base_q))
 end
 local AXES={bend=1,swing=2,twist=3}
+-- A loaded 'X edits' pose is the base named X: the suffix never stacks.
+local function base_name(text)return(tostring(text):match('^(.-) edits$'))or tostring(text)end
 local function clamp(v)return math.max(-180,math.min(180,v))end
 function M.new()
  local self={};local base,label;local angles={};local selected=70;local dirty=false
@@ -100,13 +102,13 @@ function M.new()
    else nodes[i]=source end
   end
   if not keep_dirty then dirty=false end
-  return{full_body=true,nodes=nodes,label=self.edited()and label..' edits'or label}
+  return{full_body=true,nodes=nodes,label=self.edited()and base_name(label)..' edits'or label}
  end
  function self.status(group_label,bone_label)
   local where=tostring(group_label)..' / '..tostring(bone_label)
   if not base then return'Freeze Action, then move a slider  |  '..where end
   local b,s,t=self.angles(selected)
-  return(self.edited()and label..' edits'or label)..'  |  '..where..string.format('  Bend %d  Swing %d  Twist %d',b,s,t)
+  return(self.edited()and base_name(label)..' edits'or label)..'  |  '..where..string.format('  Bend %d  Swing %d  Twist %d',b,s,t)
  end
  return self
 end

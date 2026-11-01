@@ -785,6 +785,7 @@ function M.new(host,sr,deps,service)
    -- them. The first frame takes the proven reset-and-settle path above so the
    -- cape is captured against a settled body.
    if not settled and not self.pose_held()then
+    if self.pending_pose and self.pending_pose.frame then self.pending_pose.frame=value;return true,'Applying the pose'end
     local reset,reason=subject_call('reset')
     if not reset then return false,reason end
     self.pending_pose={frame=value,updates=2};return true,'Applying the pose'
@@ -961,16 +962,12 @@ function M.new(host,sr,deps,service)
   if not editor.dirty()then return end
   if not(self.active and simulation and simulation.owns_zero())or subject_pending then return end
   if not(s and s.selected)then
-   -- Time resumed and the controller let the subject go. One bounded attempt
-   -- to list and select the nearest Helldiver again, as opening does.
-   if self.auto_subject then self.auto_subject(photo and photo.pos)end
-   s=subject_status
-   if not(s and s.selected)then
-    editor.compose_frame()
-    local why='Select a Helldiver in Subject to apply the edits'
-    if why~=self.bone_notice then self.bone_notice=why;notice(why)end
-    return
-   end
+   -- No subject (retired, or another time modifier took over): the working
+   -- pose waits for an explicit Refresh and Select, never a silent re-target.
+   editor.compose_frame()
+   local why='Select a Helldiver in Subject to apply the edits'
+   if why~=self.bone_notice then self.bone_notice=why;notice(why)end
+   return
   end
   if not editor.has_base()then
    local frame,why;local held=self.pose_held()
@@ -1024,8 +1021,8 @@ function M.new(host,sr,deps,service)
   end
   if deps.pose_editor and not self.pose_editor then self.pose_editor=deps.pose_editor.new()end
   self.pose_editor_key=nil;self.sync_bone_rows()
-  if deps.pose_files and deps.pose_editor and not self.pose_store and type(host.config_dir)=='string'then self.pose_store=deps.pose_files.storage(host.config_dir)end
-  self.pose_files_sync(true)
+  if deps.pose_files and deps.pose_editor and not self.pose_store and type(host.config_dir)=='string'then self.pose_store=deps.pose_files.storage(host.config_dir);self.pose_store_fresh=true end
+  self.pose_files_sync(false)
   subject_opt_in=true;subject_close_started=false;subject_cleanup_attempted=false;sync_subject()
   if self.pov_visibility then
    self.pov_visibility.queue_player(handle.get('hide_player'))
@@ -1052,7 +1049,8 @@ function M.new(host,sr,deps,service)
   if hit.helldiver and subject and type(subject.select_unit)=='function'then
    if subject_holds then message=message..'; reset the held pose to pose it'
    elseif subject_action('refresh',hit.center)then
-    local ok,reason=subject_call('select_unit',hit.unit);if not ok then message=message..'; '..tostring(reason)else self.clear_pose_edits()end
+    local had=subject_status~=nil and subject_status.selected~=nil
+    local ok,reason=subject_call('select_unit',hit.unit);if not ok then message=message..'; '..tostring(reason)elseif had then self.clear_pose_edits()end
    end
   elseif not hit.helldiver then message=message..' for focus and lighting; poses need a Helldiver'end
   picked_label=message;sync_subject();notice(message)
@@ -1063,7 +1061,6 @@ function M.new(host,sr,deps,service)
   if not subject or subject_holds or subject_pending or type(subject.select_nearest)~='function'then return end
   if subject_action('refresh',point)then subject_call('select_nearest',point)end
  end
- self.auto_subject=auto_subject
  local function flush_roll()
   if photo and photo.roll~=nil then
    local value=photo.roll;photo.roll=nil
@@ -1793,7 +1790,8 @@ function M.new(host,sr,deps,service)
  if type(deps.load_subject)=='function'then for _,page in ipairs(pages)do if page.id=='subject'then
   local rows={{id='subject_refresh',type='button',label='Refresh subjects (up to four)',on_activate=function()
    local ok,why=load_subject();if not ok then return false,why end
-   local done,reason=subject_action('refresh');if done then self.clear_pose_edits()end;return done,reason end}}
+   local had=subject_status~=nil and subject_status.selected~=nil
+   local done,reason=subject_action('refresh');if done and had then self.clear_pose_edits()end;return done,reason end}}
   if deps.freeze_bone_probe then rows[#rows+1]={id='subject_freeze_bone_test',type='button',label='Test frozen bone transfer (6 seconds)',on_activate=function()
    local ok,why=deps.freeze_bone_probe.start(subject,sr.Application.time_since_launch(),subject_action)
    if not ok then notice(why)end;return ok,why
@@ -1826,7 +1824,7 @@ function M.new(host,sr,deps,service)
   end}end
   for i=1,4 do local index=i
    rows[#rows+1]={id='subject_select_'..i,type='button',label='No subject refreshed',button_label='Select',
-    on_activate=function()local choice=subject_choices and subject_choices[index];local ok,why=choice and subject_action('select',choice.id)or false;if ok then self.clear_pose_edits()end;return ok,why end}
+    on_activate=function()local choice=subject_choices and subject_choices[index];local had=subject_status~=nil and subject_status.selected~=nil;local ok,why=choice and subject_action('select',choice.id)or false;if ok and had then self.clear_pose_edits()end;return ok,why end}
   end
   rows[#rows+1]={id='subject_recover',type='button',label='Recover subject pose',on_activate=function()return subject_action('recover')end}
   for i=#rows,1,-1 do table.insert(page.controls,1,rows[i])end
@@ -2457,6 +2455,8 @@ function M.new(host,sr,deps,service)
   subject_close_started=false;begin_session();screenshot_label()
   if type(deps.load_subject)=='function'and load_subject()then
    auto_subject(initial.position)
+   -- Every open: the rows show the (cleared) editor and copied-in pose files appear.
+   if self.pose_editor then self.sync_bone_rows();self.pose_files_sync(not self.pose_store_fresh);self.pose_store_fresh=nil end
    if self.tracking_backend and subject and type(subject.select_camera)=='function'then
     local identity=camera.identity();if identity then
      local called,selected,basis=pcall(subject.select_camera,identity.unit,initial.position)

@@ -40,4 +40,6 @@ e.set_angle(70,'bend',5);e.adopt(frame,'Snapshot');assert(e.has_base()and e.edit
 e.compose_frame();assert(not e.dirty());e.touch();assert(e.dirty(),'Touch re-arms an apply')
 assert(e.compose_frame().label=='Snapshot edits','Composed frames carry their label')
 e.touch();assert(e.compose_frame(true).label=='Snapshot edits'and e.dirty(),'A copy for saving keeps the dirty flag')
+e.rebase(frame,'Snapshot edits');e.set_angle(70,'bend',5);assert(e.compose_frame().label=='Snapshot edits','No double edits suffix')
+assert(e.status('Right arm','Elbow'):find('^Snapshot edits  |'),e.status('Right arm','Elbow'))
 print('Pose editor: groups, quaternion maths, pinned composition, pass-through and lifecycle passed')
