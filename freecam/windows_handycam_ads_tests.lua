@@ -11,7 +11,11 @@ a.event('right',true,1);a.observe(f,head,1.01);a.observe(f,head,1.02);assert(not
 f.position={.17,0,0};a.observe(f,head,1.2);a.observe(f,head,1.21);assert(a.suspended)
 a.observe(f,head,1.6);assert(not a.pending());f.position={3,0,0}
 for i=1,1000 do a.observe(f,head,2+i)end;assert(not a.suspended,'Persistent Handycam intent recovers a late native return without another input event')
-f.position={.17,0,0};a.observe(f,head,1002.5);assert(not a.suspended,'Return-only fallback cannot enter ADS without an event')
+-- The engine's input event queue drops mouse edges (the live log shows releases
+-- without a press), so a confirmed native eye view must enter without an event.
+f.position={.17,0,0};a.observe(f,head,1002.5);assert(not a.suspended,'One near frame is not a handoff')
+a.observe(f,head,1002.51);assert(a.suspended,'Confirmed native first person enters ADS without an event')
+assert(messages[#messages]:find('native first-person entry',1,true),messages[#messages])
 f.position={3,0,0}
 a.event('right',false,1003);a.observe(f,head,1003.01);a.observe(f,head,1003.02);assert(not a.suspended)
 -- Menu/focus changes preserve the shot state but require fresh classification on return.
@@ -81,6 +85,25 @@ do
  b.observe(f,head,.601);assert(not b.pending(),'Handoffs cannot extend the input window')
  f.position={1.13,0,0};b.observe(f,head,.602);assert(not b.suspended)
  f.position={.17,0,0};b.observe(f,head,.603);b.observe(f,head,.604)
- assert(not b.suspended,'Expired input window remains idle on native near samples')
+ assert(b.suspended,'An expired input window no longer blocks a confirmed native near camera')
+end
+
+-- A third-person camera pushed into the body by collision sits behind the head
+-- and looks at it: the head is ahead of the camera plane. That is never the eye
+-- view, so without an event it must not yield; the eye view (head behind the
+-- camera) still yields when both input edges were dropped.
+do
+ local b=M.new();b.set_active(true,0);f.position={1.13,0,0};f.forward={1,0,0}
+ for i=1,70 do b.observe(f,head,i*.01)end;assert(not b.pending()and not b.suspended)
+ f.position={-.3,0,0}
+ for i=1,10 do b.observe(f,head,1+i*.01)end
+ assert(not b.suspended,'A collided third-person camera behind the head never enters ADS without an event')
+ f.position={-.05,0,.2};f.forward={0,0,-1}
+ for i=1,10 do b.observe(f,head,2+i*.01)end
+ assert(not b.suspended,'A camera above the head looking down at it is not the eye view')
+ f.position={.17,0,0};f.forward={1,0,0}
+ b.observe(f,head,3);assert(not b.suspended);b.observe(f,head,3.01)
+ assert(b.suspended,'Both edges dropped: the confirmed eye view still yields')
+ f.position={1.13,0,0};b.observe(f,head,3.02);assert(not b.suspended,'and the first far frame still reclaims the mount')
 end
 

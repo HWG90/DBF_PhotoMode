@@ -1,6 +1,10 @@
--- Event-triggered first-person camera handoff. No engine calls.
+-- First-person camera handoff from camera evidence. No engine calls.
 -- Qualified near/far evidence: 0.163 m in first person, 1.132 m in normal aim.
 -- This is camera evidence, not a claimed authoritative gameplay ADS flag.
+-- Mouse edges open a short observation window, but the engine's input event
+-- queue drops edges (the live log shows releases without a press), so both
+-- directions also run a no-event watch: yielded, the first far frame reclaims
+-- the mount; mounted, a confirmed native eye view yields.
 local M={}
 local function finite(v)return type(v)=='number'and v==v and math.abs(v)<1e8 end
 local function near(a,b)
@@ -11,18 +15,18 @@ end
 function M.new(log)
  local self={suspended=false};local active=false;local pending;local output
  local last_name,last_pressed,last_time
- local return_watch
+ local watch
  local function begin(now,reason)
   if not finite(now)then return end
-  pending={deadline=now+.5,samples=0,streak=0,reason=reason};return_watch=nil
+  pending={deadline=now+.5,samples=0,streak=0,reason=reason};watch=nil
  end
- function self.reset()active=false;pending=nil;output=nil;last_time=nil;return_watch=nil;self.suspended=false end
+ function self.reset()active=false;pending=nil;output=nil;last_time=nil;watch=nil;self.suspended=false end
  function self.set_active(value,now)
   value=value==true
   local was_active=active
   if value and not active then begin(now,'camera resumed')end
   active=value
-  if not active and was_active then pending=nil;last_time=nil;return_watch=nil end
+  if not active and was_active then pending=nil;last_time=nil;watch=nil end
  end
  function self.event(name,pressed,now)
   if not active then return end
@@ -46,20 +50,31 @@ function M.new(log)
   if pending and(now>pending.deadline or pending.samples>=128)then pending=nil end
   local evidence=pending
   if not evidence then
-   if not self.suspended then return false,false end
-   -- No qualified native exit notification exists. Reuse the frame/head already
-   -- required by Handycam: constant arithmetic, no API calls or timer delay.
-   -- The first far frame must reclaim the mount even if both input edges drop.
-   return_watch=return_watch or{streak=0,reason='native third-person return',return_only=true}
-   evidence=return_watch
+   -- No qualified native entry or exit notification exists, and an input
+   -- window may never open when the engine drops both edges of a click. Reuse
+   -- the frame/head already required by Handycam: constant arithmetic, no API
+   -- calls or timer delay. Yielded, the first far frame must reclaim the mount.
+   -- Mounted, a confirmed near camera yields only as the eye view: the head
+   -- sits behind the camera plane. A third-person camera pushed into the body
+   -- by collision sits behind or above the head and looks at it, so the head
+   -- is ahead of that camera and it never qualifies.
+   if not watch then
+    if self.suspended then watch={streak=0,reason='native third-person return',only='far'}
+    else watch={streak=0,reason='native first-person entry',only='near',eye=true}end
+   end
+   evidence=watch
   else evidence.samples=evidence.samples+1 end
   if not(frame and head and frame.position and frame.forward and head.head)then evidence.streak=0;return self.suspended,false end
   -- Never classify our own mount as native first person, even with zero lag.
   if not self.suspended and output and near(frame.position,output.position)and near(frame.forward,output.forward)then evidence.streak=0;return self.suspended,false end
-  local d=0
-  for i=1,3 do local a,b=frame.position[i],head.head[i];if not(finite(a)and finite(b))then evidence.streak=0;return self.suspended,false end;d=d+(a-b)^2 end
+  local d,ahead=0,0
+  for i=1,3 do
+   local a,b,f=frame.position[i],head.head[i],frame.forward[i]
+   if not(finite(a)and finite(b)and finite(f))then evidence.streak=0;return self.suspended,false end
+   d=d+(a-b)^2;ahead=ahead+(b-a)*f
+  end
   local kind=d<.4*.4 and 'near'or d>.7*.7 and 'far'or nil
-  if not kind or evidence.return_only and kind~='far'then evidence.streak=0;return self.suspended,false end
+  if not kind or evidence.only and kind~=evidence.only or evidence.eye and not(ahead<.05)then evidence.streak=0;return self.suspended,false end
   evidence.streak=kind==evidence.kind and evidence.streak+1 or 1;evidence.kind=kind
   -- Leave the first native near frame untouched so our aligned eye cannot
   -- become an indistinguishable output echo before the second confirmation.
@@ -67,13 +82,13 @@ function M.new(log)
   local value=kind=='near';local changed=value~=self.suspended
   if changed then
    self.suspended=value
-   if log then log('Handycam ADS: '..(value and 'yield'or'resume')..'; event='..evidence.reason..'; head_distance='..string.format('%.4f',math.sqrt(d)))end
+   if log then log('Handycam ADS: '..(value and 'yield'or'resume')..'; event='..evidence.reason..'; head_distance='..string.format('%.4f',math.sqrt(d))..'; head_ahead='..string.format('%.3f',ahead))end
    -- An event batch can precede several native camera updates. Keep its
    -- original deadline/sample budget across handoffs so a delayed newer ADS
    -- entry is still observed after the previous exit reclaimed Handycam.
    -- Neither a handoff nor duplicate events extend the observation window.
    evidence.streak=0;evidence.kind=nil
-   return_watch=nil
+   watch=nil
   end
   -- Before a handoff, keep observing: remembered ADS may appear after initial far frames.
   return self.suspended,changed

@@ -10,7 +10,7 @@
 - Hover Freeze uses a near-zero fallback, not a thrust-only correction. Detection may include dropped packs; ragdoll/collision launching on Resume has been reported. Exact-zero hover safety is not established.
 - Use **Native camera DoF**. Depth shaders currently do not work. Inverted depth, Thermal depth, Depth contours, Depth fog and Shader DoF/bokeh are removed from the current menu. Native focus/aperture work. Public scene effects stay disabled until visually verified.
 - Automatic native HUD hiding is not restored on Windows. Use your game's Toggle HUD binding; the tester used `/`.
-- Handycam ADS transitions need wider coverage; occasional camera-return/clipping and normal-aim parallax remain possible. Backward/strafe body turning is not corrected.
+- Handycam ADS transitions need wider coverage; occasional camera-return/clipping and normal-aim parallax remain possible. Backward/strafe body turning is not corrected. (Fixed after 1.3.3: ADS was sometimes missed, leaving the Handycam eye view beside the raised weapon, because the game dropped the mouse click that opened the observation window; the Handycam now also yields on confirmed camera evidence without a click.)
 - A Helldiver frozen while running can flicker briefly while the game tries to animate it.
 - Hide Cape can miss a modded cape. Entering Photo Mode from a first-person view has been reported to show a headless prone body; steps to reproduce are welcome.
 - The Follow player cameras and the cape after an armour change are not yet confirmed in game.
