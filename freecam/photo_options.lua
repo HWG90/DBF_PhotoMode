@@ -223,7 +223,7 @@ function M.pages(reset,recenter,catalog,saved_actions)
  director_action('bone_reset','Reset bone','bone_reset'),director_action('bone_reset_all','Reset edits','bone_reset_all'),director_action('bone_apply','Apply edits','bone_apply'),
  toggle('bone_marker','Show bone marker'),
  {id='bone_status',type='text',label='Freeze Action, then pick a bone'},
- {id='bone_hint',type='text',label='Freeze Action, then move a slider or drag. Bend, Swing and Twist turn the bone around its own axes; children follow. Picking another pose clears edits.'},
+ {id='bone_hint',type='text',label='Freeze Action first. Rings mark the bones of the group: click one to select it. L drag moves, R drag bends and swings, M drag twists, wheel is depth, Shift is fine. Picking another pose clears edits.'},
  choice('pose_file','Saved pose',{'No saved poses'}),
  director_action('pose_load','Load pose','pose_load'),director_action('pose_save_new','Save as new pose','pose_save_new'),director_action('pose_overwrite','Overwrite selected','pose_overwrite'),director_action('pose_delete','Delete selected','pose_delete'),director_action('pose_rescan','Rescan pose files','pose_rescan'),
  {id='pose_files_status',type='text',label='Poses are files next to the settings: wj-pose-01.txt to wj-pose-99.txt'},

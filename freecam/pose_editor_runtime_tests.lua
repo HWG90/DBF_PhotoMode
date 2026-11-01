@@ -96,11 +96,11 @@ do -- marker: ring at the selected bone while shown; hidden by the toggle or a f
  assert(f.menu.prepare_bone_marker and f.menu.bone_marker,'Runtime installs the marker on the menu')
  local seen;local update=f.menu.bone_marker.update
  f.menu.bone_marker.update=function(frame,...)seen=frame;return update(frame,...)end
- local ahead;f.subject.node_position=function(index)
+ local ahead;f.subject.node_frame=function(index)
   if not f.b.alive then return nil,'Selected subject retired'end
-  if not ahead then return{0,0,0}end;return{ahead[1],ahead[2],ahead[3]+index/1000}
+  if not ahead then return{position={0,0,0},rotation={0,0,0,1}}end;return{position={ahead[1],ahead[2],ahead[3]+index/1000},rotation={0,0,0,1}}
  end
- local function drawn()f.menu.prepare_bone_marker(1920,1080,true,false);local cmds={};f.menu.bone_marker.draw(cmds);local n=0;for _,c in ipairs(cmds)do if c.ui_role=='bone_marker'then n=n+1 end end;return n end
+ local function drawn()f.menu.prepare_bone_marker(1920,1080,true,false);local cmds={};f.menu.bone_marker.draw(cmds);local n=0;for _,c in ipairs(cmds)do if c.ui_role=='bone_marker'and c.bone==70 then n=n+1 end end;return n end
  drawn();assert(seen and seen.position and seen.forward,'The marker projects with the Photo Mode camera frame')
  ahead={};for i=1,3 do ahead[i]=seen.position[i]+seen.forward[i]*5 end
  assert(drawn()==1,'Marker drawn for the selected bone in front of the camera')
@@ -121,25 +121,27 @@ do -- Freeze skeleton hold (bone transfer lease) active: the first edit still ta
  assert(f.action('bone_apply'));for _=1,3 do f.step(.016,1)end;assert(f.subject.status().pose=='edited','Apply edits over the transfer hold')
  assert(f.action('subject_pose_stop'));f.restored()
 end
-do -- marker drag: grabbing the ring previews Bend/Swing, wheel twists, release commits once
+do -- marker gestures: R drag previews Bend/Swing and commits on release, wheel moves along depth
  local f=fixture(function(f,deps)deps.pose_marker=dofile('freecam/pose_marker.lua');deps.gizmos=deps.gizmos or{new=function()return{update=function()end,cancel=function()end,draw=function()end,tick=function()return false end}end};deps.gizmos.project=dofile('freecam/photo_light_gizmos.lua').project end)
  f.enable();f.select();elbow(f)
  local seen;local update=f.menu.bone_marker.update
  f.menu.bone_marker.update=function(frame,...)seen=frame;return update(frame,...)end
- local ahead;f.subject.node_position=function(index)if not ahead then return{0,0,0}end;return{ahead[1],ahead[2],ahead[3]+index/1000}end
- local function ring()f.menu.prepare_bone_marker(1920,1080,true,false);local cmds={};f.menu.bone_marker.draw(cmds);for _,c in ipairs(cmds)do if c.ui_role=='bone_marker'then return c.x+c.w/2,c.y+c.h/2 end end end
+ local ahead;f.subject.node_frame=function(index)if not ahead then return{position={0,0,0},rotation={0,0,0,1}}end;return{position={ahead[1]+(index-70)*.2,ahead[2],ahead[3]},rotation={0,0,0,1}}end
+ local function ring()f.menu.prepare_bone_marker(1920,1080,true,false);local cmds={};f.menu.bone_marker.draw(cmds);for _,c in ipairs(cmds)do if c.ui_role=='bone_marker'and c.bone==70 then return c.x+c.w/2,c.y+c.h/2 end end end
  ring();ahead={};for i=1,3 do ahead[i]=seen.position[i]+seen.forward[i]*5 end
  local x,y=ring();assert(x,'Ring visible')
  f.runtime.handle.set('bone_bend',10);f.step(.016,1);f.settle();assert(f.subject.status().pose=='edited')
  local keys={};local function down(k)return keys[k]or false end
  local m=f.menu.bone_marker
- assert(m.tick({x=x,y=y,click=true},down,nil,false)==true,'Press on the ring captures the pointer')
- assert(m.tick({x=x+10,y=y+20,click=true},down,nil,false)==true)
- assert(f.runtime.handle.get('bone_bend')>10 and f.runtime.handle.get('bone_swing')>0,'Dragging the ring previews Bend and Swing')
+ keys[2]=true;assert(m.tick({x=x,y=y,click=false},down,nil,false)==true,'Right press on the selected ring starts a rotate')
+ assert(m.tick({x=x+192,y=y+108,click=false},down,nil,false)==true)
+ assert(f.runtime.handle.get('bone_bend')==-2 and f.runtime.handle.get('bone_swing')==-9,'R drag previews Bend and Swing like yaw and pitch')
  f.step(.016,1);assert(not near(f.b.nodes[70].q,E.compose(f.original_b[70].q,10,0,0)),'Preview applied live')
- m.tick({x=x+10,y=y+20,click=false},down,nil,false);assert(f.runtime.handle.get('bone_bend')>10,'Release commits the slider')
- assert(m.tick({x=x,y=y,click=false,wheel=120},down,nil,false)==true and f.runtime.handle.get('bone_twist')==1,'Wheel over the ring twists')
- assert(m.tick({x=x+300,y=y+300,click=true},down,nil,false)==false,'A press away from the ring is not captured')
+ keys[2]=false;m.tick({x=x+192,y=y+108,click=false},down,nil,false);assert(f.runtime.handle.get('bone_bend')==-2,'Release commits the sliders')
+ assert(m.tick({x=x,y=y,click=false,wheel=120},down,nil,false)==true,'Wheel over the ring is a depth move');f.step(.016,1)
+ local p,o=f.b.nodes[70].p,f.original_b[70].p;local moved=0;for i=1,3 do moved=moved+(p[i]-o[i])^2 end
+ assert(math.abs(math.sqrt(moved)-.01)<1e-6,'One notch is one centimetre')
+ assert(m.tick({x=x+300,y=y+300,click=true},down,nil,false)==false,'A press away from every ring is not captured')
  assert(f.action('subject_pose_stop'));f.restored()
 end
 do -- F1: after the subject retires, Refresh and Select with nothing selected keep the working pose
@@ -176,6 +178,29 @@ do -- F3: a continuous first drag applies with a single reset and lands the last
  for i=1,6 do f.runtime.handle.set('bone_bend',10+i);f.step(.016,1)end
  assert(f.subject.status().pose=='edited'and near(f.b.nodes[70].q,E.compose(f.original_b[70].q,16,0,0)),'The drag applies while it continues and the last value lands')
  assert((f.subject_calls.reset or 0)==resets+1,'One reset for the whole first drag, got '..tostring((f.subject_calls.reset or 0)-resets))
+ assert(f.action('subject_pose_stop'));f.restored()
+end
+do -- group markers: one ring per bone, click selects, left drag moves the bone in its parent's frame
+ local f=fixture(function(f,deps)deps.pose_marker=dofile('freecam/pose_marker.lua');deps.gizmos=deps.gizmos or{new=function()return{update=function()end,cancel=function()end,draw=function()end,tick=function()return false end}end};deps.gizmos.project=dofile('freecam/photo_light_gizmos.lua').project end)
+ f.enable();f.select();elbow(f)
+ local seen;local update=f.menu.bone_marker.update
+ f.menu.bone_marker.update=function(frame,...)seen=frame;return update(frame,...)end
+ local ahead
+ -- Bones spread along the camera's right vector, 0.2 m apart, five metres ahead.
+ f.subject.node_frame=function(index)if not ahead then return{position={0,0,0},rotation={0,0,0,1}}end;local k=(index-70)*.2;return{position={ahead[1]+seen.right[1]*k,ahead[2]+seen.right[2]*k,ahead[3]+seen.right[3]*k},rotation={0,0,0,1}}end
+ local function rings()f.menu.prepare_bone_marker(1920,1080,true,false);local cmds={};f.menu.bone_marker.draw(cmds);local out={};for _,c in ipairs(cmds)do if c.ui_role=='bone_marker'then out[c.bone]={x=c.x+c.w/2,y=c.y+c.h/2,white=c.c[1]==255 and c.c[2]==255}end end;return out end
+ rings();ahead={};for i=1,3 do ahead[i]=seen.position[i]+seen.forward[i]*5 end
+ local r=rings();local count=0;for _ in pairs(r)do count=count+1 end
+ assert(count==7 and r[70].white and not r[72].white,'Seven Right arm rings, Elbow white')
+ local keys={};local function down(k)return keys[k]or false end;local m=f.menu.bone_marker
+ assert(m.tick({x=r[72].x,y=r[72].y,click=true},down,nil,false)==true);m.tick({x=r[72].x,y=r[72].y,click=false},down,nil,false)
+ assert(f.runtime.handle.get('bone')==4,'Clicking the Hand ring selects it');r=rings();assert(r[72].white and not r[70].white)
+ f.runtime.handle.set('bone_bend',5);f.step(.016,1);f.settle();assert(f.subject.status().pose=='edited')
+ assert(m.tick({x=r[72].x,y=r[72].y,click=true},down,nil,false)==true);m.tick({x=r[72].x+192,y=r[72].y,click=true},down,nil,false);f.step(.016,1)
+ local p=f.b.nodes[72].p;local o=f.original_b[72].p
+ assert(math.abs((p[1]-o[1])-.1*seen.right[1]-0)<1e-6 or math.abs(p[1]-o[1])>1e-9,'Left drag moved the hand')
+ local moved=0;for i=1,3 do moved=moved+(p[i]-o[i])^2 end;assert(math.abs(math.sqrt(moved)-.1)<1e-6,'0.1 m of travel in the parent frame')
+ m.tick({x=r[72].x+192,y=r[72].y,click=false},down,nil,false)
  assert(f.action('subject_pose_stop'));f.restored()
 end
 print('Pose editor runtime: settle, coalesced apply, slider sync, rebase, unfreeze, retire and enabled rules passed')

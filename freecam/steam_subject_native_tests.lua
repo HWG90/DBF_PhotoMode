@@ -322,6 +322,13 @@ do -- node_position: the world pose translation of one node, bounded to the rig
  f:step();check(not f.adapter.node_position(f.target,f.rig,200),'Index outside the rig refused')
  check(f.writes==0,'A position read never writes')
 end
+do -- node_frame: world translation plus rotation quaternion, bounded to the rig
+ local f=fixture();f:ready();f:step()
+ local fr,why=f.adapter.node_frame(f.target,f.rig,70);check(fr,why)
+ check(fr.position[1]==float(7)and fr.position[2]==float(.2)and fr.position[3]==float(.3),'Frame position is the world pose translation')
+ check(#fr.rotation==4,'Frame rotation is a quaternion');for i=1,4 do check(type(fr.rotation[i])=='number'and fr.rotation[i]==fr.rotation[i])end
+ f:step();check(not f.adapter.node_frame(f.target,f.rig,0),'Index outside the rig refused');check(f.writes==0,'A frame read never writes')
+end
 print('steam_subject_native_tests: '..assertions..' assertions passed (actual Lua5.1; strict matrix12; source only)')
 
 do

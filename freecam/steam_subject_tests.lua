@@ -543,4 +543,10 @@ do -- edited frames tolerate the game's own carry sockets; a foreign write elsew
  assert(not f.controller.apply_frame(edited(.5)))
  local s=f.controller.status();assert(s.state=='pending'and s.message=='Subject body changed; recover without overwriting it'and tostring(s.detail):find('node 47',1,true),tostring(s.detail))
 end
+do -- node_frame: world position and rotation of a node through the adapter
+ local f=fixture();f.select()
+ f.adapter.node_frame=function(target,rig,index)assert(index==69 and rig==f.bank.rig);return{position={1,2,3},rotation={0,0,0,1}}end
+ local fr=f.controller.node_frame(69);assert(fr.position[3]==3 and fr.rotation[4]==1)
+ assert(select(2,f.controller.node_frame(500))~=nil or f.controller.node_frame(500)==nil)
+end
 print('Steam selected subject: explicit selection, zero idle work, exact PQS/matrix12 ownership, anchors, foreign/partial guards and recovery passed')

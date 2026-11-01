@@ -449,6 +449,14 @@ function M.new(adapter,bank,is_frozen)
   local node=bank.rig.nodes[index];if not node then return nil end
   return node.parent or 0
  end
+ function self.node_frame(index)
+  if not selected then return nil,'Select a photographic subject first'end
+  if type(adapter.node_frame)~='function'then return nil,'Node frame unavailable'end
+  local called,value,why=pcall(adapter.node_frame,selected,bank.rig,index)
+  if not called then return nil,tostring(value)end
+  if type(value)~='table'or type(value.position)~='table'or type(value.rotation)~='table'then return nil,why or'Node frame unavailable'end
+  return{position={value.position[1],value.position[2],value.position[3]},rotation={value.rotation[1],value.rotation[2],value.rotation[3],value.rotation[4]}}
+ end
  function self.node_position(index)
   if not selected then return nil,'Select a photographic subject first'end
   if type(adapter.node_position)~='function'then return nil,'Node position unavailable'end

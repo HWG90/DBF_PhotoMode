@@ -43,4 +43,17 @@ assert(e.compose_frame().label=='Snapshot edits','Composed frames carry their la
 e.touch();assert(e.compose_frame(true).label=='Snapshot edits'and e.dirty(),'A copy for saving keeps the dirty flag')
 e.rebase(frame,'Snapshot edits');e.set_angle(70,'bend',5);assert(e.compose_frame().label=='Snapshot edits','No double edits suffix')
 assert(e.status('Right arm','Elbow'):find('^Snapshot edits  |'),e.status('Right arm','Elbow'))
+-- Offsets: a bone can be moved in its parent's frame; composed p = base p + offset.
+do
+ local e2=E.new();e2.rebase(frame,'Salute')
+ assert(e2.nudge_offset(70,.1,0,-.02)and e2.edited()and e2.dirty())
+ local ox,oy,oz=e2.offset(70);assert(ox==.1 and oy==0 and oz==-.02)
+ local out=e2.compose_frame();assert(out.nodes[70].p[1]==70.1 and out.nodes[70].p[3]==-.02 and out.nodes[70].q[4]==1,'Offset moves p and leaves q')
+ assert(out.nodes[8]==frame.nodes[8],'Other bones pass through')
+ e2.nudge_offset(70,5,0,0);ox=e2.offset(70);assert(ox==1,'Offsets clamp to one metre')
+ assert(select(2,e2.nudge_offset(70,0/0,0,0))=='Offset must be a number')
+ assert(e2.status('Right arm','Elbow'):find('Move 100/0/-2 cm',1,true),e2.status('Right arm','Elbow'))
+ e2.reset_bone(70);assert(not e2.edited());local a,b,c=e2.offset(70);assert(a==0 and b==0 and c==0,'Reset bone clears the offset')
+ e2.nudge_offset(48,0,.3,0);e2.reset_all();assert(not e2.edited())
+end
 print('Pose editor: groups, quaternion maths, pinned composition, pass-through and lifecycle passed')

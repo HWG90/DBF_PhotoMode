@@ -2095,16 +2095,43 @@ function M.new(host,sr,deps,service)
  end
  if deps.pose_marker and deps.gizmos and deps.pose_editor then
   -- Ring at the selected bone, dot at its parent: display only, read per draw.
-  menu.bone_marker=deps.pose_marker.new(deps.gizmos.project,{get=function(id)return handle.get(id)end,adjust=function(values,finish)return self.bone_adjust(values,finish)end})
+  menu.bone_marker=deps.pose_marker.new(deps.gizmos.project,{
+   get=function(id)return handle.get(id)end,
+   adjust=function(values,finish)return self.bone_adjust(values,finish)end,
+   -- A click on another ring is an ordinary bone selection.
+   select=function(node)
+    local _,group=self.bone_node();if not group then return false end
+    for index,bone in ipairs(group.bones)do if bone.node==node then local called,ok=pcall(handle.set,'bone',index);return called and ok~=false end end
+    return false
+   end,
+   -- A screen-space move, in metres, becomes an offset in the bone's parent frame.
+   move=function(delta)
+    local node=self.bone_node();local editor=self.pose_editor
+    if not(node and editor and subject and controls.bone_drag_handle and not controls.bone_drag_handle.disabled)then return false end
+    local l=deps.pose_editor.rotate_inverse(self.bone_parent_rotation or{0,0,0,1},delta)
+    local ok,why=editor.nudge_offset(node,l[1],l[2],l[3]);if not ok then notice(why)end
+    return ok
+   end})
+  -- One ring per bone of the selected group; the selected bone's parent frame is kept for moves.
   menu.prepare_bone_marker=function(w,h,focused,hidden)
-   local node=self.pose_editor and self.bone_node()
-   local shown=self.active and focused and not hidden and node~=nil and subject~=nil and handle.get('bone_marker')==true and subject_status~=nil and subject_status.selected~=nil
-   if not shown then menu.bone_marker.update(nil,nil,nil,w,h,nil,nil,false);return end
-   local bone=subject.node_position(node)
-   local parent_index=type(subject.node_parent)=='function'and subject.node_parent(node)or nil
-   local parent=bone and parent_index and parent_index>0 and subject.node_position(parent_index)or nil
+   local node,group;if self.pose_editor then node,group=self.bone_node()end
+   local shown=self.active and focused and not hidden and node~=nil and group~=nil and subject~=nil and handle.get('bone_marker')==true and subject_status~=nil and subject_status.selected~=nil and type(subject.node_frame)=='function'
+   if not shown then self.bone_parent_rotation=nil;menu.bone_marker.update(nil,nil,nil,w,h,nil,nil,false);return end
+   local items={}
+   for _,bone in ipairs(group.bones)do
+    local fr=subject.node_frame(bone.node)
+    if fr then
+     local item={node=bone.node,position=fr.position}
+     if bone.node==node then
+      local parent=type(subject.node_parent)=='function'and subject.node_parent(node)or 0
+      local pf=parent and parent>0 and subject.node_frame(parent)or nil
+      if pf then item.parent=pf.position;self.bone_parent_rotation=pf.rotation else self.bone_parent_rotation=nil end
+     end
+     items[#items+1]=item
+    end
+   end
    local frame=light_frame();local o=read_options();local fov=photo.path_fov or(o.fov>0 and math.rad(o.fov)or initial.fov)
-   menu.bone_marker.update(frame,fov,w,h,bone,parent,bone~=nil)
+   menu.bone_marker.update(frame,fov,w,h,items,node,#items>0)
   end
  end
  self.handle=handle
