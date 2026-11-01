@@ -30,6 +30,7 @@ FIXTURES+=('windows_freeze_root_hold_tests.lua','windows_freeze_root_runtime_tes
 FIXTURES+=('windows_cape_observer_tests.lua',)
 FIXTURES+=('pose_editor_tests.lua',)
 FIXTURES+=('pose_files_tests.lua',)
+FIXTURES+=('pose_editor_runtime_tests.lua',)
 FIXTURES+=('windows_dev_reload_tests.lua',)
 FIXTURES+=('windows_subject_tracking_tests.lua',)
 FIXTURES+=('windows_visibility_probe_tests.lua',)

@@ -516,6 +516,7 @@ do -- apply_frame: edited frames share the lease; only changed nodes are written
  assert(f.node_writes==1 and f.written[1]==70 and f.mode_writes==1,'One changed node, one mode write')
  local t=f.controller.target_frame();assert(t.nodes[70].q[3]==math.sin(.4)and t.nodes[8].p[1]==f.original.nodes[8].p[1])
  assert(f.controller.apply_frame(edited()),'Re-applying the same frame writes nothing');assert(f.node_writes==1)
+ local labelled=edited();labelled.label='Wave edits';assert(f.controller.apply_frame(labelled));assert(f.controller.status().message=='Wave edits held on the selected subject','Frame label is the fallback')
  assert(f.controller.apply('full')and f.controller.status().pose=='full','A catalogue pose still applies over an edited lease')
  assert(f.controller.reset());f.original_body()
  assert(select(2,f.controller.target_frame())=='No pose is held')

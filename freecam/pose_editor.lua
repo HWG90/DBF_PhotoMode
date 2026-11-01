@@ -63,6 +63,11 @@ function M.new()
   base,label=frame,tostring(text or'Pose');angles={};dirty=false
  end
  function self.clear()base,label=nil,nil;angles={};dirty=false end
+ -- A base taken when editing has already started: angles survive.
+ function self.adopt(frame,text)
+  local kept=angles;self.rebase(frame,text);angles=kept;dirty=true
+ end
+ function self.touch()dirty=true end
  function self.has_base()return base~=nil end
  function self.base_label()return label end
  function self.select(node)
@@ -93,7 +98,7 @@ function M.new()
    if a then nodes[i]={p=copy3(source.p),q=M.compose(source.q,a[1],a[2],a[3]),s=copy3(source.s)}
    else nodes[i]=source end
   end
-  dirty=false;return{full_body=true,nodes=nodes}
+  dirty=false;return{full_body=true,nodes=nodes,label=self.edited()and label..' edits'or label}
  end
  function self.status(group_label,bone_label)
   local where=tostring(group_label)..' / '..tostring(bone_label)

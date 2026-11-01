@@ -36,4 +36,7 @@ e.reset_bone(70);assert(not e.edited()and e.dirty());e.set_angle(48,'swing',10);
 e.set_angle(48,'swing',10);e.rebase(frame,'Wave');assert(not e.edited()and e.base_label()=='Wave','Rebase clears angles')
 e.clear();assert(not e.has_base()and e.selected()==70,'Clear keeps the selection')
 assert(e.status('Right arm','Elbow'):find('Right arm / Elbow',1,true))
+e.set_angle(70,'bend',5);e.adopt(frame,'Snapshot');assert(e.has_base()and e.edited()and e.base_label()=='Snapshot','Adopt keeps angles')
+e.compose_frame();assert(not e.dirty());e.touch();assert(e.dirty(),'Touch re-arms an apply')
+assert(e.compose_frame().label=='Snapshot edits','Composed frames carry their label')
 print('Pose editor: groups, quaternion maths, pinned composition, pass-through and lifecycle passed')

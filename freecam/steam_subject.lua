@@ -413,6 +413,7 @@ function M.new(adapter,bank,is_frozen)
   if not frozen or value~=true then return false,'True-zero Freeze Action is required'end
   local prepared,why,detail=prepare_frame(frame)
   if not prepared then state(lease and'posed'or'selected',why,detail);return false,status.message end
+  if type(label)~='string'and type(frame.label)=='string'then label=frame.label end
   return apply_prepared(prepared,'edited',type(label)=='string'and label or'Edited pose')
  end
  -- Read-only frames for the pose editor: what the lease authors now, and a

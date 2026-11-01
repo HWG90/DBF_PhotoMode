@@ -5,7 +5,7 @@ M.defaults={fov=0,focal_preset=1,roll=0,roll_preset=1,saved_camera_radius=60,ret
  shader=1,shader_opacity=10,shader_scale=1,shader_animate=true,scene_shader=1,scene_strength=100,fog_distance=25,fog_density=50,scene_depth_range=100,vignette=0,vignette_width=18,grain=0,grain_size=1.5,
  frame=1,grid=1,logo=1,logo_size=100,logo_x=90,logo_y=8,logo_opacity=85,logo_color='#FFFFFF',clean_view=false,hide_hud=true,hide_controls=false,
  light_selected=1,light_preset=1,light_setup_slot=1,light_kind=1,light_enabled=true,light_intensity=3,light_color='#FFFFFF',light_range=8,light_cone=45,light_right=0,light_forward=1,light_up=0,light_follow=false,light_follow_player=false,
- hide_player=false,hide_armour=false,hide_weapons=false,hide_cape=false,handycam_hide_helmet=false,handycam_hide_torso=false,handycam_hide_cape=false,subject_pose=1,director_slot=1,path_point=1,path_duration=3,path_transition=1,
+ hide_player=false,hide_armour=false,hide_weapons=false,hide_cape=false,handycam_hide_helmet=false,handycam_hide_torso=false,handycam_hide_cape=false,subject_pose=1,bone_group=1,bone=1,bone_bend=0,bone_swing=0,bone_twist=0,bone_marker=true,director_slot=1,path_point=1,path_duration=3,path_transition=1,
  show_legend=true,legend_open=true,legend_docked=true,legend_tab_y=75,legend_columns=2,legend_x=2,legend_y=2,legend_size=38}
 -- Enemy behavior is stored only when its rows exist (FFI AI backend; see pages).
 M.ai_defaults={ai_behavior=1}
@@ -46,6 +46,12 @@ function M.focal_length(radians)
  if type(radians)~='number'or radians~=radians or radians<=0 or radians>=math.pi then return nil end
  local tangent=math.tan(radians/2);if tangent<1e-9 then return nil end;return 12/tangent
 end
+-- Drag handle descriptors: how pointer motion over a handle row maps to value ids.
+-- scale is units per pixel (negative flips), step is units per wheel tick; limit clamps.
+M.handycam_drag={action='handycam_adjust',x={id='handycam_right_cm',scale=.1,limit=30},y={id='handycam_up_cm',scale=.1,limit=30},
+ wheel={id='handycam_forward_cm',step=.5,limit=30},middle={x={id='handycam_yaw_deg',scale=-.2,limit=180},y={id='handycam_pitch_deg',scale=.2,limit=89}}}
+M.bone_drag={action='bone_adjust',x={id='bone_bend',scale=.2,limit=180},y={id='bone_swing',scale=.2,limit=180},
+ wheel={id='bone_twist',step=1,limit=180},middle={x={id='bone_twist',scale=.2,limit=180}}}
 function M.pages(reset,recenter,catalog,saved_actions)
  local function slider(id,label,min,max,step)return {id=id,type='slider',label=label,default=M.defaults[id],min=min,max=max,step=step,commit_on_blur=true,fine_step=(id=='focus_distance'or id=='fov')and .001 or (id=='handycam_forward_cm'or id=='handycam_up_cm'or id=='handycam_right_cm'or id=='handycam_yaw_deg'or id=='handycam_pitch_deg')and .01 or nil,disabled=({focus_distance=true,aperture=true,exposure=true,saturation=true,contrast=true,scene_strength=true,fog_distance=true,fog_density=true,scene_depth_range=true})[id]}end
  local function choice(id,label,choices)return {id=id,type='choice',label=label,default=M.defaults[id],choices=choices,presentation='dropdown',disabled=id=='scene_shader'or id=='subject_pose'or nil}end
@@ -70,6 +76,19 @@ function M.pages(reset,recenter,catalog,saved_actions)
  end
  local function director_action(id,label,action)
   return{id=id,type='button',label=label,button_label=label,disabled=true,on_activate=saved_actions and saved_actions[action]or function()end}
+ end
+ local pose_groups=saved_actions and saved_actions.pose_groups or{{label='Body',bones={{node=8,label='Body root'}}}}
+ local group_labels={};for i,g in ipairs(pose_groups)do group_labels[i]=g.label end
+ local first_bones={};for i,b in ipairs(pose_groups[1].bones)do first_bones[i]=b.label end
+ local function bone_choice(id,label,choices)
+  local row=choice(id,label,choices)
+  row.on_change=function(value)if saved_actions and saved_actions.bone_select_change then saved_actions.bone_select_change(id,value)end end
+  return row
+ end
+ local function bone_slider(id,label)
+  local row=slider(id,label,-180,180,1);row.fine_step=.1;row.disabled=true
+  row.on_change=function(value)if saved_actions and saved_actions.bone_angle_change then saved_actions.bone_angle_change(id,value)end end
+  return row
  end
  local function path_control(control)
   control.disabled=true
@@ -198,6 +217,13 @@ function M.pages(reset,recenter,catalog,saved_actions)
  director_action('subject_pose_play','Apply pose','subject_pose_play'),director_action('subject_pose_stop','Reset pose','subject_pose_stop'),
  {id='subject_pose_status',type='text',label='Subject poses are waiting for a verified local player'},
  {id='subject_pose_hint',type='text',label='Pause entire action to hold a fixed pose. Choosing a pose applies it; Reset restores the original pose.'},
+ bone_choice('bone_group','Bone group',group_labels),bone_choice('bone','Bone',first_bones),
+ bone_slider('bone_bend','Bend (deg)'),bone_slider('bone_swing','Swing (deg)'),bone_slider('bone_twist','Twist (deg)'),
+ {id='bone_drag_handle',type='button',label='Drag to rotate bone',button_label='Drag to rotate bone',disabled=true,drag=M.bone_drag,on_activate=function()return true end},
+ director_action('bone_reset','Reset bone','bone_reset'),director_action('bone_reset_all','Reset edits','bone_reset_all'),director_action('bone_apply','Apply edits','bone_apply'),
+ toggle('bone_marker','Show bone marker'),
+ {id='bone_status',type='text',label='Freeze Action, then pick a bone'},
+ {id='bone_hint',type='text',label='Freeze Action, then move a slider or drag. Bend, Swing and Twist turn the bone around its own axes; children follow. Picking another pose clears edits.'},
  subject_control('hide_player','Hide entire player'),subject_control('hide_armour','Hide armour and helmet'),subject_control('hide_weapons','Hide carried weapons'),subject_control('hide_cape','Hide cape'),
  subject_control('handycam_hide_helmet','Hide helmet'),subject_control('handycam_hide_torso','Hide torso'),subject_control('handycam_hide_cape','Hide cape'),
  {id='handycam_pov_status',type='text',label='Helmet, torso and cape hiding off'},
@@ -230,6 +256,7 @@ function M.pages(reset,recenter,catalog,saved_actions)
   {'Camera path','path_point','path_add','path_remove','path_duration','path_transition','path_play','path_clear','path_status','path_hint'},
   {'Saved shots','director_slot','director_recall','director_save','director_clear','director_status','director_hint'}},
  subject={{'Pose','subject_pose','subject_pose_play','subject_pose_stop','subject_pose_status','subject_pose_hint'},
+  {'Pose editor','bone_group','bone','bone_bend','bone_swing','bone_twist','bone_drag_handle','bone_reset','bone_reset_all','bone_apply','bone_marker','bone_status','bone_hint'},
   {'Visibility','hide_player','hide_armour','handycam_hide_helmet','handycam_hide_torso','handycam_hide_cape','hide_cape','hide_weapons','handycam_pov_status','subject_status','subject_hint'}}}
  if saved_actions and saved_actions.without_depth_shaders then
   local removed={dof_quality=true,dof_strength=true,bokeh_shape=true,scene_depth_range=true,fog_distance=true,fog_density=true}
