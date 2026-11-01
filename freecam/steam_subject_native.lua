@@ -372,6 +372,15 @@ local function factory(sr,policy,preview)
    return xyz(one(pack(getter(r.unit,1)),'userdata','Unit.world_position'))
   end)
  end
+ -- World translation of one scene node, for the pose editor's marker.
+ function self.node_position(target,rig,index)
+  return result(function()
+   local r=record(target,rig);lifetime(r)
+   check(type(index)=='number'and index%1==0 and index>=1 and index<=107,'Node index outside the rig')
+   local matrix=one(pack(U.world_pose(r.unit,index)),'userdata','Unit.world_pose')
+   return xyz(one(pack(B.translation(matrix)),'userdata','Matrix4x4.translation'))
+  end)
+ end
  -- A selected photographic subject is not an authoritative local-player ID.
  function self.tracking_frame(target,rig)
   return result(function()

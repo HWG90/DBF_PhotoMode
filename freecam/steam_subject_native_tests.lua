@@ -71,6 +71,7 @@ local function fixture()
   if fail and fail.refuse then return false,fail.object or'Mode setter refused',nil end
  end
  setmetatable(V,{__call=function(_,x,y,z)call('vector');f.math_calls=f.math_calls+1;return opaque('vector',{float(x),float(y),float(z)},true)end})
+ U.world_pose=function(value,index)call('world_pose',true);unit(value);check(index>=1 and index<=107 and index%1==0,'world_pose index');return matrix(f.nodes[index].pose)end
  U.world_position=function(value,index)call('world_position',true);unit(value);check(index==1);return V(f.positions and f.positions[value]or 0,0,0)end
  for i,name in ipairs({'x','y','z'})do local index=i;V[name]=function(value)call('vector_'..name);return data(value,'vector')[index]end end
  Q.from_elements=function(x,y,z,w)call('quaternion');f.math_calls=f.math_calls+1;return opaque('quaternion',{float(x),float(y),float(z),float(w)},true)end
@@ -313,6 +314,13 @@ do
  check(f.adapter.set_node(f.target,f.rig,8,desired,base,'ignore'))
  check(f.adapter.set_mode(f.target,f.rig,'ignore','position_and_rotation')and f.adapter.commit(f.target,f.rig))
  check(restores==1)
+end
+do -- node_position: the world pose translation of one node, bounded to the rig
+ local f=fixture();f:ready();f:step()
+ local p,why=f.adapter.node_position(f.target,f.rig,70);check(p,why)
+ check(p[1]==float(7)and p[2]==float(.2)and p[3]==float(.3),'Node position is the world pose translation')
+ f:step();check(not f.adapter.node_position(f.target,f.rig,200),'Index outside the rig refused')
+ check(f.writes==0,'A position read never writes')
 end
 print('steam_subject_native_tests: '..assertions..' assertions passed (actual Lua5.1; strict matrix12; source only)')
 
