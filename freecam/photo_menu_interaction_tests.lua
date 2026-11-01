@@ -212,4 +212,14 @@ do -- Bone handle: left-drag Bend/Swing, wheel and MMB Twist, Shift fine, single
  m.close()
 end
 print('Bone handle: drag Bend/Swing, wheel and MMB Twist, fine steps and single commit passed')
+do -- A bone marker that captures the pointer takes scene clicks before the panel does
+ local cmds;local captured=0
+ local m=dofile(root..'photo_menu.lua').new({draw=function(c)cmds=c end,release=function()end,measure=measure},{focus=function()end,hide=function()end,exit=function()end})
+ m.bind({get=function()return 0 end,set=function()end},{{name='Subject',controls={{id='x',type='slider',label='X',min=0,max=1,step=.1}}}})
+ m.bone_marker={tick=function(input)captured=captured+1;return true end,cancel=function()end,draw=function()end}
+ m.draw(1920,1080,true,false,{focus='TAB',hide='H'})
+ m.tick({x=5,y=5,click=true},function()return false end);assert(captured==1,'Scene click routed to the marker')
+ m.close()
+end
+print('Bone marker routing: scene clicks reach the marker passed')
 

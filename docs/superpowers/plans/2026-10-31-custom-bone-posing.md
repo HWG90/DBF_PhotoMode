@@ -512,3 +512,10 @@ end
 - [ ] **Step 3: Drag cost.** Hold a slider drag for five seconds; read `war_journalist` log lines for the subject apply timing. Expected: no visible hitch; log the per-apply milliseconds in the commit that closes this task.
 - [ ] **Step 4: Teammate subject, save/restart/load, overwrite, delete, copied-in file after Rescan, corrupt file, unfreeze then Apply edits, leave Photo Mode edited, marker on/off.** Expected per spec §5.
 - [ ] **Step 5: Record outcomes** in `docs/superpowers/plans/2026-10-31-custom-bone-posing.md` under a "Live results" heading and commit.
+
+## Live results
+
+- 2026-11-01 00:29–00:31, Proton, dev.1: **Elbow Bend 45 folded the forearm; Shoulder Twist spun the arm along its length** (user: "Folded correctly"). `BONE_FRAME_SIDE='right'` stands.
+- The first edit after freezing went pending with "Subject body changed; recover without overwriting it" and needed Recover twice. Cause: the Freeze skeleton hold's transfer lease reports `posed` under the key `freeze-bone-trial`, so the editor applied directly instead of taking the reset-and-settle path, and `tick_pose_editor` treated that key as a catalogue pose. Fixed in dev.2 (`self.pose_held()`, catalogue-only rebase), with fixture coverage.
+- `Authored pose cape placement: writes=0` was logged once per frame while dragging (about 90 lines a second). Now logged only when something was written.
+- Marker drag added at the user's request ("Let me grab the anchor to move it"): the ring previews Bend (x) and Swing (y), the wheel twists, release commits once.

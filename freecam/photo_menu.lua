@@ -87,8 +87,8 @@ function M.new(view,actions,existing)
   self.panel_x=stored_layout('menu_x');self.panel_y=stored_layout('menu_y');self.size_scale=stored_layout('menu_scale');layout_dirty=false;return true
  end
  local function finish_layout()if layout_dirty then layout_dirty=false;self.persist_layout()end;finish_opacity()end
- function self.close()retained_commands=nil;blur_regions=nil;blur_number();finish_layout();if self.light_gizmos then self.light_gizmos.cancel()end;if legend then legend.clear()end;view.release();panel_bounds=nil;hits={};drag=nil;finish_handle_drag(false);camera_middle_held=nil;resize=nil;scroll_drag=nil;move_panel=nil;key_capture=nil;text_edit=nil;color_edit=nil;popup=nil;popup_close_on_release=false;self.bound_key=nil;self.editing_value=nil;self.notice=nil;nav_ready=false;held=false;right_held=nil;pointer_x,pointer_y=nil,nil;pressed_key=nil;reveal_index=nil end
- local function suspend_input()blur_number();finish_layout();if self.light_gizmos then self.light_gizmos.cancel()end;if legend then legend.clear()end;nav_ready=false;held=false;right_held=nil;drag=nil;finish_handle_drag(false);camera_middle_held=nil;resize=nil;scroll_drag=nil;move_panel=nil;pressed_key=nil;pointer_x,pointer_y=nil,nil end
+ function self.close()retained_commands=nil;blur_regions=nil;blur_number();finish_layout();if self.light_gizmos then self.light_gizmos.cancel()end;if self.bone_marker and self.bone_marker.cancel then self.bone_marker.cancel()end;if legend then legend.clear()end;view.release();panel_bounds=nil;hits={};drag=nil;finish_handle_drag(false);camera_middle_held=nil;resize=nil;scroll_drag=nil;move_panel=nil;key_capture=nil;text_edit=nil;color_edit=nil;popup=nil;popup_close_on_release=false;self.bound_key=nil;self.editing_value=nil;self.notice=nil;nav_ready=false;held=false;right_held=nil;pointer_x,pointer_y=nil,nil;pressed_key=nil;reveal_index=nil end
+ local function suspend_input()blur_number();finish_layout();if self.light_gizmos then self.light_gizmos.cancel()end;if self.bone_marker and self.bone_marker.cancel then self.bone_marker.cancel()end;if legend then legend.clear()end;nav_ready=false;held=false;right_held=nil;drag=nil;finish_handle_drag(false);camera_middle_held=nil;resize=nil;scroll_drag=nil;move_panel=nil;pressed_key=nil;pointer_x,pointer_y=nil,nil end
  function self.suspend()capture_cleared=false;retained_commands=nil;blur_regions=nil;suspend_input();panel_bounds=nil;view.draw({})end
  function self.hide_for_capture()
   if capture_cleared then return true end
@@ -225,7 +225,7 @@ function M.new(view,actions,existing)
   capture_cleared=false
   panel_bounds=nil;hits={};last_focus=false
   if legend then legend.clear()end
-  if self.light_gizmos then self.light_gizmos.cancel()end
+  if self.light_gizmos then self.light_gizmos.cancel()end;if self.bone_marker and self.bone_marker.cancel then self.bone_marker.cancel()end
   local age=type(elapsed)=='number'and elapsed==elapsed and elapsed>=0 and elapsed or 3
   local alpha=math.max(0,math.min(1,3-age))
   if hidden or alpha==0 or not valid(w)or not valid(h)then view.draw({});return end
@@ -244,7 +244,7 @@ function M.new(view,actions,existing)
   if focused~=last_focus then suspend_input();last_focus=focused end
   if self.prepare_light_gizmos then self.prepare_light_gizmos(w,h,focused,hidden)end
   if self.prepare_bone_marker then self.prepare_bone_marker(w,h,focused,hidden)end
-  if hidden or not valid(w)or not valid(h)or not self.pages or #self.pages==0 then retained_commands=nil;finish_handle_drag(false);camera_middle_held=nil;finish_layout();if self.light_gizmos then self.light_gizmos.cancel()end;if legend then legend.clear()end;view.draw({});panel_bounds=nil;blur_regions=nil;hits={};resize=nil;scroll_drag=nil;move_panel=nil;return end
+  if hidden or not valid(w)or not valid(h)or not self.pages or #self.pages==0 then retained_commands=nil;finish_handle_drag(false);camera_middle_held=nil;finish_layout();if self.light_gizmos then self.light_gizmos.cancel()end;if self.bone_marker and self.bone_marker.cancel then self.bone_marker.cancel()end;if legend then legend.clear()end;view.draw({});panel_bounds=nil;blur_regions=nil;hits={};resize=nil;scroll_drag=nil;move_panel=nil;return end
   refresh_text_cache(w,h)
   -- Recompose only when input, settings, availability or layout changes.
   -- Retained GUI submission and font/resource lifetime checks still run.
@@ -799,8 +799,10 @@ function M.new(view,actions,existing)
   return type(x)=='number'and type(y)=='number'and((b and x>=b.x and x<=b.x+b.w and y>=b.y and y<=b.y+b.h)or legend and legend.pointer_over({x=x,y=y}))or false
  end
  function self.scene_tick(input,down)
-  if not last_focus or not self.light_gizmos then return false end
-  return self.light_gizmos.tick(input,down,self.scene_pointer_blocked,self.scene_input_blocked())
+  if not last_focus then return false end
+  if self.light_gizmos and self.light_gizmos.tick(input,down,self.scene_pointer_blocked,self.scene_input_blocked())then return true end
+  if self.bone_marker and self.bone_marker.tick then return self.bone_marker.tick(input,down,self.scene_pointer_blocked,self.scene_input_blocked())end
+  return false
  end
  function self.contains_pointer(x,y)
   return self.scene_pointer_blocked(x,y)or self.light_gizmos and self.light_gizmos.hit(x,y,self.scene_pointer_blocked,self.scene_input_blocked())or false

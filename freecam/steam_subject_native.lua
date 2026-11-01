@@ -268,7 +268,7 @@ local function factory(sr,policy,preview)
  local function apply_cape(r)
   if r.cape.selected then
    local writes=selected_cape.apply(r.cape.selected,r.cape.frame)
-   if type(policy.log)=='function'then pcall(policy.log,'Authored pose cape placement: writes='..writes)end
+   if writes>0 and type(policy.log)=='function'then pcall(policy.log,'Authored pose cape placement: writes='..writes)end
   else cape.apply(r.cape)end
  end
  function self.maintain(target,rig)

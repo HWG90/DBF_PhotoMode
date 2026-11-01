@@ -784,7 +784,7 @@ function M.new(host,sr,deps,service)
    -- An edited frame refines the held lease, so edits never reset between
    -- them. The first frame takes the proven reset-and-settle path above so the
    -- cape is captured against a settled body.
-   if not settled and not subject_holds then
+   if not settled and not self.pose_held()then
     local reset,reason=subject_call('reset')
     if not reset then return false,reason end
     self.pending_pose={frame=value,updates=2};return true,'Applying the pose'
@@ -808,6 +808,18 @@ function M.new(host,sr,deps,service)
  end
  -- Pose editor glue. Methods and fields, never locals or tick upvalues: M.new
  -- is at Lua 5.1's 200-local limit and tick at its 60-upvalue limit.
+ -- A lease holds a pose only under a catalogue id or 'edited'. The Freeze
+ -- skeleton hold's transfer lease also reports 'posed', and an edit over it
+ -- must take the reset path (live 2026-11-01: a direct apply saw the released
+ -- body as foreign and needed Recover).
+ function self.pose_held()
+  local s=subject_status
+  return subject_holds and s~=nil and type(s.pose)=='string'and s.pose~='freeze-bone-trial'
+ end
+ function self.pose_label(key)
+  for i,id in ipairs(subject_pose_ids or{})do if id==key then return controls.subject_pose.choices[i]or key end end
+  return nil
+ end
  function self.bone_node()
   local groups=deps.pose_editor and deps.pose_editor.GROUPS;if not groups or not handle then return nil end
   local group=groups[tonumber(handle.get('bone_group'))or 1]or groups[1];if not group then return nil end
@@ -849,6 +861,31 @@ function M.new(host,sr,deps,service)
   end
   self.sync_bone_rows()
  end
+ -- Bone drag previews (menu handle row and the viewport marker): previews go
+ -- straight to the editor; the sliders are written once on release behind the
+ -- sync guard, or discarded on cancel.
+ function self.bone_adjust(values,finish)
+   local editor=self.pose_editor
+   if not values then
+    local saved=self.bone_preview;self.bone_preview=nil
+    if not saved or not editor then return true end
+    if finish then
+     self.bone_sync=true;local called,ok,why=pcall(handle.set_many,saved);self.bone_sync=false
+     if not called then notice(tostring(ok))elseif ok==false then notice(why)end
+     return true
+    end
+    local node=self.bone_node()
+    for id,axis in pairs({bone_bend='bend',bone_swing='swing',bone_twist='twist'})do editor.set_angle(node,axis,handle.get(id)or 0)end
+    return true
+   end
+   if not editor or not self.active or pending_cleanup or not controls.bone_drag_handle or controls.bone_drag_handle.disabled then self.bone_preview=nil;return false end
+   self.bone_preview=self.bone_preview or{};local node=self.bone_node()
+   for id,axis in pairs({bone_bend='bend',bone_swing='swing',bone_twist='twist'})do
+    local v=values[id]
+    if type(v)=='number'and v==v and math.abs(v)<=180 then self.bone_preview[id]=v;editor.set_angle(node,axis,v)end
+   end
+   return true
+  end
  function self.clear_pose_edits()
   if not self.pose_editor then return end
   self.pose_editor.clear();self.pose_editor_key=nil;self.bone_preview=nil;self.sync_bone_rows()
@@ -915,13 +952,10 @@ function M.new(host,sr,deps,service)
   local s=subject_status;local key=s and s.pose or nil
   if key~=self.pose_editor_key then
    self.pose_editor_key=key
-   if type(key)=='string'and key~='edited'then
+   local label=self.pose_label(key)
+   if label then
     local frame=subject.target_frame()
-    if frame then
-     local label=key
-     for i,id in ipairs(subject_pose_ids or{})do if id==key then label=controls.subject_pose.choices[i]or key end end
-     editor.rebase(frame,label);self.sync_bone_rows()
-    end
+    if frame then editor.rebase(frame,label);self.sync_bone_rows()end
    end
   end
   if not editor.dirty()then return end
@@ -939,15 +973,13 @@ function M.new(host,sr,deps,service)
    end
   end
   if not editor.has_base()then
-   local frame,why
-   if subject_holds then frame,why=subject.target_frame()else frame,why=subject.current_frame()end
+   local frame,why;local held=self.pose_held()
+   if held then frame,why=subject.target_frame()else frame,why=subject.current_frame()end
    if not frame then
     if why~=self.bone_notice then self.bone_notice=why;notice(why)end
     return
    end
-   local label='Snapshot'
-   if subject_holds then for i,id in ipairs(subject_pose_ids or{})do if id==key then label=controls.subject_pose.choices[i]or key end end end
-   editor.adopt(frame,label)
+   editor.adopt(frame,held and self.pose_label(key)or'Snapshot')
   end
   self.bone_notice=nil
   local frame=editor.compose_frame()
@@ -2018,28 +2050,7 @@ function M.new(host,sr,deps,service)
   version=host.version and('v'..host.version..(host.build and(' build '..host.build)or''))or nil,
   -- Bone handle drag: previews go straight to the editor; the sliders are
   -- written once on release, behind the sync guard, or discarded on cancel.
-  bone_adjust=function(values,finish)
-   local editor=self.pose_editor
-   if not values then
-    local saved=self.bone_preview;self.bone_preview=nil
-    if not saved or not editor then return true end
-    if finish then
-     self.bone_sync=true;local called,ok,why=pcall(handle.set_many,saved);self.bone_sync=false
-     if not called then notice(tostring(ok))elseif ok==false then notice(why)end
-     return true
-    end
-    local node=self.bone_node()
-    for id,axis in pairs({bone_bend='bend',bone_swing='swing',bone_twist='twist'})do editor.set_angle(node,axis,handle.get(id)or 0)end
-    return true
-   end
-   if not editor or not self.active or pending_cleanup or not controls.bone_drag_handle or controls.bone_drag_handle.disabled then self.bone_preview=nil;return false end
-   self.bone_preview=self.bone_preview or{};local node=self.bone_node()
-   for id,axis in pairs({bone_bend='bend',bone_swing='swing',bone_twist='twist'})do
-    local v=values[id]
-    if type(v)=='number'and v==v and math.abs(v)<=180 then self.bone_preview[id]=v;editor.set_angle(node,axis,v)end
-   end
-   return true
-  end,
+  bone_adjust=function(values,finish)return self.bone_adjust(values,finish)end,
   handycam_adjust=function(values,finish)
    if not values then
     local saved=self.handycam_drag_values;self.handycam_drag_values=nil;options_revision=nil
@@ -2086,7 +2097,7 @@ function M.new(host,sr,deps,service)
  end
  if deps.pose_marker and deps.gizmos and deps.pose_editor then
   -- Ring at the selected bone, dot at its parent: display only, read per draw.
-  menu.bone_marker=deps.pose_marker.new(deps.gizmos.project)
+  menu.bone_marker=deps.pose_marker.new(deps.gizmos.project,{get=function(id)return handle.get(id)end,adjust=function(values,finish)return self.bone_adjust(values,finish)end})
   menu.prepare_bone_marker=function(w,h,focused,hidden)
    local node=self.pose_editor and self.bone_node()
    local shown=self.active and focused and not hidden and node~=nil and subject~=nil and handle.get('bone_marker')==true and subject_status~=nil and subject_status.selected~=nil

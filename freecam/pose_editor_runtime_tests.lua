@@ -107,4 +107,39 @@ do -- marker: ring at the selected bone while shown; hidden by the toggle or a f
  assert(f.runtime.handle.set('bone_marker',false));assert(drawn()==0,'Toggle off hides it');assert(f.runtime.handle.set('bone_marker',true))
  assert(drawn()==1);f.b.alive=false;assert(drawn()==0,'A failed read hides it without an error')
 end
+do -- Freeze skeleton hold (bone transfer lease) active: the first edit still takes the reset path
+ local f=fixture();f.enable();f.select();elbow(f)
+ assert(f.subject.hold_bone_transfer());assert(f.subject.status().pose=='freeze-bone-trial')
+ assert(f.runtime.handle.set('bone_bend',45));f.step(.016,1);f.settle()
+ local s=f.subject.status();assert(s.state=='posed'and s.pose=='edited',tostring(s.state)..' '..tostring(s.message))
+ assert(near(f.b.nodes[70].q,E.compose(f.original_b[70].q,45,0,0)))
+ -- The hold engaging again after an unfreeze is not a catalogue pose: edits stay.
+ assert(f.runtime.handle.set('freeze_player',false)and f.rate==1);f.step(.016,1)
+ assert(f.runtime.handle.set('freeze_player',true));for _=1,3 do f.step(.016,1)end
+ assert(f.subject.refresh());assert(f.subject.select('Helldiver B'));assert(f.subject.hold_bone_transfer())
+ f.step(.016,1);assert(f.runtime.handle.get('bone_bend')==45,'Transfer hold must not rebase the editor')
+ assert(f.action('bone_apply'));for _=1,3 do f.step(.016,1)end;assert(f.subject.status().pose=='edited','Apply edits over the transfer hold')
+ assert(f.action('subject_pose_stop'));f.restored()
+end
+do -- marker drag: grabbing the ring previews Bend/Swing, wheel twists, release commits once
+ local f=fixture(function(f,deps)deps.pose_marker=dofile('freecam/pose_marker.lua');deps.gizmos=deps.gizmos or{new=function()return{update=function()end,cancel=function()end,draw=function()end,tick=function()return false end}end};deps.gizmos.project=dofile('freecam/photo_light_gizmos.lua').project end)
+ f.enable();f.select();elbow(f)
+ local seen;local update=f.menu.bone_marker.update
+ f.menu.bone_marker.update=function(frame,...)seen=frame;return update(frame,...)end
+ local ahead;f.subject.node_position=function(index)if not ahead then return{0,0,0}end;return{ahead[1],ahead[2],ahead[3]+index/1000}end
+ local function ring()f.menu.prepare_bone_marker(1920,1080,true,false);local cmds={};f.menu.bone_marker.draw(cmds);for _,c in ipairs(cmds)do if c.ui_role=='bone_marker'then return c.x+c.w/2,c.y+c.h/2 end end end
+ ring();ahead={};for i=1,3 do ahead[i]=seen.position[i]+seen.forward[i]*5 end
+ local x,y=ring();assert(x,'Ring visible')
+ f.runtime.handle.set('bone_bend',10);f.step(.016,1);f.settle();assert(f.subject.status().pose=='edited')
+ local keys={};local function down(k)return keys[k]or false end
+ local m=f.menu.bone_marker
+ assert(m.tick({x=x,y=y,click=true},down,nil,false)==true,'Press on the ring captures the pointer')
+ assert(m.tick({x=x+10,y=y+20,click=true},down,nil,false)==true)
+ assert(f.runtime.handle.get('bone_bend')>10 and f.runtime.handle.get('bone_swing')>0,'Dragging the ring previews Bend and Swing')
+ f.step(.016,1);assert(not near(f.b.nodes[70].q,E.compose(f.original_b[70].q,10,0,0)),'Preview applied live')
+ m.tick({x=x+10,y=y+20,click=false},down,nil,false);assert(f.runtime.handle.get('bone_bend')>10,'Release commits the slider')
+ assert(m.tick({x=x,y=y,click=false,wheel=120},down,nil,false)==true and f.runtime.handle.get('bone_twist')==1,'Wheel over the ring twists')
+ assert(m.tick({x=x+300,y=y+300,click=true},down,nil,false)==false,'A press away from the ring is not captured')
+ assert(f.action('subject_pose_stop'));f.restored()
+end
 print('Pose editor runtime: settle, coalesced apply, slider sync, rebase, unfreeze, retire and enabled rules passed')

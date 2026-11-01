@@ -16,4 +16,24 @@ m.update(frame,math.rad(60),1920,1080,{0,-5,0},{0,-5,-.3},true);assert(not m.vis
 m.update(frame,math.rad(60),1920,1080,{0,5,0},nil,true);assert(m.visible());cmds={};m.draw(cmds)
 local parents=0;for _,c in ipairs(cmds)do if c.ui_role=='bone_parent'then parents=parents+1 end end;assert(parents==0,'No parent, no dot')
 m.update(frame,math.rad(60),1920,1080,{0/0,5,0},nil,true);assert(not m.visible(),'A non-finite position hides the marker')
+-- Dragging the ring: absolute values through get/adjust, like the menu's drag handle.
+do
+ local values={bone_bend=10,bone_swing=0,bone_twist=0};local preview;local commits,cancels=0,0
+ local d=Marker.new(G.project,{get=function(id)return preview and preview[id]~=nil and preview[id]or values[id]end,
+  adjust=function(v,commit)if v then preview=preview or{};for k,n in pairs(v)do preview[k]=n end else if commit and preview then commits=commits+1;for k,n in pairs(preview)do values[k]=n end elseif not commit then cancels=cancels+1 end;preview=nil end;return true end})
+ local keys={};local function down(k)return keys[k]or false end
+ d.update(frame,math.rad(60),1920,1080,{0,5,0},nil,true)
+ assert(d.tick({x=960,y=540,click=true},down,nil,false)==true,'Press on the ring captures')
+ assert(d.tick({x=970,y=560,click=true},down,nil,false)==true and preview.bone_bend==12 and preview.bone_swing==4,'0.2 degrees per pixel at 1080p')
+ keys[16]=true;d.tick({x=980,y=560,click=true},down,nil,false);assert(math.abs(preview.bone_bend-12.2)<1e-9,'Shift is fine');keys[16]=false
+ assert(d.tick({x=980,y=560,click=false},down,nil,false)==true and commits==1 and values.bone_bend>12,'Release commits once')
+ assert(d.tick({x=960,y=540,click=false,wheel=120},down,nil,false)==true and values.bone_twist==1 and commits==2,'Wheel over the ring twists and commits')
+ assert(d.tick({x=960,y=540,click=false,wheel=-120},down,nil,false)==true and values.bone_twist==0)
+ assert(d.tick({x=1200,y=540,click=true},down,nil,false)==false,'Away from the ring: not captured')
+ d.tick({x=1200,y=540,click=false},down,nil,false)
+ assert(d.tick({x=960,y=540,click=true},down,nil,false)==true);d.cancel();assert(cancels==1 and preview==nil,'Cancel discards the preview')
+ d.update(frame,math.rad(60),1920,1080,{0,5,0},nil,true)
+ assert(d.tick({x=960,y=540,click=true},down,function()return true end,false)==false,'A blocked pointer never grabs the ring')
+ assert(d.tick({x=960,y=540,click=true},down,nil,true)==false,'A modal menu never grabs the ring')
+end
 print('Pose marker: projection, ring and parent dot, hidden, behind-camera and non-finite cases passed')
