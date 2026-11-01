@@ -52,8 +52,12 @@ def build(data):
    with p.open('rb')as f:f.seek(at);compressed=f.read(size)
    checks[(name,at,size)]=hashlib.sha256(compressed).hexdigest()
  assert len(checks)<=32 and sum(size for _,_,size in checks)<=16*1024*1024
+ # The game build these witnesses come from. The helper refuses any other install; it is
+ # told the build with each launch, so a game update changes this file, not the helper.
+ game={'exe_sha256':hashlib.sha256((Path(data).parent/'bin/helldivers2.exe').read_bytes()).hexdigest(),
+  'dll_sha256':hashlib.sha256((Path(data)/'game/game.dll').read_bytes()).hexdigest()}
  manifest={'version':1,'resource':archive,'resource_type':'27862fe24795319c','render_config_sha256':hashlib.sha256(body).hexdigest(),'color':color[0],'depth':depth[0],'copy_generator':copy_generator,
-  'checks':[{'file':name,'offset':off,'size':size,'sha256':sha}for(name,off,size),sha in sorted(checks.items())]}
+  'checks':[{'file':name,'offset':off,'size':size,'sha256':sha}for(name,off,size),sha in sorted(checks.items())],'game':game}
  manifest['id']=hashlib.sha256(json.dumps(manifest,sort_keys=True,separators=(',',':')).encode()).hexdigest()
  review=ROOT/'dist/review/windows-color-contract';review.mkdir(parents=True,exist_ok=True);(review/'VERIFIED-CONTRACT.json').write_text(json.dumps(manifest,indent=2)+'\n')
  def lua(v):
@@ -62,7 +66,7 @@ def build(data):
   if isinstance(v,str):return json.dumps(v)
   if isinstance(v,bool):return'true'if v else'false'
   return str(v)
- (ROOT/'freecam/engine_render_contract.lua').write_text('-- Generated from read-only stock render_config and DSAR block witnesses.\nreturn '+lua(manifest)+'\n')
+ (ROOT/'freecam/engine_render_contract.lua').write_text('-- Generated from read-only stock render_config and DSAR block witnesses, and the game build they come from.\nreturn '+lua(manifest)+'\n')
  return manifest
 if __name__=='__main__':
  m=build(Path('C:/Program Files (x86)/Steam/steamapps/common/Helldivers 2_steam/data'));print(json.dumps({'id':m['id'],'checks':len(m['checks']),'bytes':sum(x['size']for x in m['checks'])}))

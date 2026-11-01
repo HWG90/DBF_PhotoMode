@@ -26,6 +26,9 @@ entry={live_lua_api=1,name='War Journalist',
    lighting=mod.require('src/steam_lighting.lua'),lights=mod.require('src/photo_lights.lua'),
    light_presets=mod.require('src/photo_light_presets.lua'),
    gizmos=mod.require('src/photo_light_gizmos.lua'),
+   pose_editor=mod.require('src/pose_editor.lua'),
+   pose_files=mod.require('src/pose_files.lua'),
+   pose_marker=mod.require('src/pose_marker.lua'),
    font=mod.require('src/vendor/font.lua'),core=mod.require('src/vendor/core.lua'),store=mod.require('src/vendor/store.lua'),view=mod.require('src/vendor/view.lua'),
    options=mod.require('src/photo_options.lua'),menu=mod.require('src/photo_menu.lua'),legend=mod.require('src/control_legend.lua'),
    composition=mod.require('src/composition.lua'),look=mod.require('src/look.lua'),lens=mod.require('src/lens.lua'),
@@ -76,7 +79,7 @@ entry={live_lua_api=1,name='War Journalist',
      {now=sr.Application.time_since_launch,measure=deps.operation_clock,pid=sr.Application.process_id(),directory=folder,mkdir=function(path)return path==folder end,
       auto_budget_ms=8,log=mod.log})
     assert(sampler,why)
-    local scene=mod.require('src/steam_scene.lua').new(sr,resources,overlay,sampler,sr.Application.time_since_launch)
+    local scene=mod.require('src/steam_scene.lua').new(sr,resources,overlay,sampler,sr.Application.time_since_launch,deps.pick.new(sr))
     local release=scene.release
     scene.release=function()local ok,why=release();if not ok then return false,why end;return resources.release()end
     return scene
@@ -94,7 +97,7 @@ entry={live_lua_api=1,name='War Journalist',
     return true,target
    end,{now=sr.Application.time_since_launch,pid=native.focus_cache(),mkdir=function()native.focus_cache();return true end})
    assert(sampler,reason)
-   return mod.require('src/steam_scene.lua').new(sr,resources,overlay,sampler,sr.Application.time_since_launch)
+   return mod.require('src/steam_scene.lua').new(sr,resources,overlay,sampler,sr.Application.time_since_launch,deps.pick.new(sr))
   end
   if not engine_host then deps.load_hover=function(sr)
    local memory=mod.require('src/host_native.lua').memory()

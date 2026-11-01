@@ -109,5 +109,41 @@ invalid='head';assert(not at(5.9,0),'Out-of-range named index refuses before tra
 throwing='head';assert(not at(5.9,0),'Retired node getter remains a refused selection');throwing=nil
 posed.alive=false;before_reads=transform_reads;assert(not at(5.9,0)and transform_reads==before_reads,'Dead posed units perform no transform reads')
 
+-- Center auto-focus: the camera's centre ray against current Helldiver
+-- skeletons from the exact-resource inventory; no depth surface involved.
+local listed={}
+sr.World.units_by_resource=function(world,id)assert(world=='world'and id=='helldiver');local out={};for i,u in ipairs(listed)do out[i]=u end;return out end
+picker=M.new(sr)
+local function standing(name,x,y)
+ local u=unit(name,x,y,0,{items=107,resource='helldiver'});u.nodes={}
+ local joints={hips={0,0,1},chest={0,0,1.4},head={0,0,1.75},l_shoulder={0,.2,1.4},l_elbow={0,.3,1.1},l_hand={0,.35,.85},
+  r_shoulder={0,-.2,1.4},r_elbow={0,-.3,1.1},r_hand={0,-.35,.85},l_thigh={0,.1,.95},l_knee={0,.1,.5},l_foot={0,.1,.05},
+  r_thigh={0,-.1,.95},r_knee={0,-.1,.5},r_foot={0,-.1,.05}}
+ for joint,o in pairs(joints)do u.nodes[indices[joint]]={x+o[1],y+o[2],o[3]}end
+ return u
+end
+local eye={pos={0,0,1.4},forward={1,0,0}}
+listed={standing('Front',5,0)}
+local depth=assert(picker.center(eye))
+assert(math.abs(depth-4.65)<1e-6,'Chest capsule surface, not the joint: '..depth)
+assert(math.abs(assert(picker.center({pos=eye.pos,forward={2,0,0}}))-4.65)<1e-6,'An unnormalised forward is normalised')
+assert(math.abs(assert(picker.center({pos={0,.1,1.85},forward={1,0,0}}))-(5-math.sqrt(.25^2-.02)))<1e-6,'The capsule end covers the top of the head')
+local miss,why=picker.center({pos={0,2,1.4},forward={1,0,0}})
+assert(not miss and why=='No Helldiver at the center','A ray beside the body misses')
+assert(not picker.center({pos=eye.pos,forward={-1,0,0}}),'A Helldiver behind the camera never counts')
+listed={standing('Far',9,0),standing('Near',3,0)}
+assert(math.abs(assert(picker.center(eye))-2.65)<1e-6,'The nearest Helldiver surface wins in any order')
+listed={standing('Near',3,0),standing('Far',9,0)}
+assert(math.abs(assert(picker.center(eye))-2.65)<1e-6)
+local dead=standing('Dead',3,0);dead.alive=false;local shell=standing('Shell',4,0);shell.items=40
+before_reads=transform_reads;listed={dead,shell}
+assert(not picker.center(eye)and transform_reads==before_reads,'Dead or foreign rigs are never transform-read')
+listed={};for i=1,16 do listed[i]=unit('Corpse '..i,1,0,0,{alive=false,resource='helldiver'})end;listed[17]=standing('Late',5,0)
+assert(not picker.center(eye),'The inventory scan is bounded to sixteen units')
+missing='head';listed={standing('Partial',5,0)};assert(not picker.center(eye),'An incomplete rig refuses');missing=nil
+throwing='chest';assert(not picker.center(eye),'A throwing node getter is a miss, not an error');throwing=nil
+assert(not picker.center({pos={0,0,0/0},forward={1,0,0}})and not picker.center({pos={0,0,0},forward={0,0,0}}),'Invalid cameras refuse')
+sr.World.units_by_resource=nil;assert(not picker.center(eye),'Without the exact-resource inventory there is no skeleton focus')
+
 type=real_type
-print('Scene picking: guarded unit reads, projection, nearest choice, Helldiver detection, 200 m cap, nearest-first and empty clicks passed')
+print('Scene picking: guarded unit reads, projection, nearest choice, Helldiver detection, 200 m cap, nearest-first, empty clicks and center skeleton focus passed')

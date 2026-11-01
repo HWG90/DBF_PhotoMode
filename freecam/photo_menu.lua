@@ -12,10 +12,12 @@ function M.new(view,actions,existing)
  local retained_commands;local retained_state={};local layout_retry=false
  -- Screen areas of the drawn gui_blur backdrops; nil whenever the panel is not shown.
  local blur_regions
- local rows={};local selected_hit;local hits={};local held=false;local drag;local resize;local camera_drag;local camera_middle_held;local scroll_drag;local move_panel;local geometry;local panel_bounds;local pointer_x,pointer_y;local pressed_key;local reveal_index;local row_scroll_max=0
- local function finish_camera_drag(commit)
-  if camera_drag and actions.handycam_adjust then actions.handycam_adjust(nil,commit==true)end
-  camera_drag=nil
+ local rows={};local selected_hit;local hits={};local held=false;local drag;local resize;local handle_drag;local camera_middle_held;local scroll_drag;local move_panel;local geometry;local panel_bounds;local pointer_x,pointer_y;local pressed_key;local reveal_index;local row_scroll_max=0
+ -- Handle rows carry a drag descriptor (photo_options.handycam_drag, bone_drag):
+ -- the action previews values while the pointer moves and commits once on release.
+ local function finish_handle_drag(commit)
+  if handle_drag then local action=actions[handle_drag.c.drag.action];if action then action(nil,commit==true)end end
+  handle_drag=nil
  end
  local layout_initialized=existing~=nil;local layout_dirty=false;local opacity_dirty=false
  local opacity_control={id='menu_opacity',type='slider',min=10,max=100,step=1,fine_step=1,default=38}
@@ -85,8 +87,8 @@ function M.new(view,actions,existing)
   self.panel_x=stored_layout('menu_x');self.panel_y=stored_layout('menu_y');self.size_scale=stored_layout('menu_scale');layout_dirty=false;return true
  end
  local function finish_layout()if layout_dirty then layout_dirty=false;self.persist_layout()end;finish_opacity()end
- function self.close()retained_commands=nil;blur_regions=nil;blur_number();finish_layout();if self.light_gizmos then self.light_gizmos.cancel()end;if legend then legend.clear()end;view.release();panel_bounds=nil;hits={};drag=nil;finish_camera_drag(false);camera_middle_held=nil;resize=nil;scroll_drag=nil;move_panel=nil;key_capture=nil;text_edit=nil;color_edit=nil;popup=nil;popup_close_on_release=false;self.bound_key=nil;self.editing_value=nil;self.notice=nil;nav_ready=false;held=false;right_held=nil;pointer_x,pointer_y=nil,nil;pressed_key=nil;reveal_index=nil end
- local function suspend_input()blur_number();finish_layout();if self.light_gizmos then self.light_gizmos.cancel()end;if legend then legend.clear()end;nav_ready=false;held=false;right_held=nil;drag=nil;finish_camera_drag(false);camera_middle_held=nil;resize=nil;scroll_drag=nil;move_panel=nil;pressed_key=nil;pointer_x,pointer_y=nil,nil end
+ function self.close()retained_commands=nil;blur_regions=nil;blur_number();finish_layout();if self.light_gizmos then self.light_gizmos.cancel()end;if self.bone_marker and self.bone_marker.cancel then self.bone_marker.cancel()end;if legend then legend.clear()end;view.release();panel_bounds=nil;hits={};drag=nil;finish_handle_drag(false);camera_middle_held=nil;resize=nil;scroll_drag=nil;move_panel=nil;key_capture=nil;text_edit=nil;color_edit=nil;popup=nil;popup_close_on_release=false;self.bound_key=nil;self.editing_value=nil;self.notice=nil;nav_ready=false;held=false;right_held=nil;pointer_x,pointer_y=nil,nil;pressed_key=nil;reveal_index=nil end
+ local function suspend_input()blur_number();finish_layout();if self.light_gizmos then self.light_gizmos.cancel()end;if self.bone_marker and self.bone_marker.cancel then self.bone_marker.cancel()end;if legend then legend.clear()end;nav_ready=false;held=false;right_held=nil;drag=nil;finish_handle_drag(false);camera_middle_held=nil;resize=nil;scroll_drag=nil;move_panel=nil;pressed_key=nil;pointer_x,pointer_y=nil,nil end
  function self.suspend()capture_cleared=false;retained_commands=nil;blur_regions=nil;suspend_input();panel_bounds=nil;view.draw({})end
  function self.hide_for_capture()
   if capture_cleared then return true end
@@ -97,7 +99,7 @@ function M.new(view,actions,existing)
   capture_cleared=true;return true
  end
  function self.bind(handle,pages)
-  if self.handle~=handle then finish_camera_drag(false);blur_number();finish_opacity();text_edit=nil;self.editing_value=nil end;self.handle=handle;self.pages=pages;if legend then legend.bind(handle)end
+  if self.handle~=handle then finish_handle_drag(false);blur_number();finish_opacity();text_edit=nil;self.editing_value=nil end;self.handle=handle;self.pages=pages;if legend then legend.bind(handle)end
   ai_control=nil;ai_status=nil
   for _,page in ipairs(pages)do for _,c in ipairs(page.controls or{})do
    if c.id=='ai_behavior'then ai_control=c elseif c.id=='ai_status'then ai_status=c end
@@ -223,7 +225,7 @@ function M.new(view,actions,existing)
   capture_cleared=false
   panel_bounds=nil;hits={};last_focus=false
   if legend then legend.clear()end
-  if self.light_gizmos then self.light_gizmos.cancel()end
+  if self.light_gizmos then self.light_gizmos.cancel()end;if self.bone_marker and self.bone_marker.cancel then self.bone_marker.cancel()end
   local age=type(elapsed)=='number'and elapsed==elapsed and elapsed>=0 and elapsed or 3
   local alpha=math.max(0,math.min(1,3-age))
   if hidden or alpha==0 or not valid(w)or not valid(h)then view.draw({});return end
@@ -241,7 +243,8 @@ function M.new(view,actions,existing)
   -- retained GUI/font planes; explicit focus loss still clears via suspend().
   if focused~=last_focus then suspend_input();last_focus=focused end
   if self.prepare_light_gizmos then self.prepare_light_gizmos(w,h,focused,hidden)end
-  if hidden or not valid(w)or not valid(h)or not self.pages or #self.pages==0 then retained_commands=nil;finish_camera_drag(false);camera_middle_held=nil;finish_layout();if self.light_gizmos then self.light_gizmos.cancel()end;if legend then legend.clear()end;view.draw({});panel_bounds=nil;blur_regions=nil;hits={};resize=nil;scroll_drag=nil;move_panel=nil;return end
+  if self.prepare_bone_marker then self.prepare_bone_marker(w,h,focused,hidden)end
+  if hidden or not valid(w)or not valid(h)or not self.pages or #self.pages==0 then retained_commands=nil;finish_handle_drag(false);camera_middle_held=nil;finish_layout();if self.light_gizmos then self.light_gizmos.cancel()end;if self.bone_marker and self.bone_marker.cancel then self.bone_marker.cancel()end;if legend then legend.clear()end;view.draw({});panel_bounds=nil;blur_regions=nil;hits={};resize=nil;scroll_drag=nil;move_panel=nil;return end
   refresh_text_cache(w,h)
   -- Recompose only when input, settings, availability or layout changes.
   -- Retained GUI submission and font/resource lifetime checks still run.
@@ -272,7 +275,7 @@ function M.new(view,actions,existing)
   if actions.ai then local ok,v=pcall(actions.ai);watch(ok);if type(v)=='table'then watch(v.available);watch(v.status)end end
   if actions.faction then local ok,v=pcall(actions.faction);watch(ok);if type(v)=='table'then watch(v.name);watch(v.material)end end
   if retained_state.count~=slot then changed=true;retained_state.count=slot end
-  local interactive=camera_drag or drag or resize or scroll_drag or move_panel or popup or key_capture or text_edit or color_edit or held
+  local interactive=handle_drag or drag or resize or scroll_drag or move_panel or popup or key_capture or text_edit or color_edit or held
   local page=self.pages[self.page];local dynamic=self.light_gizmos and self.light_gizmos.revision==nil and page and(page.id=='lighting'or page.name=='Lighting')
   if retained_commands and not changed and not interactive and not dynamic then view.draw(retained_commands,retained_commands);return end
   layout_retry=false
@@ -461,7 +464,7 @@ function M.new(view,actions,existing)
     text(first,left+8*s,y+(second~=''and 12*s or 0),width_budget,(second~=''and 12 or 29)*s,11,T.muted)
     if second~=''then text(second,left+8*s,y,width_budget,12*s,11,T.muted)end
    else
-    local camera_handle=c.id=='handycam_position_handle'
+    local camera_handle=c.drag~=nil
     local single_action=not camera_handle and c.type=='button'and value(c)==tostring(c.label or '')
     local color=c.disabled and T.disabled or T.white;local label=text(c.label,left+3*s,y,single_action and width-50*s or 340*s,29*s,16,color);label.control_id=c.id
     local b={x=single_action and rb.x or left+356*s,y=y+1*s,w=single_action and rb.w or width-390*s,h=27*s,c=c,key=c,row=i};local editing=self.editing_value==c or key_capture==c or color_edit==c
@@ -621,6 +624,7 @@ function M.new(view,actions,existing)
   end
   if legend then legend.draw(commands,w,h,focused,false,{x=x,y=bottom,w=width,h=top-bottom,scale=s})end
   if self.light_gizmos then self.light_gizmos.draw(commands,self.scene_pointer_blocked,self.scene_input_blocked())end
+  if self.bone_marker then self.bone_marker.draw(commands)end
   -- Hosts without an OS cursor (Boot Mod Loader's engine input) get an arrow drawn at the pointer.
   if self.draw_pointer and focused and pointer_x and pointer_y then
    local px,py,k=pointer_x,pointer_y,math.max(.75,h/1080)
@@ -645,38 +649,42 @@ function M.new(view,actions,existing)
   if input.x then pointer_x=input.x end;if input.y then pointer_y=input.y end
   if not input.click then finish_layout();drag=nil;scroll_drag=nil;move_panel=nil;pressed_key=nil;if popup_close_on_release then popup=nil;popup_close_on_release=false end end
   local middle=down(4)==true;local middle_pressed=middle and camera_middle_held==false;camera_middle_held=middle
-  if camera_drag and not(camera_drag.rotate and middle or not camera_drag.rotate and input.click)then finish_camera_drag(true)end
-  local function camera_values(dx,dy,wheel,rotate,scale)
+  if handle_drag and not(handle_drag.rotate and middle or not handle_drag.rotate and input.click)then finish_handle_drag(true)end
+  local function handle_values(d,dx,dy,wheel)
+   local spec=d.c.drag;local action=actions[spec.action];if not action then return false end
    if dx==0 and dy==0 and(not wheel or wheel==0)then return true end
    local values={};local fine=down(16)and .1 or 1
-   local function shift(id,delta,limit)
-    if delta==0 then return end
-    local v=math.max(-limit,math.min(limit,(self.handle.get(id)or 0)+delta))
-    v=math.floor(v*100+.5)/100;if v~=self.handle.get(id)then values[id]=v end
+   local function shift(axis,delta)
+    if not axis or delta==0 then return end
+    local v=math.max(-axis.limit,math.min(axis.limit,(self.handle.get(axis.id)or 0)+delta))
+    v=math.floor(v*100+.5)/100;if v~=self.handle.get(axis.id)then values[axis.id]=v end
    end
-   if rotate then shift('handycam_yaw_deg',-dx*.2*fine/scale,180);shift('handycam_pitch_deg',dy*.2*fine/scale,89)
-   else shift('handycam_right_cm',dx*.1*fine/scale,30);shift('handycam_up_cm',dy*.1*fine/scale,30)end
-   if wheel and wheel~=0 then shift('handycam_forward_cm',(wheel>0 and .5 or -.5)*fine,30)end
-   if next(values)then return actions.handycam_adjust(values)end
+   local map=d.rotate and spec.middle or spec
+   if map then
+    if map.x then shift(map.x,dx*map.x.scale*fine/d.scale)end
+    if map.y then shift(map.y,dy*map.y.scale*fine/d.scale)end
+   end
+   if wheel and wheel~=0 and spec.wheel then shift(spec.wheel,(wheel>0 and spec.wheel.step or -spec.wheel.step)*fine)end
+   if next(values)then return action(values)end
    return true
   end
-  if camera_drag then
-   local d=camera_drag
-   if d.c.disabled or not actions.handycam_adjust then finish_camera_drag(false);held=input.click;return end
+  if handle_drag then
+   local d=handle_drag
+   if d.c.disabled or not actions[d.c.drag.action]then finish_handle_drag(false);held=input.click;return end
    if type(input.x)=='number'and type(input.y)=='number'and input.x==input.x and input.y==input.y and math.abs(input.x)<math.huge and math.abs(input.y)<math.huge then
     local dx,dy=input.x-d.x,input.y-d.y;d.x,d.y=input.x,input.y
-    if camera_values(dx,dy,input.wheel,d.rotate,d.scale)==false then finish_camera_drag(false)end
+    if handle_values(d,dx,dy,input.wheel)==false then finish_handle_drag(false)end
    end
    held=input.click;return
   end
-  if actions.handycam_adjust and not self.scene_input_blocked()and input.x and input.y then
+  if not self.scene_input_blocked()and input.x and input.y then
    for i=#hits,1,-1 do local b=hits[i]
     if input.x>=b.x and input.x<=b.x+b.w and input.y>=b.y and input.y<=b.y+b.h then
-     if b.c and b.c.id=='handycam_position_handle'and not b.c.disabled then
-      if middle_pressed then
-       camera_drag={c=b.c,x=input.x,y=input.y,scale=geometry.scale,rotate=true};self.selection=b.row or self.selection;held=input.click;return
-      elseif input.wheel and input.wheel~=0 then
-       camera_values(0,0,input.wheel,false,geometry.scale);actions.handycam_adjust(nil,true);held=input.click;return
+     if b.c and b.c.drag and actions[b.c.drag.action]and not b.c.disabled then
+      if middle_pressed and b.c.drag.middle then
+       handle_drag={c=b.c,x=input.x,y=input.y,scale=geometry.scale,rotate=true};self.selection=b.row or self.selection;held=input.click;return
+      elseif input.wheel and input.wheel~=0 and b.c.drag.wheel then
+       handle_values({c=b.c,scale=geometry.scale},0,0,input.wheel);actions[b.c.drag.action](nil,true);held=input.click;return
       end
      end
      break
@@ -765,8 +773,8 @@ function M.new(view,actions,existing)
     elseif b.resize then resize={x=input.x,y=input.y,scale=geometry.scale};drag=nil
     elseif b.action then b.action(input.x,input.y)
     else local c=b.c;if c and not c.disabled then if b.row then self.selection=b.row end
-     if c.id=='handycam_position_handle'and actions.handycam_adjust then
-      camera_drag={c=c,x=input.x,y=input.y,scale=geometry.scale};self.selection=b.row or self.selection
+     if c.drag and actions[c.drag.action]then
+      handle_drag={c=c,x=input.x,y=input.y,scale=geometry.scale};self.selection=b.row or self.selection
      elseif c.type=='slider'then
       if b.numeric and input.x>=b.numeric.x then begin_number(c)else text_edit=nil;self.editing_value=nil;begin_slider(c,input.x,b.track or b,down(16))end
      elseif c.type=='color_channel'then begin_slider(c,input.x,b,down(16))
@@ -781,7 +789,7 @@ function M.new(view,actions,existing)
  function self.editing_text()return text_edit~=nil end
  function self.editing_control(id)return text_edit and text_edit.c.id==id or self.editing_value and self.editing_value.id==id or false end
  function self.scene_input_blocked()
-  return popup~=nil or key_capture~=nil or text_edit~=nil or color_edit~=nil or self.editing_value~=nil or camera_drag~=nil or drag~=nil or resize~=nil or scroll_drag~=nil or move_panel~=nil or legend and legend.capturing_pointer()or false
+  return popup~=nil or key_capture~=nil or text_edit~=nil or color_edit~=nil or self.editing_value~=nil or handle_drag~=nil or drag~=nil or resize~=nil or scroll_drag~=nil or move_panel~=nil or legend and legend.capturing_pointer()or false
  end
  function self.scene_pointer_blocked(x,y)
   -- A modal dropdown excludes all scene picking, including its outside-click
@@ -791,8 +799,10 @@ function M.new(view,actions,existing)
   return type(x)=='number'and type(y)=='number'and((b and x>=b.x and x<=b.x+b.w and y>=b.y and y<=b.y+b.h)or legend and legend.pointer_over({x=x,y=y}))or false
  end
  function self.scene_tick(input,down)
-  if not last_focus or not self.light_gizmos then return false end
-  return self.light_gizmos.tick(input,down,self.scene_pointer_blocked,self.scene_input_blocked())
+  if not last_focus then return false end
+  if self.light_gizmos and self.light_gizmos.tick(input,down,self.scene_pointer_blocked,self.scene_input_blocked())then return true end
+  if self.bone_marker and self.bone_marker.tick then return self.bone_marker.tick(input,down,self.scene_pointer_blocked,self.scene_input_blocked())end
+  return false
  end
  function self.contains_pointer(x,y)
   return self.scene_pointer_blocked(x,y)or self.light_gizmos and self.light_gizmos.hit(x,y,self.scene_pointer_blocked,self.scene_input_blocked())or false

@@ -1,17 +1,16 @@
 """Build the bundled WJL input helper from a read-only LLL checkout's native sources.
 
-On Windows this uses LLL's tools/build_steam_service.py (Visual Studio 2022). Elsewhere,
---wine-msvc runs the same MSVC compiler and Windows SDK under wine, from a copy laid out as
-vc/{bin/x64,include,lib/x64} and sdk/include/{ucrt,um,shared,winrt,cppwinrt},
-sdk/lib/{um,ucrt}/x64. With identical sources both produce identical code; only the link
-timestamp and path-derived anonymous-namespace names differ."""
+--wine-msvc runs the Visual Studio 2022 MSVC compiler and Windows SDK under wine, from a copy
+laid out as vc/{bin/x64,include,lib/x64} and sdk/include/{ucrt,um,shared,winrt,cppwinrt},
+sdk/lib/{um,ucrt}/x64, and llvm-rc compiles the version resource and manifest. LLL's
+Visual Studio builder gives identical code but links no resources, so it is not used."""
 from pathlib import Path
 import argparse,difflib,hashlib,json,os,re,shutil,subprocess
 
 root=Path.cwd()
 parser=argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--lll',type=Path,default=root/'../LLL',help='LLL checkout holding native/ and tools/ (read only)')
-parser.add_argument('--wine-msvc',type=Path,help='MSVC + Windows SDK copy to run under wine instead of Visual Studio')
+parser.add_argument('--wine-msvc',type=Path,required=True,help='MSVC + Windows SDK copy to run under wine')
 args=parser.parse_args()
 source=args.lll.resolve();review=root/'dist/review/windows-wjl-helper';native=review/'native'
 if native.exists():shutil.rmtree(native)
@@ -107,11 +106,14 @@ s=patch_once(s,'''static void test_identity_and_ownership(void) {''','''static v
 static void test_identity_and_ownership(void) {''','collision fixture')
 s=patch_once(s,'test_registration_rollback();test_identity_and_ownership();','test_registration_rollback();test_shared_shortcuts();test_identity_and_ownership();','fixture order')
 p.write_text(s)
-# Steam build 26251122. WJL never reads game memory: these hashes only name the install
-# whose layout and stock renderer (engine_render_contract.lua) were checked for this build.
+# WJL never reads game memory: the stock hashes only name the install whose layout and stock
+# renderer were checked. Until 1.3.3 they were compiled in, so every game update made a new
+# helper, and each new helper is an unknown file to antivirus reputation. The mod now names
+# its build with each launch (engine_render_contract.lua's game block); empty never matches.
 p=native/'steam_files.c';s=p.read_text()
-s=re.sub(r'(static const char EXE_SHA\[\] = ")[^"]+',r'\g<1>257fd7de21a04e8668e02e5c820edf3435176fbde3569765255cc52a5ea20f9d',s)
-s=re.sub(r'(static const char GAME_SHA\[\] = ")[^"]+',r'\g<1>61dcfcd201dacbf3545c97beb8a5a6186e9850d2670bf60b0e058320b477f6df',s);p.write_text(s)
+s,n=re.subn(r'static const char EXE_SHA\[\] = "[0-9a-f]*";\nstatic const char GAME_SHA\[\] = "[0-9a-f]*";\n',
+ 'static char EXE_SHA[65], GAME_SHA[65]; /* from --exe-sha and --game-sha */\n',s)
+assert n==1,'Upstream source changed: stock hashes';p.write_text(s)
 p=native/'steam_service.c';s=p.read_text();s=s.replace('        if (reply[1]) goto done;\n        if (keyboard.state == LLL_KEYBOARD_ACTIVE)', '''        if (reply[1]) goto done;
         {
             static uint32_t last_generation, last_state;
@@ -386,6 +388,7 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE previous,PWSTR command,int show
 ''','service helpers')
 s=patch_once(s,'''    const wchar_t *root=NULL,*token=NULL;
 ''','''    const wchar_t *root=NULL,*token=NULL,*game_pid_text=NULL,*contract_id=NULL,*contract_resource=NULL,*contract_type=NULL;
+    const wchar_t *exe_sha=NULL,*game_sha=NULL;
     LLLContractCheck checks[LLL_CONTRACT_CHECKS];
     unsigned int check_count=0;
     unsigned long long resource_value=0,type_value=0;
@@ -405,6 +408,8 @@ s=patch_once(s,'''    for (int index=1;index+1<count;index+=2) {
         if (!wcscmp(arguments[index],L"--game")) root=arguments[index+1];
         else if (!wcscmp(arguments[index],L"--game-pid")) game_pid_text=arguments[index+1];
         else if (!wcscmp(arguments[index],L"--pipe")) token=arguments[index+1];
+        else if (!wcscmp(arguments[index],L"--exe-sha")) exe_sha=arguments[index+1];
+        else if (!wcscmp(arguments[index],L"--game-sha")) game_sha=arguments[index+1];
         else if (!wcscmp(arguments[index],L"--contract")) contract_id=arguments[index+1];
         else if (!wcscmp(arguments[index],L"--contract-resource")) contract_resource=arguments[index+1];
         else if (!wcscmp(arguments[index],L"--contract-type")) contract_type=arguments[index+1];
@@ -420,6 +425,9 @@ s=patch_once(s,'''    for (int index=1;index+1<count;index+=2) {
     }
     if (contract_id && (!game_pid || !lll_lower_hex(contract_id,64) || !lll_hex64(contract_resource,&resource_value) ||
         !lll_hex64(contract_type,&type_value) || !check_count)) goto done;
+    /* The game build the mod was made for, as two SHA-256s; a missing one refuses. */
+    if (!lll_lower_hex(exe_sha,64) || !lll_lower_hex(game_sha,64)) goto done;
+    for (int index=0;index<64;++index) { EXE_SHA[index]=(char)exe_sha[index];GAME_SHA[index]=(char)game_sha[index]; }
     if (!root || !token || wcslen(root)>32000 || wcslen(token)>96 || wcslen(token)<16) goto done;
     for (size_t index=0;index<wcslen(token);++index) if (!((token[index]>=L'a'&&token[index]<=L'z')||(token[index]>=L'0'&&token[index]<=L'9')||token[index]==L'_')) goto done;
     if (launch) { result=game_pid?lll_launch(arguments,count,token):1;goto done; }
@@ -438,6 +446,8 @@ s=patch_once(s,'''    note("Stock game hashes verified; awaiting local Lua files
         if (shots_length&&shots_length<MAX_PATH-40&&!wcscat_s(shots,MAX_PATH,L"\\\\LLL\\\\Helldivers2\\\\Screenshots")) CreateDirectoryW(shots,NULL);
     }
 ''','service contract')
+s=patch_once(s,'"Refused: installed game hashes do not match this service build"',
+ '"Refused: installed game hashes do not match the build War Journalist names"','refusal wording')
 # Movement defaults by key position: the VKs at the US W/A/S/D/Q/E positions in the
 # game's active layout (Z/Q/S/D/A/E on AZERTY). Read-only; no hook or input change.
 s=patch_once(s,'''static int dispatch(const unsigned char *bytes, uint32_t size, HANDLE outgoing) {
@@ -681,6 +691,57 @@ s=patch_once(s,'''int lll_pointer_release(void) {
     lll_pointer_unconfine();
 ''','pointer release confinement')
 p.write_text(s)
+# A screenshot job's guard file lives for that job and is deleted on close. It was also
+# hidden, which antivirus behaviour models count as hiding from the user; it needn't be.
+p=native/'steam_screenshot_jobs.c';s=p.read_text()
+s=patch_once(s,'FILE_ATTRIBUTE_HIDDEN|FILE_ATTRIBUTE_TEMPORARY|FILE_FLAG_DELETE_ON_CLOSE','FILE_ATTRIBUTE_TEMPORARY|FILE_FLAG_DELETE_ON_CLOSE','hidden guard')
+p.write_text(s)
+# What the helper says it is: version information and the manifest MSVC writes by default
+# (asInvoker), embedded. HELPER_VERSION moves only when the helper's code does, so a game
+# update or a release that leaves it alone ships the same file.
+HELPER_VERSION=(1,3,4,0);NAME='war_journalist_helper'
+(native/(NAME+'.manifest')).write_text('''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
+    <security>
+      <requestedPrivileges>
+        <requestedExecutionLevel level="asInvoker" uiAccess="false"/>
+      </requestedPrivileges>
+    </security>
+  </trustInfo>
+</assembly>
+''')
+dotted='.'.join(map(str,HELPER_VERSION))
+(native/(NAME+'.rc')).write_text(f'''1 24 "{NAME}.manifest"
+1 VERSIONINFO
+FILEVERSION {','.join(map(str,HELPER_VERSION))}
+PRODUCTVERSION {','.join(map(str,HELPER_VERSION))}
+FILEFLAGSMASK 0x3f
+FILEFLAGS 0x0
+FILEOS 0x40004
+FILETYPE 0x1
+FILESUBTYPE 0x0
+BEGIN
+ BLOCK "StringFileInfo"
+ BEGIN
+  BLOCK "040904b0"
+  BEGIN
+   VALUE "CompanyName", "HWG90"
+   VALUE "FileDescription", "War Journalist photo mode helper"
+   VALUE "FileVersion", "{dotted}"
+   VALUE "InternalName", "{NAME}"
+   VALUE "OriginalFilename", "{NAME}.exe"
+   VALUE "ProductName", "War Journalist"
+   VALUE "ProductVersion", "{dotted}"
+   VALUE "Comments", "Keyboard and mouse isolation and PNG screenshots for the War Journalist photo mode mod for Helldivers 2. https://github.com/HWG90/DBF_PhotoMode"
+  END
+ END
+ BLOCK "VarFileInfo"
+ BEGIN
+  VALUE "Translation", 0x409, 1200
+ END
+END
+''')
 # WJL owns a separate namespace and settings/log directory. The upstream
 # checkout is read-only; all compilation inputs here are private copies.
 for owned in native.iterdir():
@@ -689,7 +750,7 @@ for owned in native.iterdir():
   owned.write_text(body,encoding='utf-8')
 # Preserve the source delta as a reviewable patch; owning LLL checkout stays untouched.
 patch=''
-for name in ('steam_keyboard.c','test_steam_keyboard.c','steam_files.c','steam_service.c','steam_pointer.c','steam_screenshot.cpp'):
+for name in ('steam_keyboard.c','test_steam_keyboard.c','steam_files.c','steam_service.c','steam_pointer.c','steam_screenshot.cpp','steam_screenshot_jobs.c'):
  a=(source/'native'/name).read_text().splitlines(keepends=True);b=(native/name).read_text().splitlines(keepends=True)
  patch+=''.join(difflib.unified_diff(a,b,fromfile='a/native/'+name,tofile='b/native/'+name))
 (root/'tools/windows_input_shortcut.patch').write_text(patch)
@@ -705,10 +766,13 @@ def wine_build(output,toolchain):
  cl=lambda *a:subprocess.run(['wine',str(toolchain/'vc/bin/x64/cl.exe'),*a],check=True,cwd=output,env=env)
  run=lambda name,timeout:subprocess.run(['wine',str(output/name)],check=True,cwd=output,env=env,timeout=timeout)
  n,o=z(native),z(output)
- strict=['/nologo','/O2','/GS','/W4','/WX','/MT']
+ # /Brepro: no link timestamp, so the same sources give the same file.
+ strict=['/nologo','/O2','/GS','/W4','/WX','/MT','/Brepro']
+ # llvm-rc writes the .res format rc.exe does; link converts it with the toolchain's cvtres.
+ subprocess.run(['llvm-rc','/FO',str(output/(NAME+'.res')),str(native/(NAME+'.rc'))],check=True,cwd=native)
  cl(*strict[:1],'/std:c++17','/EHsc','/permissive-','/Zc:__cplusplus',*strict[1:],'/utf-8','/c',n+'\\steam_screenshot.cpp','/Fo'+o+'\\steam_screenshot.obj')
- cl(*strict,'/DUNICODE','/D_UNICODE',n+'\\steam_service.c','/Fo'+o+'\\steam_service.obj','/Fe'+o+'\\steam_service.exe',o+'\\steam_screenshot.obj',
-    '/link','/SUBSYSTEM:WINDOWS','/DYNAMICBASE','/NXCOMPAT','/HIGHENTROPYVA','/DELAYLOAD:d3d11.dll','/DELAYLOAD:dxgi.dll','/DELAYLOAD:dwmapi.dll','delayimp.lib',
+ cl(*strict,'/DUNICODE','/D_UNICODE',n+'\\steam_service.c','/Fo'+o+'\\steam_service.obj','/Fe'+o+'\\steam_service.exe',o+'\\steam_screenshot.obj',o+'\\'+NAME+'.res',
+    '/link','/SUBSYSTEM:WINDOWS','/DYNAMICBASE','/NXCOMPAT','/HIGHENTROPYVA','/MANIFEST:NO','/Brepro','/DELAYLOAD:d3d11.dll','/DELAYLOAD:dxgi.dll','/DELAYLOAD:dwmapi.dll','delayimp.lib',
     'bcrypt.lib','kernel32.lib','shell32.lib','user32.lib','d3d11.lib','dxgi.lib','dwmapi.lib','windowscodecs.lib','windowsapp.lib','runtimeobject.lib','ole32.lib','uuid.lib')
  for test,extra,libs in (('test_steam_files',[],['bcrypt.lib','kernel32.lib']),('test_steam_pointer',[],['kernel32.lib','user32.lib']),
                          ('test_steam_keyboard',['/std:c11'],['kernel32.lib','user32.lib']),
@@ -716,20 +780,17 @@ def wine_build(output,toolchain):
   cl('/nologo',*extra,*strict[1:],n+'\\'+test+'.c','/Fo'+o+'\\'+test+'.obj','/Fe'+o+'\\'+test+'.exe','/link',*libs)
   run(test+'.exe',60)
  value=(output/'steam_service.exe').read_bytes()
- built=output/('wjl_steam_service_'+hashlib.sha256(value).hexdigest()[:16]+'.exe');built.write_bytes(value)
+ built=output/(NAME+'_'+hashlib.sha256(value).hexdigest()[:16]+'.exe');built.write_bytes(value)
  return built
 
-if args.wine_msvc:built=wine_build(review/'build',args.wine_msvc)
-else:
- spec=__import__('importlib.util',fromlist=['spec_from_file_location']);sp=spec.spec_from_file_location('builder',source/'tools/build_steam_service.py');builder=spec.module_from_spec(sp);sp.loader.exec_module(builder);builder.ROOT=review
- built=builder.build(review/'build')
-binary=built.with_name('wjl_steam_service_'+hashlib.sha256(built.read_bytes()).hexdigest()[:16]+'.exe')
+built=wine_build(review/'build',args.wine_msvc)
+binary=built.with_name(NAME+'_'+hashlib.sha256(built.read_bytes()).hexdigest()[:16]+'.exe')
 binary.write_bytes(built.read_bytes())
-(review/'HELPER.json').write_text(json.dumps({'binary':str(binary),'sha256':hashlib.sha256(binary.read_bytes()).hexdigest(),'preserved_shortcut':'Ctrl+Shift+Space',
+(review/'HELPER.json').write_text(json.dumps({'binary':str(binary),'sha256':hashlib.sha256(binary.read_bytes()).hexdigest(),'version':dotted,'preserved_shortcut':'Ctrl+Shift+Space',
  'shared_shortcuts':'tuples another application already owns stay with it',
- 'compiler':'MSVC under wine' if args.wine_msvc else 'Visual Studio 2022',
+ 'compiler':'MSVC under wine',
  'sources':{p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in native.iterdir()}},indent=2)+'\n')
 print(binary)
 
 # One helper file under one name; the game checks its bytes against sha256 before each start.
-(root/'freecam/wjl_helper_payload.lua').write_text('return {name="wjl_steam_service.exe",sha256='+json.dumps(hashlib.sha256(binary.read_bytes()).hexdigest())+',hex='+json.dumps(binary.read_bytes().hex())+'}\n')
+(root/'freecam/wjl_helper_payload.lua').write_text('return {name="'+NAME+'.exe",sha256='+json.dumps(hashlib.sha256(binary.read_bytes()).hexdigest())+',hex='+json.dumps(binary.read_bytes().hex())+'}\n')

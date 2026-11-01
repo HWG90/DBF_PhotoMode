@@ -271,7 +271,7 @@ local function factory(sr,policy,preview)
  local function apply_cape(r)
   if r.cape.selected then
    local writes=selected_cape.apply(r.cape.selected,r.cape.frame)
-   if type(policy.log)=='function'then pcall(policy.log,'Authored pose cape placement: writes='..writes)end
+   if writes>0 and type(policy.log)=='function'then pcall(policy.log,'Authored pose cape placement: writes='..writes)end
   else cape.apply(r.cape)end
  end
  function self.maintain(target,rig)
@@ -378,6 +378,26 @@ local function factory(sr,policy,preview)
    local r=record(target,rig);lifetime(r)
    local getter=rawget(U,'world_position');check(type(getter)=='function','Unit.world_position unavailable')
    return xyz(one(pack(getter(r.unit,1)),'userdata','Unit.world_position'))
+  end)
+ end
+ -- World translation of one scene node, for the pose editor's marker.
+ function self.node_position(target,rig,index)
+  return result(function()
+   local r=record(target,rig);lifetime(r)
+   check(type(index)=='number'and index%1==0 and index>=1 and index<=107,'Node index outside the rig')
+   local matrix=one(pack(U.world_pose(r.unit,index)),'userdata','Unit.world_pose')
+   return xyz(one(pack(B.translation(matrix)),'userdata','Matrix4x4.translation'))
+  end)
+ end
+ -- World translation and rotation of one scene node, for marker placement and
+ -- converting a screen-space move into the parent's frame.
+ function self.node_frame(target,rig,index)
+  return result(function()
+   local r=record(target,rig);lifetime(r)
+   check(type(index)=='number'and index%1==0 and index>=1 and index<=107,'Node index outside the rig')
+   local matrix=one(pack(U.world_pose(r.unit,index)),'userdata','Unit.world_pose')
+   return{position=xyz(one(pack(B.translation(matrix)),'userdata','Matrix4x4.translation')),
+    rotation=quaternion(one(pack(B.rotation(matrix)),'userdata','Matrix4x4.rotation'))}
   end)
  end
  -- A selected photographic subject is not an authoritative local-player ID.

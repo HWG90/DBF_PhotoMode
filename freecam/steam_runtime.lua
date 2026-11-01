@@ -700,6 +700,23 @@ function M.new(host,sr,deps,service)
   controls.subject_pose_play.disabled=not enabled or subject_pending or not(s and s.selected)or not(simulation and simulation.owns_zero())
   controls.subject_pose_stop.disabled=not enabled or not subject_holds
   controls.subject_recover.disabled=not subject_pending
+  if controls.bone_bend then
+   local can_edit=enabled and not subject_pending and s.selected~=nil and simulation~=nil and simulation.owns_zero()and self.pose_editor~=nil
+   for _,id in ipairs({'bone_bend','bone_swing','bone_twist','bone_drag_handle','bone_reset','bone_reset_all','bone_apply'})do
+    if controls[id]then controls[id].disabled=not can_edit end
+   end
+   if texts.bone_status then texts.bone_status.label=self.bone_status()end
+   if controls.pose_file then
+    local store=self.pose_store;local entries=store and store.list()or{}
+    local saveable=store~=nil and(can_edit or self.pose_editor~=nil and self.pose_editor.has_base())
+    controls.pose_file.disabled=store==nil
+    if controls.pose_load then controls.pose_load.disabled=not(can_edit and #entries>0)end
+    if controls.pose_save_new then controls.pose_save_new.disabled=not saveable end
+    if controls.pose_overwrite then controls.pose_overwrite.disabled=not(saveable and #entries>0)end
+    if controls.pose_delete then controls.pose_delete.disabled=not(store~=nil and #entries>0)end
+    if controls.pose_rescan then controls.pose_rescan.disabled=store==nil end
+   end
+  end
   if texts.subject_pose_status then texts.subject_pose_status.label=(picked_label and picked_label..'  |  'or'')..subject_message end
  end
  local function subject_call(method,value,preferred)
@@ -784,7 +801,7 @@ function M.new(host,sr,deps,service)
   end
   if self.freeze_skeleton then local ok,why=self.freeze_skeleton.release('subject action: '..method,true);if not ok then return false,why end end
   if deps.freeze_physics_probe then local ok,why=deps.freeze_physics_probe.release('subject action: '..method,true);if not ok then return false,why end end
-  if method=='apply'or method=='hold_bone_transfer'then
+  if method=='apply'or method=='apply_frame'or method=='hold_bone_transfer'then
    if deps.freeze_root_hold then deps.freeze_root_hold.release()end
    if ragdoll then local ok,why=ragdoll.release();if not ok then return false,why end end
    subject_cleanup_attempted=false;subject_close_started=false
@@ -809,8 +826,21 @@ function M.new(host,sr,deps,service)
     if first then self.pending_pose={id=value,updates=2};return true,'Applying the pose'end
    end
   end
+  if method=='apply_frame'then
+   if not(simulation and simulation.owns_zero())then return false,'True-zero Freeze Action is required'end
+   -- An edited frame refines the held lease, so edits never reset between
+   -- them. The first frame takes the proven reset-and-settle path above so the
+   -- cape is captured against a settled body.
+   if not settled and not self.pose_held()then
+    if self.pending_pose and self.pending_pose.frame then self.pending_pose.frame=value;return true,'Applying the pose'end
+    local reset,reason=subject_call('reset')
+    if not reset then return false,reason end
+    self.pending_pose={frame=value,updates=2};return true,'Applying the pose'
+   end
+  end
   local ok,why=subject_call(method,value,preferred)
   if method=='recover'and ok and not subject_opt_in then close_subject(false)end
+  if ok and(method=='reset'or method=='recover')then self.clear_pose_edits()end
   if method=='recover'and ok and pending_cleanup then self.close(nil,true)end
   return ok,why
  end
@@ -820,7 +850,186 @@ function M.new(host,sr,deps,service)
   local wanted=self.pending_pose;wanted.updates=wanted.updates-1
   if wanted.updates>0 then return end
   self.pending_pose=nil
-  local ok,why=subject_action('apply',wanted.id,nil,true);if not ok then notice(why)end
+  local ok,why
+  if wanted.frame then ok,why=subject_action('apply_frame',wanted.frame,nil,true)else ok,why=subject_action('apply',wanted.id,nil,true)end
+  if not ok then notice(why)end
+ end
+ -- Pose editor glue. Methods and fields, never locals or tick upvalues: M.new
+ -- is at Lua 5.1's 200-local limit and tick at its 60-upvalue limit.
+ -- A lease holds a pose only under a catalogue id or 'edited'. The Freeze
+ -- skeleton hold's transfer lease also reports 'posed', and an edit over it
+ -- must take the reset path (live 2026-11-01: a direct apply saw the released
+ -- body as foreign and needed Recover).
+ function self.pose_held()
+  local s=subject_status
+  return subject_holds and s~=nil and type(s.pose)=='string'and s.pose~='freeze-bone-trial'
+ end
+ function self.pose_label(key)
+  for i,id in ipairs(subject_pose_ids or{})do if id==key then return controls.subject_pose.choices[i]or key end end
+  return nil
+ end
+ function self.bone_node()
+  local groups=deps.pose_editor and deps.pose_editor.GROUPS;if not groups or not handle then return nil end
+  local group=groups[tonumber(handle.get('bone_group'))or 1]or groups[1];if not group then return nil end
+  local bone=group.bones[tonumber(handle.get('bone'))or 1]or group.bones[1]
+  return bone and bone.node or nil,group,bone
+ end
+ function self.bone_status()
+  if not self.pose_editor then return'Pose editor unavailable'end
+  local _,group,bone=self.bone_node()
+  return self.pose_editor.status(group and group.label,bone and bone.label)
+ end
+ -- The three sliders show the selected bone's angles; writing them here is
+ -- never an edit (self.bone_sync), and stored values are never read back.
+ function self.sync_bone_rows()
+  if not handle or not controls.bone_bend then return end
+  local node,group=self.bone_node();local b,sw,t=0,0,0
+  if self.pose_editor and node then self.pose_editor.select(node);b,sw,t=self.pose_editor.angles(node)end
+  if controls.bone and group and controls.bone.choices_revision~=group then
+   local labels={};for i,item in ipairs(group.bones)do labels[i]=item.label end
+   controls.bone.choices=labels;controls.bone.choices_revision=group
+  end
+  -- Disabled rows still show the working pose: lift the flag only for this guarded write.
+  local was={};for _,id in ipairs({'bone_bend','bone_swing','bone_twist'})do was[id]=controls[id].disabled;controls[id].disabled=false end
+  self.bone_sync=true;local called,ok,why=pcall(handle.set_many,{bone_bend=b,bone_swing=sw,bone_twist=t});self.bone_sync=false
+  for id,value in pairs(was)do controls[id].disabled=value end
+  if not called then notice(tostring(ok))elseif ok==false then notice(why)end
+  if texts.bone_status then texts.bone_status.label=self.bone_status()end
+ end
+ function self.bone_selection_changed(id,value)
+  if self.bone_sync then return end
+  if self.bone_preview and self.pose_editor then
+   -- A drag preview in flight belongs to the bone being left: discard it.
+   local node=self.pose_editor.selected();self.bone_preview=nil
+   for key,axis in pairs({bone_bend='bend',bone_swing='swing',bone_twist='twist'})do self.pose_editor.set_angle(node,axis,handle.get(key)or 0)end
+  end
+  if id=='bone_group'and controls.bone then
+   local groups=deps.pose_editor and deps.pose_editor.GROUPS;local group=groups and groups[tonumber(value)or 1]
+   if group and(tonumber(handle.get('bone'))or 1)>#group.bones then self.bone_sync=true;pcall(handle.set,'bone',1);self.bone_sync=false end
+  end
+  self.sync_bone_rows()
+ end
+ -- Bone drag previews (menu handle row and the viewport marker): previews go
+ -- straight to the editor; the sliders are written once on release behind the
+ -- sync guard, or discarded on cancel.
+ function self.bone_adjust(values,finish)
+   local editor=self.pose_editor
+   if not values then
+    local saved=self.bone_preview;self.bone_preview=nil
+    if not saved or not editor then return true end
+    if finish then
+     self.bone_sync=true;local called,ok,why=pcall(handle.set_many,saved);self.bone_sync=false
+     if not called then notice(tostring(ok))elseif ok==false then notice(why)end
+     return true
+    end
+    local node=self.bone_node()
+    for id,axis in pairs({bone_bend='bend',bone_swing='swing',bone_twist='twist'})do editor.set_angle(node,axis,handle.get(id)or 0)end
+    return true
+   end
+   if not editor or not self.active or pending_cleanup or not controls.bone_drag_handle or controls.bone_drag_handle.disabled then self.bone_preview=nil;return false end
+   self.bone_preview=self.bone_preview or{};local node=self.bone_node()
+   for id,axis in pairs({bone_bend='bend',bone_swing='swing',bone_twist='twist'})do
+    local v=values[id]
+    if type(v)=='number'and v==v and math.abs(v)<=180 then self.bone_preview[id]=v;editor.set_angle(node,axis,v)end
+   end
+   return true
+  end
+ function self.clear_pose_edits()
+  if not self.pose_editor then return end
+  self.pose_editor.clear();self.pose_editor_key=nil;self.bone_preview=nil;self.sync_bone_rows()
+ end
+ -- Saved poses: numbered files through deps.pose_files. The store is created on
+ -- the first subject load, so the 99 probes happen in Photo Mode, not at boot.
+ function self.pose_files_sync(rescan)
+  local store=self.pose_store;if not store or not controls.pose_file then return false,'Pose files unavailable'end
+  if rescan then store.rescan()end
+  local labels=store.labels();controls.pose_file.choices=labels;controls.pose_file.choices_revision=labels
+  if handle and(tonumber(handle.get('pose_file'))or 1)>#labels then pcall(handle.set,'pose_file',1)end
+  if texts.pose_files_status then
+   local count=#store.list()
+   texts.pose_files_status.label=self.pose_files_message or(count==0 and'No saved poses yet; Save as new writes wj-pose-01.txt'or count..(count==1 and' saved pose'or' saved poses'))
+  end
+  return true
+ end
+ function self.pose_file_selected()
+  local store=self.pose_store;if not store or not handle then return nil end
+  return store.list()[tonumber(handle.get('pose_file'))or 1]
+ end
+ function self.pose_file_action(kind)
+  local store,editor=self.pose_store,self.pose_editor
+  if not store then return false,'Pose files unavailable'end
+  local function done(message)self.pose_files_message=message;self.pose_files_sync();return true,message end
+  local function refuse(why)self.pose_files_message=why;self.pose_files_sync();notice(why);return false,why end
+  if kind=='rescan'then self.pose_files_message=nil;return self.pose_files_sync(true)end
+  if kind=='save_new'or kind=='overwrite'then
+   local frame,meta
+   if editor and editor.has_base()then frame=editor.compose_frame(true);meta={label=frame.label,source=editor.base_label()}
+   else
+    if not(simulation and simulation.owns_zero())then return refuse('Freeze Action first')end
+    local why;frame,why=subject and subject.current_frame()
+    if not frame then return refuse(why or'Select a Helldiver in Subject')end
+    meta={label='Snapshot',source='snapshot'}
+   end
+   if kind=='save_new'then
+    local number,why=store.save_new(frame,meta);if not number then return refuse(why)end
+    self.pose_files_sync()
+    for index,entry in ipairs(store.list())do if entry.number==number then pcall(handle.set,'pose_file',index)end end
+    return done('Saved as '..string.format('%02d',number))
+   end
+   local entry=self.pose_file_selected();if not entry then return refuse('Choose a saved pose')end
+   local ok,why=store.overwrite(entry.number,frame);if not ok then return refuse(why)end
+   return done('Overwrote '..string.format('%02d',entry.number))
+  end
+  local entry=self.pose_file_selected();if not entry then return refuse('Choose a saved pose')end
+  if kind=='delete'then
+   local ok,why=store.delete(entry.number);if not ok then return refuse(why)end
+   return done('Deleted '..string.format('%02d',entry.number))
+  end
+  if kind=='load'then
+   local frame,why=store.load(entry.number);if not frame then return refuse(why)end
+   local ok;ok,why=subject_action('apply_frame',frame);if not ok then return refuse(why)end
+   if editor then editor.rebase(frame,frame.label);self.sync_bone_rows()end
+   return done('Loaded '..string.format('%02d',entry.number))
+  end
+  return false,'Unknown pose file action'
+ end
+ -- Once per update: rebase on a newly applied catalogue pose, then apply a
+ -- dirty editor through the same subject action as catalogue poses.
+ function self.tick_pose_editor()
+  local editor=self.pose_editor;if not editor or not subject then return end
+  local s=subject_status;local key=s and s.pose or nil
+  if key~=self.pose_editor_key then
+   self.pose_editor_key=key
+   local label=self.pose_label(key)
+   if label then
+    local frame=subject.target_frame()
+    if frame then editor.rebase(frame,label);self.sync_bone_rows()end
+   end
+  end
+  if not editor.dirty()then return end
+  if not(self.active and simulation and simulation.owns_zero())or subject_pending then return end
+  if not(s and s.selected)then
+   -- No subject (retired, or another time modifier took over): the working
+   -- pose waits for an explicit Refresh and Select, never a silent re-target.
+   editor.compose_frame()
+   local why='Select a Helldiver in Subject to apply the edits'
+   if why~=self.bone_notice then self.bone_notice=why;notice(why)end
+   return
+  end
+  if not editor.has_base()then
+   local frame,why;local held=self.pose_held()
+   if held then frame,why=subject.target_frame()else frame,why=subject.current_frame()end
+   if not frame then
+    if why~=self.bone_notice then self.bone_notice=why;notice(why)end
+    return
+   end
+   editor.adopt(frame,held and self.pose_label(key)or'Snapshot')
+  end
+  self.bone_notice=nil
+  local frame=editor.compose_frame()
+  local ok,why=subject_action('apply_frame',frame)
+  if not ok then notice(why)end
+  if texts.bone_status then texts.bone_status.label=self.bone_status()end
  end
  local function load_subject()
   if not self.active or pending_cleanup or subject_pending or type(deps.load_subject)~='function'then return false,'Subject controls are unavailable'end
@@ -845,7 +1054,7 @@ function M.new(host,sr,deps,service)
   if not subject then
    local called,value=pcall(deps.load_subject,sr,function()return simulation and simulation.owns_zero()or false end,subject_backend)
    if not called or type(value)~='table'then notice(called and'Subject pose factory unavailable'or value);return false,'Subject pose factory unavailable'end
-   for _,name in ipairs({'status','choices','refresh','select','apply','reset','recover','close','resume','invalidate'})do
+   for _,name in ipairs({'status','choices','refresh','select','apply','reset','recover','close','resume','invalidate','apply_frame','target_frame','current_frame'})do
     if type(value[name])~='function'then notice('Subject controller is incomplete');return false,'Subject controller is incomplete'end
    end
    local labels,ids={},{}
@@ -857,6 +1066,10 @@ function M.new(host,sr,deps,service)
    subject=value;subject_pose_ids=ids;subject_choices={}
    controls.subject_pose.choices=labels;controls.subject_pose.choices_revision=value.catalog
   end
+  if deps.pose_editor and not self.pose_editor then self.pose_editor=deps.pose_editor.new()end
+  self.pose_editor_key=nil;self.sync_bone_rows()
+  if deps.pose_files and deps.pose_editor and not self.pose_store and type(host.config_dir)=='string'then self.pose_store=deps.pose_files.storage(host.config_dir);self.pose_store_fresh=true end
+  self.pose_files_sync(false)
   subject_opt_in=true;subject_close_started=false;subject_cleanup_attempted=false;sync_subject()
   if self.pov_visibility then
    if self.pov_owns_hides()then
@@ -885,7 +1098,8 @@ function M.new(host,sr,deps,service)
   if hit.helldiver and subject and type(subject.select_unit)=='function'then
    if subject_holds then message=message..'; reset the held pose to pose it'
    elseif subject_action('refresh',hit.center,hit.unit)then
-    local ok,reason=subject_call('select_unit',hit.unit);if not ok then message=message..'; '..tostring(reason)end
+    local had=subject_status~=nil and subject_status.selected~=nil
+    local ok,reason=subject_call('select_unit',hit.unit);if not ok then message=message..'; '..tostring(reason)elseif had then self.clear_pose_edits()end
    end
   elseif not hit.helldiver then message=message..' for focus and lighting; poses need a Helldiver'end
   picked_label=message;sync_subject();notice(message)
@@ -1160,6 +1374,7 @@ function M.new(host,sr,deps,service)
  function self.close(clear_time,automatic,subject_retry)
   director_bridge.remember()
   deferred_shot=nil;self.pending_pose=nil
+  if self.pose_editor then self.pose_editor.clear();self.pose_editor_key=nil;self.bone_preview=nil end
   if handycam then handycam.reset()end
   if photo then photo.handy_roll=nil end
   if capture then capture.close('Photo Mode closed')end
@@ -1559,6 +1774,20 @@ function M.new(host,sr,deps,service)
   without_depth_shaders=deps.engine_time_only==true,
   ai_change=function(value)if self.ai then local ok,why=self.ai.select(value);if not ok then notice(why)end end end,
   ai_reset=function()if self.ai then return self.ai.select(1)end end,
+  pose_groups=deps.pose_editor and deps.pose_editor.GROUPS or nil,
+  bone_select_change=function(id,value)self.bone_selection_changed(id,value)end,
+  bone_angle_change=function(id,value)
+   if self.bone_sync or not self.pose_editor then return end
+   local ok,why=self.pose_editor.set_angle(self.bone_node(),id:sub(6),value);if not ok then notice(why)end
+  end,
+  bone_reset=function()if not self.pose_editor then return false,'Pose editor unavailable'end;self.pose_editor.reset_bone(self.bone_node());self.sync_bone_rows();return true end,
+  bone_reset_all=function()if not self.pose_editor then return false,'Pose editor unavailable'end;self.pose_editor.reset_all();self.sync_bone_rows();return true end,
+  bone_apply=function()if not self.pose_editor then return false,'Pose editor unavailable'end;self.pose_editor.touch();return true end,
+  pose_rescan=function()return self.pose_file_action('rescan')end,
+  pose_save_new=function()return self.pose_file_action('save_new')end,
+  pose_overwrite=function()return self.pose_file_action('overwrite')end,
+  pose_load=function()return self.pose_file_action('load')end,
+  pose_delete=function()return self.pose_file_action('delete')end,
   director_save=function()return director_action('save')end,
   director_recall=function()return director_action('recall')end,
   director_clear=function()return director_action('clear')end,
@@ -1615,7 +1844,9 @@ function M.new(host,sr,deps,service)
  pages[#pages+1]={id='camera' ,name='Controls',require_confirmation=false,controls=bindings}
  if type(deps.load_subject)=='function'then for _,page in ipairs(pages)do if page.id=='subject'then
   local rows={{id='subject_refresh',type='button',label='Refresh subjects (up to four)',on_activate=function()
-   local ok,why=load_subject();if not ok then return false,why end;return subject_action('refresh')end}}
+   local ok,why=load_subject();if not ok then return false,why end
+   local had=subject_status~=nil and subject_status.selected~=nil
+   local done,reason=subject_action('refresh');if done and had then self.clear_pose_edits()end;return done,reason end}}
   if deps.freeze_bone_probe then rows[#rows+1]={id='subject_freeze_bone_test',type='button',label='Test frozen bone transfer (6 seconds)',on_activate=function()
    local ok,why=deps.freeze_bone_probe.start(subject,sr.Application.time_since_launch(),subject_action)
    if not ok then notice(why)end;return ok,why
@@ -1648,7 +1879,7 @@ function M.new(host,sr,deps,service)
   end}end
   for i=1,4 do local index=i
    rows[#rows+1]={id='subject_select_'..i,type='button',label='No subject refreshed',button_label='Select',
-    on_activate=function()local choice=subject_choices and subject_choices[index];return choice and subject_action('select',choice.id)or false end}
+    on_activate=function()local choice=subject_choices and subject_choices[index];local had=subject_status~=nil and subject_status.selected~=nil;local ok,why=choice and subject_action('select',choice.id)or false;if ok and had then self.clear_pose_edits()end;return ok,why end}
   end
   rows[#rows+1]={id='subject_recover',type='button',label='Recover subject pose',on_activate=function()return subject_action('recover')end}
   for i=#rows,1,-1 do table.insert(page.controls,1,rows[i])end
@@ -1685,6 +1916,8 @@ function M.new(host,sr,deps,service)
  if simulation then supported.freeze_player=true;supported.slowmo_speed=true end
  if type(deps.load_subject)=='function'then for _,id in ipairs({'subject_refresh','subject_select_1','subject_select_2',
   'subject_select_3','subject_select_4','subject_recover','subject_pose','subject_pose_play','subject_pose_stop'})do supported[id]=true end end
+ if deps.pose_editor and type(deps.load_subject)=='function'then for _,id in ipairs({'bone_group','bone','bone_bend','bone_swing','bone_twist','bone_drag_handle','bone_reset','bone_reset_all','bone_apply','bone_marker'})do supported[id]=true end end
+ if deps.pose_files and deps.pose_editor and type(deps.load_subject)=='function'then for _,id in ipairs({'pose_file','pose_load','pose_save_new','pose_overwrite','pose_delete','pose_rescan'})do supported[id]=true end end
  if deps.freeze_bone_probe and type(deps.load_subject)=='function'then supported.subject_freeze_bone_test=true end
  if deps.freeze_physics_probe and type(deps.load_subject)=='function'then supported.subject_freeze_physics_test=true end
  if deps.freeze_pose_probe and type(deps.load_subject)=='function'then supported.subject_freeze_pose_test=true end
@@ -1807,6 +2040,7 @@ function M.new(host,sr,deps,service)
  local preset_display={focal_preset={field='fov',tolerance=.0011},roll_preset={field='roll',tolerance=.01}}
  handle.get=function(id)
   if self.handycam_drag_values and self.handycam_drag_values[id]~=nil then return self.handycam_drag_values[id]end
+  if self.bone_preview and self.bone_preview[id]~=nil then return self.bone_preview[id]end
   if id=='handycam_hide_helmet'and shot and shot.handycam then return true end
   local value=get_value(id);local cached=preset_display[id]
   if not cached then return value end
@@ -1878,6 +2112,9 @@ function M.new(host,sr,deps,service)
  deps.menu.legend_factory=deps.legend
  menu=deps.menu.new(view,{focus=self.focus,hide=hide,exit=self.close,hide_unavailable=deps.engine_time_only==true,
   version=host.version and('v'..host.version..(host.build and(' build '..host.build)or''))or nil,
+  -- Bone handle drag: previews go straight to the editor; the sliders are
+  -- written once on release, behind the sync guard, or discarded on cancel.
+  bone_adjust=function(values,finish)return self.bone_adjust(values,finish)end,
   handycam_adjust=function(values,finish)
    if not values then
     local saved=self.handycam_drag_values;self.handycam_drag_values=nil;options_revision=nil
@@ -1922,6 +2159,47 @@ function M.new(host,sr,deps,service)
    local frame=light_frame();frame.world,frame.scene_epoch=lighting.scene()
    local o=read_options();local fov=photo.path_fov or(o.fov>0 and math.rad(o.fov)or initial.fov)
    menu.light_gizmos.update(items,frame,fov,w,h,true)
+  end
+ end
+ if deps.pose_marker and deps.gizmos and deps.pose_editor then
+  -- Ring at the selected bone, dot at its parent: display only, read per draw.
+  menu.bone_marker=deps.pose_marker.new(deps.gizmos.project,{
+   get=function(id)return handle.get(id)end,
+   adjust=function(values,finish)return self.bone_adjust(values,finish)end,
+   -- A click on another ring is an ordinary bone selection.
+   select=function(node)
+    local _,group=self.bone_node();if not group then return false end
+    for index,bone in ipairs(group.bones)do if bone.node==node then local called,ok=pcall(handle.set,'bone',index);return called and ok~=false end end
+    return false
+   end,
+   -- A screen-space move, in metres, becomes an offset in the bone's parent frame.
+   move=function(delta)
+    local node=self.bone_node();local editor=self.pose_editor
+    if not(node and editor and subject and controls.bone_drag_handle and not controls.bone_drag_handle.disabled)then return false end
+    local l=deps.pose_editor.rotate_inverse(self.bone_parent_rotation or{0,0,0,1},delta)
+    local ok,why=editor.nudge_offset(node,l[1],l[2],l[3]);if not ok then notice(why)end
+    return ok
+   end})
+  -- One ring per bone of the selected group; the selected bone's parent frame is kept for moves.
+  menu.prepare_bone_marker=function(w,h,focused,hidden)
+   local node,group;if self.pose_editor then node,group=self.bone_node()end
+   local shown=self.active and focused and not hidden and node~=nil and group~=nil and subject~=nil and handle.get('bone_marker')==true and subject_status~=nil and subject_status.selected~=nil and type(subject.node_frame)=='function'
+   if not shown then self.bone_parent_rotation=nil;menu.bone_marker.update(nil,nil,nil,w,h,nil,nil,false);return end
+   local items={}
+   for _,bone in ipairs(group.bones)do
+    local fr=subject.node_frame(bone.node)
+    if fr then
+     local item={node=bone.node,position=fr.position}
+     if bone.node==node then
+      local parent=type(subject.node_parent)=='function'and subject.node_parent(node)or 0
+      local pf=parent and parent>0 and subject.node_frame(parent)or nil
+      if pf then item.parent=pf.position;self.bone_parent_rotation=pf.rotation else self.bone_parent_rotation=nil end
+     end
+     items[#items+1]=item
+    end
+   end
+   local frame=light_frame();local o=read_options();local fov=photo.path_fov or(o.fov>0 and math.rad(o.fov)or initial.fov)
+   menu.bone_marker.update(frame,fov,w,h,items,node,#items>0)
   end
  end
  self.handle=handle
@@ -2286,6 +2564,8 @@ function M.new(host,sr,deps,service)
   subject_close_started=false;begin_session();screenshot_label()
   if type(deps.load_subject)=='function'and load_subject()then
    auto_subject(initial.position)
+   -- Every open: the rows show the (cleared) editor and copied-in pose files appear.
+   if self.pose_editor then self.sync_bone_rows();self.pose_files_sync(not self.pose_store_fresh);self.pose_store_fresh=nil end
    if self.tracking_backend and subject and type(subject.select_camera)=='function'then
     local identity=camera.identity();if identity then
      local called,selected,basis=pcall(subject.select_camera,identity.unit,initial.position)
@@ -2531,6 +2811,7 @@ function M.new(host,sr,deps,service)
   end
   if not self.active then return end
   if self.pending_pose then self.settle_pose()end
+  if self.pose_editor then self.tick_pose_editor()end
   if self.tracking_backend and self.tracking_backend.tick then self.tracking_backend.tick()end
   if hover and simulation and simulation.owns_zero()then
    local ok,why=hover.hold();if not ok then notice(why)end
@@ -2591,7 +2872,7 @@ function M.new(host,sr,deps,service)
    local message=scene.focus(o,sample,self.mode=='menu',menu.contains_pointer,menu.editing_text()or menu.editing_key(),function(value)
     if controls.focus_distance.disabled then return false,'Focus control is unavailable' end
     autofocus_write=true;local ok,why=handle.set('focus_distance',value);autofocus_write=false;return ok,why
-   end)
+   end,photo)
    if message and texts.focus_status then texts.focus_status.label=message end
   end
   if self.mode=='menu'and not(capture and capture.active())then

@@ -2,12 +2,15 @@
 local M={}
 local launch_sequence=0
 -- What earlier releases wrote beside the game's settings: until 1.3.2 each helper was named
--- after its SHA-256, so each changed helper left a new file. The game's Lua cannot list a
--- folder, so these exact names are removed instead. Last, 1.3.0's PowerShell log.
+-- after its SHA-256, so each changed helper left a new file; 1.3.2 and 1.3.3 used
+-- wjl_steam_service.exe. The game's Lua cannot list a folder, so these exact names are
+-- removed instead. Last, 1.3.0's PowerShell log.
 M.retired={'wjl_steam_service_28af6b376f6afcb8.exe','wjl_steam_service_f9d73353ad66d4e8.exe',
  'wjl_steam_service_444cacc9bdd1cada.exe','wjl_steam_service_4249097cb43acbbe.exe',
- 'wjl_steam_service_2e246b0bde86bec6.exe','wjl_steam_service_68e76a7de0ff989f.exe','wjl_startup.log'}
-M.name='wjl_steam_service.exe'
+ 'wjl_steam_service_2e246b0bde86bec6.exe','wjl_steam_service_68e76a7de0ff989f.exe',
+ 'wjl_steam_service.exe','wjl_startup.log'}
+-- Named for what it is; "steam_service" read like Steam's own service.
+M.name='war_journalist_helper.exe'
 -- The helper is one file under one name. Its bytes are checked against this build's helper
 -- before every start; a copy from another release is replaced, never run.
 local function install(path,bytes)
@@ -49,6 +52,13 @@ function M.config(mod,sr)
  local witness=contract.id..'|'..token
  assert(type(contract.resource)=='string'and contract.resource:match('^%x+$')and #contract.resource==16,'Invalid renderer resource')
  assert(type(contract.resource_type)=='string'and contract.resource_type:match('^%x+$')and #contract.resource_type==16,'Invalid renderer resource type')
+ -- The game build this release was made for. The helper refuses any other install; naming
+ -- it here keeps one helper file across game updates.
+ local game=contract.game
+ assert(type(game)=='table','The render contract names no game build')
+ for _,key in ipairs({'exe_sha256','dll_sha256'})do
+  assert(type(game[key])=='string'and #game[key]==64 and game[key]:match('^[0-9a-f]+$'),'Invalid game build hash')
+ end
  -- cmd.exe ships with Windows and with Wine/Proton; PowerShell does not ship with Proton
  -- and some Windows installs block it. cmd runs the helper itself, not through start:
  -- start hands a missing or blocked file to the shell, which shows a dialog that cmd
@@ -58,7 +68,8 @@ function M.config(mod,sr)
  -- id and checks the stock renderer contract itself.
  local exe=path:gsub('/','\\')
  assert(not exe:find('[%%"\r\n]'),'The settings folder path cannot be passed to cmd.exe')
- local launcher='""'..exe..'" --launch --game-pid '..pid..' --pipe '..token..' --contract '..contract.id..
+ local launcher='""'..exe..'" --launch --game-pid '..pid..' --pipe '..token..
+  ' --exe-sha '..game.exe_sha256..' --game-sha '..game.dll_sha256..' --contract '..contract.id..
   ' --contract-resource '..contract.resource..' --contract-type '..contract.resource_type..' --check '..table.concat(checks,' --check ')..'"'
  assert(#launcher<8000,'WJL launcher exceeds the cmd.exe command-line limit')
  -- The helper truncates its log when it starts; a missing log means it never ran.

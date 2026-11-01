@@ -515,4 +515,46 @@ for _,throw in ipairs({false,true})do
  assert(not f.controller.hold_bone_transfer()and f.controller.status().pending and f.b.mode=='ignore')
  f.fail_mode=nil;assert(f.controller.recover());f.original_body();assert(f.node_writes==0)
 end
+do -- apply_frame: edited frames share the lease; only changed nodes are written
+ local f=fixture();f.select()
+ local function edited()local fr={full_body=true,nodes={}};for i=8,92 do fr.nodes[i]=copy(f.b.nodes[i])end;fr.nodes[70]={p=copy(f.b.nodes[70].p),q={0,0,math.sin(.4),math.cos(.4)},s={1,1,1}};return fr end
+ f.frozen=false;assert(select(2,f.controller.apply_frame(edited()))=='True-zero Freeze Action is required');f.frozen=true
+ assert(f.controller.apply_frame(edited(),'Salute edits'));local s=f.controller.status()
+ assert(s.state=='posed'and s.pose=='edited'and s.message=='Salute edits held on the selected subject',s.message)
+ assert(f.node_writes==1 and f.written[1]==70 and f.mode_writes==1,'One changed node, one mode write')
+ local t=f.controller.target_frame();assert(t.nodes[70].q[3]==math.sin(.4)and t.nodes[8].p[1]==f.original.nodes[8].p[1])
+ assert(f.controller.apply_frame(edited()),'Re-applying the same frame writes nothing');assert(f.node_writes==1)
+ local labelled=edited();labelled.label='Wave edits';assert(f.controller.apply_frame(labelled));assert(f.controller.status().message=='Wave edits held on the selected subject','Frame label is the fallback')
+ assert(f.controller.apply('full')and f.controller.status().pose=='full','A catalogue pose still applies over an edited lease')
+ assert(f.controller.reset());f.original_body()
+ assert(select(2,f.controller.target_frame())=='No pose is held')
+ local c=f.controller.current_frame();assert(c.nodes[8].p[1]==f.b.nodes[8].p[1]and c.nodes[92]and f.controller.status().state=='selected','Snapshot without a lease')
+ f.frozen=false;assert(select(2,f.controller.current_frame())=='True-zero Freeze Action is required');f.frozen=true
+ f.adapter.node_position=function(target,rig,index)assert(index==70 and rig==f.bank.rig);return{1,2,3}end
+ assert(f.controller.node_position(70)[3]==3)
+ assert(f.controller.node_parent(70)==69 and f.controller.node_parent(1)==0 and f.controller.node_parent(200)==nil,'Parent index from the rig')
+ f.validation='unknown';assert(not f.controller.apply_frame(edited()),'Unknown lifetime refuses like apply')
+end
+do -- edited frames tolerate the game's own carry sockets; a foreign write elsewhere still blocks
+ local f=fixture();f.select()
+ local function edited(x)local fr={full_body=true,nodes={}};for i=8,92 do fr.nodes[i]=copy(f.b.nodes[i])end;fr.nodes[70]={p=copy(f.b.nodes[70].p),q={0,0,math.sin(x),math.cos(x)},s={1,1,1}};return fr end
+ f.bank.rig.nodes[28].name='sling';f.bank.rig.nodes[23].name='attach_samplepouch'
+ assert(f.controller.apply_frame(edited(.4)))
+ -- The game re-places the sling every frame while frozen.
+ f.b.nodes[28].p[1]=999;f.b.nodes[23].p[2]=-5
+ assert(f.controller.apply_frame(edited(.5)),'Carry sockets moved by the game never block an edit')
+ assert(f.b.nodes[28].p[1]==999 and f.b.nodes[23].p[2]==-5,'Edits never write the game-owned sockets back')
+ local written=0;for _,i in ipairs(f.written)do if i==28 or i==23 then written=written+1 end end;assert(written==0)
+ assert(f.controller.reset());f.b.nodes[28].p[1]=f.original.nodes[28].p[1];f.b.nodes[23].p[2]=f.original.nodes[23].p[2];f.original_body()
+ assert(f.controller.apply_frame(edited(.4)))
+ f.b.nodes[47].q[1]=.3 -- someone else moved the left elbow
+ assert(not f.controller.apply_frame(edited(.5)))
+ local s=f.controller.status();assert(s.state=='pending'and s.message=='Subject body changed; recover without overwriting it'and tostring(s.detail):find('node 47',1,true),tostring(s.detail))
+end
+do -- node_frame: world position and rotation of a node through the adapter
+ local f=fixture();f.select()
+ f.adapter.node_frame=function(target,rig,index)assert(index==69 and rig==f.bank.rig);return{position={1,2,3},rotation={0,0,0,1}}end
+ local fr=f.controller.node_frame(69);assert(fr.position[3]==3 and fr.rotation[4]==1)
+ assert(select(2,f.controller.node_frame(500))~=nil or f.controller.node_frame(500)==nil)
+end
 print('Steam selected subject: explicit selection, zero idle work, exact PQS/matrix12 ownership, anchors, foreign/partial guards and recovery passed')

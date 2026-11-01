@@ -236,7 +236,7 @@ end
 io.popen=function(command,mode)
  launches[#launches+1]=command
  local log=assert(io.open(os.getenv('LOCALAPPDATA')..'/WJL/Helldivers2/Steam/service.log','wb'))
- log:write('Refused: installed game hashes do not match this service build\\n');log:close()
+ log:write('Refused: installed game hashes do not match the build War Journalist names\\n');log:close()
  return{close=function()closes=closes+1;return true end}
 end
 stingray={Gui={resolution=function()return 1920,1080 end},
@@ -442,7 +442,7 @@ def build(candidate, output):
                    'live in LLL/Helldivers2/Settings/' + MOD_ID + ' when that folder exists, else in the game\'s settings '
                    'folder. Also runs as an LLL archive mod. Use one War Journalist at a time.')
     if manifest.get('public_release'):
-        description = 'War Journalist 1.3.3: for the 29 October 2026 game update (build 26251122); Pose Stop fixed, Handycam on Page Down (Steam Ctrl+F11 works), Saved Shots and Follow player cameras, for the Lua rewrite for Boot Mod Loader. Native DoF, Handycam and automatic WJL startup. AI control and depth shaders are unavailable. Cape, subject selection, equipment hiding and hoverpack limitations remain; see release notes.'
+        description = 'War Journalist 1.3.4: the Windows helper is now war_journalist_helper.exe, shows its name and version, and stays the same file across game updates. Center auto-focus works at 4K. Works with the 29 October 2026 game update. Photo Mode with Native DoF, Handycam, poses, lighting and PNG screenshots, for Boot Mod Loader. AI control and depth shaders are gone for now. The cape, subject picking and some Hide options still have bugs; see the release notes.'
     arsenal = {'Version': 1, 'Guid': GUID, 'Name': TITLE + ' ' + manifest['version'], 'Description': description,
                'Options': [{'Name': TITLE, 'Description': 'Photo Mode and its assets.', 'Include': [OPTION, 'Assets']}]}
     (folder / 'manifest.json').write_text(json.dumps(arsenal, indent=2, ensure_ascii=False) + '\n')

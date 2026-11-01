@@ -23,6 +23,22 @@ local function segment_distance2(point,a,b)
  local t=length>0 and math.max(0,math.min(1,((point[1]-a[1])*ax+(point[2]-a[2])*ay+(point[3]-a[3])*az)/length))or 0
  return(point[1]-a[1]-t*ax)^2+(point[2]-a[2]-t*ay)^2+(point[3]-a[3]-t*az)^2
 end
+-- Distance along a unit ray p+t*u to where it enters the capsule a-b of the
+-- given radius, or nil on a miss. Closest approach of ray and segment, then
+-- back off to the surface; a camera inside the capsule gets the axis depth.
+local function ray_entry(p,u,a,b,radius)
+ local vx,vy,vz=b[1]-a[1],b[2]-a[2],b[3]-a[3]
+ local wx,wy,wz=p[1]-a[1],p[2]-a[2],p[3]-a[3]
+ local B=u[1]*vx+u[2]*vy+u[3]*vz;local C=vx*vx+vy*vy+vz*vz
+ local D=u[1]*wx+u[2]*wy+u[3]*wz;local E=vx*wx+vy*wy+vz*wz
+ local denom=C-B*B;local s=0
+ if C>1e-12 then s=denom>1e-12 and(E-B*D)/denom or E/C end
+ s=math.max(0,math.min(1,s));local t=B*s-D
+ if t<0 then t=0;s=C>1e-12 and math.max(0,math.min(1,E/C))or 0 end
+ local d2=(wx+t*u[1]-s*vx)^2+(wy+t*u[2]-s*vy)^2+(wz+t*u[3]-s*vz)^2
+ if d2>radius*radius then return end
+ local entry=t-math.sqrt(radius*radius-d2);return entry>0 and entry or t
+end
 function M.new(sr)
  local A,W,U,I,V=sr.Application,sr.World,sr.Unit,sr.IdString64,sr.Vector3
  local self={}
@@ -163,6 +179,49 @@ function M.new(sr)
   end
   local c=best.center
   best.distance=surface_depth or math.sqrt((c[1]-p[1])^2+(c[2]-p[2])^2+(c[3]-p[3])^2)
+  return best
+ end
+ -- Center auto-focus without a depth read: the camera's centre ray against the
+ -- body capsules of the Helldivers in the world (exact-resource inventory, at
+ -- most 16). Handles are fetched here and dropped before return. There is no
+ -- occlusion test, so a Helldiver behind a wall still counts.
+ function self.center(camera)
+  if not usable()or type(W.units_by_resource)~='function'or type(U.has_node)~='function'or type(U.node)~='function'then return nil,'Center focus unavailable'end
+  local p,f=camera and camera.pos,camera and camera.forward
+  if not(p and f and finite(p[1])and finite(p[2])and finite(p[3])and finite(f[1])and finite(f[2])and finite(f[3]))then return nil,'Camera unavailable'end
+  local length=math.sqrt(f[1]^2+f[2]^2+f[3]^2);if not(length>1e-6)then return nil,'Camera unavailable'end
+  local origin,ray={p[1],p[2],p[3]},{f[1]/length,f[2]/length,f[3]/length}
+  local id=I and type(I.from_hex)=='function'and select(2,pcall(I.from_hex,helldiver))or nil
+  local world=A.main_world();if not(id and world)then return nil,'Main world unavailable'end
+  local listed,units=pcall(W.units_by_resource,world,id)
+  if not listed or type(units)~='table'then return nil,'Helldivers unavailable'end
+  local best;local scanned=0
+  for _,unit in pairs(units)do
+   scanned=scanned+1;if scanned>16 then break end
+   if type(unit)=='userdata'then
+    local ok,depth=pcall(function()
+     if U.alive(unit)~=true or U.num_scene_graph_items(unit)~=107 then return end
+     local points={}
+     for i,name in ipairs(body_nodes)do
+      if U.has_node(unit,name)~=true then return end
+      local index=U.node(unit,name)
+      if not(finite(index)and index==math.floor(index)and index>=1 and index<=107)then return end
+      local position=U.world_position(unit,index)
+      local point={V.x(position),V.y(position),V.z(position)}
+      if not(finite(point[1])and finite(point[2])and finite(point[3]))then return end
+      points[i]=point
+     end
+     local nearest
+     for _,segment in ipairs(body_segments)do
+      local t=ray_entry(origin,ray,points[segment[1]],points[segment[2]],segment[3])
+      if t and(not nearest or t<nearest)then nearest=t end
+     end
+     return nearest
+    end)
+    if ok and finite(depth)and depth>.05 and(not best or depth<best)then best=depth end
+   end
+  end
+  if not best then return nil,'No Helldiver at the center'end
   return best
  end
  return self

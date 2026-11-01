@@ -150,6 +150,7 @@ local function fixture(extra)
  end
  return f
 end
+if rawget(_G,'DBF_PHOTO_SUBJECT_FIXTURE_ONLY')then return fixture end
 do
  local messages={}
  local f=fixture(function(f)f.discovery_error='Fixture inventory changed\nreason';f.log=function(s)messages[#messages+1]=s end end)

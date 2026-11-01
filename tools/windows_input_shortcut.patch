@@ -1485,18 +1485,17 @@
      printf("PASS %u offline keyboard checks; no real hotkey/WinEvent registration or input\n",checks);
 --- a/native/steam_files.c
 +++ b/native/steam_files.c
-@@ -14,8 +14,8 @@
+@@ -14,8 +14,7 @@
  
  #define MAX_WATCHES 256
  #define MAX_REQUEST (64u * 1024u * 1024u)
 -static const char EXE_SHA[] = "2ce8b3d74c5573088e4211b060ced0963f1fc1e74526e2645399780b8fb13ff7";
 -static const char GAME_SHA[] = "a457433f0eb766fbe15a6de5a16f0fbbb1fd3c840c5607a5f0b2ebf53b112949";
-+static const char EXE_SHA[] = "257fd7de21a04e8668e02e5c820edf3435176fbde3569765255cc52a5ea20f9d";
-+static const char GAME_SHA[] = "61dcfcd201dacbf3545c97beb8a5a6186e9850d2670bf60b0e058320b477f6df";
++static char EXE_SHA[65], GAME_SHA[65]; /* from --exe-sha and --game-sha */
  static wchar_t home[MAX_PATH], request_file[MAX_PATH], response_file[MAX_PATH], events_file[MAX_PATH];
  static wchar_t executable[32768], game_root[32768];
  static int initialized, supported;
-@@ -74,7 +74,7 @@
+@@ -74,7 +73,7 @@
      initialized = 1;
      length = GetEnvironmentVariableW(L"LOCALAPPDATA", home, MAX_PATH);
      if (!length || length + 48 >= MAX_PATH) return;
@@ -1505,7 +1504,7 @@
      wcscat_s(home, MAX_PATH, L"\\Helldivers2"); CreateDirectoryW(home, NULL);
      wcscat_s(home, MAX_PATH, L"\\Steam"); CreateDirectoryW(home, NULL);
      swprintf_s(request_file, MAX_PATH, L"%s\\request.bin", home);
-@@ -143,7 +143,7 @@
+@@ -143,7 +142,7 @@
      }
  }
  
@@ -1514,7 +1513,7 @@
      FILE *stream;
      (void)unused; initialize();
      stream = reply_begin(response_file);
-@@ -156,7 +156,7 @@
+@@ -156,7 +155,7 @@
      return 0;
  }
  
@@ -1523,7 +1522,7 @@
      uint32_t index;
      int changed = 0;
      (void)unused;
-@@ -178,7 +178,7 @@
+@@ -178,7 +177,7 @@
      return 0;
  }
  
@@ -1532,7 +1531,7 @@
      uint32_t index;
      (void)unused;
      for (index = 0; index < watch_count; ++index) {
-@@ -190,7 +190,7 @@
+@@ -190,7 +189,7 @@
      return 0;
  }
  
@@ -1722,7 +1721,7 @@
      if (operation==13||operation==14||operation==15) {
          wchar_t path[32768];
          return send_screenshot(nonce,operation,decode_path(bytes,size,path_size,path)?path:NULL,outgoing);
-@@ -348,13 +388,250 @@
+@@ -348,13 +388,251 @@
      }
      if (_wfopen_s(&stream,request_file,L"wb")) return 0;
      if (fwrite(bytes,1,size,stream)!=size) { fclose(stream);return 0; }
@@ -1969,6 +1968,7 @@
      LPWSTR *arguments=CommandLineToArgvW(GetCommandLineW(),&count);
 -    const wchar_t *root=NULL,*token=NULL;
 +    const wchar_t *root=NULL,*token=NULL,*game_pid_text=NULL,*contract_id=NULL,*contract_resource=NULL,*contract_type=NULL;
++    const wchar_t *exe_sha=NULL,*game_sha=NULL;
 +    WJLContractCheck checks[WJL_CONTRACT_CHECKS];
 +    unsigned int check_count=0;
 +    unsigned long long resource_value=0,type_value=0;
@@ -1977,7 +1977,7 @@
      wchar_t incoming_name[256],outgoing_name[256],log_path[MAX_PATH],dll[32768];
      char hash[65];
      HANDLE incoming=INVALID_HANDLE_VALUE,outgoing=INVALID_HANDLE_VALUE;
-@@ -365,17 +642,34 @@
+@@ -365,17 +643,39 @@
      DWORD peer=0;
      (void)instance;(void)previous;(void)command;(void)show;
      if (!arguments) return 1;
@@ -1990,6 +1990,8 @@
          else if (!wcscmp(arguments[index],L"--pipe")) token=arguments[index+1];
 -        else goto done;
 -    }
++        else if (!wcscmp(arguments[index],L"--exe-sha")) exe_sha=arguments[index+1];
++        else if (!wcscmp(arguments[index],L"--game-sha")) game_sha=arguments[index+1];
 +        else if (!wcscmp(arguments[index],L"--contract")) contract_id=arguments[index+1];
 +        else if (!wcscmp(arguments[index],L"--contract-resource")) contract_resource=arguments[index+1];
 +        else if (!wcscmp(arguments[index],L"--contract-type")) contract_type=arguments[index+1];
@@ -2005,6 +2007,9 @@
 +    }
 +    if (contract_id && (!game_pid || !wjl_lower_hex(contract_id,64) || !wjl_hex64(contract_resource,&resource_value) ||
 +        !wjl_hex64(contract_type,&type_value) || !check_count)) goto done;
++    /* The game build the mod was made for, as two SHA-256s; a missing one refuses. */
++    if (!wjl_lower_hex(exe_sha,64) || !wjl_lower_hex(game_sha,64)) goto done;
++    for (int index=0;index<64;++index) { EXE_SHA[index]=(char)exe_sha[index];GAME_SHA[index]=(char)game_sha[index]; }
      if (!root || !token || wcslen(root)>32000 || wcslen(token)>96 || wcslen(token)<16) goto done;
      for (size_t index=0;index<wcslen(token);++index) if (!((token[index]>=L'a'&&token[index]<=L'z')||(token[index]>=L'0'&&token[index]<=L'9')||token[index]==L'_')) goto done;
 +    if (launch) { result=game_pid?wjl_launch(arguments,count,token):1;goto done; }
@@ -2016,9 +2021,12 @@
          (unsigned long long)resource_hash((const unsigned char *)home,wcslen(home)*sizeof(wchar_t)));
      single_instance=CreateMutexW(NULL,FALSE,mutex_name);
      if (!single_instance || GetLastError()==ERROR_ALREADY_EXISTS) goto done;
-@@ -387,6 +681,17 @@
+@@ -385,8 +685,19 @@
+     swprintf_s(executable,32768,L"%s\\bin\\helldivers2.exe",root);
+     swprintf_s(dll,32768,L"%s\\data\\game\\game.dll",root);
      supported=hash_file(executable,hash)&&!strcmp(hash,EXE_SHA)&&hash_file(dll,hash)&&!strcmp(hash,GAME_SHA);
-     if (!supported) { note("Refused: installed game hashes do not match this service build");goto done; }
+-    if (!supported) { note("Refused: installed game hashes do not match this service build");goto done; }
++    if (!supported) { note("Refused: installed game hashes do not match the build War Journalist names");goto done; }
      note("Stock game hashes verified; awaiting local Lua filesystem client");
 +    if (contract_id) {
 +        int verified=wjl_verify_contract(root,checks,check_count,resource_value,type_value);
@@ -2034,7 +2042,7 @@
      swprintf_s(incoming_name,256,L"\\\\.\\pipe\\%s_request",token);
      swprintf_s(outgoing_name,256,L"\\\\.\\pipe\\%s_response",token);
      io_event=CreateEventW(NULL,TRUE,FALSE,NULL);if (!io_event) goto done;
-@@ -395,7 +700,7 @@
+@@ -395,7 +706,7 @@
      outgoing=CreateNamedPipeW(outgoing_name,PIPE_ACCESS_OUTBOUND|FILE_FLAG_FIRST_PIPE_INSTANCE|FILE_FLAG_OVERLAPPED,
          PIPE_TYPE_BYTE|PIPE_READMODE_BYTE|PIPE_WAIT|PIPE_REJECT_REMOTE_CLIENTS,1,65536,65536,0,NULL);
      if (incoming==INVALID_HANDLE_VALUE || outgoing==INVALID_HANDLE_VALUE) { note("Cannot create exclusive local pipes");goto done; }
@@ -2043,7 +2051,7 @@
      ready_event=CreateEventW(NULL,TRUE,FALSE,ready_name);
      if (!ready_event || !SetEvent(ready_event)) { note("Cannot signal filesystem service readiness");goto done; }
      if (!connect_pipe(incoming)||!connect_pipe(outgoing)) { note("No complete client connection within startup timeout");goto done; }
-@@ -418,13 +723,13 @@
+@@ -418,13 +729,13 @@
      if (ready_event) ResetEvent(ready_event);
      if (incoming!=INVALID_HANDLE_VALUE) { CloseHandle(incoming);incoming=INVALID_HANDLE_VALUE; }
      if (outgoing!=INVALID_HANDLE_VALUE) { CloseHandle(outgoing);outgoing=INVALID_HANDLE_VALUE; }
@@ -2713,3 +2721,154 @@
      } catch (const winrt::hresult_error& error) { result->error = static_cast<uint32_t>(error.code().value); }
        catch (const std::bad_alloc&) { result->error = static_cast<uint32_t>(E_OUTOFMEMORY); }
        catch (...) { result->error = static_cast<uint32_t>(E_FAIL); }
+--- a/native/steam_screenshot_jobs.c
++++ b/native/steam_screenshot_jobs.c
+@@ -4,30 +4,30 @@
+ #include <string.h>
+ #include <wchar.h>
+ 
+-typedef struct LLLScreenshotOwnedJob {
++typedef struct WJLScreenshotOwnedJob {
+     HANDLE thread,cancel,guard,parents[32];
+     unsigned parent_count;
+     volatile LONG publication;
+-    LLLScreenshotRequest request;
+-    LLLScreenshotResult result;
++    WJLScreenshotRequest request;
++    WJLScreenshotResult result;
+     DWORD returned;
+     char id[33];
+     wchar_t executable[32768],output[32768];
+-} LLLScreenshotOwnedJob;
+-static LLLScreenshotOwnedJob *shot_active;
+-static LLLScreenshotJobStatus shot_terminal;
++} WJLScreenshotOwnedJob;
++static WJLScreenshotOwnedJob *shot_active;
++static WJLScreenshotJobStatus shot_terminal;
+ 
+-static void shot_copy_status(LLLScreenshotJobStatus *to,const LLLScreenshotJobStatus *from) {
++static void shot_copy_status(WJLScreenshotJobStatus *to,const WJLScreenshotJobStatus *from) {
+     to->state=from->state;to->error=from->error;to->width=from->width;
+     to->height=from->height;to->elapsed_ms=from->elapsed_ms;
+     strcpy_s(to->id,33,from->id);wcscpy_s(to->output_path,32768,from->output_path);
+ }
+-static void shot_pending(LLLScreenshotJobStatus *status,const LLLScreenshotOwnedJob *job) {
+-    status->state=LLL_SCREENSHOT_PENDING;status->error=0;status->width=0;status->height=0;status->elapsed_ms=0;
++static void shot_pending(WJLScreenshotJobStatus *status,const WJLScreenshotOwnedJob *job) {
++    status->state=WJL_SCREENSHOT_PENDING;status->error=0;status->width=0;status->height=0;status->elapsed_ms=0;
+     strcpy_s(status->id,33,job->id);wcscpy_s(status->output_path,32768,job->output);
+ }
+ static DWORD shot_retire(void) {
+-    LLLScreenshotOwnedJob *job=shot_active;DWORD waited;
++    WJLScreenshotOwnedJob *job=shot_active;DWORD waited;
+     if (!job) return 0;
+     waited=WaitForSingleObject(job->thread,0);
+     if (waited==WAIT_TIMEOUT) return 0;
+@@ -38,11 +38,11 @@
+     CloseHandle(job->guard);
+     for (unsigned index=0;index<job->parent_count;++index) CloseHandle(job->parents[index]);
+     shot_terminal.error=job->result.error?job->result.error:job->returned;
+-    if (job->publication==LLL_SCREENSHOT_PUBLISHED&&!shot_terminal.error) shot_terminal.state=LLL_SCREENSHOT_SUCCEEDED;
+-    else if (job->publication==LLL_SCREENSHOT_CANCELLED) {
+-        shot_terminal.state=LLL_SCREENSHOT_JOB_CANCELLED;shot_terminal.error=ERROR_CANCELLED;
++    if (job->publication==WJL_SCREENSHOT_PUBLISHED&&!shot_terminal.error) shot_terminal.state=WJL_SCREENSHOT_SUCCEEDED;
++    else if (job->publication==WJL_SCREENSHOT_CANCELLED) {
++        shot_terminal.state=WJL_SCREENSHOT_JOB_CANCELLED;shot_terminal.error=ERROR_CANCELLED;
+     } else {
+-        shot_terminal.state=LLL_SCREENSHOT_FAILED;
++        shot_terminal.state=WJL_SCREENSHOT_FAILED;
+         if (!shot_terminal.error) shot_terminal.error=ERROR_INVALID_DATA;
+     }
+     shot_terminal.width=job->result.width;shot_terminal.height=job->result.height;shot_terminal.elapsed_ms=job->result.elapsed_ms;
+@@ -91,7 +91,7 @@
+     count=GetEnvironmentVariableW(L"LOCALAPPDATA",root,32768);
+     if (!count||count>=32768||count<3||root[1]!=L':'||root[2]!=L'\\') { error=ERROR_INVALID_NAME;goto done; }
+     while (count>3&&root[count-1]==L'\\') root[--count]=0;
+-    if (wcscat_s(root,32768,L"\\LLL\\Helldivers2\\Screenshots")) { error=ERROR_BUFFER_OVERFLOW;goto done; }
++    if (wcscat_s(root,32768,L"\\WJL\\Helldivers2\\Screenshots")) { error=ERROR_BUFFER_OVERFLOW;goto done; }
+     prefix=wcslen(root);length=wcsnlen_s(path,32768);
+     if (length>=32768||length<=prefix+1||CompareStringOrdinal(path,(int)prefix,root,(int)prefix,TRUE)!=CSTR_EQUAL||path[prefix]!=L'\\') { error=ERROR_INVALID_NAME;goto done; }
+     name=path+prefix+1;length=wcslen(name);
+@@ -127,7 +127,7 @@
+ done:
+     free(root);return error;
+ }
+-static DWORD shot_guard_directory(LLLScreenshotOwnedJob *job) {
++static DWORD shot_guard_directory(WJLScreenshotOwnedJob *job) {
+     wchar_t *path;const wchar_t *separator=wcsrchr(job->output,L'\\');
+     HANDLE replacement=INVALID_HANDLE_VALUE;BY_HANDLE_FILE_INFORMATION before,after;DWORD error=0;
+     unsigned last;
+@@ -139,7 +139,7 @@
+      * non-deletable guard before relaxing sharing for the child handle rename.
+      * A guarded nonempty directory cannot become a junction/symlink target. */
+     job->guard=CreateFileW(path,GENERIC_READ|DELETE,0,NULL,CREATE_NEW,
+-        FILE_ATTRIBUTE_HIDDEN|FILE_ATTRIBUTE_TEMPORARY|FILE_FLAG_DELETE_ON_CLOSE,NULL);
++        FILE_ATTRIBUTE_TEMPORARY|FILE_FLAG_DELETE_ON_CLOSE,NULL);
+     if (job->guard==INVALID_HANDLE_VALUE) { error=GetLastError();job->guard=NULL;goto done; }
+     path[separator-job->output]=0;
+     replacement=CreateFileW(path,FILE_LIST_DIRECTORY|FILE_READ_ATTRIBUTES,FILE_SHARE_READ|FILE_SHARE_WRITE,NULL,OPEN_EXISTING,
+@@ -153,8 +153,8 @@
+     if (replacement!=INVALID_HANDLE_VALUE) CloseHandle(replacement);free(path);return error;
+ }
+ static DWORD WINAPI shot_worker(void *context) {
+-    LLLScreenshotOwnedJob *job=(LLLScreenshotOwnedJob*)context;
+-    job->returned=lll_steam_screenshot_capture(&job->request,&job->result);return job->returned;
++    WJLScreenshotOwnedJob *job=(WJLScreenshotOwnedJob*)context;
++    job->returned=wjl_steam_screenshot_capture(&job->request,&job->result);return job->returned;
+ }
+ static DWORD shot_id(const wchar_t *input,char id[33]) {
+     if (!input||wcsnlen_s(input,33)!=32) return ERROR_INVALID_PARAMETER;
+@@ -164,12 +164,12 @@
+     }
+     id[32]=0;return 0;
+ }
+-DWORD lll_screenshot_job_request(DWORD client_pid,const wchar_t *expected_executable,const wchar_t *output_path,LLLScreenshotJobStatus *status) {
+-    LLLScreenshotOwnedJob *job;BYTE random[16];DWORD error;
++DWORD wjl_screenshot_job_request(DWORD client_pid,const wchar_t *expected_executable,const wchar_t *output_path,WJLScreenshotJobStatus *status) {
++    WJLScreenshotOwnedJob *job;BYTE random[16];DWORD error;
+     static const char hex[]="0123456789abcdef";
+     if (!status||!output_path) return ERROR_INVALID_PARAMETER;
+     error=shot_retire();if (error) return error;if (shot_active) return ERROR_BUSY;
+-    job=(LLLScreenshotOwnedJob*)calloc(1,sizeof(*job));if (!job) return ERROR_NOT_ENOUGH_MEMORY;
++    job=(WJLScreenshotOwnedJob*)calloc(1,sizeof(*job));if (!job) return ERROR_NOT_ENOUGH_MEMORY;
+     error=shot_identity(client_pid,expected_executable,job->executable,&job->request.created);if (error) goto failed;
+     error=shot_directory(output_path,job->parents,&job->parent_count);if (error) goto failed;
+     if (BCryptGenRandom(NULL,random,sizeof(random),BCRYPT_USE_SYSTEM_PREFERRED_RNG)<0) { error=ERROR_GEN_FAILURE;goto failed; }
+@@ -186,27 +186,27 @@
+     if (job->cancel) CloseHandle(job->cancel);if (job->guard) CloseHandle(job->guard);
+     for (unsigned index=0;index<job->parent_count;++index) CloseHandle(job->parents[index]);free(job);return error;
+ }
+-DWORD lll_screenshot_job_status(const wchar_t *input,LLLScreenshotJobStatus *status) {
++DWORD wjl_screenshot_job_status(const wchar_t *input,WJLScreenshotJobStatus *status) {
+     char id[33];DWORD error;if (!status) return ERROR_INVALID_PARAMETER;
+     error=shot_id(input,id);if (error) return error;error=shot_retire();if (error) return error;
+     if (shot_active&&!strcmp(id,shot_active->id)) { shot_pending(status,shot_active);return 0; }
+     if (shot_terminal.id[0]&&!strcmp(id,shot_terminal.id)) { shot_copy_status(status,&shot_terminal);return 0; }
+     return ERROR_NOT_FOUND;
+ }
+-DWORD lll_screenshot_job_cancel(const wchar_t *input,LLLScreenshotJobStatus *status) {
++DWORD wjl_screenshot_job_cancel(const wchar_t *input,WJLScreenshotJobStatus *status) {
+     char id[33];DWORD error;if (!status) return ERROR_INVALID_PARAMETER;
+     error=shot_id(input,id);if (error) return error;error=shot_retire();if (error) return error;
+     if (shot_active&&!strcmp(id,shot_active->id)) {
+-        SetEvent(shot_active->cancel);InterlockedCompareExchange(&shot_active->publication,LLL_SCREENSHOT_CANCELLED,LLL_SCREENSHOT_OPEN);
++        SetEvent(shot_active->cancel);InterlockedCompareExchange(&shot_active->publication,WJL_SCREENSHOT_CANCELLED,WJL_SCREENSHOT_OPEN);
+         error=shot_retire();if (error) return error;
+     }
+-    return lll_screenshot_job_status(input,status);
+-}
+-void lll_screenshot_jobs_cancel_all(void) {
++    return wjl_screenshot_job_status(input,status);
++}
++void wjl_screenshot_jobs_cancel_all(void) {
+     if (shot_retire()||!shot_active) return;
+-    SetEvent(shot_active->cancel);InterlockedCompareExchange(&shot_active->publication,LLL_SCREENSHOT_CANCELLED,LLL_SCREENSHOT_OPEN);
+-}
+-void lll_screenshot_jobs_shutdown(void) {
+-    lll_screenshot_jobs_cancel_all();
++    SetEvent(shot_active->cancel);InterlockedCompareExchange(&shot_active->publication,WJL_SCREENSHOT_CANCELLED,WJL_SCREENSHOT_OPEN);
++}
++void wjl_screenshot_jobs_shutdown(void) {
++    wjl_screenshot_jobs_cancel_all();
+     if (shot_active&&WaitForSingleObject(shot_active->thread,INFINITE)==WAIT_OBJECT_0) shot_retire();
+ }

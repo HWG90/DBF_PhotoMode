@@ -7,10 +7,11 @@ stock-hash check sees the real game. The game never waits on the launcher; here 
 times how long cmd.exe runs it. Checks: readiness through --launch, the game root
 resolved from --game-pid, the renderer-contract proof (valid, changed bundle, overriding
 patch, valid again), the first pipe exchange the Lua side makes once the pipes exist, a
-refused game (the Refused line the game's poll reads), and a helper EXE removed after it
-was written, as antivirus does (cmd.exe returns; no dialog).
+refused game (the Refused line the game's poll reads), a release made for another game
+build refused the same way, and a helper EXE removed after it was written, as antivirus
+does (cmd.exe returns; no dialog).
 Needs wine and x86_64-w64-mingw32-gcc (test stand-ins only), lupa, and an installed
-Helldivers 2 of the build the helper pins. Replaces the PowerShell-era
+Helldivers 2 of the build engine_render_contract.lua names. Replaces the PowerShell-era
 test_engine_render_contract.py."""
 from pathlib import Path
 import argparse,hashlib,json,os,shutil,struct,subprocess,tempfile,time
@@ -66,7 +67,10 @@ def main():
   g.os.getenv=lambda name:{'APPDATA':appdata,'LOCALAPPDATA':localdata}.get(name)
   startup=lua.execute((ROOT/'freecam/wjl_helper_startup.lua').read_text())
   payload=lua.execute((ROOT/'freecam/wjl_helper_payload.lua').read_text())
-  contract={'id':'b'*64,'resource':'ee6b1ba7e22d71ed','resource_type':'27862fe24795319c',
+  # The installed build, as the shipped contract names it to the helper.
+  build={'exe_sha256':hashlib.sha256((args.game/'bin/helldivers2.exe').read_bytes()).hexdigest(),
+         'dll_sha256':hashlib.sha256((args.game/'data/game/game.dll').read_bytes()).hexdigest()}
+  contract={'id':'b'*64,'resource':'ee6b1ba7e22d71ed','resource_type':'27862fe24795319c','game':build,
             'checks':[{'file':'bundles.nxa','offset':0,'size':len(index),'sha256':hashlib.sha256(index).hexdigest()},
                       {'file':'bundles.00.nxa','offset':3,'size':len(chunk),'sha256':hashlib.sha256(chunk).hexdigest()}]}
   def launch(pid):
@@ -162,6 +166,15 @@ def main():
   log=service_log.read_text(errors='replace')
   assert not config['contract_ready']()and config['failure']().startswith('Refused'),config['failure']()
   results.append({'scenario':'unsupported-game','ready':False,'launch_seconds':round(elapsed,3),'reported':log.strip().splitlines()[-1]})
+  # The real installation, but a release made for another game build. The helper takes the
+  # build from the launch, not from its own bytes, and refuses in the same way.
+  contract={'id':'b'*64,'resource':'ee6b1ba7e22d71ed','resource_type':'27862fe24795319c','game':dict(build,dll_sha256='e'*64),
+            'checks':[{'file':'bundles.nxa','offset':0,'size':len(index),'sha256':hashlib.sha256(index).hexdigest()}]}
+  config,code,elapsed=launch(good_pid)
+  assert logged('Refused: installed game hashes do not match'),service_log.read_text(errors='replace')if service_log.exists()else'no log'
+  assert not config['contract_ready']()and config['failure']().startswith('Refused'),config['failure']()
+  results.append({'scenario':'release-for-another-build','ready':False,'launch_seconds':round(elapsed,3)})
+  contract=real
   # PNG screenshots: the engine's DDS, written beside the requested PNG, converted by the
   # helper's screenshot job (SDR BGRA8 and HDR10 RGB10A2), as Photo Mode asks for it.
   shots_dir=Path(unix(localdata))/'WJL/Helldivers2/Screenshots';windows_shots=localdata+'\\WJL\\Helldivers2\\Screenshots'

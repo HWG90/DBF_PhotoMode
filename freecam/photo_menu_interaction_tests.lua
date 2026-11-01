@@ -162,7 +162,8 @@ menu.close();print('Photo panel interaction: absent native HUD callback, fixed F
 do
  local saved={handycam_right_cm=0,handycam_up_cm=7,handycam_forward_cm=14,handycam_yaw_deg=0,handycam_pitch_deg=0}
  local preview;local commits,updates=0,0;local cmds;local keys={}
- local ctl={id='handycam_position_handle',type='button',label='Drag camera position',button_label='Drag camera position'}
+ local ctl={id='handycam_position_handle',type='button',label='Drag camera position',button_label='Drag camera position',
+  drag={action='handycam_adjust',x={id='handycam_right_cm',scale=.1,limit=30},y={id='handycam_up_cm',scale=.1,limit=30},wheel={id='handycam_forward_cm',step=.5,limit=30},middle={x={id='handycam_yaw_deg',scale=-.2,limit=180},y={id='handycam_pitch_deg',scale=.2,limit=89}}}}
  local function get(id)return preview and preview[id]~=nil and preview[id]or saved[id]end
  local m=dofile(root..'photo_menu.lua').new({draw=function(c)cmds=c end,release=function()end,measure=measure},{
   focus=function()end,hide=function()end,exit=function()end,handycam_adjust=function(v,commit)
@@ -191,4 +192,34 @@ do
  m.close()
 end
 print('Camera handle: M1 position, wheel depth, MMB rotation, idle preview, single commit and focus-loss cancellation passed')
+do -- Bone handle: left-drag Bend/Swing, wheel and MMB Twist, Shift fine, single commit
+ local saved={bone_bend=0,bone_swing=0,bone_twist=0};local preview;local commits,updates=0,0;local cmds;local keys={}
+ local drag={action='bone_adjust',x={id='bone_bend',scale=.2,limit=180},y={id='bone_swing',scale=.2,limit=180},wheel={id='bone_twist',step=1,limit=180},middle={x={id='bone_twist',scale=.2,limit=180}}}
+ local ctl={id='bone_drag_handle',type='button',label='Drag to rotate bone',button_label='Drag to rotate bone',drag=drag}
+ local function get(id)return preview and preview[id]~=nil and preview[id]or saved[id]end
+ local m=dofile(root..'photo_menu.lua').new({draw=function(c)cmds=c end,release=function()end,measure=measure},{focus=function()end,hide=function()end,exit=function()end,
+  bone_adjust=function(v,commit)if v then updates=updates+1;preview=preview or{};for k,n in pairs(v)do preview[k]=n end else if commit and preview then commits=commits+1;for k,n in pairs(preview)do saved[k]=n end end;preview=nil end;return true end})
+ m.bind({get=get,set=function()error('Gesture must not write directly')end},{{name='Subject',controls={ctl}}})
+ local function draw(focus)m.draw(1920,1080,focus~=false,false,{focus='TAB',hide='H'})end
+ local function tick(x,y,left,wheel)m.tick({x=x,y=y,click=left==true,wheel=wheel or 0},function(k)return keys[k]or false end)end
+ draw();local b;for _,c in ipairs(cmds)do if c.ui_role=='field'and c.control_id==ctl.id then b=c end end;assert(b)
+ local x,y=b.x+b.w/2,b.y+b.h/2
+ tick(x,y,false);tick(x,y,true);tick(x+10,y+20,true);assert(get('bone_bend')>0 and math.abs(get('bone_swing')-2*get('bone_bend'))<.03 and commits==0,'Left-drag maps x to Bend and y to Swing')
+ tick(x+10,y+20,false);assert(commits==1 and saved.bone_bend>0)
+ tick(x,y,false,120);assert(saved.bone_twist==1,'Wheel over the handle twists');keys[16]=true;tick(x,y,false,120);assert(math.abs(saved.bone_twist-1.1)<1e-9,'Shift wheel is a fine twist');keys[16]=false
+ keys[4]=true;tick(x,y,false);tick(x+10,y,false);assert(get('bone_twist')>1.1,'MMB drag twists');keys[4]=false;tick(x+10,y,false)
+ tick(x,y,true);tick(x+10,y,true);assert(preview);draw(false);assert(not preview,'Focus loss cancels')
+ m.close()
+end
+print('Bone handle: drag Bend/Swing, wheel and MMB Twist, fine steps and single commit passed')
+do -- A bone marker that captures the pointer takes scene clicks before the panel does
+ local cmds;local captured=0
+ local m=dofile(root..'photo_menu.lua').new({draw=function(c)cmds=c end,release=function()end,measure=measure},{focus=function()end,hide=function()end,exit=function()end})
+ m.bind({get=function()return 0 end,set=function()end},{{name='Subject',controls={{id='x',type='slider',label='X',min=0,max=1,step=.1}}}})
+ m.bone_marker={tick=function(input)captured=captured+1;return true end,cancel=function()end,draw=function()end}
+ m.draw(1920,1080,true,false,{focus='TAB',hide='H'})
+ m.tick({x=5,y=5,click=true},function()return false end);assert(captured==1,'Scene click routed to the marker')
+ m.close()
+end
+print('Bone marker routing: scene clicks reach the marker passed')
 

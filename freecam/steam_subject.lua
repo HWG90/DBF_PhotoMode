@@ -14,6 +14,7 @@
 -- is read-only: explicit true proves an intermediate current node belongs to
 -- the adapter's precise component-attempt ledger. False/nil/throw stays blocked.
 -- Only explicit recover uses it; exact before/target paths never need it.
+-- Optional node_position(target,rig,index) is a read-only world translation.
 -- valid returns true / false (definitively retired) / nil (unknown).
 -- snapshot must capture one coherent numeric frame in the current callback,
 -- including identity/resource/node_count/mode and nodes 8..92. Every mutation
@@ -23,6 +24,11 @@
 -- as native Math/ID temporaries. A later native adapter requires ABI proof.
 local M={}
 local resource='4d1c334d294dfa97'
+-- Carry sockets the game re-places every frame even at zero time (live
+-- 2026-10-29 and 2026-11-01: nodes 23,24,25,28,31,32 taken back in every
+-- sample). Edited frames neither compare nor write them, or a second edit over
+-- a held lease reads the game's own writes as foreign.
+M.GAME_OWNED_NAMES={attach_samplepouch=true,attach_intelpad=true,target_designator=true,sling=true,support_mg=true,support=true}
 local function finite(n)return type(n)=='number'and n==n and math.abs(n)<math.huge end
 local function copy_vector(value,count)
  assert(type(value)=='table','Numeric subject vector unavailable')
@@ -328,18 +334,39 @@ function M.new(adapter,bank,is_frozen)
   if not commit()then return false,status.message end
   pose='freeze-bone-trial';state('posed','Testing frozen bone transfer');return true
  end
- function self.apply(id)
-  if not supported then return false,status.message end
-  if blocked then return false,'Recover the pending subject cleanup first'end
-  if not selected then return false,'Select a photographic subject first'end
-  if not labels[id]then return false,'Unknown subject pose'end
-  local frozen,value=pcall(is_frozen)
-  if not frozen or value~=true then return false,'True-zero Freeze Action is required'end
-  local prepared
-  if not(lease and pose==id)then
-   local why,detail;prepared,why,detail=prepare(id)
-   if not prepared then state(lease and'posed'or'selected',why,detail);return false,status.message end
+ -- Edited frames reuse the held node, matrix included, wherever the PQS is
+ -- unchanged, so a one-bone edit canonicalises and writes one bone.
+ local function same_pqs(a,b)
+  for i=1,3 do if a.p[i]~=b.p[i]or a.s[i]~=b.s[i]then return false end end
+  for i=1,4 do if a.q[i]~=b.q[i]then return false end end
+  return true
+ end
+ local function prepare_frame(frame)
+  if type(frame)~='table'or type(frame.nodes)~='table'then return nil,'Subject frame unavailable'end
+  local copied,nodes=pcall(function()
+   local result={};for i=8,92 do result[i]=copy_node(frame.nodes[i])end;return result
+  end)
+  if not copied then return nil,'Subject frame is not numeric',nodes end
+  for i=8,92 do
+   local target=lease and(lease.nodes[i]and lease.nodes[i].value or lease.original.nodes[i])
+   if target and same_pqs(nodes[i],target)then nodes[i]=target
+   elseif adapter.canonical_node then
+    local called,value,issue=pcall(adapter.canonical_node,selected,bank.rig,nodes[i])
+    if not called or not value then return nil,'Subject target canonicalization failed',called and issue or value end
+    local valid,result=pcall(copy_node,value)
+    if not valid then return nil,'Subject target canonicalization is not numeric',result end
+    nodes[i]=result
+   end
   end
+  return{full_body=true,nodes=nodes}
+ end
+ local function game_owned(key)
+  local owned={}
+  if key=='edited'then for i=8,92 do local node=bank.rig.nodes[i];if node and M.GAME_OWNED_NAMES[node.name]then owned[i]=true end end end
+  return owned
+ end
+ local function apply_prepared(prepared,key,label_text)
+  local skip=game_owned(key)
   local current,why=snapshot()
   if current==false then finish(true);return false,status.message end
   if not current then
@@ -350,11 +377,11 @@ function M.new(adapter,bank,is_frozen)
    if current.matrix~=lease.original.matrix then return pending('Subject snapshot representation changed; recover without guessing ownership')end
    local expected_mode=lease.mode and lease.mode.value or lease.original.mode
    if current.mode~=expected_mode then lease.foreign=true;return pending('Subject mode changed; recover without overwriting it')end
-   for i=8,92 do
+   for i=8,92 do if not skip[i]then
     local expected=lease.nodes[i]and lease.nodes[i].value or lease.original.nodes[i]
-    if not same_node(current.nodes[i],expected)then lease.foreign=true;return pending('Subject body changed; recover without overwriting it')end
-   end
-   if pose==id then return true end
+    if not same_node(current.nodes[i],expected)then lease.foreign=true;return pending('Subject body changed; recover without overwriting it','node '..i)end
+   end end
+   if key~='edited'and pose==key then return true end
   end
   local nodes=prepared.nodes
   if not prepared.full_body then nodes[8]=lease and lease.original.nodes[8]or current.nodes[8]end
@@ -367,11 +394,76 @@ function M.new(adapter,bank,is_frozen)
   if not lease then lease={original=current,nodes={},commit_pending=false}end
   pose=nil
   if current.mode~='ignore'and not write_mode(current.mode,'ignore')then return false,status.message end
-  for i=8,92 do if not same_node(current.nodes[i],nodes[i])then
+  for i=8,92 do if not skip[i]and not same_node(current.nodes[i],nodes[i])then
    if not write_node(i,current.nodes[i],nodes[i],'ignore')then return false,status.message end
   end end
   if not commit()then return false,status.message end
-  pose=id;status.restored=false;state('posed',labels[id]..' held on the selected subject');return true
+  pose=key;status.restored=false;state('posed',label_text..' held on the selected subject');return true
+ end
+ function self.apply(id)
+  if not supported then return false,status.message end
+  if blocked then return false,'Recover the pending subject cleanup first'end
+  if not selected then return false,'Select a photographic subject first'end
+  if not labels[id]then return false,'Unknown subject pose'end
+  local frozen,value=pcall(is_frozen)
+  if not frozen or value~=true then return false,'True-zero Freeze Action is required'end
+  local prepared
+  if not(lease and pose==id)then
+   local why,detail;prepared,why,detail=prepare(id)
+   if not prepared then state(lease and'posed'or'selected',why,detail);return false,status.message end
+  end
+  return apply_prepared(prepared,id,labels[id])
+ end
+ -- A caller-supplied frame (the pose editor or a pose file) under the reserved
+ -- key 'edited'. Same gate, lease, ledger and restoration as a catalogue pose.
+ function self.apply_frame(frame,label)
+  if not supported then return false,status.message end
+  if blocked then return false,'Recover the pending subject cleanup first'end
+  if not selected then return false,'Select a photographic subject first'end
+  local frozen,value=pcall(is_frozen)
+  if not frozen or value~=true then return false,'True-zero Freeze Action is required'end
+  local prepared,why,detail=prepare_frame(frame)
+  if not prepared then state(lease and'posed'or'selected',why,detail);return false,status.message end
+  if type(label)~='string'and type(frame.label)=='string'then label=frame.label end
+  return apply_prepared(prepared,'edited',type(label)=='string'and label or'Edited pose')
+ end
+ -- Read-only frames for the pose editor: what the lease authors now, and a
+ -- fresh snapshot without a lease.
+ function self.target_frame()
+  if not lease then return nil,'No pose is held'end
+  local nodes={}
+  for i=8,92 do local record=lease.nodes[i];nodes[i]=copy_node(record and record.value or lease.original.nodes[i])end
+  return{full_body=true,nodes=nodes}
+ end
+ function self.current_frame()
+  if not supported then return nil,status.message end
+  if not selected then return nil,'Select a photographic subject first'end
+  local frozen,value=pcall(is_frozen)
+  if not frozen or value~=true then return nil,'True-zero Freeze Action is required'end
+  local current,why=snapshot()
+  if current==false then return nil,'Selected subject retired'end
+  if not current then return nil,why or'Subject snapshot unavailable'end
+  return{full_body=true,nodes=current.nodes}
+ end
+ function self.node_parent(index)
+  local node=bank.rig.nodes[index];if not node then return nil end
+  return node.parent or 0
+ end
+ function self.node_frame(index)
+  if not selected then return nil,'Select a photographic subject first'end
+  if type(adapter.node_frame)~='function'then return nil,'Node frame unavailable'end
+  local called,value,why=pcall(adapter.node_frame,selected,bank.rig,index)
+  if not called then return nil,tostring(value)end
+  if type(value)~='table'or type(value.position)~='table'or type(value.rotation)~='table'then return nil,why or'Node frame unavailable'end
+  return{position={value.position[1],value.position[2],value.position[3]},rotation={value.rotation[1],value.rotation[2],value.rotation[3],value.rotation[4]}}
+ end
+ function self.node_position(index)
+  if not selected then return nil,'Select a photographic subject first'end
+  if type(adapter.node_position)~='function'then return nil,'Node position unavailable'end
+  local called,value,why=pcall(adapter.node_position,selected,bank.rig,index)
+  if not called then return nil,tostring(value)end
+  if type(value)~='table'then return nil,why or'Node position unavailable'end
+  return{value[1],value[2],value[3]}
  end
  function self.reset()
   closing=false;pose=nil
