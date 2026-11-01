@@ -12,8 +12,10 @@ f.position={.17,0,0};a.observe(f,head,1.2);a.observe(f,head,1.21);assert(a.suspe
 a.observe(f,head,1.6);assert(not a.pending());f.position={3,0,0}
 for i=1,1000 do a.observe(f,head,2+i)end;assert(not a.suspended,'Persistent Handycam intent recovers a late native return without another input event')
 -- The engine's input event queue drops mouse edges (the live log shows releases
--- without a press), so a confirmed native eye view must enter without an event.
-f.position={.17,0,0};a.observe(f,head,1002.5);assert(not a.suspended,'One near frame is not a handoff')
+-- without a press), so a confirmed native sight view must enter without an event.
+-- Measured in game: the sight camera sits behind the head bone, which is 0.10 to
+-- 0.25 m ahead of it and 0.07 to 0.19 m off its axis.
+f.position={-.17,0,0};a.observe(f,head,1002.5);assert(not a.suspended,'One near frame is not a handoff')
 a.observe(f,head,1002.51);assert(a.suspended,'Confirmed native first person enters ADS without an event')
 assert(messages[#messages]:find('native first-person entry',1,true),messages[#messages])
 f.position={3,0,0}
@@ -84,26 +86,24 @@ do
  end
  b.observe(f,head,.601);assert(not b.pending(),'Handoffs cannot extend the input window')
  f.position={1.13,0,0};b.observe(f,head,.602);assert(not b.suspended)
- f.position={.17,0,0};b.observe(f,head,.603);b.observe(f,head,.604)
+ f.position={-.17,0,0};b.observe(f,head,.603);b.observe(f,head,.604)
  assert(b.suspended,'An expired input window no longer blocks a confirmed native near camera')
 end
 
--- A third-person camera pushed into the body by collision sits behind the head
--- and looks at it: the head is ahead of the camera plane. That is never the eye
--- view, so without an event it must not yield; the eye view (head behind the
--- camera) still yields when both input edges were dropped.
+-- Without an event only the measured sight-camera envelope qualifies: the head
+-- 0.03 to 0.35 m ahead of the camera and under 0.25 m off its axis. A camera
+-- beside the head, one behind and off to the shoulder side, and anything ahead
+-- of the head (our own mount lives there) never yield without an event.
 do
  local b=M.new();b.set_active(true,0);f.position={1.13,0,0};f.forward={1,0,0}
  for i=1,70 do b.observe(f,head,i*.01)end;assert(not b.pending()and not b.suspended)
- f.position={-.3,0,0}
- for i=1,10 do b.observe(f,head,1+i*.01)end
- assert(not b.suspended,'A collided third-person camera behind the head never enters ADS without an event')
- f.position={-.05,0,.2};f.forward={0,0,-1}
- for i=1,10 do b.observe(f,head,2+i*.01)end
- assert(not b.suspended,'A camera above the head looking down at it is not the eye view')
- f.position={.17,0,0};f.forward={1,0,0}
- b.observe(f,head,3);assert(not b.suspended);b.observe(f,head,3.01)
- assert(b.suspended,'Both edges dropped: the confirmed eye view still yields')
- f.position={1.13,0,0};b.observe(f,head,3.02);assert(not b.suspended,'and the first far frame still reclaims the mount')
+ for _,case in ipairs({{{0,-.3,0},'beside the head'},{{-.25,-.3,0},'behind the head but off to the shoulder'},{{.17,0,0},'ahead of the head (the mount side)'},{{.12,0,.07},'at our own mount offsets'}})do
+  f.position=case[1];for i=1,10 do b.observe(f,head,1+i*.01)end
+  assert(not b.suspended,'A camera '..case[2]..' never enters ADS without an event')
+ end
+ for _,case in ipairs({{{-.103,.066,0},'iron sights (0.12 m, 0.10 ahead)'},{{-.244,-.16,0},'a scope (0.29 m, 0.24 ahead)'}})do
+  f.position=case[1];b.observe(f,head,2);assert(not b.suspended);b.observe(f,head,2.01)
+  assert(b.suspended,'Both edges dropped: '..case[2]..' still yields')
+  f.position={1.13,0,0};b.observe(f,head,2.02);assert(not b.suspended,'and the first far frame still reclaims the mount')
+ end
 end
-

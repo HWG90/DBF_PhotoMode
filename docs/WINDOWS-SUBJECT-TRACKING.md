@@ -475,12 +475,22 @@ pose.
 
 `windows_handycam_ads.lua` now runs a symmetric no-event watch while mounted:
 two consecutive native near frames yield with reason `native first-person
-entry`. The watch accepts only the eye view, where the head sits behind the
-camera plane (`head_ahead` below 0.05 m, logged on every handoff). A
-third-person camera pushed into the body by collision sits behind or above the
-head and looks at it, so the head is ahead of that camera and it never
-qualifies; the fixture covers a camera 0.3 m behind the head and one above it
-looking down. Event windows, the output-echo exclusion, the two-sample
-confirmation and the return watch are unchanged. The fixture assertions that
-encoded "cannot enter ADS without an event" were inverted deliberately.
+entry`. Its first guard assumed the sight camera sits ahead of the head bone;
+the next session's log showed the opposite on all 25 confirmed handoffs
+(`head_ahead` 0.10 to 0.25 m, 0.07 to 0.19 m off the camera axis, iron sights
+and a scope), so that watch never fired and the user still saw misses. The
+guard is now the measured envelope: the head 0.03 to 0.35 m ahead of the
+camera and under 0.25 m off its axis (`head_ahead` and `head_side` are logged
+on every handoff). A camera beside the head, one off to the shoulder side, and
+anything ahead of the head (our own mount) never qualify without an event.
+
+That session also showed about half of the middle presses never reaching the
+event queue, so `windows_camera_signals.lua` now reads the middle and right
+button levels once per active tick, the way `engine_input.lua` already reads
+`Mouse.button`, and synthesizes whichever edge the queue dropped. The first
+read after (re)activation is a baseline, a delivered edge is not repeated, and
+a refused read is skipped; synthesized edges log `(polled)`. Event windows, the
+output-echo exclusion, the two-sample confirmation and the return watch are
+unchanged. The fixture assertions that encoded "cannot enter ADS without an
+event" were inverted deliberately.
 

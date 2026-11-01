@@ -108,3 +108,28 @@ do
  local tables,keys,hits=inventory.hud_environment({},function(s)messages[#messages+1]=s end,{Gui={set_visible=fn},Application={main_world=fn},Unit={camera=fn}})
  assert(hits==2 and calls==0 and getfenv(fn)==env,'Environment inventory must only inspect names, with shared tables scanned once')
 end
+
+-- The engine's event queue drops mouse edges. Button levels polled on every
+-- active tick synthesize the missing edge; an edge the queue delivered is not
+-- repeated, and a button already held when observation resumes is a baseline.
+do
+ local level={};local polled=0
+ local m={button_name=function(id)return id==1 and'right'or'middle'end,button_id=function(name)return name=='right'and 1 or 2 end,
+  button=function(id)polled=polled+1;return level[id]and 1 or 0 end}
+ local evs={};local got={}
+ local t={Mouse=m,InputEventType={BUTTON_PRESSED=1,BUTTON_RELEASED=2},Input={event_queue=function()return evs end}}
+ local s=M.new(t,function()end,function(name,pressed)got[#got+1]=name..(pressed and'+'or'-')end)
+ s.tick(true);assert(#got==0 and polled==2,'Levels are read on every active tick')
+ level[2]=true;s.tick(true);assert(table.concat(got,',')=='middle+','A press the queue dropped is synthesized from the level')
+ s.tick(true);assert(#got==1,'A held button is one edge')
+ level[2]=nil;s.tick(true);assert(table.concat(got,',')=='middle+,middle-','A dropped release is synthesized')
+ evs={{sender=m,type=1,id=2}};level[2]=true;s.tick(true);assert(table.concat(got,',')=='middle+,middle-,middle+','A delivered press is not repeated by the poll')
+ evs={};s.tick(true);assert(#got==3)
+ evs={{sender=m,type=2,id=2}};level[2]=nil;s.tick(true);assert(#got==4 and got[4]=='middle-','A delivered release is not repeated')
+ evs={};level[1]=true;s.tick(true);assert(got[5]=='right+','Right aim edges are polled too')
+ s.tick(false);level[2]=true;s.tick(true);assert(#got==5,'Buttons held across inactivity are a baseline, not edges')
+ level[2]=nil;s.tick(true);assert(got[6]=='middle-')
+ m.button=function()error('engine refused')end;s.tick(true);s.tick(true);assert(#got==6,'A failing level read is skipped, never raised')
+ s.release()
+end
+

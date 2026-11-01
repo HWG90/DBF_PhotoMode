@@ -4,7 +4,9 @@
 -- Mouse edges open a short observation window, but the engine's input event
 -- queue drops edges (the live log shows releases without a press), so both
 -- directions also run a no-event watch: yielded, the first far frame reclaims
--- the mount; mounted, a confirmed native eye view yields.
+-- the mount; mounted, a confirmed native sight view yields. Measured in game,
+-- the sight camera sits behind the head bone: the head is 0.10 to 0.25 m ahead
+-- of it and 0.07 to 0.19 m off its axis (iron sights and a scope).
 local M={}
 local function finite(v)return type(v)=='number'and v==v and math.abs(v)<1e8 end
 local function near(a,b)
@@ -54,13 +56,14 @@ function M.new(log)
    -- window may never open when the engine drops both edges of a click. Reuse
    -- the frame/head already required by Handycam: constant arithmetic, no API
    -- calls or timer delay. Yielded, the first far frame must reclaim the mount.
-   -- Mounted, a confirmed near camera yields only as the eye view: the head
-   -- sits behind the camera plane. A third-person camera pushed into the body
-   -- by collision sits behind or above the head and looks at it, so the head
-   -- is ahead of that camera and it never qualifies.
+   -- Mounted, a confirmed near camera yields only inside the measured sight
+   -- envelope: the head 0.03 to 0.35 m ahead of the camera and under 0.25 m
+   -- off its axis. A third-person camera pushed to its shoulder pivot by
+   -- collision has the head beside it, and our own mount sits ahead of the
+   -- head, so neither qualifies.
    if not watch then
     if self.suspended then watch={streak=0,reason='native third-person return',only='far'}
-    else watch={streak=0,reason='native first-person entry',only='near',eye=true}end
+    else watch={streak=0,reason='native first-person entry',only='near',sight=true}end
    end
    evidence=watch
   else evidence.samples=evidence.samples+1 end
@@ -74,7 +77,8 @@ function M.new(log)
    d=d+(a-b)^2;ahead=ahead+(b-a)*f
   end
   local kind=d<.4*.4 and 'near'or d>.7*.7 and 'far'or nil
-  if not kind or evidence.only and kind~=evidence.only or evidence.eye and not(ahead<.05)then evidence.streak=0;return self.suspended,false end
+  local side=d-ahead*ahead
+  if not kind or evidence.only and kind~=evidence.only or evidence.sight and not(ahead>.03 and ahead<.35 and side<.25*.25)then evidence.streak=0;return self.suspended,false end
   evidence.streak=kind==evidence.kind and evidence.streak+1 or 1;evidence.kind=kind
   -- Leave the first native near frame untouched so our aligned eye cannot
   -- become an indistinguishable output echo before the second confirmation.
@@ -82,7 +86,7 @@ function M.new(log)
   local value=kind=='near';local changed=value~=self.suspended
   if changed then
    self.suspended=value
-   if log then log('Handycam ADS: '..(value and 'yield'or'resume')..'; event='..evidence.reason..'; head_distance='..string.format('%.4f',math.sqrt(d))..'; head_ahead='..string.format('%.3f',ahead))end
+   if log then log('Handycam ADS: '..(value and 'yield'or'resume')..'; event='..evidence.reason..'; head_distance='..string.format('%.4f',math.sqrt(d))..'; head_ahead='..string.format('%.3f',ahead)..'; head_side='..string.format('%.3f',math.sqrt(math.max(0,side))))end
    -- An event batch can precede several native camera updates. Keep its
    -- original deadline/sample budget across handoffs so a delayed newer ADS
    -- entry is still observed after the previous exit reclaimed Handycam.

@@ -1,6 +1,9 @@
 -- Private passive signal qualification. No camera or visibility setters.
 -- Input events are consumed once in the existing active Handycam update; no
--- timer, thread, input-state polling or gameplay input interception is added.
+-- timer, thread or gameplay input interception is added. The engine's event
+-- queue drops mouse edges (the live log shows releases without a press), so
+-- the middle/right button levels are also read once per active tick, the way
+-- engine_input reads them, and a missing edge is synthesized from the level.
 local M={}
 local function pack(...)return{n=select('#',...),...}end
 -- Candidate names are hypotheses, not known game controls. Existence queries
@@ -72,6 +75,7 @@ end
 function M.new(sr,log,on_event,diagnostics,on_movement)
  local self={};local live=true;local prior,wrapper;local seen=setmetatable({},{__mode='k'})
  local gui_count,event_count=0,0;local pending;local unavailable=false
+ local levels,ids
  local function emit(text)pcall(log,'Camera signal: '..text)end
  local parameters=diagnostics and M.parameters(sr,emit)
  local distance_done=false
@@ -125,8 +129,8 @@ function M.new(sr,log,on_event,diagnostics,on_movement)
   end
   G.set_visible=wrapper
  end
- function self.tick(active)
-  if not live or not active or unavailable or event_count>=32 and not on_event and not on_movement then return end
+ local function drain()
+  if unavailable or event_count>=32 and not on_event and not on_movement then return end
   local I,T=sr.Input,sr.InputEventType
   if not(I and type(I.event_queue)=='function'and T and T.BUTTON_PRESSED~=nil and T.BUTTON_RELEASED~=nil)then
    if not unavailable then unavailable=true;emit('Input event constants unavailable; no guessed event types')end
@@ -149,12 +153,44 @@ function M.new(sr,log,on_event,diagnostics,on_movement)
    if type(event)=='table'and event.sender==sr.Mouse and(event.type==T.BUTTON_PRESSED or event.type==T.BUTTON_RELEASED)then
     local called,name=pcall(sr.Mouse.button_name,event.id)
     if called and(name=='middle'or name=='right')then
+     if levels then levels[name]=event.type==T.BUTTON_PRESSED end
      if on_event then on_event(name,event.type==T.BUTTON_PRESSED)end
      local action=event.type==T.BUTTON_PRESSED and'pressed'or'released'
      if event_count<32 then
       event_count=event_count+1;pending={name=name,action=action,remaining=3}
       emit('mouse='..name..' action='..action..'; first-person state not inferred')
      end
+    end
+   end
+  end
+ end
+ function self.tick(active)
+  if not active then levels=nil end
+  if not live or not active then return end
+  drain()
+  if on_event then self.poll()end
+ end
+ -- Button levels, read after the queue. The first read after (re)activation
+ -- is a baseline: a button already held is not an edge. A read the engine
+ -- refuses is skipped for that tick.
+ function self.poll()
+  local Mo=sr.Mouse
+  if not(Mo and type(Mo.button)=='function'and type(Mo.button_id)=='function')then return end
+  if ids==nil then
+   ids={}
+   for _,name in ipairs({'middle','right'})do local ok,id=pcall(Mo.button_id,name);if ok and id~=nil then ids[name]=id end end
+   if ids.middle==nil and ids.right==nil then ids=false end
+  end
+  if not ids then return end
+  local baseline=levels==nil;levels=levels or{}
+  for name,id in pairs(ids)do
+   local ok,value=pcall(Mo.button,id)
+   if ok then
+    local down=value==true or type(value)=='number'and value>.5
+    if baseline then levels[name]=down
+    elseif down~=(levels[name]==true)then
+     levels[name]=down;on_event(name,down)
+     if event_count<32 then event_count=event_count+1;emit('mouse='..name..' action='..(down and'pressed'or'released')..' (polled); first-person state not inferred')end
     end
    end
   end
