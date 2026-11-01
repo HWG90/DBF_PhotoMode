@@ -196,7 +196,7 @@ function M.pages(reset,recenter,catalog,saved_actions)
  slider('handycam_right_cm','POV camera left / right (cm)',-30,30,1),
  slider('handycam_yaw_deg','POV camera yaw (degrees)',-180,180,1),
  slider('handycam_pitch_deg','POV camera pitch (degrees)',-89,89,1),
- director_action('handycam_position_handle','Drag camera position','handycam_position_handle'),
+ (function()local row=director_action('handycam_position_handle','Drag camera position','handycam_position_handle');row.drag=M.handycam_drag;return row end)(),
  {id='handycam_drag_hint',type='text',label='Handle: M1 drag moves. Wheel: forward/back. MMB drag: yaw/pitch. Shift: fine.'},
  {id='handycam_hint',type='text',label='Handycam follows your selected subject and always hides the helmet. Other hiding is in Subject > Visibility.'},
  toggle('cinema_notification','Show Cinema camera notification'),

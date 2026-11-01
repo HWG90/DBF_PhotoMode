@@ -78,4 +78,15 @@ do -- save, load, overwrite, delete through an injected store; save needs true z
  assert(f.action('pose_delete')and files['C:/cfg/wj-pose-02.txt']==nil and #f.controls.pose_file.choices==1)
  assert(f.action('subject_pose_stop'));f.restored()
 end
+do -- preview discarded on bone change
+ local f=fixture();f.enable();f.select();elbow(f)
+ f.runtime.handle.set('bone_bend',10);f.step(.016,1);f.settle();assert(f.subject.status().pose=='edited')
+ assert(f.menu.actions.bone_adjust({bone_bend=40}));assert(f.runtime.handle.get('bone_bend')==40,'A preview reads back through the handle')
+ assert(f.runtime.handle.set('bone',4))
+ f.step(.016,1);assert(near(f.b.nodes[70].q,E.compose(f.original_b[70].q,10,0,0)),'Preview never reached the old bone after the change')
+ assert(f.runtime.handle.set('bone',3));assert(f.runtime.handle.get('bone_bend')==10)
+ assert(f.menu.actions.bone_adjust({bone_bend=25}));f.step(.016,1);assert(near(f.b.nodes[70].q,E.compose(f.original_b[70].q,25,0,0)),'Previews apply live')
+ assert(f.menu.actions.bone_adjust(nil,true));assert(f.runtime.handle.get('bone_bend')==25,'Release commits the slider once')
+ assert(f.action('subject_pose_stop'));f.restored()
+end
 print('Pose editor runtime: settle, coalesced apply, slider sync, rebase, unfreeze, retire and enabled rules passed')

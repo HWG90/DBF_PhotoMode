@@ -838,11 +838,15 @@ function M.new(host,sr,deps,service)
  end
  function self.bone_selection_changed(id,value)
   if self.bone_sync then return end
+  if self.bone_preview and self.pose_editor then
+   -- A drag preview in flight belongs to the bone being left: discard it.
+   local node=self.pose_editor.selected();self.bone_preview=nil
+   for key,axis in pairs({bone_bend='bend',bone_swing='swing',bone_twist='twist'})do self.pose_editor.set_angle(node,axis,handle.get(key)or 0)end
+  end
   if id=='bone_group'and controls.bone then
    local groups=deps.pose_editor and deps.pose_editor.GROUPS;local group=groups and groups[tonumber(value)or 1]
    if group and(tonumber(handle.get('bone'))or 1)>#group.bones then self.bone_sync=true;pcall(handle.set,'bone',1);self.bone_sync=false end
   end
-  self.bone_preview=nil
   self.sync_bone_rows()
  end
  function self.clear_pose_edits()
@@ -1940,6 +1944,7 @@ function M.new(host,sr,deps,service)
  local preset_display={focal_preset={field='fov',tolerance=.0011},roll_preset={field='roll',tolerance=.01}}
  handle.get=function(id)
   if self.handycam_drag_values and self.handycam_drag_values[id]~=nil then return self.handycam_drag_values[id]end
+  if self.bone_preview and self.bone_preview[id]~=nil then return self.bone_preview[id]end
   if id=='handycam_hide_helmet'and shot and shot.handycam then return true end
   local value=get_value(id);local cached=preset_display[id]
   if not cached then return value end
@@ -2011,6 +2016,30 @@ function M.new(host,sr,deps,service)
  deps.menu.legend_factory=deps.legend
  menu=deps.menu.new(view,{focus=self.focus,hide=hide,exit=self.close,hide_unavailable=deps.engine_time_only==true,
   version=host.version and('v'..host.version..(host.build and(' build '..host.build)or''))or nil,
+  -- Bone handle drag: previews go straight to the editor; the sliders are
+  -- written once on release, behind the sync guard, or discarded on cancel.
+  bone_adjust=function(values,finish)
+   local editor=self.pose_editor
+   if not values then
+    local saved=self.bone_preview;self.bone_preview=nil
+    if not saved or not editor then return true end
+    if finish then
+     self.bone_sync=true;local called,ok,why=pcall(handle.set_many,saved);self.bone_sync=false
+     if not called then notice(tostring(ok))elseif ok==false then notice(why)end
+     return true
+    end
+    local node=self.bone_node()
+    for id,axis in pairs({bone_bend='bend',bone_swing='swing',bone_twist='twist'})do editor.set_angle(node,axis,handle.get(id)or 0)end
+    return true
+   end
+   if not editor or not self.active or pending_cleanup or not controls.bone_drag_handle or controls.bone_drag_handle.disabled then self.bone_preview=nil;return false end
+   self.bone_preview=self.bone_preview or{};local node=self.bone_node()
+   for id,axis in pairs({bone_bend='bend',bone_swing='swing',bone_twist='twist'})do
+    local v=values[id]
+    if type(v)=='number'and v==v and math.abs(v)<=180 then self.bone_preview[id]=v;editor.set_angle(node,axis,v)end
+   end
+   return true
+  end,
   handycam_adjust=function(values,finish)
    if not values then
     local saved=self.handycam_drag_values;self.handycam_drag_values=nil;options_revision=nil
