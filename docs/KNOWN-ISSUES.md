@@ -10,7 +10,7 @@
 - Freezing someone on a hoverpack isn't perfect, and pressing Resume has launched people into the air.
 - Depth shaders don't work. Inverted depth, Thermal depth, Depth contours, Depth fog and Shader DoF are removed from the menu. Use **Native camera DoF**; focus and aperture work.
 - On Windows, War Journalist can't hide the HUD for you. Use the game's own Toggle HUD key (tested with `/`).
-- Handycam around aiming down sights needs more testing. The camera can clip or miss your framing when it comes back, aim can look slightly off, and turning while walking backwards or sideways isn't fixed.
+- Handycam around aiming down sights needs more testing. The camera can clip or miss your framing when it comes back, aim can look slightly off, and turning while walking backwards or sideways isn't fixed. (Fixed after 1.3.3: aiming down sights was sometimes missed and the Handycam stayed beside the raised weapon, because the game dropped the click that started the check; the Handycam now also steps aside when the camera itself shows you're aiming, no click needed.)
 - A Helldiver frozen while running can flicker for a moment.
 - On some setups (4K in my testing), Center auto-focus only focuses on scenery once the camera stops. It can also focus on a Helldiver hidden behind something in the middle of the screen.
 - Hide Cape can miss a modded cape. One report says opening Photo Mode from first person showed a headless body lying down; if you can make it happen, please tell me how.

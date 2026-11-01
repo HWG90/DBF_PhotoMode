@@ -235,9 +235,9 @@ from the selected head; normal aim approximately 1.16 m, and released aim 2.65 m
 This is an event-triggered camera-evidence classifier, not an authoritative ADS
 bit. Middle-button presses and right-button aim transitions open a maximum
 0.5-second / 128-frame observation window; the mod's own output is excluded and
-two consistent near/far samples are required. Between events, classification is
-idle. Other scopes, collisions near the head and alternate control layouts still
-need qualification.
+two consistent near/far samples are required. Between events, classification
+originally stayed idle; see the November 1 entry-watch note below. Other scopes
+and alternate control layouts still need qualification.
 
 Yield clears prior camera write ownership without restoring a stale pose over
 the game camera. Resume requires the held component to match the rendered camera
@@ -377,7 +377,8 @@ The release-edge fix produced several live `middle released` resumptions at
 still reported occasional third-person returns and requested persistent Handycam
 intent. `windows-handycam-return-guard` adds a return-only fallback while yielded:
 it reuses the frame/head already sampled by the render path at no more than 20 Hz,
-requires two far-camera confirmations, and cannot enter ADS on its own. No engine
+requires two far-camera confirmations, and (until November 1) could not enter ADS
+on its own. No engine
 getter, input poll, world scan or camera setter is added by this classifier.
 It avoids relying on an event that may be missing or whose half-second window
 has expired. Existing camera identity/ownership checks remain; a brief transition
@@ -458,3 +459,28 @@ Session-recovery generation subsequently logged scanned=1/listed=1 and automatic
 The reported floating gold rifle was render resource b80951732a5f58f4, 10 meshes/40 nodes, absent from the catalog. A read-only complete-world inventory sorted by distance identified it; the earlier output cap had been consumed by static ship displays before reaching dynamic player equipment. All 40 node world/local matrices were compared with the selected 107-node body. Inverse(local root) * world root exactly matched body node 28 (sling); world root alone did not. Added this exact resource/layout with hand/sling/weapon anchors and local-bind matching, plus nested matching for observed nearby scope/accessory variants. Acquisition retries only four after-game frames after explicit visibility invalidation. New generic matches apply immediately through appendable reversible leases rather than waiting for the entire inventory. Acquired equipment flags are checked at the existing after-game callback because stock equipment work may restore them; only changed, owned flags receive setters. No world discovery occurs in that maintenance callback, and Off is idle. Transition and maximum maintenance costs are logged. Game time, body/cape transforms and input modules are unchanged by the final single-module reload.
 
 Generation 1e334946afc9479c8d18bc6bed738eec changed only windows_pov_visibility from 0b82ce0d03f04513a17cb9858cd0a0b2. Focused fixture covers offset sling binding, nested offset scope, after-game visibility and restoration. The user answered YES to the exact in-game holstered-rifle hide/Off restoration test. This accepts that reported reproduction, not every weapon/equipment/other Hide option. No archive replacement, restart or public binary publication was performed. One-shot diagnostic code remains only in the private live pack; it must be removed from the final distributable.
+
+## ADS entry without a click (November 1)
+
+The user reported, with a screenshot, that aiming down sights sometimes left the
+Handycam eye view beside the raised weapon instead of the native sight view. The
+live LLL log explained it: the engine's `Input.event_queue` drops mouse edges.
+Releases arrived without their press, presses without their release, and 53 of
+174 ADS yields were attributed to the release edge although the native camera
+snaps to the sight position on the press frame, so the press had gone unseen.
+Exits already had a no-event rescue (16 `native third-person return` resumes
+that session); entries had none, so a click whose two edges both dropped never
+opened a window and the Handycam kept writing its view over the first-person
+pose.
+
+`windows_handycam_ads.lua` now runs a symmetric no-event watch while mounted:
+two consecutive native near frames yield with reason `native first-person
+entry`. The watch accepts only the eye view, where the head sits behind the
+camera plane (`head_ahead` below 0.05 m, logged on every handoff). A
+third-person camera pushed into the body by collision sits behind or above the
+head and looks at it, so the head is ahead of that camera and it never
+qualifies; the fixture covers a camera 0.3 m behind the head and one above it
+looking down. Event windows, the output-echo exclusion, the two-sample
+confirmation and the return watch are unchanged. The fixture assertions that
+encoded "cannot enter ADS without an event" were inverted deliberately.
+
