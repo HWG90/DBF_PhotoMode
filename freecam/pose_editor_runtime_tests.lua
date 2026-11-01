@@ -57,4 +57,25 @@ do -- an explicit Refresh is a subject change: it clears the working pose
  assert(f.runtime.handle.set('freeze_player',false)and f.rate==1);f.step(.016,1);assert(f.runtime.handle.get('bone_bend')==30)
  assert(f.action('subject_refresh'));assert(f.runtime.handle.get('bone_bend')==0,'Refresh clears edits')
 end
+do -- save, load, overwrite, delete through an injected store; save needs true zero
+ local F=dofile('freecam/pose_files.lua');local files={}
+ local fs={open=function(p,m)if m=='rb'then local c=files[p];if c==nil then return nil end;return{read=function()return c end,close=function()end}end;local b={};return{write=function(_,s)b[#b+1]=s;return true end,close=function()files[p]=table.concat(b);return true end}end,
+  rename=function(a,b)files[b]=files[a];files[a]=nil;return true end,remove=function(p)files[p]=nil;return true end}
+ local f=fixture(function(f,deps)deps.pose_files={storage=function()return F.storage('C:/cfg',fs)end}end)
+ f.enable();f.select();elbow(f)
+ assert(f.runtime.handle.set('freeze_player',false)and f.rate==1);f.step(.016,1)
+ assert(select(2,f.action('pose_save_new'))=='Freeze Action first','save needs true zero')
+ assert(f.runtime.handle.set('freeze_player',true));for _=1,3 do f.step(.016,1)end
+ assert(f.action('pose_save_new'));assert(files['C:/cfg/wj-pose-01.txt']and F.decode(files['C:/cfg/wj-pose-01.txt']).label=='Snapshot')
+ assert(f.controls.pose_file.choices[1]=='01 — Snapshot',tostring(f.controls.pose_file.choices[1]))
+ f.runtime.handle.set('bone_bend',30);f.step(.016,1);f.settle();assert(f.subject.status().pose=='edited')
+ assert(f.action('pose_save_new'));assert(F.decode(files['C:/cfg/wj-pose-02.txt']).label=='Snapshot edits')
+ assert(f.action('subject_pose_stop'));f.restored()
+ assert(f.runtime.handle.set('pose_file',2));assert(f.action('pose_load'));f.settle()
+ assert(f.subject.status().pose=='edited'and near(f.b.nodes[70].q,E.compose(f.original_b[70].q,30,0,0)),'Loaded pose is applied')
+ assert(f.runtime.handle.get('bone_bend')==0,'Loaded pose is the new base')
+ assert(f.action('pose_overwrite')and F.decode(files['C:/cfg/wj-pose-02.txt']).label=='Snapshot edits')
+ assert(f.action('pose_delete')and files['C:/cfg/wj-pose-02.txt']==nil and #f.controls.pose_file.choices==1)
+ assert(f.action('subject_pose_stop'));f.restored()
+end
 print('Pose editor runtime: settle, coalesced apply, slider sync, rebase, unfreeze, retire and enabled rules passed')

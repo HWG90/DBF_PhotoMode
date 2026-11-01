@@ -90,7 +90,8 @@ function M.new()
  function self.reset_all()angles={};dirty=true end
  function self.edited()return next(angles)~=nil end
  function self.dirty()return dirty end
- function self.compose_frame()
+ -- keep_dirty: a copy for saving, which must not count as an apply.
+ function self.compose_frame(keep_dirty)
   if not base then return nil,'No base pose'end
   local nodes={}
   for i=8,92 do
@@ -98,7 +99,8 @@ function M.new()
    if a then nodes[i]={p=copy3(source.p),q=M.compose(source.q,a[1],a[2],a[3]),s=copy3(source.s)}
    else nodes[i]=source end
   end
-  dirty=false;return{full_body=true,nodes=nodes,label=self.edited()and label..' edits'or label}
+  if not keep_dirty then dirty=false end
+  return{full_body=true,nodes=nodes,label=self.edited()and label..' edits'or label}
  end
  function self.status(group_label,bone_label)
   local where=tostring(group_label)..' / '..tostring(bone_label)

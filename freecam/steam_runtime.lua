@@ -673,6 +673,16 @@ function M.new(host,sr,deps,service)
     if controls[id]then controls[id].disabled=not can_edit end
    end
    if texts.bone_status then texts.bone_status.label=self.bone_status()end
+   if controls.pose_file then
+    local store=self.pose_store;local entries=store and store.list()or{}
+    local saveable=store~=nil and(can_edit or self.pose_editor~=nil and self.pose_editor.has_base())
+    controls.pose_file.disabled=store==nil
+    if controls.pose_load then controls.pose_load.disabled=not(can_edit and #entries>0)end
+    if controls.pose_save_new then controls.pose_save_new.disabled=not saveable end
+    if controls.pose_overwrite then controls.pose_overwrite.disabled=not(saveable and #entries>0)end
+    if controls.pose_delete then controls.pose_delete.disabled=not(store~=nil and #entries>0)end
+    if controls.pose_rescan then controls.pose_rescan.disabled=store==nil end
+   end
   end
   if texts.subject_pose_status then texts.subject_pose_status.label=(picked_label and picked_label..'  |  'or'')..subject_message end
  end
@@ -839,6 +849,61 @@ function M.new(host,sr,deps,service)
   if not self.pose_editor then return end
   self.pose_editor.clear();self.pose_editor_key=nil;self.bone_preview=nil;self.sync_bone_rows()
  end
+ -- Saved poses: numbered files through deps.pose_files. The store is created on
+ -- the first subject load, so the 99 probes happen in Photo Mode, not at boot.
+ function self.pose_files_sync(rescan)
+  local store=self.pose_store;if not store or not controls.pose_file then return false,'Pose files unavailable'end
+  if rescan then store.rescan()end
+  local labels=store.labels();controls.pose_file.choices=labels;controls.pose_file.choices_revision=labels
+  if handle and(tonumber(handle.get('pose_file'))or 1)>#labels then pcall(handle.set,'pose_file',1)end
+  if texts.pose_files_status then
+   local count=#store.list()
+   texts.pose_files_status.label=self.pose_files_message or(count==0 and'No saved poses yet; Save as new writes wj-pose-01.txt'or count..(count==1 and' saved pose'or' saved poses'))
+  end
+  return true
+ end
+ function self.pose_file_selected()
+  local store=self.pose_store;if not store or not handle then return nil end
+  return store.list()[tonumber(handle.get('pose_file'))or 1]
+ end
+ function self.pose_file_action(kind)
+  local store,editor=self.pose_store,self.pose_editor
+  if not store then return false,'Pose files unavailable'end
+  local function done(message)self.pose_files_message=message;self.pose_files_sync();return true,message end
+  local function refuse(why)self.pose_files_message=why;self.pose_files_sync();notice(why);return false,why end
+  if kind=='rescan'then self.pose_files_message=nil;return self.pose_files_sync(true)end
+  if kind=='save_new'or kind=='overwrite'then
+   local frame,meta
+   if editor and editor.has_base()then frame=editor.compose_frame(true);meta={label=frame.label,source=editor.base_label()}
+   else
+    if not(simulation and simulation.owns_zero())then return refuse('Freeze Action first')end
+    local why;frame,why=subject and subject.current_frame()
+    if not frame then return refuse(why or'Select a Helldiver in Subject')end
+    meta={label='Snapshot',source='snapshot'}
+   end
+   if kind=='save_new'then
+    local number,why=store.save_new(frame,meta);if not number then return refuse(why)end
+    self.pose_files_sync()
+    for index,entry in ipairs(store.list())do if entry.number==number then pcall(handle.set,'pose_file',index)end end
+    return done('Saved as '..string.format('%02d',number))
+   end
+   local entry=self.pose_file_selected();if not entry then return refuse('Choose a saved pose')end
+   local ok,why=store.overwrite(entry.number,frame);if not ok then return refuse(why)end
+   return done('Overwrote '..string.format('%02d',entry.number))
+  end
+  local entry=self.pose_file_selected();if not entry then return refuse('Choose a saved pose')end
+  if kind=='delete'then
+   local ok,why=store.delete(entry.number);if not ok then return refuse(why)end
+   return done('Deleted '..string.format('%02d',entry.number))
+  end
+  if kind=='load'then
+   local frame,why=store.load(entry.number);if not frame then return refuse(why)end
+   local ok;ok,why=subject_action('apply_frame',frame);if not ok then return refuse(why)end
+   if editor then editor.rebase(frame,frame.label);self.sync_bone_rows()end
+   return done('Loaded '..string.format('%02d',entry.number))
+  end
+  return false,'Unknown pose file action'
+ end
  -- Once per update: rebase on a newly applied catalogue pose, then apply a
  -- dirty editor through the same subject action as catalogue poses.
  function self.tick_pose_editor()
@@ -923,6 +988,8 @@ function M.new(host,sr,deps,service)
   end
   if deps.pose_editor and not self.pose_editor then self.pose_editor=deps.pose_editor.new()end
   self.pose_editor_key=nil;self.sync_bone_rows()
+  if deps.pose_files and deps.pose_editor and not self.pose_store and type(host.config_dir)=='string'then self.pose_store=deps.pose_files.storage(host.config_dir)end
+  self.pose_files_sync(true)
   subject_opt_in=true;subject_close_started=false;subject_cleanup_attempted=false;sync_subject()
   if self.pov_visibility then
    self.pov_visibility.queue_player(handle.get('hide_player'))
@@ -1628,6 +1695,11 @@ function M.new(host,sr,deps,service)
   bone_reset=function()if not self.pose_editor then return false,'Pose editor unavailable'end;self.pose_editor.reset_bone(self.bone_node());self.sync_bone_rows();return true end,
   bone_reset_all=function()if not self.pose_editor then return false,'Pose editor unavailable'end;self.pose_editor.reset_all();self.sync_bone_rows();return true end,
   bone_apply=function()if not self.pose_editor then return false,'Pose editor unavailable'end;self.pose_editor.touch();return true end,
+  pose_rescan=function()return self.pose_file_action('rescan')end,
+  pose_save_new=function()return self.pose_file_action('save_new')end,
+  pose_overwrite=function()return self.pose_file_action('overwrite')end,
+  pose_load=function()return self.pose_file_action('load')end,
+  pose_delete=function()return self.pose_file_action('delete')end,
   director_save=function()return director_action('save')end,
   director_recall=function()return director_action('recall')end,
   director_clear=function()return director_action('clear')end,
@@ -1756,6 +1828,7 @@ function M.new(host,sr,deps,service)
  if type(deps.load_subject)=='function'then for _,id in ipairs({'subject_refresh','subject_select_1','subject_select_2',
   'subject_select_3','subject_select_4','subject_recover','subject_pose','subject_pose_play','subject_pose_stop'})do supported[id]=true end end
  if deps.pose_editor and type(deps.load_subject)=='function'then for _,id in ipairs({'bone_group','bone','bone_bend','bone_swing','bone_twist','bone_drag_handle','bone_reset','bone_reset_all','bone_apply','bone_marker'})do supported[id]=true end end
+ if deps.pose_files and deps.pose_editor and type(deps.load_subject)=='function'then for _,id in ipairs({'pose_file','pose_load','pose_save_new','pose_overwrite','pose_delete','pose_rescan'})do supported[id]=true end end
  if deps.freeze_bone_probe and type(deps.load_subject)=='function'then supported.subject_freeze_bone_test=true end
  if deps.freeze_physics_probe and type(deps.load_subject)=='function'then supported.subject_freeze_physics_test=true end
  if deps.freeze_pose_probe and type(deps.load_subject)=='function'then supported.subject_freeze_pose_test=true end
