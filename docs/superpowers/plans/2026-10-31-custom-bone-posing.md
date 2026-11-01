@@ -519,3 +519,16 @@ end
 - The first edit after freezing went pending with "Subject body changed; recover without overwriting it" and needed Recover twice. Cause: the Freeze skeleton hold's transfer lease reports `posed` under the key `freeze-bone-trial`, so the editor applied directly instead of taking the reset-and-settle path, and `tick_pose_editor` treated that key as a catalogue pose. Fixed in dev.2 (`self.pose_held()`, catalogue-only rebase), with fixture coverage.
 - `Authored pose cape placement: writes=0` was logged once per frame while dragging (about 90 lines a second). Now logged only when something was written.
 - Marker drag added at the user's request ("Let me grab the anchor to move it"): the ring previews Bend (x) and Swing (y), the wheel twists, release commits once.
+
+### Proton live results
+
+The LuaJIT/LLL build (branch `claude/wj-proton-bone-posing`, merged from this
+branch; Arsenal profile "LuaJIT Proton", folder install in the LLL Mods folder).
+
+- 2026-11-01 06:30 UTC: dev.5 (13c31aa) merged as 58a760f. Suite green under
+  lupa Lua 5.1 with the four pose fixtures. `tools/build_proton_candidate.py`
+  built `bone-posing-dev.1`: 77 modules (the 74 of 15c649b plus the three pose
+  modules), version 1.3.4-proton. Proton keeps `node_frame`/`node_position` on
+  the native adapter's `Unit.world_pose` matrix path; no FFI bone read was
+  needed. Install pending the game closing (the Mods folder held the Handycam
+  ADS-entry build b68267b, backed up before the swap).
