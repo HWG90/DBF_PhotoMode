@@ -530,5 +530,25 @@ branch; Arsenal profile "LuaJIT Proton", folder install in the LLL Mods folder).
   built `bone-posing-dev.1`: 77 modules (the 74 of 15c649b plus the three pose
   modules), version 1.3.4-proton. Proton keeps `node_frame`/`node_position` on
   the native adapter's `Unit.world_pose` matrix path; no FFI bone read was
-  needed. Install pending the game closing (the Mods folder held the Handycam
-  ADS-entry build b68267b, backed up before the swap).
+  needed. dev.1 was never installed: the Mods folder held the Handycam
+  ADS-entry build, which had to be kept.
+- 2026-11-01 06:37-06:55 UTC: `claude/wj-handycam-ads-entry` merged, b68267b
+  as 89975f0 and then its head ddcc613 as 114056b (b68267b alone never fired
+  in game; a9bdecf and ddcc613 fix the guard and poll the ADS buttons).
+  `bone-posing-dev.2` and `bone-posing-dev.3` were built but not installed:
+  the game-exit watcher matched its own command line and never fired.
+- 2026-11-02 04:11 UTC: `claude/wj-proton-slick` 9613fcf (Photo menu HUD font
+  through the main bridge) merged as 3fc60e7, because the live folder carried
+  that fix as an overlay. `bone-posing-dev.4` built: 77 modules, version
+  1.3.4-proton, build 20261102.0411-3fc60e7, package sha256 cfd78957...;
+  `font.lua`, `windows_handycam_ads.lua` and `windows_camera_signals.lua`
+  byte-identical to the live overlay.
+- 2026-11-02 04:12 UTC: dev.4 installed in the LLL Mods folder with the game
+  closed (`dist/review/proton/INSTALL-RECEIPT-folder-3fc60e7-bone-posing-dev.4.json`).
+  Previous folder moved to `Port-Candidate-Backups/war-journalist-proton-1.3.3-
+  ddcc613-ads-entry-before-bone-posing-20261102T041244Z`; module audit passed
+  77/77; `Settings/dbf_freecam` untouched. That previous folder also carried the
+  uncommitted `wj-proton-aim-field` Handycam aim smoothing
+  (`windows_aim_field.lua`, in no branch); it lives on only in that backup and
+  in its worktree, so the aim lock is back to the committed 15c649b behaviour.
+  Live acceptance: pending the user's pose editor run.
