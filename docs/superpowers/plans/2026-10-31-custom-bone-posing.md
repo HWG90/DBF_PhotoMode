@@ -551,4 +551,18 @@ branch; Arsenal profile "LuaJIT Proton", folder install in the LLL Mods folder).
   uncommitted `wj-proton-aim-field` Handycam aim smoothing
   (`windows_aim_field.lua`, in no branch); it lives on only in that backup and
   in its worktree, so the aim lock is back to the committed 15c649b behaviour.
-  Live acceptance: pending the user's pose editor run.
+- 2026-11-02 04:25-04:46 UTC, user's dev.4 run: the Pose editor worked (rings,
+  select, edits applied: "Freeze skeleton hold: released ... apply_frame" in the
+  LLL log, no errors), but the left drag read as inverted, and the user asked
+  for the drag to rotate the bone ("does not respect IK/FK") and for lines
+  between the bones. Root cause of the inversion: menu space grows upward
+  (steam_input flips the pointer, gizmos.project adds along camera up) while
+  the marker negated dy. Change (2b70a92, shared modules, to be cherry-picked
+  onto `claude/wj-bone-posing`): the left drag aims the bone at the pointer,
+  turning the ring's parent bone by the smallest rotation (pose_editor.aim,
+  decompose inverts compose), length kept; the wheel aims the ring deeper;
+  every ring draws its bone as a thin quad to its parent (white for the
+  selected one); only a parent inside the current group turns (the first ring
+  of a group selects but never drags the body). Built as `bone-posing-dev.5`
+  (77 modules, build 20261102.0447-2b70a92, package sha256 947e9aa9...).
+  Install pending the game closing; live acceptance of the new drag pending.
