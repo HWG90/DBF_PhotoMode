@@ -598,6 +598,25 @@ local function factory(sr,policy,preview)
   end)
   if ok~=true then return false,why end;return true,why
  end
+ -- The controller found its pose taken over: the game put a moving body's own mode back and
+ -- its animation repainted the body, so restoring wrote nothing and committed nothing. Forget
+ -- what the body no longer shows and release the cape once nothing is owned. Reads only: a
+ -- body that is no longer ours is never written or refreshed.
+ function self.reconcile(target,rig)
+  local ok,why=result(function()
+   local r=record(target,rig)
+   if r.mode and not r.mode.attempt then local actual=current(r);if actual==r.mode.base or actual~=r.mode.value then r.mode=nil end end
+   for index,entry in pairs(r.nodes)do if not entry.attempt then
+    topology(r,index);local actual=read_node(r.unit,index)
+    if equal(actual,entry.base)or not equal(actual,entry.value)then r.nodes[index]=nil end
+   end end
+   check(not next(r.nodes)and not r.mode,'Subject still shows owned writes after a takeover')
+   r.refresh_expected=nil;r.refresh_nodes={};r.scene_dirty=false;restore_cape(r)
+   if type(policy.log)=='function'then pcall(policy.log,'Subject pose taken over by the game; its write ledger and cape released without writes')end
+   return true
+  end)
+  if ok~=true then return false,why end;return true
+ end
  function self.status()return status end
  return self
 end

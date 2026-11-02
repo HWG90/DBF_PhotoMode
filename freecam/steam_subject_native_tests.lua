@@ -374,7 +374,29 @@ do -- node_frame: world translation plus rotation quaternion, bounded to the rig
  check(#fr.rotation==4,'Frame rotation is a quaternion');for i=1,4 do check(type(fr.rotation[i])=='number'and fr.rotation[i]==fr.rotation[i])end
  f:step();check(not f.adapter.node_frame(f.target,f.rig,0),'Index outside the rig refused');check(f.writes==0,'A frame read never writes')
 end
-print('steam_subject_native_tests: '..assertions..' assertions passed (actual Lua5.1; strict matrix12; source only)')
+-- A body frozen while moving gets its own bone mode back from the game, and its animation
+-- repaints the original pose under a held pose (live 2026-11-02: a kept bone edit applied on
+-- open). The close then has nothing of its own to write, but the adapter must still let go of
+-- its ledger and the selected cape: otherwise every later discovery refused with 'Retire owned
+-- subjects before refreshing' until the game restarted.
+do
+ local lease={meshes={1,2,3}};local releases=0
+ local f=fixture()
+ f.policy.selected_cape={capture=function()return lease end,apply=function()return 3 end,
+  release=function(record)check(record==lease);releases=releases+1;return true end}
+ f:arm();local bank={version=1,rig=f.rig,catalog={{id='full',label='Full'}},decode=function()
+  local result={full_body=true,nodes={}};for i=8,92 do result.nodes[i]={p={10+i/10,.2,.3},q={0,.6,0,.8},s={1,1,1}}end;return result
+ end}
+ local controller=Subject.new(f.adapter,bank,function()return true end)
+ check(controller.refresh());check(controller.select(controller.choices()[1].id))
+ f:step();check(controller.apply('full'))
+ f.mode='position_and_rotation';f.nodes=clone(f.original) -- the game takes the body back
+ f:step();local writes=f.writes;local closed,why=controller.close()
+ check(closed and why=='Foreign subject state preserved'and f.writes==writes,'A taken-back body is left as the game drew it')
+ check(releases==1,'The selected cape is released')
+ f:step();local found,reason=f.adapter.discover(f.resource,4,f.rig);check(found,reason)
+end
+print('steam_subject_native_tests:'..assertions..' assertions passed (actual Lua5.1; strict matrix12; source only)')
 
 do
  local f=fixture();local a=f:arm();check(a.session_current()==true)
