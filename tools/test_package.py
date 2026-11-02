@@ -75,6 +75,24 @@ def test_zip_mode():
         raise AssertionError('a dev ZIP passed as a release')
 
 
+def test_embedded_binaries():
+    """The helper and the scene registry ship as base64; each decodes to its pinned bytes (the
+    registry is the shipped ee6b1ba7e22d71ed.patch_0 asset)."""
+    import base64
+    import hashlib
+    import re
+    from package_head import ASSETS_SHA256
+    def field(path, name):
+        text = (ROOT / 'freecam' / path).read_text()
+        match = re.search(name + r'="([^"]*)"', text)
+        assert match, f'{path} has no {name} field'
+        return match.group(1)
+    helper = base64.b64decode(field('wjl_helper_payload.lua', 'base64'), validate=True)
+    assert hashlib.sha256(helper).hexdigest() == fixtures.HELPER_SHA256 == field('wjl_helper_payload.lua', 'sha256')
+    registry = base64.b64decode(field('engine_scene_registry.lua', 'base64'), validate=True)
+    assert hashlib.sha256(registry).hexdigest() == ASSETS_SHA256[field('engine_scene_registry.lua', 'name')]
+
+
 def test_clear_outputs():
     """A rebuild clears the last build's ZIP, sums and receipt first, so a failed build never
     leaves them looking current; the candidate's LLL ZIP never stays beside the real one."""
@@ -118,6 +136,7 @@ def main():
     test_versions()
     test_zip_mode()
     test_clear_outputs()
+    test_embedded_binaries()
     test_loader_pin()
     if args.zip:
         print(json.dumps({'zip': str(args.zip), 'test_size_cap': 'passed', **fixtures.verify_zip(args.zip, args.release or None)}, indent=2))

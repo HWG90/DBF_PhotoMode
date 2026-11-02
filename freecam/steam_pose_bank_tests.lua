@@ -22,6 +22,11 @@ local function same(a,b)
 end
 expect(same(bank.rig,original.rig),'All 107 rig entries and bone/resource metadata must match')
 expect(same(bank.catalog,original.catalog),'All 213 catalog entries, IDs, labels and order must match')
+-- The engine holds pose numbers as 32-bit floats; the bank keeps each one's float exactly.
+local function f32(value)
+ if value==0 then return value end;local negative=value<0;if negative then value=-value end
+ local m,e=math.frexp(value);local out=math.ldexp(math.floor(m*16777216+.5),e-24);return negative and-out or out
+end
 local scalar_checks=0
 for _,entry in ipairs(original.catalog)do
  local reference=original.poses[entry.id];local decoded=assert(bank.decode(entry.id))
@@ -35,7 +40,8 @@ for _,entry in ipairs(original.catalog)do
    expect(#pose[field]==count and not identities[pose[field]],'Numeric rows must have independent exact shapes');identities[pose[field]]=true
    for i=1,count do
     local value,wanted=pose[field][i],reference.nodes[node][field][i]
-    expect(type(value)=='number'and value==wanted,'Exact parsed-double parity: '..entry.id..' node '..node..' '..field..i)
+    expect(type(value)=='number'and f32(value)==f32(wanted),'Exact 32-bit float parity: '..entry.id..' node '..node..' '..field..i)
+    if field=='s'then expect(value==1,'Scale is exactly one: '..entry.id..' node '..node)end
     if value==0 then expect(1/value==1/wanted,'Preserve signed zero')end
     scalar_checks=scalar_checks+1
    end
@@ -48,7 +54,7 @@ local first=bank.catalog[1].id;local a,b=assert(bank.decode(first)),assert(bank.
 expect(a~=b and a.nodes~=b.nodes and a.nodes[8]~=b.nodes[8]and a.nodes[8].p~=b.nodes[8].p,'Decodes must be fresh')
 local baseline=b.nodes[8].p[1];a.nodes[8].p[1]=12345
 expect(b.nodes[8].p[1]==baseline and bank.decode(first).nodes[8].p[1]==baseline,'Caller mutation must never poison the bank or another selection')
-local before=conversions();bank.decode(first);expect(conversions()-before==935,'Only one selected pose performs 85 index and 850 scalar conversions')
+local before=conversions();bank.decode(first);expect(conversions()-before==680,'Only one selected pose performs 85 index and 595 scalar conversions')
 for _,id in ipairs({'missing','',string.rep('x',65),0,false,{}})do
  local value,why=bank.decode(id);expect(value==nil and type(why)=='string','Unknown/malformed identity is a clean refusal')
 end
@@ -59,11 +65,12 @@ local function private(fn,name)
 end
 local rows=private(bank.decode,'rows');local indices=private(bank.decode,'indices');local lookup=private(bank.decode,'lookup')
 local index=lookup[first];local encoded=indices[index];local row_id=tonumber(encoded:sub(1,4),16);local saved=rows[row_id]
-local invalid_rows={false,{},'',string.rep('1',321),'0,0,0,0,0,0,1,1,1',
- '0,0,0,0,0,0,1,1,1,1,1','0,,0,0,0,0,0,1,1,1,1',',0,0,0,0,0,0,1,1,1,1',
- '0,0,0,0,0,0,1,1,1,1,',' 0,0,0,0,0,0,1,1,1,1','0x0,0,0,0,0,0,1,1,1,1',
- '1e999,0,0,0,0,0,1,1,1,1','nan,0,0,0,0,0,1,1,1,1','0,0,0,0,0,0,2,1,1,1',
- '0,0,0,0,0,0,1,1.1,1,1','100000000,0,0,0,0,0,1,1,1,1',string.rep('0',33)..',0,0,0,0,0,1,1,1,1'}
+-- A row is p then q, seven scalars ('0,0,0,0,0,0,1' is the shortest valid one).
+local invalid_rows={false,{},'',string.rep('1',321),'0,0,0,0,0,1',
+ '0,0,0,0,0,0,1,1','0,,0,0,0,0,1',',0,0,0,0,0,0,1',
+ '0,0,0,0,0,0,1,',' 0,0,0,0,0,0,1','0x0,0,0,0,0,0,1',
+ '1e999,0,0,0,0,0,1','nan,0,0,0,0,0,1','0,0,0,0,0,0,2',
+ '100000000,0,0,0,0,0,1',string.rep('0',33)..',0,0,0,0,0,1'}
 for _,bad in ipairs(invalid_rows)do
  rows[row_id]=bad;local result,why=bank.decode(first)
  expect(result==nil and type(why)=='string','Corrupt row must return no partial pose');rows[row_id]=saved
@@ -94,4 +101,4 @@ expect(math.abs(after_all-retained)<32,'Decoder must not retain any previously s
 local selected=assert(bank.decode(first));local selected_kib=collected()-after_all
 expect(selected_kib>0 and selected_kib<128,'One pose must stay below the bounded selected-pose heap allowance')
 expect(selected.nodes[8]and selected.nodes[92]and not selected.nodes[7]and not selected.nodes[93],'Anchors are never materialized')
-print(string.format('Steam pose bank: exact parity for 213 entries / %d scalars, fresh 85-node selections, bounded corruption/refusal, no startup parsing/cache/native work; selected heap %.2f KiB; all decode CPU %.4f s (no time threshold)',scalar_checks,selected_kib,all_seconds))
+print(string.format('Steam pose bank: exact 32-bit float parity for 213 entries / %d scalars, fresh 85-node selections, bounded corruption/refusal, no startup parsing/cache/native work; selected heap %.2f KiB; all decode CPU %.4f s (no time threshold)',scalar_checks,selected_kib,all_seconds))

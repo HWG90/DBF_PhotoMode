@@ -31,7 +31,7 @@ function M.config(mod,sr)
  assert(payload.name==M.name and payload.sha256:match('^%x+$')and #payload.sha256==64)
  local directory=assert(os.getenv('APPDATA'))..'/Arrowhead/Helldivers2/'
  local path=directory..payload.name
- local bytes=payload.hex:gsub('%x%x',function(v)return string.char(tonumber(v,16))end)
+ local bytes=mod.require('src/base64.lua').decode(payload.base64)
  install(path,bytes)
  local pid=sr.Application.process_id();assert(type(pid)=='number'and pid>0 and pid==math.floor(pid))
  launch_sequence=launch_sequence+1
