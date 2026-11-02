@@ -34,6 +34,8 @@ def prove(text, release, sources, sandboxes):
     fixtures.verify_shape(text)
     summary['verify_shape'] = 'passed'
     summary['verify_boot'] = fixtures.verify_boot(text, release)
+    fixtures.verify_key_carry_over(text)
+    summary['verify_key_carry_over'] = 'passed'
     fixtures.verify_lll(text)
     summary['verify_lll'] = 'passed'
     summary['verify_chef'] = [fixtures.verify_chef(text, path, version) for path, version in sandboxes]

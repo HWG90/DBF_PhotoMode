@@ -387,3 +387,24 @@ def verify_chef_gate(text):
     for version in ('1.3.9', None, '1.3.1'):
         lines, count = LuaRuntime().execute(GATE, text, version)
         assert count == 1 and lines == 'War Journalist needs Chef Shared Loader ' + MINIMUM_CHEF + ' or newer', (version, lines)
+
+
+def verify_key_carry_over(text):
+    """1.3.x was mods/goose/war_journalist_lua51, so Boot Mod Loader kept its keys in
+    mbm_war_journalist_lua51_settings.txt; the package copies them to its new name once."""
+    old_bytes = b'war_journalist_toggle_key=f8\r\n#end\r\n'
+    with boot_env() as game:  # old only: copied byte for byte, old kept
+        (game / 'mbm_war_journalist_lua51_settings.txt').write_bytes(old_bytes)
+        run_boot(text)
+        assert (game / 'mbm_war_journalist_settings.txt').read_bytes() == old_bytes
+        assert (game / 'mbm_war_journalist_lua51_settings.txt').read_bytes() == old_bytes
+        assert 'Keys carried over from mbm_war_journalist_lua51_settings.txt' in (game / 'war_journalist_lua51.log').read_text()
+    with boot_env() as game:  # new already there, even empty: untouched
+        (game / 'mbm_war_journalist_lua51_settings.txt').write_bytes(old_bytes)
+        (game / 'mbm_war_journalist_settings.txt').write_bytes(b'')
+        run_boot(text)
+        assert (game / 'mbm_war_journalist_settings.txt').read_bytes() == b''
+        assert 'Keys carried over' not in (game / 'war_journalist_lua51.log').read_text()
+    with boot_env() as game:  # neither: nothing made
+        run_boot(text)
+        assert not (game / 'mbm_war_journalist_settings.txt').exists()

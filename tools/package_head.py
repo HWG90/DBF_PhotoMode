@@ -61,6 +61,19 @@ local function boot_host()
    dev_module=mod.require('src/windows_dev_reload.lua')
   end
  end
+ -- 1.3.x was mods/goose/war_journalist_lua51, and Boot Mod Loader names its key file after the
+ -- mod; it reads the file when the first key registers (on_enable). Copy the old one across once.
+ do
+  local new=io.open(game..'/mbm_war_journalist_settings.txt','rb')
+  if new then new:close()else
+   local old=io.open(game..'/mbm_war_journalist_lua51_settings.txt','rb')
+   if old then
+    local data=old:read('*a');old:close()
+    local f=data and io.open(game..'/mbm_war_journalist_settings.txt','wb')
+    if f then f:write(data);f:close();mod.log('Keys carried over from mbm_war_journalist_lua51_settings.txt')end
+   end
+  end
+ end
  local entry=mod.require('main.lua')
  -- Live Lua Loader runs archive entries itself (LLL API 1).
  if rawget(_G,'LiveLuaLoader')then return entry end
