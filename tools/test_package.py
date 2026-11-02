@@ -5,6 +5,7 @@ Prints a JSON summary; exits non-zero on the first failure. Never builds a ZIP o
 from pathlib import Path
 import argparse
 import json
+import tempfile
 
 import package_fixtures as fixtures
 from package_head import ROOT, build_id, check_size, compose
@@ -53,6 +54,22 @@ def test_size_cap():
         raise AssertionError('size cap did not fire')
 
 
+def test_loader_pin():
+    """Boot Mod Loader 0.13.4 comes from the first copy that still matches its pin."""
+    from bml_loader_checks import pinned_loader
+    with tempfile.TemporaryDirectory() as temp:
+        wrong, right = Path(temp) / 'wrong.lua', Path(temp) / 'right.lua'
+        wrong.write_text('-- a newer Boot Mod Loader\n')
+        right.write_bytes(pinned_loader().read_bytes())
+        assert pinned_loader([wrong, right]) == right
+        try:
+            pinned_loader([wrong, Path(temp) / 'missing.lua'])
+        except AssertionError as error:
+            assert 'Boot Mod Loader 0.13.4 not found or changed' in str(error), error
+        else:
+            raise AssertionError('a changed loader was accepted')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--release', action='store_true', help='public text: no dev-only modules, RELEASE_MODE=true')
@@ -60,6 +77,7 @@ def main():
     parser.add_argument('--zip', type=Path, help='check a built ZIP instead of composing from the tree')
     args = parser.parse_args()
     test_size_cap()
+    test_loader_pin()
     if args.zip:
         print(json.dumps({'zip': str(args.zip), 'test_size_cap': 'passed', **fixtures.verify_zip(args.zip, args.release)}, indent=2))
         return

@@ -36,8 +36,17 @@ One ZIP, one resource (`mods/goose/war_journalist`): Boot Mod Loader runs it wit
 the WJL helper, Chef Shared Loader 1.4.0 or newer runs it with its own host, and
 the head picks from the loader's argument. `tools/package_head.py` writes the head
 (`boot_host`, `chef_host`, the version gate, the 1.3.x key carry-over);
-`tools/package_fixtures.py` holds the offline proofs. Chef's sandboxes are
-gitignored copies under `dist/chef-src/sandbox/`.
+`tools/package_fixtures.py` holds the offline proofs.
+
+Two inputs are gitignored copies, pinned by hash; copy them into a fresh
+worktree before building:
+- Chef's own `src/chef_loader/sandbox.lua` per release, as
+  `dist/chef-src/sandbox/sandbox-v<version>.lua` (blobs in
+  `tools/test_chef_port.py`), from `~/Worktrees/linux-hd2/wj-chef-lite/dist/chef-src/sandbox/`.
+- Boot Mod Loader 0.13.4's loader, `f476df93691895fa.lua` (sha256
+  `7cc69039…`), as `dist/bml-src/f476df93691895fa.lua`, from the Boot Mod
+  Loader 0.13.4 folder in `~/.config/hd2arsenal/mods/`. Without the copy the
+  Arsenal folder is read, as long as it still holds 0.13.4.
 
 ```bash
 python tools/test_package.py            # compose from this tree, prove it on every host
