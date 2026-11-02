@@ -139,7 +139,95 @@ local function boot_host()
 end
 '''
 
+# Chef Shared Loader hands in its helpers. It calls the addon's own hooks, never the game's.
+CHEF_HOST = r'''
+local function chef_host(chef)
+ -- Chef 1.4.0 or newer, by number parts in order ('1.10.0' is newer than '1.4.0'; a suffix
+ -- such as '-test1' is ignored). No version is too old.
+ local function at_least(have,need)
+  if type(have)~='string'then return false end
+  local parts={};for n in(have:match('^[%d%.]+')or''):gmatch('%d+')do parts[#parts+1]=tonumber(n)end
+  local i=0
+  for n in need:gmatch('%d+')do
+   i=i+1;local part=parts[i]or 0
+   if part~=tonumber(n)then return part>tonumber(n)end
+  end
+  return true
+ end
+ if not at_least(chef.loader_version,''' + json.dumps(MINIMUM_CHEF) + r''')then
+  if type(chef.log)=='function'then chef.log('%s','War Journalist needs Chef Shared Loader ''' + MINIMUM_CHEF + r''' or newer')end
+  return{version=VERSION,update=function()end,render=function()end,shutdown=function()end,on_stop=function()end}
+ end
+ if type(chef.title)=='function'then chef.title(TITLE)end
+ local game=chef.log_directory:gsub('\\','/'):gsub('/+$','')
+ -- Settings live in the game's settings folder, same as under Boot Mod Loader, so they carry over.
+ -- Always release mode here, as every Chef build was: no dev inventories or probe requests (their
+ -- probe files need os.remove, which Chef refuses).
+ local mod={id=ID,name=TITLE,version=VERSION,build=BUILD,release_mode=true,native_dir=game,config_dir=game,native_libraries=false}
+ local LOG=game..'/war_journalist_chef.log'
+ local log_mode='ab'
+ do -- Appended across launches; past 4 MB it starts fresh.
+  local f=io.open(LOG,'ab');if f then local size=f:seek('end');f:close();if type(size)=='number'and size>4194304 then log_mode='wb'end end
+ end
+ function mod.log(message)
+  local f=io.open(LOG,log_mode);log_mode='ab'
+  if f then f:write(os.date('%Y-%m-%d %H:%M:%S '),tostring(message),'\n');f:close()end
+ end
+ local scope=setmetatable({mod=mod},{__index=_G})
+ requirer(mod,scope)
+ local host=mod.require('src/chef_host.lua')
+ -- No os.rename or os.remove under Chef: saves go through host.files.
+ scope.io,scope.os=host.scope(io,os,host.files(io.open))
+ -- Chef never calls the global render. addon.render does it.
+ local render=host.render(_G,mod.log)
+ local entry=mod.require('main.lua')
+ local bindings=rawget(_G,'ModBindingsMenu')
+ if not(type(bindings)=='table'and type(bindings.register_binding)=='function'and type(bindings.is_down)=='function'and type(bindings.binding)=='function')then bindings=nil end
+ local input_service=host.input(chef,stingray,mod.log,mod.require('src/engine_input.lua'))
+ local capture=host.capture(chef,game)
+ -- Depth through chef.capture('depth'): Chef 1.4.2 on; nil on older loaders.
+ local depth=host.depth(chef,game)
+ -- Keys reach the game too.
+ -- Scene effects: colour bound on the GPU, formats from the contract. The CPU depth read for focus
+ -- comes from the loader's depth capture. Depth shaders are out; depth of field is the game's own.
+ local function scene_resources(sr)
+  return mod.require('src/chef_scene_resources.lua').new(sr,mod,mod.require('src/engine_scene_registry.lua'),
+   mod.require('src/engine_render_contract.lua'),mod.require('src/engine_scene_resources.lua').inspect,depth)
+ end
+ mod.host_loader={engine_input=true,require_keyboard=false,input_service=input_service,bindings=bindings,capture_service=capture,
+  scene_resources=scene_resources,focus_capture=depth,capabilities={revision='chef-shared-loader-host.3'}}
+ -- Arrow keys move the camera and the panel.
+ mod.arrow_keys=true
+ mod.log('War Journalist '..VERSION..' ('..BUILD..') on Chef Shared Loader '..tostring(chef.loader_version)..
+  (capture and', screenshots through chef.capture'or', no screenshots')..(depth and', depth through chef.capture'or''))
+ local state='waiting'
+ local function stop(reason)
+  if state~='running'then return end
+  state='stopped';if reason then mod.log(reason)end
+  local ok,why=pcall(entry.on_disable);if not ok then mod.log('Photo Mode cleanup failed: '..tostring(why))end
+  input_service.dispose()
+ end
+ local addon={version=VERSION}
+ function addon.update(dt)
+  if state=='waiting'then
+   local ok,why=pcall(entry.on_enable)
+   if ok then state='running';mod.log('Photo Mode started on Chef Shared Loader')
+   else state='failed';mod.log('Photo Mode did not start: '..tostring(why));chef.log('%s','War Journalist did not start: '..tostring(why))end
+  elseif state=='running'then
+   local ok,why=pcall(entry.on_update,dt)
+   if not ok then stop('Photo Mode stopped after an error: '..tostring(why));chef.log('%s','War Journalist stopped after an error: '..tostring(why))end
+  end
+ end
+ function addon.render()if state=='running'then return render()end end
+ function addon.shutdown()stop()end
+ function addon.on_stop()stop('Stopped by Chef Shared Loader')end
+ return addon
+end
+'''
+
+# A table is Chef's helpers. Boot Mod Loader passes nothing, LLL the mod's name.
 PICK = r'''
+if type(loader)=='table'then return chef_host(loader)end
 return boot_host()
 '''
 
@@ -155,7 +243,7 @@ def compose(sources, version, build, release):
             'local VERSION,BUILD=' + json.dumps(version) + ',' + json.dumps(build) + '\n')
     source_block = 'local SOURCES={}\n' + ''.join(
         'SOURCES[' + json.dumps(path) + ']=' + long_string(text) + '\n' for path, text in sources.items())
-    return head + source_block + REQUIRER.lstrip('\n') + BOOT_HOST.lstrip('\n') + PICK.lstrip('\n')
+    return head + source_block + REQUIRER.lstrip('\n') + BOOT_HOST.lstrip('\n') + CHEF_HOST.lstrip('\n') + PICK.lstrip('\n')
 
 
 def check_size(text, limit=MAX_BYTES):

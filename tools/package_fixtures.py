@@ -8,7 +8,7 @@ import re
 import tempfile
 
 from build_steam_candidate import DEV_ONLY, FFI, MODULES, ROOT
-from package_head import ID, RESOURCE, TITLE
+from package_head import ID, MINIMUM_CHEF, RESOURCE, TITLE
 
 
 def current_sources(release):
@@ -261,3 +261,129 @@ def verify_lll(text):
         for name in ('on_enable', 'on_update', 'on_disable', 'on_cleanup_poll'):
             assert lua_type(entry[name]) == 'function', name
         assert not any((lll / 'Native').iterdir()), 'LLL got a bridge: ' + ', '.join(p.name for p in (lll / 'Native').iterdir())
+
+
+# Boot Mod Loader only: the WJL helper and its pipes, and live reload. Never compiled under Chef.
+BOOT_ONLY = ('windows_input_service.lua', 'vendor/wjl_transport.lua', 'vendor/wjl_capture.lua',
+             'vendor/wjl_input_service.lua', 'wjl_helper_payload.lua', 'wjl_helper_startup.lua', 'windows_dev_reload.lua')
+
+# Run the package inside Chef's real sandbox.lua: start, tick, open the panel, save, stop.
+# Every chunk the package compiles is recorded by name.
+CHEF_FIXTURE = r'''
+local SANDBOX,TEXT,CHEF_VERSION=...
+local files,blocked,logs,holds,captures={}, {}, {}, {}, 0
+local function vopen(path,mode)
+ mode=mode or'r'
+ if mode:find('[wa]')then
+  local parts={};if mode:find('a')and files[path]then parts[1]=files[path]end
+  local h={};function h.write(_,...)for i=1,select('#',...)do parts[#parts+1]=tostring((select(i,...)))end;return h end
+  function h.seek()return #table.concat(parts)end;function h.close()files[path]=table.concat(parts);return true end
+  function h.setvbuf()return true end;function h.flush()return true end
+  return h
+ end
+ local data=files[path];if not data then return nil,path..': No such file or directory'end
+ local at=0;local h={}
+ function h.read(_,n)if at>=#data then return nil end;if n=='*a'then n=#data end;n=tonumber(n)or#data;local p=data:sub(at+1,at+n);at=at+#p;return p end
+ function h.seek(_,w,o)o=o or 0;if w=='end'then at=#data+o elseif w=='set'then at=o end;return at end
+ function h.close()return true end
+ return h
+end
+local nop=function()end
+stingray={Gui={resolution=function()return 1920,1080 end},
+ Unit={alive=function()return false end,world=nop,resource_name=nop,num_scene_graph_items=nop,
+  local_pose=nop,set_local_pose=nop,animation_bone_mode=nop,set_animation_bone_mode=nop,has_node=nop,node=nop},
+ World={update_unit=nop},
+ Application={time_since_launch=function()return os.clock()end,render_setting=function()return false end,process_id=function()return 4242 end},
+ Window={mouse_focus=function()return true end,show_cursor=function()return false end,has_focus=function()return true end},
+ Mouse={axis_id=function(n)return({mouse=0,wheel=1,cursor=2})[n]end,button_id=function()return 0 end,axis=function()return{x=0,y=0}end,button=function()return 0 end},
+ Keyboard={button_id=function()return 0 end,button=function()return 0 end},
+ Network={game_session=nop}}
+for k,v in pairs(stingray)do _G[k]=v end
+local sandbox=assert(loadstring(SANDBOX))().install({G=_G,io={open=vopen,type=function()return nil end},
+ os={clock=os.clock,time=os.time,date=os.date,difftime=os.difftime,getenv=function(n)return({APPDATA='C:\\Users\\p\\AppData\\Roaming',LOCALAPPDATA='C:\\Users\\p\\AppData\\Local'})[n]end},
+ debug=debug,DIR='C:\\game\\',GAME_DIR='C:\\game\\',log=function(s)blocked[#blocked+1]=s end})
+local env=sandbox.env('mods/goose/war_journalist')
+local compiled={}
+local real_loadstring=env.loadstring
+rawset(env,'loadstring',function(s,n)compiled[#compiled+1]=tostring(n);return real_loadstring(s,n)end)
+local registered,down={},{}
+env.ModBindingsMenu=setmetatable({},{__newindex=function()error('read-only ModBindingsMenu')end,__index={window='Chef Shared Loader options menu',register_binding=function(id,label,slot,options)registered[id]=options.default.button;return true end,
+ is_down=function(id)return down[id]==true end,binding=function()return{}end,poll=nop,set_binding=function()return true end}})
+local chef={api=3,loader_version=CHEF_VERSION,name='mods/goose/war_journalist',log_directory='C:\\game',
+ log=function(fmt,...)logs[#logs+1]=string.format(fmt,...)end,title=nop,has=function()return true end,
+ hold_mouse=function(on)holds[#holds+1]=on;return true end,mouse_held=function()return false end,mouse_delta=function()return 0,0 end,
+ menu_open=function()return false end,
+ capture=function(what)captures=captures+1;if what=='depth'then return'goose_war_journalist_depth_01.dds'end;return'capture.dds'end}
+local chunk=assert(loadstring(TEXT,'=war_journalist'));setfenv(chunk,env)
+local addon=chunk(chef)
+assert(type(addon)=='table'and type(addon.update)=='function'and addon.version,'The addon returns its hooks')
+for _=1,30 do addon.update(1/60)end
+local keys=0;for _ in pairs(registered)do keys=keys+1 end
+-- Chef calls only addon.render.
+local drawn=0
+local base=assert(rawget(env,'render'),'No render global for Photo Mode to wrap')
+assert(type(addon.render)=='function','The addon has a render hook');addon.render();assert(drawn==0)
+rawset(env,'render',function(...)drawn=drawn+1;return base(...)end);addon.render();addon.render()
+rawset(env,'render',base);addon.render()
+addon.shutdown()
+local log=files['C:/game/war_journalist_chef.log']or''
+local names={};for path in pairs(files)do names[#names+1]=path end;table.sort(names)
+return log,table.concat(blocked,'\n'),table.concat(logs,'\n'),keys,registered['war_journalist.toggle_key'],table.concat(names,'|'),env.DBF_PHOTO_MODE_OWNER==nil,drawn,registered['war_journalist.forward_key']..' '..registered['war_journalist.back_key']..' '..registered['war_journalist.left_key']..' '..registered['war_journalist.right_key'],table.concat(compiled,'\n')
+'''
+
+
+def numbers(version):
+    """A version's leading number parts, as Chef's gate reads them ('1.4.2-test1' is 1.4.2)."""
+    match = re.match(r'(\d+)\.(\d+)(?:\.(\d+))?', version)
+    return tuple(int(part or 0) for part in match.groups())
+
+
+def verify_chef(text, sandbox, chef_version):
+    """The package in one of Chef's real sandboxes, the loader reporting chef_version."""
+    from lupa.lua51 import LuaRuntime
+    from test_chef_port import SANDBOX_BLOBS, sandbox_text
+    sb_text, blob = sandbox_text(Path(sandbox))
+    log, blocked, chef_log, keys, toggle, names, released, drawn, movement, compiled = LuaRuntime().execute(
+        CHEF_FIXTURE, sb_text, text, chef_version)
+    depth = numbers(chef_version) >= (1, 4, 2)
+    assert ('on Chef Shared Loader ' + chef_version + ', screenshots through chef.capture'
+            + (', depth through chef.capture' if depth else '') + '\n') in log, log
+    assert 'Photo Mode started on Chef Shared Loader' in log, log
+    assert 'Photo Mode ready on Lua 5.1' in log and 'Windows engine API' not in log, log
+    assert 'stopped after an error' not in log and 'cleanup failed' not in log and 'did not start' not in log, log
+    assert keys >= 13 and toggle == 'p', (keys, toggle)
+    assert movement == 'up down left right', 'Movement keys: ' + movement
+    assert released, 'Photo Mode owner left behind'
+    assert drawn == 2 and "draws through the loader's render hook" in log, ('Photo Mode render not reached', drawn)
+    assert not chef_log, chef_log
+    refused = [line for line in blocked.split('\n') if line.startswith('blocked:')]
+    assert not refused, 'Chef refused a call: ' + '\n'.join(refused)
+    assert names == 'C:/game/war_journalist_chef.log', names
+    compiled = compiled.split('\n') if compiled else []
+    assert not any(name.endswith(tuple('/src/' + m for m in BOOT_ONLY)) for name in compiled), compiled
+    assert '@' + ID + '/src/chef_host.lua' in compiled, compiled
+    return {'sandbox_git_blob': blob, 'chef_version': chef_version, 'sandbox': SANDBOX_BLOBS[blob], 'keys': keys,
+            'render_hook_forwards': drawn, 'movement_keys': movement, 'refused_calls': 0,
+            'files_written': names.split('|'), 'compiled': len(compiled)}
+
+
+GATE = r'''
+local TEXT,VERSION=...
+local touched=function(name)return setmetatable({},{__index=function(_,k)error(name..'.'..tostring(k)..' touched below the minimum Chef')end})end
+local env=setmetatable({io=touched('io'),os=touched('os'),stingray={}},{__index=_G})
+local lines={}
+local chef={loader_version=VERSION,log_directory='C:\\game',title=function()end,log=function(fmt,...)lines[#lines+1]=string.format(fmt,...)end}
+local chunk=assert(loadstring(TEXT,'=war_journalist'));setfenv(chunk,env)
+local addon=chunk(chef)
+assert(type(addon)=='table','The gate returns hooks')
+for _=1,3 do addon.update(1/60)end;addon.render();addon.shutdown();addon.on_stop()
+return table.concat(lines,'\n'),#lines
+'''
+
+
+def verify_chef_gate(text):
+    """Below Chef 1.4.0 (or with no version) the package says so once and stays off."""
+    from lupa.lua51 import LuaRuntime
+    for version in ('1.3.9', None, '1.3.1'):
+        lines, count = LuaRuntime().execute(GATE, text, version)
+        assert count == 1 and lines == 'War Journalist needs Chef Shared Loader ' + MINIMUM_CHEF + ' or newer', (version, lines)
