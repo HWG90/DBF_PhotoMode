@@ -42,6 +42,7 @@ FIXTURES+=('windows_freeze_bone_probe_tests.lua',)
 FIXTURES+=('windows_freeze_physics_probe_tests.lua',)
 FIXTURES+=('windows_freeze_pose_probe_tests.lua','windows_freeze_cape_tests.lua','windows_freeze_ramp_tests.lua')
 FIXTURES+=('windows_animation_source_tests.lua',)
+FIXTURES+=('proton_font_tests.lua',)
 
 def run():
     from lupa.lua51 import LuaRuntime
@@ -80,6 +81,16 @@ def run():
             rows.append({'fixture':'lll_r35_input_service_reference','passed':True})
         else:
             rows.append({'fixture':'lll_r35_input_service_reference','passed':None,'skipped':'lll submodule not checked out'})
+        # Every bridge the Lua names must ship with the Proton folder build. After the 26251122
+        # port retired hd2_nativeinfo_f6d3465944c1aea1, font.lua still asked for it and the
+        # Photo menu silently fell back to the stock font.
+        shipped=set(re.findall(r"port51/(hd2_nativeinfo_[0-9a-f]{16}\.dll)",re.search(r"NATIVE_LIBRARIES=\((.*?)\)",(ROOT/'tools/build_proton_candidate.py').read_text(encoding='utf-8'),re.S)[1]))
+        named=set()
+        for source in sorted((ROOT/'freecam').glob('*.lua')):
+            if not source.name.endswith('_tests.lua'):
+                named.update(re.findall(r"hd2_nativeinfo_[0-9a-f]{16}\.dll",source.read_text(encoding='utf-8')))
+        assert shipped and named<=shipped,'Lua names bridges the Proton build does not ship: '+str(sorted(named-shipped))
+        rows.append({'fixture':'proton_bridge_name_closure','passed':True,'bridges':sorted(named)})
         for fixture in FIXTURES:
             lua=LuaRuntime()
             assert lua.eval('_VERSION')=='Lua 5.1' and lua.eval('jit==nil and package.loaded.ffi==nil')

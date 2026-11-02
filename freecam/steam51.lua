@@ -67,6 +67,10 @@ entry={live_lua_api=1,name='War Journalist',
     end
     return source
    end}
+  else
+   -- LLL (Proton): the HUD font comes through the main bridge; a refusal is logged, not silent.
+   local font_factory=deps.font
+   deps.font={new=function()return font_factory.new(nil,nil,nil,nil,mod.log)end}
   end
   -- A host's bindings helper (Boot Mod Loader's Mod Bindings Menu) holds our keys.
   if loader.bindings then deps.hosted_bindings={api=loader.bindings,window=loader.bindings.window,factory=mod.require('src/steam_bindings.lua')}end

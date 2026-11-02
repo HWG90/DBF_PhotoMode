@@ -44,18 +44,21 @@ local core_sans={
  {font='fca7631255290a2c',atlas='a324ffafb376edef',material='47c50c5fab67ccab'},
 }
 function F.new(memory,game,at,engine_resources,log)
+    -- Under LLL the HUD font is read through the mod's own main bridge (host_native.open: the
+    -- hashed executable, module_base and read_memory already asserted). Naming a bridge here is
+    -- what left the Proton menu on the stock font once the 26251122 port retired the old
+    -- nativeinfo bridge f6d3465944c1aea1 from port51/.
+    local unavailable
     local function ensure_memory()
         if memory then return end
-        local path=mod.require('src/host_native.lua').library('hd2_nativeinfo_f6d3465944c1aea1.dll')
-        local entry=assert(package.loadlib(path,'luaopen_hd2_nativeinfo'))
-        local native=assert(entry())
-        game=assert(native.module_base('game.dll'))
+        local native=mod.require('src/host_native.lua').open()
+        game=assert(native.module_base('game.dll'),'game.dll base unavailable')
         memory={read=native.read_memory,address=function(value)return value end}
     end
 
     local self={}
     local resolved,attempted
-    function self.invalidate()resolved,attempted=nil,nil end
+    function self.invalidate()resolved,attempted,unavailable=nil,nil,nil end
     function self.resolve(sr)
         if engine_resources then
             if attempted then return resolved end
@@ -83,7 +86,15 @@ function F.new(memory,game,at,engine_resources,log)
             end
             return nil
         end
-        local ready=pcall(ensure_memory);if not ready then return nil end
+        -- A refused bridge is reported once and retried at the next Photo Mode open
+        -- (invalidate), not every frame: opening the bridge hashes the executable.
+        if unavailable then return nil end
+        local ready,why=pcall(ensure_memory)
+        if not ready then
+            unavailable=tostring(why)
+            if log then log('Game font unavailable; using stock font: '..unavailable)end
+            return nil
+        end
 
         if not memory or type(memory.read)~='function' or type(memory.address)~='function' then return nil end
         if not sr or not sr.IdString64 or type(sr.IdString64.from_hex)~='function'
