@@ -408,3 +408,20 @@ def verify_key_carry_over(text):
     with boot_env() as game:  # neither: nothing made
         run_boot(text)
         assert not (game / 'mbm_war_journalist_settings.txt').exists()
+
+
+def verify_loaders(text):
+    """Boot Mod Loader 0.13.4 starts the package itself; LLL does not take it for a Chef addon."""
+    from bml_loader_checks import bml_starts, lll_chef_style
+    assert bml_starts(text) == (True, 'starts'), bml_starts(text)
+    assert not lll_chef_style(text)
+    # for_chef reads the whole file. Today a module line local chef=... would be read in scope
+    # only because a type(chef) test happens to exist somewhere; keep the line out altogether.
+    assert not re.search(r'\nlocal\s+chef\s*=\s*\.\.\.', text), 'A line local chef=... in the package'
+    add = '-- HD2-Addon: mods/a/b\n'
+    assert bml_starts(add + '-- HD2-Requires: chef-shared-loader\nreturn 1\n') == (False, 'for chef')
+    assert bml_starts(add + 'local chef = ...\nchef.log("x")\n') == (False, 'for chef')
+    assert bml_starts(add + 'local chef = ...\nif type(chef)~="table" then return end\nchef.log("x")\n') == (True, 'starts')
+    assert bml_starts('return 1\n') == (False, 'no HD2-Addon line')
+    assert lll_chef_style(add + 'local chef = ...\n')
+    return {'bml_0.13.4': 'starts', 'lll': 'not chef-style'}

@@ -33,6 +33,7 @@ def prove(text, release, sources, sandboxes):
     summary['modules'] = len(sources) - 1
     fixtures.verify_shape(text)
     summary['verify_shape'] = 'passed'
+    summary['verify_loaders'] = fixtures.verify_loaders(text)
     summary['verify_boot'] = fixtures.verify_boot(text, release)
     fixtures.verify_key_carry_over(text)
     summary['verify_key_carry_over'] = 'passed'
