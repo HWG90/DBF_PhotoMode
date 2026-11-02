@@ -14,7 +14,6 @@
 - A Helldiver frozen while running can flicker for a moment.
 - Bone posing works on your own Helldiver, after Freeze Action. A pose can vanish if you froze your Helldiver mid-stride. While your edits are kept, Refresh and Select in the Subject tab are locked; Reset pose unlocks them and clears the edits.
 - **On Chef's Shared Loader there is no helper**, because Chef doesn't let mods start programs. Your keys still reach the game while Photo Mode is open (the camera moves with the arrow keys), and screenshots are DDS files instead of PNG. Double-click focus and Center auto-focus need Chef 1.5.1 or newer, and War Journalist stays off on Chef older than 1.4.0.
-- Not checked in game on Chef yet: double-click focus and Center auto-focus with this version, and most of the bone posing page.
 - Center auto-focus can focus on a Helldiver hidden behind something in the middle of the screen.
 - Hide Cape can miss a modded cape. One report says opening Photo Mode from first person showed a headless body lying down; if you can make it happen, please tell me how.
 - Not checked in game yet: the Follow player cameras, and the cape after changing armour.

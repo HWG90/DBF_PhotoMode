@@ -32,7 +32,6 @@ War Journalist on Chef is more limited than on Boot Mod Loader:
   - **screenshots are DDS files, not PNG.** They're saved in the game's settings folder (`%APPDATA%\Arrowhead\Helldivers2`). Open them with an image viewer that reads DDS, or convert them.
 - **Double-click focus and Center auto-focus need Chef 1.5.1 or newer.** On older versions, use Manual focus.
 - **War Journalist needs Chef 1.4.0 or newer.** On older versions it stays off.
-- **Not checked in game on Chef yet:** double-click focus and Center auto-focus with this version, and most of the bone posing page.
 - Keys: P opens Photo Mode, the arrow keys move the camera and the panel, and Shift with Left or Right changes tabs. Change keys in F9 > War Journalist or in the panel.
 
 ## Changed

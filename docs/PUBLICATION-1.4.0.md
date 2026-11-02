@@ -46,9 +46,14 @@ Thanks to JuanHalodiver (Defender report) and Chefbo (Chef Shared Loader feature
 
 `~/.config/hd2arsenal/mods/War-Journalist-1.4.0_AR603033` (GUID `7020a1c8-01ed-4a9d-874f-f778916eb067`) holds the published ZIP: 18 checksums verified, label "War Journalist 1.4.0", the release description, option "War Journalist". It needs a Deploy to reach the game. Rollbacks in `~/.config/hd2arsenal/repair-backups/`: `hd2a_data-before-wj-1.4.0-release-*` and `War-Journalist-1.4.0_AR603033-e33aca4-before-release-*`. The smaller-package build stays in `mods/War-Journalist-1.4.0-dev.5`. The old store folder `War-Journalist-1.3.2-BML_AR139969` holds 1.3.3's files and is no longer referenced.
 
+## Page-only edits, 2 November 2026 (later the same day)
+
+- The user reported bone posing checked in game on Chef and asked to remove the "Not checked in game on Chef yet" line. It is gone from `docs/RELEASE-1.4.0.md` (and the v1.4.0 release body), `docs/KNOWN-ISSUES.md`, and the Chef section of the Nexus and Ayaka descriptions. Discord and the update texts never had it. No binaries, tags or files changed; the ZIP's own `RELEASE-NOTES.md` and `KNOWN-ISSUES.md` keep the line, since published bytes don't change. The pages as first published are in `dist/releases/1.4.0/copy/as-published/` (not committed).
+- The same day, at the user's word, `claude/wj-package-shrink` `d8ce2c3` (with `claude/wj-one-package-tidy` `6963589`) was merged into `main` (`c7400e7`): 111 fixture groups passed, 1 skipped; `test_package` dev and release passed. It is for the next release, not in the 1.4.0 ZIP.
+
 ## Pending
 
 - Reports from native Windows players, including Defender's view of the new helper.
-- In game under Chef: double-click and Center focus, and the bone posing page.
-- On the user's word: merging `claude/wj-package-shrink` (brings `claude/wj-one-package-tidy`) into `main`; a message to Chefbo about the single package.
+- In game under Chef with 1.4.0: double-click and Center focus (bone posing was checked by the user).
+- A message to Chefbo about the single package, on the user's word.
 - The Chef dev Arsenal entry `7b18fc08` is switched off; the GitHub Chef preview 5 pre-release stays as a historical build.
