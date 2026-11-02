@@ -160,7 +160,10 @@ do -- F1: after the subject retires, Refresh and Select with nothing selected ke
  assert(f.discoveries==listed+1,'No hidden automatic re-select: only the explicit Refresh listed subjects')
  assert(f.action('subject_pose_stop'));f.restored()
 end
-do -- F2: reopening Photo Mode resyncs the bone rows and rescans pose files
+-- The Helldiver Photo Mode selects on open: kept edits go back on it (identities are new each open).
+local function selected_body(f)local s=f.subject.status().selected;if s=='Helldiver B'then return f.b,f.original_b end;assert(s=='Helldiver A',tostring(s));return f.a,f.original_a end
+do -- F2: reopening Photo Mode keeps the bone edits and applies them again, and rescans pose files
+ -- (user 2026-11-02: "remember the pose even if the menu closes and reopens to preserve work")
  local F=dofile('freecam/pose_files.lua');local files={}
  local fs={open=function(p,m)if m=='rb'then local c=files[p];if c==nil then return nil end;return{read=function()return c end,close=function()end}end;local b={};return{write=function(_,s)b[#b+1]=s;return true end,close=function()files[p]=table.concat(b);return true end}end,
   rename=function(a,b)files[b]=files[a];files[a]=nil;return true end,remove=function(p)files[p]=nil;return true end}
@@ -171,8 +174,30 @@ do -- F2: reopening Photo Mode resyncs the bone rows and rescans pose files
  local fr={full_body=true,nodes={}};for i=8,92 do fr.nodes[i]=f.original_b[i]end
  files['C:/cfg/wj-pose-07.txt']=F.encode(fr,{label='Dropped in',source='file'})
  f.open()
- assert(f.runtime.handle.get('bone_bend')==0,'Reopen shows the cleared editor, not the stale slider')
+ assert(f.runtime.handle.get('bone_bend')==30,'Reopen keeps the edits')
  assert(f.controls.pose_file.choices[1]=='07 — Dropped in',tostring(f.controls.pose_file.choices[1]))
+ f.step(.016,1);f.settle()
+ local s=f.subject.status();assert(s.pose=='edited','Kept edits apply again on reopen: '..tostring(s.pose)..' '..tostring(s.message))
+ local body,original=selected_body(f)
+ assert(near(body.nodes[70].q,E.compose(original[70].q,30,0,0)),'The kept edits are back on the Helldiver')
+ assert(f.action('subject_pose_stop'));f.restored()
+end
+do -- closing while the first edit settles still brings it back on reopen
+ local f=fixture();f.enable();f.select();elbow(f)
+ f.runtime.handle.set('bone_bend',25);f.step(.016,1);assert(f.subject.status().state~='posed','First edit still settling')
+ assert(f.runtime.close(true));f.restored()
+ f.open();f.step(.016,1);f.settle()
+ local body,original=selected_body(f)
+ assert(f.subject.status().pose=='edited'and near(body.nodes[70].q,E.compose(original[70].q,25,0,0)),'The unsettled edit is kept')
+ assert(f.action('subject_pose_stop'));f.restored()
+end
+do -- reopening with no edits left starts clean: nothing is applied
+ local f=fixture();f.enable();f.select();elbow(f)
+ f.runtime.handle.set('bone_bend',30);f.step(.016,1);f.settle();assert(f.action('bone_reset_all'));f.step(.016,1)
+ assert(f.runtime.close(true));f.restored()
+ f.open();for _=1,4 do f.step(.016,1)end
+ assert(f.subject.status().state~='posed'and f.runtime.handle.get('bone_bend')==0,'No edits: nothing to bring back')
+ f.restored()
 end
 do -- F3: a continuous first drag applies with a single reset and lands the last value
  local f=fixture();f.enable();f.select();elbow(f)

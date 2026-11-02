@@ -1382,7 +1382,12 @@ function M.new(host,sr,deps,service)
  function self.close(clear_time,automatic,subject_retry)
   director_bridge.remember()
   deferred_shot=nil;self.pending_pose=nil
-  if self.pose_editor then self.pose_editor.clear();self.pose_editor_key=nil;self.bone_preview=nil end
+  -- Bone edits outlive the close and apply again on the next open (user 2026-11-02: "remember
+  -- the pose even if the menu closes and reopens to preserve work"); an editor without edits clears.
+  if self.pose_editor then
+   if self.pose_editor.edited()then self.pose_editor.touch()else self.pose_editor.clear()end
+   self.pose_editor_key=nil;self.bone_preview=nil
+  end
   if handycam then handycam.reset()end
   if photo then photo.handy_roll=nil end
   if capture then capture.close('Photo Mode closed')end
@@ -2584,7 +2589,7 @@ function M.new(host,sr,deps,service)
   subject_close_started=false;begin_session();screenshot_label()
   if type(deps.load_subject)=='function'and load_subject()then
    auto_subject(initial.position)
-   -- Every open: the rows show the (cleared) editor and copied-in pose files appear.
+   -- Every open: the rows show the editor (kept edits or cleared) and copied-in pose files appear.
    if self.pose_editor then self.sync_bone_rows();self.pose_files_sync(not self.pose_store_fresh);self.pose_store_fresh=nil end
    if self.tracking_backend and subject and type(subject.select_camera)=='function'then
     local identity=camera.identity();if identity then
