@@ -2,16 +2,51 @@
 LLL or Chef Shared Loader and picks its host from the loader's argument (a table is Chef's
 helpers; nil, from Boot Mod Loader's xpcall, or the mod's name, from LLL, is not).
 compose() writes the whole Lua text; build_package.py packs and proves it."""
+from pathlib import Path
 import json
 
-from build_steam_archive import long_string
-
+ROOT = Path(__file__).resolve().parents[1]
 RESOURCE = 'mods/goose/war_journalist'
 ID = 'dbf_freecam_lua51'
 TITLE = 'War Journalist'
 MINIMUM_CHEF = '1.4.0'
 # Chef 1.5.1 never runs a Lua resource over 4 MiB (MAX_LUA); keep clear of it.
 MAX_BYTES = 3_800_000
+# HD2 Arsenal: the entry 1.3.x players already have, one option with the assets.
+GUID = '7020a1c8-01ed-4a9d-874f-f778916eb067'
+OPTION = 'War Journalist'
+ARCHIVE = '9ba626afa44a3aa3.patch_0'
+# The 1.3.0 assets, unchanged since.
+ASSETS_SHA256 = {
+    '9ba626afa44a3aa3.patch_0': 'de5e7ace103a5f7121c57acaa3b4b323c60955309a31b04175bdc6f05028c8b2',
+    '9ba626afa44a3aa3.patch_0.gpu_resources': 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+    '9ba626afa44a3aa3.patch_0.stream': 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+    'ee6b1ba7e22d71ed.patch_0': 'adc229713e0573007e8b34dd7a7fb69a8de8cd92a0a75aa0e1bbfa46777de2be',
+    'ee6b1ba7e22d71ed.patch_0.gpu_resources': 'feed3eb14f8c3becd21698c1f73a7f116a532f54ce22009c3f992052f76e2f5d',
+    'ee6b1ba7e22d71ed.patch_0.stream': 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+}
+
+
+def long_string(text):
+    """Lua long bracket holding text exactly (no CR; first newline is skipped by Lua)."""
+    assert '\r' not in text, 'CR would be normalized inside a long string'
+    level = 0
+    while True:
+        close = ']' + '=' * level + ']'
+        if (text + close).find(close) == len(text):
+            return '[' + '=' * level + '[\n' + text + close
+        level += 1
+
+
+def build_id():
+    """Shown under Photo Mode: the UTC build time and source commit, '+' when the tree has
+    uncommitted changes (the CRLF-noisy shader sources excepted)."""
+    import datetime, subprocess
+    stamp = datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%d.%H%M')
+    git = lambda *a: subprocess.run(['git', *a], cwd=ROOT, capture_output=True, text=True).stdout.strip()
+    commit = git('rev-parse', '--short=7', 'HEAD') or 'nogit'
+    dirty = any(line and 'freecam/assets/shaders/' not in line for line in git('status', '--porcelain').splitlines())
+    return stamp + '-' + commit + ('+' if dirty else '')
 
 # One module loader for every host: each module compiled once, on first use, in the mod's scope.
 REQUIRER = r'''

@@ -1,15 +1,13 @@
 """Compose the one War Journalist package from this tree and prove it offline on every host.
 
-Usage: python tools/test_package.py [--release] [--sandbox PATH=VERSION]...
+Usage: python tools/test_package.py [--release] [--sandbox PATH=VERSION]... [--zip PATH]
 Prints a JSON summary; exits non-zero on the first failure. Never builds a ZIP or installs."""
 from pathlib import Path
 import argparse
 import json
 
-from build_steam_archive import build_id
-from build_steam_candidate import ROOT
 import package_fixtures as fixtures
-from package_head import check_size, compose
+from package_head import ROOT, build_id, check_size, compose
 
 
 # Chef's own sandbox.lua per release (gitignored copies), and the version each run reports.
@@ -45,11 +43,26 @@ def prove(text, release, sources, sandboxes):
     return summary
 
 
+def test_size_cap():
+    check_size('x' * 10, limit=10)
+    try:
+        check_size('x' * 11, limit=10)
+    except AssertionError as error:
+        assert "over Chef's 4 MiB reading limit: 11 bytes > 10" in str(error), error
+    else:
+        raise AssertionError('size cap did not fire')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--release', action='store_true', help='public text: no dev-only modules, RELEASE_MODE=true')
     parser.add_argument('--sandbox', type=sandbox_arg, action='append', default=None, metavar='PATH=VERSION')
+    parser.add_argument('--zip', type=Path, help='check a built ZIP instead of composing from the tree')
     args = parser.parse_args()
+    test_size_cap()
+    if args.zip:
+        print(json.dumps({'zip': str(args.zip), 'test_size_cap': 'passed', **fixtures.verify_zip(args.zip, args.release)}, indent=2))
+        return
     sources = fixtures.current_sources(args.release)
     text = compose(sources, '0.0.0-test', build_id(), args.release)
     print(json.dumps({'release': args.release, **prove(text, args.release, sources, args.sandbox or SANDBOXES)}, indent=2))

@@ -1,5 +1,7 @@
 # Chef Shared Loader port
 
+Since 1.4.0, Chef builds come from `tools/build_package.py`: one package for Boot Mod Loader and Chef (see BUILD.md). The Chef Lite preview below is history.
+
 Development **preview 5**, 2026-10-27, compares WJ **1.3.0 Steam Lua 5.1** with
 Chef **1.2.4 / API 3** at
 [`b7434c7289bbb9adbfeb2d3bdb57134218f2a509`](https://github.com/Th3chef/Chef-Shared-Loader/tree/b7434c7289bbb9adbfeb2d3bdb57134218f2a509).

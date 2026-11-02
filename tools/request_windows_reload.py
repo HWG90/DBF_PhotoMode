@@ -20,7 +20,7 @@ def payload():
     rows += [('src/' + name, ROOT / 'freecam' / name) for name in MODULES]
     chunks = [f'WJL-LUA-1\n{len(rows)}\n'.encode()]
     for name, path in rows:
-        # Match build_steam_archive.bundle(): universal newline decoding makes
+        # Match package_head.compose(): universal newline decoding makes
         # Windows working-tree CRLF compare exactly with resident archive text.
         source = path.read_text(encoding='utf-8').encode('utf-8')
         compile_lua(source.decode('utf-8'), '@' + name)

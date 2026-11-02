@@ -425,3 +425,40 @@ def verify_loaders(text):
     assert bml_starts('return 1\n') == (False, 'no HD2-Addon line')
     assert lll_chef_style(add + 'local chef = ...\n')
     return {'bml_0.13.4': 'starts', 'lll': 'not chef-style'}
+
+
+# The one ZIP: the War Journalist payload, the 1.3.0 assets, and the texts beside them.
+NAMES = ({f'Assets/{a}{s}' for a in ('9ba626afa44a3aa3.patch_0', 'ee6b1ba7e22d71ed.patch_0') for s in ('', '.gpu_resources', '.stream')}
+         | {f'War Journalist/9ba626afa44a3aa3.patch_0{s}' for s in ('', '.gpu_resources', '.stream')}
+         | {'War Journalist/b42c756875139ce2.lua', 'manifest.json', 'PROVENANCE.json', 'INSTALL.txt', 'KNOWN-ISSUES.md',
+            'LICENSE-Link.txt', 'LICENSE-Bingus.txt', 'Chef-LICENSE.txt', 'FILES-SHA256.txt'})
+# The WJL helper (war_journalist_helper.exe) the Boot Mod Loader host starts.
+HELPER_SHA256 = 'a6f5f3f6aede55b22627911b0c4429169e98d4378b7ca934cced0e7fa67723ef'
+
+
+def verify_zip(path, release):
+    """The built ZIP: its exact files and sums, the Arsenal manifest, the addon, the assets."""
+    import hashlib
+    import json
+    import zipfile
+    from package_head import ASSETS_SHA256, GUID, OPTION, check_size
+    sha256 = lambda data: hashlib.sha256(data).hexdigest()
+    with zipfile.ZipFile(path) as z:
+        names = set(z.namelist())
+        assert names - {'RELEASE-NOTES.md'} == NAMES and (not release or 'RELEASE-NOTES.md' in names), names ^ NAMES
+        assert z.testzip() is None
+        for line in z.read('FILES-SHA256.txt').decode().splitlines():
+            digest, name = line.split('  ', 1)
+            assert sha256(z.read(name)) == digest, name
+        m = json.loads(z.read('manifest.json'))
+        assert m['Guid'] == GUID and m['Name'].startswith('War Journalist '), m
+        assert m['Options'] == [{'Name': OPTION, 'Description': 'Photo Mode and its assets.', 'Include': [OPTION, 'Assets']}], m['Options']
+        addon = z.read('War Journalist/b42c756875139ce2.lua').decode()
+        verify_shape(addon)
+        check_size(addon)
+        assert ('local RELEASE_MODE=true' in addon) == release
+        assert ('SOURCES["src/windows_dev_reload.lua"]' in addon) == (not release), 'Live reload only in dev builds'
+        assert HELPER_SHA256 in addon, 'The committed WJL helper ships'
+        for name, digest in ASSETS_SHA256.items():
+            assert sha256(z.read('Assets/' + name)) == digest, name
+        return {'files': len(names), 'addon_bytes': len(addon.encode())}

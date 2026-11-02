@@ -47,7 +47,7 @@ NATIVE_LIBRARIES=('port51/hd2_nativeinfo_f6d3465944c1aea1.dll', 'port51/hd2_nati
 DEV_ONLY=('windows_dev_reload.lua',)
 
 def digest(data):return hashlib.sha256(data).hexdigest()
-def build(output,release=False):
+def build(output,release=False,bridges=True):
     from lupa.lua51 import LuaRuntime
     output=output.resolve()
     assert output.is_relative_to(ROOT/'dist/review'),'Development port must stay in dist/review'
@@ -61,10 +61,11 @@ def build(output,release=False):
                      'restart_only':False,'retain_until_exit':False}}
     manifest['public_release']=bool(release)
     manifest['license_files']=['LICENSE-Link.txt','LICENSE-Bingus.txt']
-    manifest['native_libraries']=list(NATIVE_LIBRARIES)
+    # The one package carries no in-process bridge (bridges=False): Windows refuses them.
+    manifest['native_libraries']=list(NATIVE_LIBRARIES)if bridges else[]
     files={'main.lua':(ROOT/'freecam/steam51.lua').read_bytes(),'manifest.json':(json.dumps(manifest,indent=2)+'\n').encode(),
            'config/defaults.cfg':b'{}\n'}
-    for name in NATIVE_LIBRARIES:files[name]=(ROOT/'freecam/native'/name).read_bytes()
+    for name in manifest['native_libraries']:files[name]=(ROOT/'freecam/native'/name).read_bytes()
     for label in manifest['license_files']:files[label]=(ROOT/'freecam/vendor'/label).read_bytes()
     for name in modules:files['src/'+name]=(ROOT/'freecam'/name).read_bytes()
     compile_lua=LuaRuntime().eval('function(s) return assert(loadstring(s)) end')

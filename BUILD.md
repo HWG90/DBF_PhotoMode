@@ -19,8 +19,8 @@ available. Missing shared-fixture dependencies are reported explicitly.
 Loader source and installation guidance: [Boot Mod Loader](https://github.com/pat-pat-patrick/boot-mod-loader).
 
 `tools/build_steam_candidate.py` defines the current module graph and constructs
-a folder candidate. `tools/build_steam_archive.py` packages that graph as a
-Boot Mod Loader addon. Both default to development output under `dist/review`.
+a folder candidate. `tools/build_package.py` packages that graph as the one
+War Journalist package (below). Both write under `dist/review`.
 Inspect each tool's `--help` for required asset/native build inputs. Native bridge
 sources are under `freecam/native/port51_src`; their availability depends on the
 host. The Windows input helper remains a separate bundled process.
@@ -29,6 +29,26 @@ Run the Lua fixtures and verify the package's exact embedded source bytes,
 checksums and startup/cleanup before distributing it. Numeric shader DoF and
 scene effects must remain disabled until visually verified in the package.
 Keep release artifacts under `dist/releases`.
+
+## One package for Boot Mod Loader and Chef
+
+One ZIP, one resource (`mods/goose/war_journalist`): Boot Mod Loader runs it with
+the WJL helper, Chef Shared Loader 1.4.0 or newer runs it with its own host, and
+the head picks from the loader's argument. `tools/package_head.py` writes the head
+(`boot_host`, `chef_host`, the version gate, the 1.3.x key carry-over);
+`tools/package_fixtures.py` holds the offline proofs. Chef's sandboxes are
+gitignored copies under `dist/chef-src/sandbox/`.
+
+```bash
+python tools/test_package.py            # compose from this tree, prove it on every host
+python tools/test_package.py --release
+python tools/build_package.py --dev 1   # dist/review/package/1.4.0-dev.1/
+python tools/test_package.py --zip dist/review/package/1.4.0-dev.1/War-Journalist-1.4.0-dev.1.zip
+python tools/build_package.py --release # needs docs/RELEASE-<VERSION>.md and RELEASE_DESCRIPTION
+```
+
+The text must stay under 3,800,000 bytes: Chef never runs a Lua resource over
+4 MiB, and the build stops with the size named.
 
 ## Chef preview
 
