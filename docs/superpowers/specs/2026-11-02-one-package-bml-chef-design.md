@@ -144,9 +144,10 @@ Merge rule for the shared modules (`steam_runtime`, `photo_menu`,
 one of those flags, so Boot Mod Loader behaves as before. The exception is
 `steam_input`'s names 160–165 (left/right Shift, Ctrl, Alt), which help both.
 
-Dev-only: Chef's depth trial words (`war_journalist_chef_probe.txt`) and the
-auto probe run only when `RELEASE_MODE` is false; a release build reads no probe
-file. `windows_dev_reload.lua` stays a dev-only BML module.
+Depth shaders: the Chef line removed its trial code in 71468fd (no trial
+words, no probe file, no trial contracts), and `photo_options.lua` drops the
+"Depth of field method" row under `without_depth_shaders`, which now holds on
+both hosts. `windows_dev_reload.lua` stays a dev-only BML module.
 
 Who runs it:
 
@@ -161,7 +162,7 @@ Who runs it:
 
 - **Branch:** `claude/wj-chef-unified` in `~/Worktrees/linux-hd2/wj-chef-unified`,
   from `claude/wj-bone-posing` f06a95c (1.3.4 plus bone posing dev.6).
-  `claude/wj-chef-lite` is merged once its session has committed dev.2–dev.14;
+  `claude/wj-chef-lite` 71468fd (committed by its session: chef-dev.2–dev.16) is merged;
   the 41 shader `.hlsl` line-ending changes stay out. From then on BML, Chef and
   bone-posing work all land here.
 - **Builder:** `tools/build_package.py`, committed.
@@ -176,8 +177,11 @@ Who runs it:
   - It asserts: the first line, no `HD2-Requires`, no `LIBRARIES`, size at most
     3,800,000 bytes, the Assets' pinned sha256s, and in a release no dev-only
     module and no probe-file read.
-  - Retired: `build_chef_archive.py`'s and `build_chef_candidate.py`'s
-    packaging, and the gitignored `dist/review/*/build_package.py` copies.
+  - Retired: `build_chef_archive.py` and `build_steam_archive.py` (their
+    heads and fixtures move into `tools/package_head.py` and
+    `tools/package_fixtures.py`), and the gitignored
+    `dist/review/*/build_package.py` copies. The Chef Lite 0.6 builder
+    `build_chef_candidate.py` and `freecam/chef/` are unused and left as they are.
 - **Offline tests:**
   - `tools/test_steam_port.py` as now, Chef fixtures included.
   - The built ZIP started in each real Chef sandbox: 1.4.0, 1.4.1, 1.4.2-test1,
