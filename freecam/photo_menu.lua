@@ -121,7 +121,7 @@ function M.new(view,actions,existing)
   if c.type=='choice'then return c.choices[v]or tostring(v)end
   if c.type=='toggle'then return v and 'ON'or 'OFF'end
   if c.type=='keybind'and c.key_label then return c.key_label()end
-  if c.type=='keybind'then local names={[0]='NONE',[9]='TAB',[13]='ENTER',[16]='SHIFT',[17]='CTRL',[18]='ALT',[19]='PAUSE',[27]='ESC',[32]='SPACE',[44]='PRINT SCREEN',[220]='\\'};return names[v]or(v>=32 and v<=126 and string.char(v)or('VK '..v))end
+  if c.type=='keybind'then local names={[0]='NONE',[9]='TAB',[13]='ENTER',[16]='SHIFT',[17]='CTRL',[18]='ALT',[19]='PAUSE',[27]='ESC',[32]='SPACE',[33]='PG UP',[34]='PG DN',[35]='END',[36]='HOME',[37]='LEFT',[38]='UP',[39]='RIGHT',[40]='DOWN',[44]='PRINT SCREEN',[45]='INSERT',[46]='DELETE',[160]='L SHIFT',[161]='R SHIFT',[162]='L CTRL',[163]='R CTRL',[164]='L ALT',[165]='R ALT',[220]='\\'};return names[v]or(v>=32 and v<=126 and string.char(v)or('VK '..v))end
   if c.type=='slider'then local step=c.fine_step or c.step;return string.format(step<.01 and '%.3f'or step<1 and '%.2f'or '%.0f',v)end
   return tostring(v)
  end
@@ -250,7 +250,8 @@ function M.new(view,actions,existing)
   -- Retained GUI submission and font/resource lifetime checks still run.
   local changed=retained_commands==nil;local slot=0
   local function watch(v)slot=slot+1;if retained_state[slot]~=v then changed=true;retained_state[slot]=v end end
-  watch(w);watch(h);watch(focused);watch(text_cache_context);watch(keys.focus);watch(keys.hide)
+  watch(w);watch(h);watch(focused);watch(text_cache_context);watch(keys.focus);watch(keys.hide);watch(keys.rows);watch(keys.values)
+  local rows_keys,values_keys,tabs_keys=keys.rows or'W/S',keys.values or'A/D',keys.tabs or'Q/E';watch(keys.tabs)
   watch(pointer_x);watch(pointer_y);watch(held);watch(pressed_key);watch(reveal_index)
   if self.light_gizmos then watch(self.light_gizmos.revision)end
   for key,v in pairs(self)do if type(v)~='function'and type(v)~='table'then watch(key);watch(v)end end
@@ -583,7 +584,7 @@ function M.new(view,actions,existing)
    button(locked and 'Lock Camera: ON'or 'Lock Camera: OFF',{x=lock_x,y=tool_y,w=lock_width,h=21*s},function()return self.handle.set('lock_camera',not self.handle.get('lock_camera'))end,'lock_camera_action',locked,toolbar_font)
   end
   local hint=hovered_control or rows[self.selection];local label=hint and tostring(hint.label or '')or 'Photo settings'
-  text(hud_warning or global_hint or(hint and hint.disabled and 'Unavailable in this scene' or text_edit and(text_edit.error or(text_edit.typing and 'Enter / Space saves  |  Esc cancels  |  Ctrl+A replaces' or text_edit.c.fine_step and 'A/D step  |  Shift+A/D fine  |  Esc cancels' or 'Type number or A/D step  |  Enter / Space saves  |  Esc cancels'))or key_capture and 'Press the new shortcut  |  Esc cancels' or self.notice or(label..(hint and hint.type=='slider'and '  |  Shift+drag fine  |  Enter edits'or '  |  A/D changes  |  Enter edits'))),left+24*s,bottom+1*s,width-56*s,12*s,10,hint and hint.disabled and not global_hint and T.disabled or T.muted)
+  text(hud_warning or global_hint or(hint and hint.disabled and 'Unavailable in this scene' or text_edit and(text_edit.error or(text_edit.typing and 'Enter / Space saves  |  Esc cancels  |  Ctrl+A replaces' or text_edit.c.fine_step and values_keys..' step  |  Shift+'..values_keys..' fine  |  Esc cancels' or 'Type number or '..values_keys..' step  |  Enter / Space saves  |  Esc cancels'))or key_capture and 'Press the new shortcut  |  Esc cancels' or self.notice or(label..(hint and hint.type=='slider'and '  |  Shift+drag fine  |  Enter edits'or '  |  '..values_keys..' changes  |  Enter edits'))),left+24*s,bottom+1*s,width-56*s,12*s,10,hint and hint.disabled and not global_hint and T.disabled or T.muted)
   local opacity_bounds={x=x+width-116*s,y=strip_bottom+27*s,w=100*s,h=25*s,c=opacity_control,key='menu_opacity'}
   local opacity_track={x=opacity_bounds.x+6*s,y=opacity_bounds.y+3*s,w=88*s,h=3*s};opacity_bounds.track=opacity_track
   local opacity_ink=focused and(over(opacity_bounds)or drag and drag.c==opacity_control)and T.gold or T.muted
@@ -599,7 +600,7 @@ function M.new(view,actions,existing)
    version_width=measure(actions.version,9*s)+6*s
    text(actions.version,x+width-16*s-version_width,strip_bottom+7*s,version_width,14*s,9,T.muted,310,nil,'version')
   end
-  text('W/S rows  |  A/D values  |  Q/E tabs  |  Enter edits  |  Right-click resets',left,strip_bottom+6*s,width-32*s-(version_width>0 and version_width+12*s or 0),16*s,11,T.muted)
+  text(rows_keys..' rows  |  '..values_keys..' values  |  '..tabs_keys..' tabs  |  Enter edits  |  Right-click resets',left,strip_bottom+6*s,width-32*s-(version_width>0 and version_width+12*s or 0),16*s,11,T.muted)
   local grip={x=x+4*s,y=bottom+4*s,w=20*s,h=20*s};local grip_hover=over(grip);local grip_pressed=resize~=nil
   local grip_command=rect(grip.x,grip.y,grip.w,grip.h,grip_pressed and T.pressed or grip_hover and T.field_hover or T.panel,1,320,false,'resize_grip');grip_command.resize=true;grip_command.hovered=grip_hover==true;grip_command.pressed=grip_pressed
   for i=0,2 do rect(x+(7+i*5)*s,bottom+(7+i*5)*s,3*s,3*s,focused and(grip_hover or grip_pressed)and T.gold or T.muted,1,321)end
@@ -713,14 +714,23 @@ function M.new(view,actions,existing)
    right_held=down(2);held=input.click;return
   end
   local numeric_keys={8,46,189,109,190,110};for k=48,57 do numeric_keys[#numeric_keys+1]=k end;for k=96,105 do numeric_keys[#numeric_keys+1]=k end
-  local nav_keys={81,69,87,83,65,68,13,32};for _,k in ipairs(numeric_keys)do nav_keys[#nav_keys+1]=k end
+  -- Rows and values follow the movement keys. Default W/S/A/D.
+  local nav_up,nav_down,nav_left,nav_right
+  if self.selection_keys then nav_up,nav_down,nav_left,nav_right=self.selection_keys()end
+  nav_up,nav_down,nav_left,nav_right=nav_up or 87,nav_down or 83,nav_left or 65,nav_right or 68
+  local nav_keys={81,69,nav_up,nav_down,nav_left,nav_right,13,32};for _,k in ipairs(numeric_keys)do nav_keys[#nav_keys+1]=k end
   local right_now=input.right_click;if right_now==nil then right_now=down(2)end
   if not nav_ready then for _,k in ipairs(nav_keys)do nav_held[k]=down(k);nav_time[k]=0 end;nav_ready=true;right_held=right_now end
   local function pressed(k,repeatable)
    local held_now=down(k);local old=nav_held[k];nav_held[k]=held_now;if not held_now then nav_time[k]=0;return false end
-   nav_time[k]=(nav_time[k]or 0)+math.max(0,math.min(.1,input.dt or .016));if not old then nav_time[k]=-.3;return true end;if repeatable and nav_time[k]>=.1 then nav_time[k]=0;return true end;return false
+   nav_time[k]=(nav_time[k]or 0)+math.max(0,math.min(.1,input.dt or .016));if not old then nav_time[k]=-.3;return true,true end;if repeatable and nav_time[k]>=.1 then nav_time[k]=0;return true,false end;return false
   end
-  local prev,nexttab=pressed(81,false),pressed(69,false);local up,downrow=pressed(87,true),pressed(83,true);local left,right=pressed(65,true),pressed(68,true);local enter=pressed(13,false);local space=pressed(32,false);local choose=enter or space
+  -- Tabs: Q/E, or Shift + the value keys on an arrow-key host. A number being edited keeps Shift for fine steps.
+  local prev,nexttab=pressed(81,false),pressed(69,false);if self.shift_tabs then prev,nexttab=false,false end
+  local up,downrow=pressed(nav_up,true),pressed(nav_down,true)
+  local left,left_fresh=pressed(nav_left,true);local right,right_fresh=pressed(nav_right,true)
+  if self.shift_tabs and not text_edit and(down(16)or down(161))then prev,nexttab,left,right=left_fresh,right_fresh,false,false end
+  local enter=pressed(13,false);local space=pressed(32,false);local choose=enter or space
   local numeric_pressed={};for _,k in ipairs(numeric_keys)do if pressed(k,true)then numeric_pressed[#numeric_pressed+1]=k end end
   if text_edit and text_edit.c.commit_on_blur==true and(prev or nexttab or up or downrow)then
    if not blur_number()then held=input.click;return end

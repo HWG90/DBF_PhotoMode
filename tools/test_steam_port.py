@@ -42,6 +42,7 @@ FIXTURES+=('windows_freeze_bone_probe_tests.lua',)
 FIXTURES+=('windows_freeze_physics_probe_tests.lua',)
 FIXTURES+=('windows_freeze_pose_probe_tests.lua','windows_freeze_cape_tests.lua','windows_freeze_ramp_tests.lua')
 FIXTURES+=('windows_animation_source_tests.lua',)
+FIXTURES+=('chef_host_tests.lua','chef_scene_resources_tests.lua')
 
 def run():
     from lupa.lua51 import LuaRuntime

@@ -540,7 +540,7 @@ function M.new(host,sr,deps,service)
   return host.log(message)
  end
  local settings=deps.store.new(host.config_dir)
- if deps.engine_time_only then
+ if deps.engine_time_only and not deps.depth_shaders then
   local load=settings.load
   settings.load=function(id)
    local values=load(id)
@@ -1201,7 +1201,7 @@ function M.new(host,sr,deps,service)
  local function read_options()
   if options_revision~=core.revision then
    options=deps.options.read(handle,controls)
-   if deps.engine_time_only then options.dof_mode=1;if (options.scene_shader or 1)>6 then options.scene_shader=1 end end
+   if deps.engine_time_only and not deps.depth_shaders then options.dof_mode=1;if (options.scene_shader or 1)>6 then options.scene_shader=1 end end
    options_revision=core.revision
   end
   return options
@@ -1289,7 +1289,8 @@ function M.new(host,sr,deps,service)
  local function capture_notice()
   local result=capture.result()
   if not result then return end
-  if result.state=='succeeded'then notice('Screenshot saved: '..result.output_path)
+  -- A backend that names its own files (Chef's chef.capture) says which one it wrote.
+  if result.state=='succeeded'then notice('Screenshot saved: '..(capture_backend.saved_name and capture_backend.saved_name(result.output_path)or result.output_path))
   elseif result.state=='cleanup_blocked'then notice('Screenshot cleanup unconfirmed; press Screenshot to retry')
   elseif result.state=='failed'then notice('Screenshot failed: '..tostring(result.reason))
   elseif result.state=='cancelled'then notice('Screenshot cancelled: '..tostring(result.reason))end
@@ -1476,16 +1477,20 @@ function M.new(host,sr,deps,service)
  end
  -- WASD and Q/E by key position (Z/Q/S/D and A/E on AZERTY) when the helper read the layout.
  local keys=host.key_positions or{}
+ -- Arrow-key host (Chef): a key still on its WASD default (was) becomes its arrow.
+ if host.arrow_keys==true then
+  keys={forward=38,back=40,left=37,right=39,roll_left=keys.roll_left,roll_right=keys.roll_right,arrows=true}
+ end
  local bindings={
   {id='toggle_key',type='keybind',label='Photo mode toggle',default=80},
   {id='handycam_key',type='keybind',label='Start / end Handycam',default=34,retired=122,disabled=not handycam},
   {id='focus_key',type='keybind',label='Switch camera / menu focus',default=9},
   {id='hide_controls_key',type='keybind',label='Show / hide photo controls',default=72},
   {id='lock_camera_key',type='keybind',label='Lock / unlock camera',default=76},
-  {id='forward_key',type='keybind',label='Move forward',default=keys.forward or 87},
-  {id='back_key',type='keybind',label='Move backward',default=keys.back or 83},
-  {id='left_key',type='keybind',label='Move left',default=keys.left or 65},
-  {id='right_key',type='keybind',label='Move right',default=keys.right or 68},
+  {id='forward_key',type='keybind',label='Move forward',default=keys.forward or 87,was=keys.arrows and 87},
+  {id='back_key',type='keybind',label='Move backward',default=keys.back or 83,was=keys.arrows and 83},
+  {id='left_key',type='keybind',label='Move left',default=keys.left or 65,was=keys.arrows and 65},
+  {id='right_key',type='keybind',label='Move right',default=keys.right or 68,was=keys.arrows and 68},
   {id='up_key',type='keybind',label='Move up',default=16},
   {id='down_key',type='keybind',label='Move down',default=17},
   {id='roll_left_key',type='keybind',label='Roll left',default=keys.roll_left or 81},
@@ -1726,7 +1731,7 @@ function M.new(host,sr,deps,service)
   return true
  end
  local pages=deps.options.pages(reset,return_to_player,deps.composition,{camera_controls=movement,without_ai=true,
-  without_depth_shaders=deps.engine_time_only==true,
+  without_depth_shaders=deps.engine_time_only==true and not deps.depth_shaders,
   pose_groups=deps.pose_editor and deps.pose_editor.GROUPS or nil,
   bone_select_change=function(id,value)self.bone_selection_changed(id,value)end,
   bone_angle_change=function(id,value)
@@ -1902,7 +1907,10 @@ function M.new(host,sr,deps,service)
  if deps.hosted_bindings then
   local rows={}
   for _,c in ipairs(bindings)do
-   if c.type=='keybind'and controls[c.id]and not controls[c.id].disabled then rows[#rows+1]={id=c.id,label=c.label,default=handle.get(c.id),retired=c.retired}end
+   if c.type=='keybind'and controls[c.id]and not controls[c.id].disabled then
+    local value=handle.get(c.id);if c.was and value==c.was then value=c.default end
+    rows[#rows+1]={id=c.id,label=c.label,default=value,retired=c.retired}
+   end
   end
   hosted=deps.hosted_bindings.factory.new(deps.hosted_bindings.api,rows,deps.input.key_names,host.log)
   for _,row in ipairs(rows)do if hosted.hosted(row.id)then
@@ -2091,6 +2099,17 @@ function M.new(host,sr,deps,service)
  menu.bind(handle,core.mods.dbf_freecam.pages)
  -- An input service without an OS cursor (Boot Mod Loader's engine input) moves a virtual one.
  menu.draw_pointer=type(service.capabilities)=='table'and service.capabilities.virtual_cursor==true
+ -- The panel follows the movement keys.
+ function menu.selection_keys()
+  local up,down,left,right=handle.get('forward_key'),handle.get('back_key'),handle.get('left_key'),handle.get('right_key')
+  if hosted then
+   up,down=hosted.code('forward_key')or up,hosted.code('back_key')or down
+   left,right=hosted.code('left_key')or left,hosted.code('right_key')or right
+  end
+  return up,down,left,right
+ end
+ -- Tabs are Shift + value keys there, not Q/E.
+ menu.shift_tabs=keys.arrows==true;if deps.legend then deps.legend.shift_tabs=keys.arrows==true end
  if deps.gizmos and lighting then
   menu.light_gizmos=deps.gizmos.new(light_action)
   menu.prepare_light_gizmos=function(w,h,focused,hidden)
@@ -2431,7 +2450,10 @@ function M.new(host,sr,deps,service)
     sr.Application.time_since_launch()-shot.started,capture~=nil)
   else
    menu.draw(width,height,self.mode=='menu'and not handoff,capturing or o.hide_controls or o.clean_view or handoff~=nil,
-    {focus=deps.legend.binding_label('focus_key',handle),hide=deps.legend.binding_label('hide_controls_key',handle),slowmo=deps.legend.binding_label('slowmo_key',handle)})
+    {focus=deps.legend.binding_label('focus_key',handle),hide=deps.legend.binding_label('hide_controls_key',handle),slowmo=deps.legend.binding_label('slowmo_key',handle),
+     rows=deps.legend.binding_label('forward_key',handle)..'/'..deps.legend.binding_label('back_key',handle),
+     values=deps.legend.binding_label('left_key',handle)..'/'..deps.legend.binding_label('right_key',handle),
+     tabs=menu.shift_tabs and('Shift+'..deps.legend.binding_label('left_key',handle)..'/'..deps.legend.binding_label('right_key',handle))or'Q/E'})
   end
   return false
  end
@@ -2894,6 +2916,7 @@ function M.new(host,sr,deps,service)
   local retired,reason=close_decorative(true)
   if not retired then pending_cleanup=true;self.state='closing';notice(reason);return false,reason end
   if hosted and deps.legend.hosted_label==hosted.label then deps.legend.hosted_label=nil end
+  if deps.legend then deps.legend.shift_tabs=nil end
   disposed=true;handle.unregister();return true
  end
  if deps.handycam_ads and deps.camera_signals and camera.yield_view and camera.resume_view then

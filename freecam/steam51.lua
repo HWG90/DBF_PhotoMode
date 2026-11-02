@@ -33,6 +33,8 @@ entry={live_lua_api=1,name='War Journalist',
    pick=mod.require('src/steam_pick.lua')}
   deps.diagnostics=engine_host and not mod.release_mode
   deps.engine_time_only=engine_host
+  -- Hosts trying the depth shaders keep those rows.
+  deps.depth_shaders=loader.depth_shaders==true
   if engine_host then deps.freeze_rate,deps.freeze_rate_sample=mod.require('src/windows_hover_freeze.lua').new(stingray,mod.log,true)end
   if engine_host then
    deps.subject_tracking=mod.require('src/windows_subject_tracking.lua')
@@ -58,12 +60,13 @@ entry={live_lua_api=1,name='War Journalist',
   if loader.bindings then deps.hosted_bindings={api=loader.bindings,window=loader.bindings.window,factory=mod.require('src/steam_bindings.lua')}end
   deps.load_scene=function(sr)
    if engine_host then
-    local resources=mod.require('src/engine_scene_resources.lua').new(sr,mod,mod.require('src/engine_scene_registry.lua'),selftest and selftest.local_binding_probe)
+    -- A host without WJL brings its own scene resources.
+    local resources=loader.scene_resources and loader.scene_resources(sr)or mod.require('src/engine_scene_resources.lua').new(sr,mod,mod.require('src/engine_scene_registry.lua'),selftest and selftest.local_binding_probe)
     local overlay=mod.require('src/steam_scene_overlay.lua').new(sr,resources.depth,true,{present=resources.registered},resources.color)
     local folder=assert(os.getenv('APPDATA')):gsub('\\','/')..'/Arrowhead/Helldivers2'
     local sampler,why=mod.require('src/steam_focus_sampler.lua').new(sr,resources.depth,resources.focus_descriptor,
      {now=sr.Application.time_since_launch,measure=deps.operation_clock,pid=sr.Application.process_id(),directory=folder,mkdir=function(path)return path==folder end,
-      auto_budget_ms=8,log=mod.log})
+      auto_budget_ms=8,log=mod.log,capture=loader.focus_capture})
     assert(sampler,why)
     local scene=mod.require('src/steam_scene.lua').new(sr,resources,overlay,sampler,sr.Application.time_since_launch,deps.pick.new(sr))
     local release=scene.release

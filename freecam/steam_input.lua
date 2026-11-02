@@ -4,6 +4,7 @@ local M={}
 local names={[8]='backspace',[9]='tab',[13]='enter',[16]='left shift',[17]='left ctrl',[18]='left alt',[19]='pause',
  [20]='caps lock',[27]='esc',[32]='space',[33]='page up',[34]='page down',[35]='end',[36]='home',
  [37]='left',[38]='up',[39]='right',[40]='down',[45]='insert',[46]='delete',
+ [160]='left shift',[161]='right shift',[162]='left ctrl',[163]='right ctrl',[164]='left alt',[165]='right alt',
  [186]='semicolon',[187]='equal',[188]='comma',[189]='minus',[190]='period',[191]='slash',
  [192]='backtick',[219]='open bracket',[220]='backslash',[221]='close bracket',[222]='quote'}
 for code=48,57 do names[code]=string.char(code)end

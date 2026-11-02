@@ -50,7 +50,8 @@ function M.new(frame)
         desired.z=length>0 and input.z/length*speed or 0
         desired.yaw=input.yaw*turn+math.rad(input.dx*options.mouse_sensitivity)/dt
         desired.pitch=input.pitch*turn+math.rad(input.dy*options.mouse_sensitivity)/dt
-        desired.roll=input.roll*turn;desired.zoom=math.rad(input.zoom*45)
+        desired.roll=input.roll*math.rad(options.roll_speed or options.turn_speed)
+        desired.zoom=math.rad(input.zoom*(options.zoom_speed or 45))
         local tau=math.max(.001,(options.smoothing_strength or 50)*.003)
         local alpha=options.camera_smoothing and (options.smoothing_strength or 50)>0 and 1-math.exp(-dt/tau) or 1
         for _,key in ipairs(CHANNELS) do
@@ -63,7 +64,10 @@ function M.new(frame)
         local moved = velocity.x~=0 or velocity.y~=0 or velocity.z~=0
         if not moved and yaw==0 and pitch==0 and roll==0 and fov==view.fov then return false end
         rotate(yaw,pitch,roll)
-        if moved then move(velocity.x*dt,velocity.y*dt,velocity.z*dt) end
+        if moved then
+            move(velocity.x*dt,velocity.y*dt,options.vertical_world and 0 or velocity.z*dt)
+            if options.vertical_world then view.position[3]=view.position[3]+velocity.z*dt end
+        end
         view.fov=fov
         return true
     end
