@@ -63,6 +63,8 @@ function M.new(sr,depth,verify,options)
    if ok and finite(value)and value>=0 then return value end
   end
   local guard=assert(verify)
+  -- A loader that saves the depth file itself (Chef): ask it, then wait until the file is whole.
+  local source=options.capture;assert(source==nil or type(source)=='table'and type(source.request)=='function','Focus capture source invalid')
   local interval=options.interval or 1;assert(finite(interval)and interval>=.5 and interval<=60,'Focus cooldown must be at least 0.5 seconds')
   local auto_budget=options.auto_budget_ms
   assert(auto_budget==nil or finite(auto_budget)and auto_budget>0,'Invalid automatic depth budget')
@@ -77,7 +79,9 @@ function M.new(sr,depth,verify,options)
   assert(type(folder)=='string'and folder:match('^[A-Za-z]:/')and not folder:find('%z')and not folder:find('[\r\n]')and not folder:find('/%.%./'),'Focus cache directory must be absolute')
   local path=folder..'/depth-'..tostring(pid)..'-'..string.format('%.0f',clock()*1000)..'-'..sequence..'.dds'
   local self={now=clock,interval=interval,path=path,status='Focus sampling ready'};local owned=false;local cached;local next_capture=0;local last_error;local identity;local display_generation;local display_stable_at
+  local pending
   local function remove()
+   if source then owned=false;cached=nil;pending=nil;return true end
    if owned then
     local done,why=os.remove(path);local check=io.open(path,'rb');if check then check:close();return false,why or'Focus cache cleanup refused'end
     owned=false;cached=nil
@@ -119,12 +123,20 @@ function M.new(sr,depth,verify,options)
    if fresh and now<next_capture and cached and now>cached.captured_at+.001 then
     return nil,'Selection waiting for fresh depth',{pending=true,retry_at=next_capture}
    end
-   if now>=next_capture then
+   if now>=next_capture and not pending then
     next_capture=now+interval;local cleared,why=remove();if not cleared then return nil,why end
-    local prior=io.open(path,'rb');if prior then prior:close();return nil,'Focus cache path already belongs to another file'end
-    if not((options.directory or mkdir(localdir..'/DBF_PhotoMode'))and mkdir(folder))then return nil,'Focus cache directory unavailable'end
-    local start=stamp();owned=true
-    local captured,error=pcall(sr.Application.save_render_target,'linear_depth',path)
+    local start,captured,error,got
+    if source then
+     start=stamp();got,error=source.request()
+     -- The loader's one-a-second clock can stand still while the world is frozen. Wait, don't fail.
+     if got==nil then next_capture=now+.25;self.status='Focus depth capture waiting: '..tostring(error);return nil,self.status,{pending=true,retry_at=next_capture}end
+     captured=true
+    else
+     local prior=io.open(path,'rb');if prior then prior:close();return nil,'Focus cache path already belongs to another file'end
+     if not((options.directory or mkdir(localdir..'/DBF_PhotoMode'))and mkdir(folder))then return nil,'Focus cache directory unavailable'end
+     start=stamp();owned=true
+     captured,error=pcall(sr.Application.save_render_target,'linear_depth',path)
+    end
     local measured=stamp();local finish=clock()
     self.last_capture_ms=start and measured and measured>=start and(measured-start)*1000 or -1
     captures=captures+1;max_capture=math.max(max_capture,self.last_capture_ms)
@@ -136,7 +148,21 @@ function M.new(sr,depth,verify,options)
     elseif captures==1 and options.log then options.log(string.format('Depth readback first sample: %.3f ms',self.last_capture_ms))end
     next_capture=finish+math.max(interval,math.max(0,self.last_capture_ms)/1000*3)
     if not captured then remove();last_error='Focus readback failed: '..tostring(error);self.status=last_error;return nil,last_error end
-    cached={captured_at=finish,capture_ms=self.last_capture_ms};identity=meta.identity;last_error=nil
+    if source then path=got;self.path=got;owned=true;pending={til=finish+(source.wait or 5)}
+    else cached={captured_at=finish,capture_ms=self.last_capture_ms}end
+    identity=meta.identity;last_error=nil
+   end
+   if pending then
+    local file=io.open(path,'rb');local whole=false
+    if file then
+     local size=file:seek('end');local head=file:seek('set',0)==0 and file:read(148);file:close()
+     whole=type(head)=='string'and #head==148 and head:sub(1,4)=='DDS 'and size==148+integer(head,16)*integer(head,12)*4
+    end
+    if not whole then
+     if now>=pending.til then remove();last_error='Focus depth file was not whole in time';self.status=last_error;return nil,last_error end
+     self.status='Focus depth capture pending';return nil,self.status,{pending=true,retry_at=now+.1}
+    end
+    cached={captured_at=now,capture_ms=self.last_capture_ms};pending=nil
    end
    if not cached then return nil,last_error or'Focus readback cooling down',not last_error and{pending=true,retry_at=next_capture}or nil end
    local file=io.open(path,'rb');if not file then remove();cached=nil;last_error='Focus depth file was not written';self.status=last_error;return nil,last_error end

@@ -1,13 +1,9 @@
--- Chef Shared Loader host pieces for the 1.3.3 runtime (tools/build_chef_archive.py).
--- Plain Lua 5.1 on Chef's locked-down environment: no os.rename or os.remove, no
--- save_render_target, and the loader's shared mouse hold instead of the engine axis.
+-- Chef Shared Loader host bits for the 1.3.3 runtime. Plain Lua 5.1 in Chef's sandbox.
 local M={}
 local function finite(n)return type(n)=='number'and n==n and math.abs(n)<1e12 end
 
--- Files. Chef gives mods neither os.rename nor os.remove, and every 1.3.3 store writes
--- a .tmp and renames it over its file. Here a .tmp/.bak stays in memory, and the rename
--- that would replace the file writes it straight in (not atomic). A real file "moved"
--- aside as a backup stays where it is; the next rename overwrites it.
+-- Files. Chef has no os.rename or os.remove, and the stores write a .tmp then rename it.
+-- Here the .tmp stays in memory and the rename writes the file directly.
 local STAGED={tmp=true,bak=true,['replace-backup']=true}
 function M.files(open)
  assert(type(open)=='function','io.open required')
@@ -58,16 +54,14 @@ function M.files(open)
  function fs.staged()local n=0;for _ in pairs(staged)do n=n+1 end;return n end
  return fs
 end
--- io and os for the module scope: the real ones with the file calls above.
+-- io and os with the file calls above swapped in.
 function M.scope(io,os,fs)
  local i=setmetatable({open=fs.open},{__index=io})
  local o=setmetatable({rename=fs.rename,remove=fs.remove},{__index=os})
  return i,o
 end
 
--- Screenshots through chef.capture (Chef 1.4.0+, granted to War Journalist by name).
--- The loader names and writes the DDS itself, in its folder; the job keeps the path
--- Photo Mode asked for, and saved_name gives the file the loader wrote.
+-- Screenshots through chef.capture. The loader names and writes the DDS; saved_name says what it wrote.
 function M.capture(chef,folder)
  if type(chef)~='table'or type(chef.capture)~='function'or type(folder)~='string'or folder==''then return nil end
  folder=folder:gsub('[/\\]+$','')
@@ -97,10 +91,34 @@ function M.capture(chef,folder)
  return self
 end
 
--- Input. engine_input.lua moves Photo Mode's virtual cursor with the engine's mouse axis.
--- Under Chef the loader holds that axis while Photo Mode owns the mouse (chef.hold_mouse),
--- so the player's aim stays put, and chef.mouse_delta gives the movement instead. While
--- the loader's own menu is open nothing reaches Photo Mode: no motion, clicks or wheel.
+-- Depth through chef.capture('depth'), Chef 1.4.2 on. The loader writes linear_depth as a DDS over a
+-- few frames; the caller waits until the file is whole. `last` is the newest file asked for, so the
+-- scene check can prove the format from it without asking again. Older loaders would save a screenshot.
+local function at_least(version,major,minor,patch)
+ local a,b,c=tostring(version):match('^(%d+)%.(%d+)%.?(%d*)')
+ if not a then return false end
+ a,b,c=tonumber(a),tonumber(b),tonumber(c)or 0
+ if a~=major then return a>major end
+ if b~=minor then return b>minor end
+ return c>=patch
+end
+function M.depth(chef,folder)
+ if type(chef)~='table'or type(chef.capture)~='function'or type(folder)~='string'or folder==''then return nil end
+ if not at_least(chef.loader_version,1,4,2)then return nil end
+ folder=folder:gsub('[/\\]+$','')
+ local self={async=true,wait=5}
+ function self.request()
+  local called,name,why=pcall(chef.capture,'depth')
+  if not called then return nil,tostring(name)end
+  if type(name)~='string'or name==''then return nil,tostring(why or'Chef Shared Loader saved no depth picture')end
+  self.last=folder..'/'..name
+  return self.last
+ end
+ return self
+end
+
+-- Input. The loader holds the mouse while Photo Mode owns it, so the aim stays put, and
+-- chef.mouse_delta gives the movement. Nothing gets through while the loader's own menu is open.
 function M.input(chef,sr,log,engine_input)
  local Mouse=sr.Mouse
  local held,mouse_axis,reason=false,nil,nil
@@ -158,8 +176,21 @@ function M.input(chef,sr,log,engine_input)
   return sample,why
  end
  function service.held()return held end
- -- Called when the addon stops: the loader lets go too, but say so ourselves.
+ -- Let go when the addon stops.
  function service.dispose()let_go()end
  return service
+end
+
+-- Drawing. Chef never calls the mod's global render, so addon.render() calls whatever Photo Mode put there.
+function M.render(G,log)
+ local base=rawget(G,'render')
+ if type(base)~='function'then base=function()end;rawset(G,'render',base)end
+ local told=false
+ return function()
+  local current=rawget(G,'render')
+  if current==base or type(current)~='function'then return end
+  if not told then told=true;if log then log("Chef render: Photo Mode draws through the loader's render hook")end end
+  return current()
+ end
 end
 return M

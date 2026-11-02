@@ -144,5 +144,29 @@ assert(calls==before+1 and budgeted.metrics().automatic_suspended,'Automatic ret
 assert(budgeted.sample(.5,.5,true)==5 and calls==before+2,'Explicit clicks remain available')
 assert(budgeted.release());now=now+2
 assert(not budgeted.sample(.5,.5,false,true)and calls==before+2,'Menu reopen must not rearm expensive continuous reads')
+-- A loader that saves the depth file itself (Chef 1.4.2): ask it, then wait until the file is whole.
+local asked,refuse=0,nil
+-- (the loader takes the old file away before the engine writes the new one)
+local source={wait=5,request=function()asked=asked+1;if refuse then return nil,refuse end;files['C:/game/goose_war_journalist_depth_01.dds']=nil;return'C:/game/goose_war_journalist_depth_01.dds'end}
+now=70;local removed_before=#removed;local chef_config={now=config.now,mkdir=config.mkdir,pid=7,radius=0,capture=source}
+local hosted=assert(factory.new(sr,nil,guard,chef_config));before=calls
+local v,why,pending=hosted.sample(.5,.5)
+assert(not v and asked==1 and calls==before and pending and pending.pending and pending.retry_at>now and why:find('pending',1,true),'The loader is asked, the engine is not, and the answer waits')
+files['C:/game/goose_war_journalist_depth_01.dds']=dds(5,5,gradient):sub(1,100);now=70.1
+v,why,pending=hosted.sample(.5,.5);assert(not v and asked==1 and pending and pending.pending,'A part-written file is not read')
+files['C:/game/goose_war_journalist_depth_01.dds']=dds(5,5,gradient);now=70.2
+assert(hosted.sample(.5,.5)==23 and asked==1,'Whole: read')
+now=70.5;assert(hosted.sample(0,0)==1 and asked==1,'Cached inside the cooldown')
+-- Chef's one-a-second clock can stand still while the world is frozen: a refusal waits, it does not fail.
+now=71.3;refuse='one capture a second at most';v,why,pending=hosted.sample(.5,.5)
+assert(not v and asked==2 and why:find('one capture a second',1,true)and why:find('waiting',1,true)and pending and pending.pending and math.abs(pending.retry_at-71.55)<1e-9,'A refusal waits a moment and says why')
+now=71.6;v,why,pending=hosted.sample(.5,.5);assert(not v and asked==3 and pending and pending.pending,'Asked again after the short wait')
+now=72.5;refuse=nil;v,why,pending=hosted.sample(.5,.5);assert(not v and asked==4 and pending.pending,'The old file is gone: wait for the new one')
+files['C:/game/goose_war_journalist_depth_01.dds']=dds(5,5,gradient);now=72.6;assert(hosted.sample(.5,.5)==23)
+assert(hosted.metrics().captures==2,'Refusals are not counted as captures')
+now=74;asked=0;v,why,pending=hosted.sample(.5,.5);assert(not v and asked==1 and pending.pending)
+for t=74.5,79,.5 do now=t;v,why,pending=hosted.sample(.5,.5)end
+assert(not v and why:find('not whole',1,true)and pending==nil and asked==1,'Given up after the wait, asked once')
+assert(hosted.release()and #removed==removed_before and calls==before,'The loader owns its file: nothing removed, the engine never called')
 io.open,os.remove,os.getenv=original_open,original_remove,original_getenv
 print('Focus sampler: R32_FLOAT validation, top-origin median depth, sky rejection, bounded cleanup, adaptive cooldown and two-second stable HDR/SDR display-generation pause passed; no game process accessed')

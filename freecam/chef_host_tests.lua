@@ -1,7 +1,7 @@
--- chef_host.lua: Chef-safe file replacement, chef.capture jobs and the held mouse.
+-- chef_host.lua: files, screenshots, the held mouse, drawing.
 local host=dofile('freecam/chef_host.lua')
 
--- Files: a .tmp written and renamed over its file lands in the file; nothing else is renamed.
+-- Files: a .tmp renamed over its file lands in the file.
 do
  local disk,opens={},{}
  local function open(path,mode)
@@ -20,7 +20,7 @@ do
  assert(fs.rename('C:/game/x.ini.tmp','C:/game/x.ini')==true and disk['C:/game/x.ini']=='a=1\nb=2\n')
  assert(fs.staged()==0 and fs.remove('C:/game/x.ini.bak')==true)
  assert(fs.open('C:/game/x.ini','rb'):read()=='a=1\nb=2\n')
- -- vendor/store.lua through the scope's io and os saves and loads its values.
+ -- store.lua saves and loads through the scope.
  local scope_io,scope_os=host.scope(io,os,fs)
  local env=setmetatable({io=scope_io,os=scope_os},{__index=_G})
  local chunk=assert(loadfile('freecam/vendor/store.lua'));setfenv(chunk,env)
@@ -33,7 +33,7 @@ do
  for _,line in ipairs(opens)do assert(not line:find('%.tmp')and not line:find('%.bak'),'Disk saw a staged file: '..line)end
 end
 
--- Screenshots: the loader's file name is reported, the job keeps Photo Mode's identity.
+-- Screenshots: the loader's file name comes back.
 do
  assert(host.capture({},'C:/game')==nil,'No chef.capture: no service')
  local n,refuse=0,nil
@@ -53,7 +53,23 @@ do
  assert(reply.state=='failed'and reply.reason==refuse,'A refusal is reported as the loader said it')
 end
 
--- Input: the hold is taken with the lease and let go with it; the held cursor moves by chef.mouse_delta.
+-- Depth: chef.capture('depth') from Chef 1.4.2 on. Older loaders get no depth service.
+do
+ assert(host.depth({capture=function()end,loader_version='1.4.1'},'C:/game')==nil,'1.4.1 has no depth capture')
+ assert(host.depth({loader_version='1.4.2'},'C:/game')==nil,'No chef.capture: no service')
+ local words,refuse={},nil
+ local chef={loader_version='1.4.2',capture=function(what)words[#words+1]=what;if refuse then return nil,refuse end;return'goose_war_journalist_depth_01.dds'end}
+ local depth=host.depth(chef,'C:/game/')
+ assert(depth and depth.async==true and depth.wait==5)
+ assert(depth.last==nil,'Nothing asked yet')
+ assert(depth.request()=='C:/game/goose_war_journalist_depth_01.dds'and words[1]=='depth')
+ assert(depth.last=='C:/game/goose_war_journalist_depth_01.dds','last is the newest file asked for')
+ refuse='one capture a second at most';local path,why=depth.request();assert(path==nil and why==refuse and depth.last=='C:/game/goose_war_journalist_depth_01.dds','A refusal leaves last alone')
+ chef.capture=function()error('boom')end;path,why=depth.request();assert(path==nil and why:find('boom',1,true))
+ assert(host.depth({capture=function()end,loader_version='1.5.0'},'C:/game')and host.depth({capture=function()end,loader_version='2.0'},'C:/game'),'Newer loaders keep it')
+end
+
+-- Input: the hold comes and goes with the lease; the cursor moves by chef.mouse_delta.
 do
  local engine_input=dofile('freecam/engine_input.lua')
  local axis_reads=0
@@ -72,7 +88,7 @@ do
  assert(sample.buttons==0 and sample.dx==0 and sample.dy==0 and sample.x==970 and sample.y==520,'Nothing reaches Photo Mode under the loader menu')
  menu=false
  assert(service.release(token)==true and holds[2]==false and not service.held(),'The hold goes with the lease')
- -- A loader that refuses the hold: the engine axis keeps working.
+ -- Hold refused: the engine axis still works.
  local refused={hold_mouse=function()return false,'no dead zone'end,mouse_delta=function()return 0,0 end}
  local fallback=host.input(refused,sr,function(s)lines[#lines+1]=s end,engine_input)
  token=assert(fallback.acquire('dbf_freecam','menu'))
@@ -81,4 +97,20 @@ do
  assert(said,'The refusal is logged')
  fallback.release(token)
 end
-print('Chef host: staged settings writes, chef.capture jobs and the held mouse passed')
+-- Drawing: addon.render() calls what Photo Mode put in the global.
+do
+ local G={};local lines={}
+ local hook=host.render(G,function(s)lines[#lines+1]=s end)
+ local base=rawget(G,'render')
+ assert(type(base)=='function','A mod without a render global gets one to wrap')
+ hook();assert(#lines==0,'Nothing to draw while Photo Mode is closed')
+ local draws=0;local prior=rawget(G,'render')
+ rawset(G,'render',function(...)draws=draws+1;return prior(...)end)
+ hook();hook()
+ assert(draws==2,'Each loader render reaches the Photo Mode wrapper')
+ assert(#lines==1,'The first forwarded render is logged once')
+ rawset(G,'render',prior);hook();assert(draws==2,'A restored render is left alone')
+ local found=function()end;local H={render=found}
+ host.render(H,nil);assert(rawget(H,'render')==found,'A render the loader gave is kept as the base')
+end
+print('Chef host: all tests passed')

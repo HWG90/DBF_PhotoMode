@@ -17,6 +17,9 @@ SANDBOX_BLOBS = {
     '7876938935a5054ad774ee5a021e3850740008e6': '1.3.0/1.3.1',
     'ebdcfafc5d6d4914fbf6e240f449bf8b324b3e3f': '1.4.0',
     '6ee9f40688b77a533cbf9f5744aa29210e67572e': '1.4.1',
+    '9091f5c1037cd3ca6199d07054416059c58c92ec': '1.4.2 Test 1 (cut from the bundle)',
+    'f97c27cb12f6c3f5279fc1dd727aefbffd9f180c': '1.5.0',
+    '778ff48c34ef0ebdd2f3dfb4e5145310b62e41a4': '1.5.1',
 }
 FIXTURES = ['chef/runtime_tests.lua', 'chef/camera_tests.lua', 'chef/controls_tests.lua', 'chef/simulation_tests.lua',
             'chef/shots_tests.lua', 'chef/bloom_tests.lua', 'chef/composition_tests.lua', 'chef/lights_tests.lua',

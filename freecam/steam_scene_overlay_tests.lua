@@ -127,7 +127,6 @@ assert(cold_created==before)
 print('Windows global depth: withdrawn candidate refuses before native GUI work')
 
 assert(not pcall(factory.paths,'indexed-global-v2'),'Portable.8 global binding must stay withdrawn')
-
 -- Explicit local diagnostic changes only the GUI's owning world. Each switch
 -- retires the old GUI; unchanged scopes reuse their retained draw and binding.
 do
