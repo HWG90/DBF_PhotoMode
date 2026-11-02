@@ -5,7 +5,7 @@ laid out as vc/{bin/x64,include,lib/x64} and sdk/include/{ucrt,um,shared,winrt,c
 sdk/lib/{um,ucrt}/x64, and llvm-rc compiles the version resource and manifest. LLL's
 Visual Studio builder gives identical code but links no resources, so it is not used."""
 from pathlib import Path
-import argparse,difflib,hashlib,json,os,re,shutil,subprocess
+import argparse,base64,difflib,hashlib,json,os,re,shutil,subprocess
 
 root=Path.cwd()
 parser=argparse.ArgumentParser(description=__doc__)
@@ -793,4 +793,4 @@ binary.write_bytes(built.read_bytes())
 print(binary)
 
 # One helper file under one name; the game checks its bytes against sha256 before each start.
-(root/'freecam/wjl_helper_payload.lua').write_text('return {name="'+NAME+'.exe",sha256='+json.dumps(hashlib.sha256(binary.read_bytes()).hexdigest())+',hex='+json.dumps(binary.read_bytes().hex())+'}\n')
+(root/'freecam/wjl_helper_payload.lua').write_text('return {name="'+NAME+'.exe",sha256='+json.dumps(hashlib.sha256(binary.read_bytes()).hexdigest())+',base64='+json.dumps(base64.b64encode(binary.read_bytes()).decode())+'}\n')

@@ -334,7 +334,8 @@ return log,table.concat(blocked,'\n'),table.concat(logs,'\n'),keys,registered['w
 
 def numbers(version):
     """A version's leading number parts, as Chef's gate reads them ('1.4.2-test1' is 1.4.2)."""
-    match = re.match(r'(\d+)\.(\d+)(?:\.(\d+))?', version)
+    match = re.match(r'(\d+)(?:\.(\d+))?(?:\.(\d+))?', version)
+    assert match, 'Not a version: ' + version
     return tuple(int(part or 0) for part in match.groups())
 
 
@@ -368,11 +369,11 @@ def verify_chef(text, sandbox, chef_version):
 
 
 GATE = r'''
-local TEXT,VERSION=...
+local TEXT,VERSION,NO_FOLDER=...
 local touched=function(name)return setmetatable({},{__index=function(_,k)error(name..'.'..tostring(k)..' touched below the minimum Chef')end})end
 local env=setmetatable({io=touched('io'),os=touched('os'),stingray={}},{__index=_G})
 local lines={}
-local chef={loader_version=VERSION,log_directory='C:\\game',title=function()end,log=function(fmt,...)lines[#lines+1]=string.format(fmt,...)end}
+local chef={loader_version=VERSION,log_directory=not NO_FOLDER and'C:\\game'or nil,title=function()end,log=function(fmt,...)lines[#lines+1]=string.format(fmt,...)end}
 local chunk=assert(loadstring(TEXT,'=war_journalist'));setfenv(chunk,env)
 local addon=chunk(chef)
 assert(type(addon)=='table','The gate returns hooks')
@@ -382,11 +383,18 @@ return table.concat(lines,'\n'),#lines
 
 
 def verify_chef_gate(text):
-    """Below Chef 1.4.0 (or with no version) the package says so once and stays off."""
-    from lupa.lua51 import LuaRuntime
+    """Below Chef 1.4.0 (or with no version) the package says so once and stays off. A loader
+    that passes no log folder is not Chef: the package stops with a message saying so."""
+    from lupa.lua51 import LuaError, LuaRuntime
     for version in ('1.3.9', None, '1.3.1'):
         lines, count = LuaRuntime().execute(GATE, text, version)
         assert count == 1 and lines == 'War Journalist needs Chef Shared Loader ' + MINIMUM_CHEF + ' or newer', (version, lines)
+    try:
+        LuaRuntime().execute(GATE, text, '1.5.1', True)
+    except LuaError as error:
+        assert 'War Journalist for Chef needs Chef Shared Loader' in str(error), error
+    else:
+        raise AssertionError('A Chef table without a log folder was accepted')
 
 
 def verify_key_carry_over(text):
@@ -436,8 +444,20 @@ NAMES = ({f'Assets/{a}{s}' for a in ('9ba626afa44a3aa3.patch_0', 'ee6b1ba7e22d71
 HELPER_SHA256 = 'a6f5f3f6aede55b22627911b0c4429169e98d4378b7ca934cced0e7fa67723ef'
 
 
-def verify_zip(path, release):
-    """The built ZIP: its exact files and sums, the Arsenal manifest, the addon, the assets."""
+def zip_mode(addon, release):
+    """Whether a built addon is a release. release=None reads it from the addon; True or False
+    must agree with it."""
+    built = 'local RELEASE_MODE=true\n' in addon
+    assert ('SOURCES["src/windows_dev_reload.lua"]' in addon) == (not built), 'Live reload only in dev builds'
+    if release is not None and release != built:
+        raise AssertionError('This ZIP is ' + ('a release, but --release was not given' if built else
+                                               'a development build, but --release was given'))
+    return built
+
+
+def verify_zip(path, release=None):
+    """The built ZIP: its exact files and sums, the Arsenal manifest, the addon, the assets.
+    release=None reads the build kind from the ZIP."""
     import hashlib
     import json
     import zipfile
@@ -445,6 +465,8 @@ def verify_zip(path, release):
     sha256 = lambda data: hashlib.sha256(data).hexdigest()
     with zipfile.ZipFile(path) as z:
         names = set(z.namelist())
+        addon = z.read('War Journalist/b42c756875139ce2.lua').decode()
+        release = zip_mode(addon, release)
         assert names - {'RELEASE-NOTES.md'} == NAMES and (not release or 'RELEASE-NOTES.md' in names), names ^ NAMES
         assert z.testzip() is None
         for line in z.read('FILES-SHA256.txt').decode().splitlines():
@@ -453,12 +475,9 @@ def verify_zip(path, release):
         m = json.loads(z.read('manifest.json'))
         assert m['Guid'] == GUID and m['Name'].startswith('War Journalist '), m
         assert m['Options'] == [{'Name': OPTION, 'Description': 'Photo Mode and its assets.', 'Include': [OPTION, 'Assets']}], m['Options']
-        addon = z.read('War Journalist/b42c756875139ce2.lua').decode()
         verify_shape(addon)
         check_size(addon)
-        assert ('local RELEASE_MODE=true' in addon) == release
-        assert ('SOURCES["src/windows_dev_reload.lua"]' in addon) == (not release), 'Live reload only in dev builds'
         assert HELPER_SHA256 in addon, 'The committed WJL helper ships'
         for name, digest in ASSETS_SHA256.items():
             assert sha256(z.read('Assets/' + name)) == digest, name
-        return {'files': len(names), 'addon_bytes': len(addon.encode())}
+        return {'release': release, 'files': len(names), 'addon_bytes': len(addon.encode())}

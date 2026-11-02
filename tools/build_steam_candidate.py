@@ -36,6 +36,7 @@ MODULES+=('windows_freeze_physics_probe.lua',)
 MODULES+=('windows_freeze_pose_probe.lua','windows_freeze_cape.lua')
 MODULES+=('engine_render_contract.lua','engine_scene_resources.lua','engine_scene_registry.lua','wjl_helper_payload.lua','wjl_helper_startup.lua','windows_lens.lua','engine_cursor_gate.lua','windows_input_service.lua','vendor/wjl_transport.lua','vendor/wjl_capture.lua','vendor/wjl_input_service.lua')
 MODULES+=('windows_capture.lua',)
+MODULES+=('base64.lua',)
 # Chef Shared Loader's host, in the one package; compiled only when Chef runs it.
 CHEF_ONLY=('chef_host.lua','chef_scene_resources.lua')
 MODULES+=CHEF_ONLY

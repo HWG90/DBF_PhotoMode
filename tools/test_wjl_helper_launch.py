@@ -67,6 +67,7 @@ def main():
   g.os.getenv=lambda name:{'APPDATA':appdata,'LOCALAPPDATA':localdata}.get(name)
   startup=lua.execute((ROOT/'freecam/wjl_helper_startup.lua').read_text())
   payload=lua.execute((ROOT/'freecam/wjl_helper_payload.lua').read_text())
+  decoder=lua.execute((ROOT/'freecam/base64.lua').read_text())
   # The installed build, as the shipped contract names it to the helper.
   build={'exe_sha256':hashlib.sha256((args.game/'bin/helldivers2.exe').read_bytes()).hexdigest(),
          'dll_sha256':hashlib.sha256((args.game/'data/game/game.dll').read_bytes()).hexdigest()}
@@ -75,7 +76,7 @@ def main():
                       {'file':'bundles.00.nxa','offset':3,'size':len(chunk),'sha256':hashlib.sha256(chunk).hexdigest()}]}
   def launch(pid):
    current=contract if not isinstance(contract,dict)else lua.table_from(contract,recursive=True)
-   mod=lua.table_from({'require':lambda name:current if name=='src/engine_render_contract.lua'else payload})
+   mod=lua.table_from({'require':lambda name:current if name=='src/engine_render_contract.lua'else decoder if name=='src/base64.lua'else payload})
    config=startup['config'](mod,lua.table_from({'Application':lua.table_from({'process_id':lambda:pid})}))
    assert 'powershell'not in config['launcher'].lower()
    command=temporary/'launcher.txt';command.write_bytes(config['launcher'].encode())
@@ -256,7 +257,7 @@ def main():
   # error and returns. start would have shown a dialog and waited on it.
   def missing_launch():
    current=lua.table_from(contract,recursive=True)if isinstance(contract,dict)else contract
-   mod=lua.table_from({'require':lambda name:current if name=='src/engine_render_contract.lua'else payload})
+   mod=lua.table_from({'require':lambda name:current if name=='src/engine_render_contract.lua'else decoder if name=='src/base64.lua'else payload})
    made=startup['config'](mod,lua.table_from({'Application':lua.table_from({'process_id':lambda:good_pid})}))
    (settings/payload['name']).unlink()
    command=temporary/'launcher.txt';command.write_bytes(made['launcher'].encode())

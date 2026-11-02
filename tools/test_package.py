@@ -49,9 +49,65 @@ def test_size_cap():
     try:
         check_size('x' * 11, limit=10)
     except AssertionError as error:
-        assert "over Chef's 4 MiB reading limit: 11 bytes > 10" in str(error), error
+        assert 'Bundle is 11 bytes, over the 10-byte cap (Chef 1.5.1 reads at most 4 MiB)' in str(error), error
     else:
         raise AssertionError('size cap did not fire')
+
+
+def test_versions():
+    """Chef's gate reads a version's leading number parts; one or two parts mean zeros after."""
+    assert fixtures.numbers('1.4.2-test1') == (1, 4, 2)
+    assert fixtures.numbers('1.10.0') == (1, 10, 0)
+    assert fixtures.numbers('1.5') == (1, 5, 0)
+    assert fixtures.numbers('2') == (2, 0, 0)
+
+
+def test_zip_mode():
+    """A built ZIP says whether it is a release; --release only has to agree with it."""
+    release, dev = 'local RELEASE_MODE=true\n', 'local RELEASE_MODE=false\nSOURCES["src/windows_dev_reload.lua"]=1\n'
+    assert fixtures.zip_mode(release, None) is True and fixtures.zip_mode(dev, None) is False
+    assert fixtures.zip_mode(release, True) is True
+    try:
+        fixtures.zip_mode(dev, True)
+    except AssertionError as error:
+        assert 'a development build, but --release was given' in str(error), error
+    else:
+        raise AssertionError('a dev ZIP passed as a release')
+
+
+def test_embedded_binaries():
+    """The helper and the scene registry ship as base64; each decodes to its pinned bytes (the
+    registry is the shipped ee6b1ba7e22d71ed.patch_0 asset)."""
+    import base64
+    import hashlib
+    import re
+    from package_head import ASSETS_SHA256
+    def field(path, name):
+        text = (ROOT / 'freecam' / path).read_text()
+        match = re.search(name + r'="([^"]*)"', text)
+        assert match, f'{path} has no {name} field'
+        return match.group(1)
+    helper = base64.b64decode(field('wjl_helper_payload.lua', 'base64'), validate=True)
+    assert hashlib.sha256(helper).hexdigest() == fixtures.HELPER_SHA256 == field('wjl_helper_payload.lua', 'sha256')
+    registry = base64.b64decode(field('engine_scene_registry.lua', 'base64'), validate=True)
+    assert hashlib.sha256(registry).hexdigest() == ASSETS_SHA256[field('engine_scene_registry.lua', 'name')]
+
+
+def test_clear_outputs():
+    """A rebuild clears the last build's ZIP, sums and receipt first, so a failed build never
+    leaves them looking current; the candidate's LLL ZIP never stays beside the real one."""
+    from build_package import clear_outputs
+    with tempfile.TemporaryDirectory() as temp:
+        review = Path(temp)
+        stale = [review / 'War-Journalist-1.4.0-dev.9.zip', review / 'SHA256SUMS.txt', review / 'BUILD-RECEIPT.json',
+                 review / 'candidate' / 'War-Journalist-1.4.0-steam51-dev-LLL.zip']
+        (review / 'candidate').mkdir()
+        for path in stale:
+            path.write_text('old')
+        kept = review / 'candidate' / 'BUILD-RECEIPT.json'
+        kept.write_text('candidate receipt')
+        clear_outputs(review, 'War-Journalist-1.4.0-dev.9')
+        assert not any(path.exists() for path in stale) and kept.exists(), sorted(p.name for p in review.rglob('*'))
 
 
 def test_loader_pin():
@@ -77,9 +133,13 @@ def main():
     parser.add_argument('--zip', type=Path, help='check a built ZIP instead of composing from the tree')
     args = parser.parse_args()
     test_size_cap()
+    test_versions()
+    test_zip_mode()
+    test_clear_outputs()
+    test_embedded_binaries()
     test_loader_pin()
     if args.zip:
-        print(json.dumps({'zip': str(args.zip), 'test_size_cap': 'passed', **fixtures.verify_zip(args.zip, args.release)}, indent=2))
+        print(json.dumps({'zip': str(args.zip), 'test_size_cap': 'passed', **fixtures.verify_zip(args.zip, args.release or None)}, indent=2))
         return
     sources = fixtures.current_sources(args.release)
     text = compose(sources, '0.0.0-test', build_id(), args.release)

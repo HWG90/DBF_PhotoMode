@@ -40,13 +40,12 @@ def long_string(text):
 
 def build_id():
     """Shown under Photo Mode: the UTC build time and source commit, '+' when the tree has
-    uncommitted changes (the CRLF-noisy shader sources excepted)."""
+    uncommitted changes."""
     import datetime, subprocess
     stamp = datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%d.%H%M')
     git = lambda *a: subprocess.run(['git', *a], cwd=ROOT, capture_output=True, text=True).stdout.strip()
     commit = git('rev-parse', '--short=7', 'HEAD') or 'nogit'
-    dirty = any(line and 'freecam/assets/shaders/' not in line for line in git('status', '--porcelain').splitlines())
-    return stamp + '-' + commit + ('+' if dirty else '')
+    return stamp + '-' + commit + ('+' if git('status', '--porcelain') else '')
 
 # One module loader for every host: each module compiled once, on first use, in the mod's scope.
 REQUIRER = r'''
@@ -207,6 +206,7 @@ local function chef_host(chef)
   return{version=VERSION,update=function()end,render=function()end,shutdown=function()end,on_stop=function()end}
  end
  if type(chef.title)=='function'then chef.title(TITLE)end
+ assert(type(chef.log)=='function'and type(chef.log_directory)=='string','War Journalist for Chef needs Chef Shared Loader')
  local game=chef.log_directory:gsub('\\','/'):gsub('/+$','')
  -- Settings live in the game's settings folder, same as under Boot Mod Loader, so they carry over.
  -- Always release mode here, as every Chef build was: no dev inventories or probe requests (their
@@ -298,5 +298,5 @@ def check_size(text, limit=MAX_BYTES):
     """The text's size in bytes; past the limit Chef would never run it, so the build stops."""
     size = len(text.encode('utf-8'))
     if size > limit:
-        raise AssertionError(f"Bundle over Chef's 4 MiB reading limit: {size} bytes > {limit}")
+        raise AssertionError(f'Bundle is {size} bytes, over the {limit}-byte cap (Chef 1.5.1 reads at most 4 MiB)')
     return size

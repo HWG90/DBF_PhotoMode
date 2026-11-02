@@ -1,5 +1,5 @@
 local startup=dofile('freecam/wjl_helper_startup.lua')
-local payload={name='war_journalist_helper.exe',sha256=string.rep('a',64),hex='4d5a0102'}
+local payload={name='war_journalist_helper.exe',sha256=string.rep('a',64),base64='TVoBAg=='}
 local files={};local writes=0;local removed={}
 local old_open,old_env,old_remove,old_rename=io.open,os.getenv,os.remove,os.rename
 local locked={}
@@ -14,7 +14,7 @@ end
 local contract={id=string.rep('b',64),resource='ee6b1ba7e22d71ed',resource_type='27862fe24795319c',
  checks={{file='bundles.nxa',offset=0,size=8,sha256=string.rep('c',64)},{file='bundles.17.nxa',offset=475061920,size=81198,sha256=string.rep('d',64)}},
  game={exe_sha256=string.rep('e',64),dll_sha256=string.rep('f',64)}}
-local mod={require=function(name)if name=='src/engine_render_contract.lua'then return contract end;assert(name=='src/wjl_helper_payload.lua');return payload end}
+local mod={require=function(name)if name=='src/engine_render_contract.lua'then return contract end;if name=='src/base64.lua'then return dofile('freecam/base64.lua')end;assert(name=='src/wjl_helper_payload.lua');return payload end}
 local sr={Application={process_id=function()return 1234 end}}
 local config=startup.config(mod,sr);assert(config.pipe:match('^wjl_input_1234_%d+_%d+$'))
 -- cmd.exe only: no script host, no generated script file. cmd runs the helper itself
