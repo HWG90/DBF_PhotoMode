@@ -23,22 +23,27 @@ from test_package import SANDBOXES, prove, sandbox_arg
 # The 1.3.0 assets, as every release since has shipped them.
 ASSETS = Path.home() / 'Worktrees/linux-hd2/wj-1.3.1-windows/dist/review/release-1.3.1/assets-1.3.0'
 # Set by the release session with the release notes; a release build refuses without it.
-RELEASE_DESCRIPTION = None
+RELEASE_DESCRIPTION = ('War Journalist 1.4.0: Photo Mode for Helldivers 2. One download for both Boot Mod Loader and Chef\'s '
+                       'Shared Loader ' + MINIMUM_CHEF + ' or newer. New: bone posing in the Subject tab and up to 99 saved poses. '
+                       'The Windows helper is now war_journalist_helper.exe and stays the same file across game updates. Center '
+                       'auto-focus works as intended. On Chef there is no helper: your keys reach the game and screenshots are DDS. '
+                       'AI control and depth shaders are gone for now. Use one War Journalist at a time.')
 DEV_DESCRIPTION = ('War Journalist {version}, DEVELOPMENT build: one package for Boot Mod Loader and Chef Shared Loader '
                    + MINIMUM_CHEF + ' or newer. On Boot Mod Loader the helper gives keyboard isolation and PNG screenshots; '
                    'on Chef, arrow keys move the camera and screenshots are DDS. Bone posing on the Subject tab. Live Lua '
                    'reload on Boot Mod Loader once wj-dev-reload.enabled is armed. Not for players. Use one War Journalist at a time.')
 INSTALL = '''War Journalist {version}: one package for Boot Mod Loader and Chef Shared Loader
 
-Install one copy. Import this ZIP into HD2 Arsenal, enable War Journalist and Assets, and Deploy with Helldivers 2 closed. Turn off any other War Journalist entry first, the Chef one included: this one replaces both.
+Install one copy. Import this ZIP into HD2 Arsenal, make sure War Journalist is switched on, and Deploy with Helldivers 2 closed. Turn off any other War Journalist entry first, the Chef one included: this one replaces both.
 
 Boot Mod Loader: the helper (war_journalist_helper.exe) starts on its own; there is nothing else to install. P opens Photo Mode. Page Down turns Handycam on and off. You can change both in the game's mod settings. Your keys, settings, presets and screenshots carry over.
 
-Chef Shared Loader {chef} or newer: P opens Photo Mode. The arrow keys move the camera and the panel, and Shift with Left or Right changes tabs. Change keys in F9 > War Journalist or in the panel. Screenshots are DDS files in the game's settings folder.
+Chef Shared Loader {chef} or newer: Chef can't start the helper, so your keys still reach the game while Photo Mode is open. P opens Photo Mode. The arrow keys move the camera and the panel, and Shift with Left or Right changes tabs. Change keys in F9 > War Journalist or in the panel. Screenshots are DDS files in the game's settings folder. Double-click focus and Center auto-focus need Chef 1.5.1 or newer.
 
 KNOWN-ISSUES.md lists the known bugs.
 '''
-DEV_INSTALL = '\nDevelopment build: live Lua reload and developer diagnostics are on under Boot Mod Loader. Not for players.\n'
+DEV_INSTALL = ('\nDevelopment build: under Boot Mod Loader, developer diagnostics are on and live Lua reload works once '
+               'wj-dev-reload.enabled is armed. Not for players.\n')
 
 
 def sha256(data):
