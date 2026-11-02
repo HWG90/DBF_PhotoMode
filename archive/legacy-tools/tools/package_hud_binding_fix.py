@@ -13,7 +13,7 @@ import struct
 
 from lupa.lua51 import LuaRuntime
 from photo_assets import read_archive, archive_rows
-from build_steam_archive import long_string
+from package_head import long_string
 
 ROOT = Path(__file__).resolve().parents[1]
 ARCHIVE = Path('C:/Program Files (x86)/Steam/steamapps/common/Helldivers 2_steam/data/9ba626afa44a3aa3.patch_0')

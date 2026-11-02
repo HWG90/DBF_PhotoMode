@@ -63,6 +63,14 @@ def files_sha256(folder):
     (folder / 'FILES-SHA256.txt').write_text(''.join(rows))
 
 
+def clear_outputs(review, name):
+    """The last build's ZIP, sums and receipt go first, so a failed rebuild never leaves them
+    looking current; so does any candidate LLL ZIP, as the package is the only ZIP to ship."""
+    for path in [review / (name + '.zip'), review / 'SHA256SUMS.txt', review / 'BUILD-RECEIPT.json',
+                 *review.glob('candidate/*-LLL.zip')]:
+        path.unlink(missing_ok=True)
+
+
 def build(release, dev_number, sandboxes, assets):
     base = (ROOT / 'VERSION').read_text().strip()
     notes = ROOT / 'docs' / f'RELEASE-{base}.md'
@@ -78,9 +86,12 @@ def build(release, dev_number, sandboxes, assets):
     review = (ROOT / 'dist/review/package' / version).resolve()
     assert review.is_relative_to(ROOT / 'dist/review'), 'Packages stay in dist/review'
     review.mkdir(parents=True, exist_ok=True)
+    name = 'War-Journalist-' + version
+    clear_outputs(review, name)
     # The audited module graph (runs the Lua 5.1 suite and the module audit).
     candidate = build_steam_candidate.build(review / 'candidate', release, bridges=False)
     sources = candidate_sources(Path(candidate['candidate']))
+    Path(candidate['package']).unlink()
     assert sources == fixtures.current_sources(release), 'The candidate differs from this tree'
     text = compose(sources, version, build_id(), release)
     proofs = prove(text, release, sources, sandboxes)
@@ -90,7 +101,6 @@ def build(release, dev_number, sandboxes, assets):
     envelope = struct.pack('<II', len(data), 2) + data
     body, gpu = archive_rows([(key, LUA, envelope, b'')])
     assert read_archive(body, gpu) == [(key, LUA, envelope, b'')] and gpu == b''
-    name = 'War-Journalist-' + version
     folder = review / name
     if folder.exists():
         shutil.rmtree(folder)
