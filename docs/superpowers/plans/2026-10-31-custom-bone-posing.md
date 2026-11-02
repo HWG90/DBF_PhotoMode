@@ -583,5 +583,10 @@ branch; Arsenal profile "LuaJIT Proton", folder install in the LLL Mods folder).
   "War Journalist 1.4.0-dev.3", whose LLL line "needs Chef Shared Loader" is
   that package's own gate (LLL declines it by design, e03cf10 on
   `claude/wj-chef-unified`; Boot Mod Loader runs it). Who parked the Proton
-  folder is unknown; dev.6 installs only on the user's word. dev.5's drag and
-  dev.6 are both untested live on Proton.
+  folder is unknown.
+- 2026-11-02 18:19 UTC, on the user's word: dev.6 installed into LLL
+  `Mods/dbf_freecam` with the game closed; the parked dev.5 copy became the
+  backup `Port-Candidate-Backups/war-journalist-proton-1.3.4-2b70a92-before-bone-posing-dev.6-20261102T181913Z`;
+  audit 77/77; Settings untouched
+  (`INSTALL-RECEIPT-folder-c61ac87-bone-posing-dev.6.json`). dev.5's drag and
+  dev.6's two fixes are untested live on Proton.
