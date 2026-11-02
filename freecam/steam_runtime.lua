@@ -2099,14 +2099,16 @@ function M.new(host,sr,deps,service)
  menu.bind(handle,core.mods.dbf_freecam.pages)
  -- An input service without an OS cursor (Boot Mod Loader's engine input) moves a virtual one.
  menu.draw_pointer=type(service.capabilities)=='table'and service.capabilities.virtual_cursor==true
- -- The panel follows the movement keys.
- function menu.selection_keys()
-  local up,down,left,right=handle.get('forward_key'),handle.get('back_key'),handle.get('left_key'),handle.get('right_key')
-  if hosted then
-   up,down=hosted.code('forward_key')or up,hosted.code('back_key')or down
-   left,right=hosted.code('left_key')or left,hosted.code('right_key')or right
+ -- On an arrow-key host (Chef) the panel follows the movement keys; elsewhere W/S/A/D as before.
+ if keys.arrows then
+  function menu.selection_keys()
+   local up,down,left,right=handle.get('forward_key'),handle.get('back_key'),handle.get('left_key'),handle.get('right_key')
+   if hosted then
+    up,down=hosted.code('forward_key')or up,hosted.code('back_key')or down
+    left,right=hosted.code('left_key')or left,hosted.code('right_key')or right
+   end
+   return up,down,left,right
   end
-  return up,down,left,right
  end
  -- Tabs are Shift + value keys there, not Q/E.
  menu.shift_tabs=keys.arrows==true;if deps.legend then deps.legend.shift_tabs=keys.arrows==true end
@@ -2451,8 +2453,8 @@ function M.new(host,sr,deps,service)
   else
    menu.draw(width,height,self.mode=='menu'and not handoff,capturing or o.hide_controls or o.clean_view or handoff~=nil,
     {focus=deps.legend.binding_label('focus_key',handle),hide=deps.legend.binding_label('hide_controls_key',handle),slowmo=deps.legend.binding_label('slowmo_key',handle),
-     rows=deps.legend.binding_label('forward_key',handle)..'/'..deps.legend.binding_label('back_key',handle),
-     values=deps.legend.binding_label('left_key',handle)..'/'..deps.legend.binding_label('right_key',handle),
+     rows=menu.shift_tabs and(deps.legend.binding_label('forward_key',handle)..'/'..deps.legend.binding_label('back_key',handle))or nil,
+     values=menu.shift_tabs and(deps.legend.binding_label('left_key',handle)..'/'..deps.legend.binding_label('right_key',handle))or nil,
      tabs=menu.shift_tabs and('Shift+'..deps.legend.binding_label('left_key',handle)..'/'..deps.legend.binding_label('right_key',handle))or'Q/E'})
   end
   return false

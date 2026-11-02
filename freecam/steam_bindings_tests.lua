@@ -261,6 +261,13 @@ do
  assert(wasd.registered['war_journalist.forward_key'].default.button=='w','Other hosts keep WASD')
  wasd.down['war_journalist.toggle_key']=true;wtick();wasd.down['war_journalist.toggle_key']=false;wtick()
  local wm=wmenu();local wpage=wm.page;wp.e=true;wtick();wp.e=false;wtick();assert(wm.page==wpage%#wm.pages+1,'Other hosts keep Q/E tabs')
+ -- Boot Mod Loader as before: rebinding movement leaves the panel on W/S/A/D (AZERTY's Q left would be a tab key).
+ local wbefore=wm.selection
+ assert(wr.handle.set('back_key',75)and wasd.values['war_journalist.back_key']=='k')
+ wp.k=true;wtick();wp.k=false;wtick();assert(wm.selection==wbefore,'Other hosts: the rebound back key does not move the selection')
+ wp.s=true;wtick();wp.s=false;wtick();assert(wm.selection~=wbefore,'Other hosts: S still moves it')
+ local whint=false;for _,t in ipairs(drawn_text)do whint=whint or t:find('W/S rows  |  A/D values  |  Q/E tabs',1,true)~=nil end
+ assert(whint,'Other hosts: the panel hint keeps W/S, A/D and Q/E')
  assert(wr.dispose())
  print('Arrow-key host: camera and panel selection on arrows, Shift+value tabs, saved WASD moved, chosen keys kept, rebinding moves both passed')
 end

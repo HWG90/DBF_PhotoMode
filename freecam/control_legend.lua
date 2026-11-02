@@ -72,9 +72,11 @@ function M.new(view)
   hazard(y);hazard(y+size-stripe)
   text(focused and 'MENU CONTROLS'or 'CAMERA CONTROLS',x+pad,y+size-35*s,size-2*pad-70*s,16*s,'legend_title')
   if parent then rect(dock_button.x,dock_button.y,dock_button.w,dock_button.h,{29,31,34},'legend_dock_button');text(docked and 'UNDOCK'or 'DOCK',dock_button.x+5*s,dock_button.y+7*s,dock_button.w-10*s,10*s,'legend_key')end
+  -- Menu keys follow the movement keys only on an arrow-key host (Chef); elsewhere W/S/A/D as before.
+  local nav=M.shift_tabs and{key('forward_key',87)..' / '..key('back_key',83),key('left_key',65)..' / '..key('right_key',68)}or{'W / S','A / D'}
   local entries=focused and {
-   {key('forward_key',87)..' / '..key('back_key',83),'Menu up / down'},{key('left_key',65)..' / '..key('right_key',68),'Value / option'}, {M.shift_tabs and('SHIFT + '..key('left_key',65)..' / '..key('right_key',68))or'Q / E','Menu tabs'},
-   {'ENTER / SPACE','Edit / save'},{'SHIFT + '..key('left_key',65)..' / '..key('right_key',68),'Fine focus step'},{'RIGHT CLICK','Reset value'},
+   {nav[1],'Menu up / down'},{nav[2],'Value / option'}, {M.shift_tabs and('SHIFT + '..nav[2])or'Q / E','Menu tabs'},
+   {'ENTER / SPACE','Edit / save'},{'SHIFT + '..nav[2],'Fine focus step'},{'RIGHT CLICK','Reset value'},
    {'ESC','Cancel / return'},{key('focus_key',9),'Return to camera'},
    {key('toggle_key',80),'Photo on / off'},{key('handycam_key',34),'Start / end Handycam'},{key('hide_controls_key',72),'Show / hide controls'}
   }or {

@@ -38,6 +38,7 @@ FIXTURES+=('windows_visibility_probe_tests.lua',)
 FIXTURES+=('windows_mesh_visibility_tests.lua',)
 FIXTURES+=('windows_pov_visibility_tests.lua','windows_camera_signals_tests.lua','windows_handycam_ads_tests.lua',)
 FIXTURES+=('windows_movement_probe_tests.lua',)
+FIXTURES+=('control_legend_tests.lua',)  # Menu keys per host: W/S/A/D under Boot Mod Loader, the movement keys on Chef.
 FIXTURES+=('windows_freeze_bone_probe_tests.lua',)
 FIXTURES+=('windows_freeze_physics_probe_tests.lua',)
 FIXTURES+=('windows_freeze_pose_probe_tests.lua','windows_freeze_cape_tests.lua','windows_freeze_ramp_tests.lua')
