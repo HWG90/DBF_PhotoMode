@@ -948,6 +948,16 @@ function M.new(host,sr,deps,service)
  end
  -- Once per update: rebase on a newly applied catalogue pose, then apply a
  -- dirty editor through the same subject action as catalogue poses.
+ -- The working pose's base: the held catalogue pose, or a snapshot of the body as it stands.
+ function self.adopt_pose_base()
+  local editor=self.pose_editor;if not editor or not subject then return false,'Pose editor unavailable'end
+  if editor.has_base()then return true end
+  local frame,why;local held=self.pose_held()
+  if held then frame,why=subject.target_frame()else frame,why=subject.current_frame()end
+  if not frame then return false,why end
+  local key=subject_status and subject_status.pose or nil
+  editor.adopt(frame,held and self.pose_label(key)or'Snapshot');return true
+ end
  function self.tick_pose_editor()
   local editor=self.pose_editor;if not editor or not subject then return end
   local s=subject_status;local key=s and s.pose or nil
@@ -970,13 +980,11 @@ function M.new(host,sr,deps,service)
    return
   end
   if not editor.has_base()then
-   local frame,why;local held=self.pose_held()
-   if held then frame,why=subject.target_frame()else frame,why=subject.current_frame()end
-   if not frame then
+   local ok,why=self.adopt_pose_base()
+   if not ok then
     if why~=self.bone_notice then self.bone_notice=why;notice(why)end
     return
    end
-   editor.adopt(frame,held and self.pose_label(key)or'Snapshot')
   end
   self.bone_notice=nil
   local frame=editor.compose_frame()
@@ -2104,29 +2112,41 @@ function M.new(host,sr,deps,service)
     for index,bone in ipairs(group.bones)do if bone.node==node then local called,ok=pcall(handle.set,'bone',index);return called and ok~=false end end
     return false
    end,
-   -- A screen-space move, in metres, becomes an offset in the bone's parent frame.
-   move=function(delta)
-    local node=self.bone_node();local editor=self.pose_editor
-    if not(node and editor and subject and controls.bone_drag_handle and not controls.bone_drag_handle.disabled)then return false end
-    local l=deps.pose_editor.rotate_inverse(self.bone_parent_rotation or{0,0,0,1},delta)
-    local ok,why=editor.nudge_offset(node,l[1],l[2],l[3]);if not ok then notice(why)end
-    return ok
+   -- A ring dragged to a world point: its parent bone (one of this group's) turns so the
+   -- ring follows, bone length kept. Nothing is moved in space.
+   aim=function(node,point)
+    local editor=self.pose_editor;local _,group=self.bone_node()
+    if not(node and group and editor and subject and controls.bone_drag_handle and not controls.bone_drag_handle.disabled)then return false end
+    local parent=type(subject.node_parent)=='function'and subject.node_parent(node)or 0
+    local bone,parent_bone;for _,b in ipairs(group.bones)do if b.node==node then bone=b end;if b.node==parent then parent_bone=b end end
+    if not parent_bone then
+     local why=string.format('%s hangs from %s, outside this group: grab the next ring down the chain',bone and bone.label or'This bone',deps.pose_editor.rig_names[parent]or'the body')
+     if why~=self.bone_notice then self.bone_notice=why;notice(why)end
+     return false
+    end
+    local ok,why=self.adopt_pose_base();if not ok then notice(why);return false end
+    local nf,pf=subject.node_frame(node),subject.node_frame(parent)
+    local grand=subject.node_parent(parent);local gf=grand and grand>0 and subject.node_frame(grand)or nil
+    local base=editor.base_rotation(parent)
+    if not(nf and pf and base)then return false end
+    local b,sw,t=deps.pose_editor.aim(base,gf and gf.rotation or{0,0,0,1},pf.rotation,pf.position,nf.position,point)
+    if not b then notice(sw);return false end
+    editor.set_angle(parent,'bend',b);editor.set_angle(parent,'swing',sw);editor.set_angle(parent,'twist',t)
+    return true
    end})
-  -- One ring per bone of the selected group; the selected bone's parent frame is kept for moves.
+  -- One ring per bone of the selected group, each with its parent's position for the bone line.
   menu.prepare_bone_marker=function(w,h,focused,hidden)
    local node,group;if self.pose_editor then node,group=self.bone_node()end
    local shown=self.active and focused and not hidden and node~=nil and group~=nil and subject~=nil and handle.get('bone_marker')==true and subject_status~=nil and subject_status.selected~=nil and type(subject.node_frame)=='function'
-   if not shown then self.bone_parent_rotation=nil;menu.bone_marker.update(nil,nil,nil,w,h,nil,nil,false);return end
+   if not shown then menu.bone_marker.update(nil,nil,nil,w,h,nil,nil,false);return end
    local items={}
    for _,bone in ipairs(group.bones)do
     local fr=subject.node_frame(bone.node)
     if fr then
      local item={node=bone.node,position=fr.position}
-     if bone.node==node then
-      local parent=type(subject.node_parent)=='function'and subject.node_parent(node)or 0
-      local pf=parent and parent>0 and subject.node_frame(parent)or nil
-      if pf then item.parent=pf.position;self.bone_parent_rotation=pf.rotation else self.bone_parent_rotation=nil end
-     end
+     local parent=type(subject.node_parent)=='function'and subject.node_parent(bone.node)or 0
+     local pf=parent and parent>0 and subject.node_frame(parent)or nil
+     if pf then item.parent=pf.position end
      items[#items+1]=item
     end
    end
