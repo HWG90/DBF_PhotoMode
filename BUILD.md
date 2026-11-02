@@ -23,7 +23,8 @@ a folder candidate. `tools/build_package.py` packages that graph as the one
 War Journalist package (below). Both write under `dist/review`.
 Inspect each tool's `--help` for required asset/native build inputs. Native bridge
 sources are under `freecam/native/port51_src`; their availability depends on the
-host. The Windows input helper remains a separate bundled process.
+host. The Windows input helper remains a separate bundled process; the exact
+sources of the shipped helper are in `helper/` ([helper/README.md](helper/README.md)).
 
 Run the Lua fixtures and verify the package's exact embedded source bytes,
 checksums and startup/cleanup before distributing it. Numeric shader DoF and

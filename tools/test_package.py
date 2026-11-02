@@ -93,6 +93,16 @@ def test_embedded_binaries():
     assert hashlib.sha256(registry).hexdigest() == ASSETS_SHA256[field('engine_scene_registry.lua', 'name')]
 
 
+def test_helper_sources():
+    """helper/native holds the exact sources compiled into the shipped helper, listed in
+    helper/HELPER.json; a rebuilt payload without its sources fails here."""
+    import hashlib
+    record = json.loads((ROOT / 'helper/HELPER.json').read_text())
+    assert record['sha256'] == fixtures.HELPER_SHA256, 'helper/ holds the sources of another helper than the one that ships'
+    files = {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in (ROOT / 'helper/native').iterdir()}
+    assert files == record['sources'], sorted(set(files.items()) ^ set(record['sources'].items()))
+
+
 def test_clear_outputs():
     """A rebuild clears the last build's ZIP, sums and receipt first, so a failed build never
     leaves them looking current; the candidate's LLL ZIP never stays beside the real one."""
@@ -137,6 +147,7 @@ def main():
     test_zip_mode()
     test_clear_outputs()
     test_embedded_binaries()
+    test_helper_sources()
     test_loader_pin()
     if args.zip:
         print(json.dumps({'zip': str(args.zip), 'test_size_cap': 'passed', **fixtures.verify_zip(args.zip, args.release or None)}, indent=2))
