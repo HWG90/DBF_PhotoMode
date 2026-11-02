@@ -109,7 +109,7 @@ valid. Used only by the marker.
 
 `pose_editor.lua` (new, no engine access): groups, base, angles, compose,
 status text, dirty flag, and the menu actions as closures. Constructed by the
-runtime when the subject service loads; discarded when Photo Mode closes.
+runtime when the subject service loads; kept for the whole game session.
 Held by the runtime as the field `self.pose_editor`.
 
 Runtime (`steam_runtime.lua`):
@@ -122,7 +122,9 @@ Runtime (`steam_runtime.lua`):
 - Once per update, beside `settle_pose`, a dirty editor composes and applies.
   A burst of slider changes produces one apply per update.
 - Catalogue pose applied → editor rebases and clears. Reset pose, subject
-  change or refresh, Photo Mode close → editor cleared. Time resumes → the
+  change or refresh → editor cleared. Photo Mode close → an editor with edits
+  keeps them and applies them again to the Helldiver selected on the next
+  open; one without edits clears (user, 2026-11-02). Time resumes → the
   controller restores as today; the editor keeps base and angles as the
   working pose; a slider move or Apply edits re-applies once frozen again.
 - Refusals surface through the existing notice and once-per-reason log.
