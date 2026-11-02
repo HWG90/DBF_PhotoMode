@@ -580,5 +580,8 @@ branch; Arsenal profile "LuaJIT Proton", folder install in the LLL Mods folder).
   20261102.1740-09a0940, package sha256 54010819.... Not installed: the live
   folder had been moved to `Mods/BACKUP/dbf_freecam` (dev.5) at 06:05 UTC and
   the last launch ran another Arsenal profile with the archive-mod
-  "War Journalist 1.4.0-dev.3", which failed for lack of Chef Shared Loader.
-  dev.5's drag and dev.6 are both untested live on Proton.
+  "War Journalist 1.4.0-dev.3", whose LLL line "needs Chef Shared Loader" is
+  that package's own gate (LLL declines it by design, e03cf10 on
+  `claude/wj-chef-unified`; Boot Mod Loader runs it). Who parked the Proton
+  folder is unknown; dev.6 installs only on the user's word. dev.5's drag and
+  dev.6 are both untested live on Proton.
