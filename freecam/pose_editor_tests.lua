@@ -56,4 +56,40 @@ do
  e2.reset_bone(70);assert(not e2.edited());local a,b,c=e2.offset(70);assert(a==0 and b==0 and c==0,'Reset bone clears the offset')
  e2.nudge_offset(48,0,.3,0);e2.reset_all();assert(not e2.edited())
 end
+-- Bend/Swing/Twist back from a delta: the inverse of compose, exact away from Swing +-90.
+do
+ local function wrap(a)return(a+180)%360-180 end
+ for _,angles in ipairs({{30,0,0},{0,40,0},{0,0,50},{30,40,50},{-120,60,-170},{170,-85,20},{45,89.9,-45}})do
+  local q=E.compose({0,0,0,1},angles[1],angles[2],angles[3]);local b,s,t=E.decompose(q)
+  assert(math.abs(wrap(b-angles[1]))<1e-6 and math.abs(s-angles[2])<1e-6 and math.abs(wrap(t-angles[3]))<1e-6,'Roundtrip '..table.concat(angles,'/')..' gave '..b..'/'..s..'/'..t)
+ end
+ -- At the gimbal (Swing +-90) the rotation is reproduced with Twist folded into Bend.
+ for _,angles in ipairs({{30,90,20},{-40,-90,70}})do
+  local q=E.compose({0,0,0,1},angles[1],angles[2],angles[3]);local b,s,t=E.decompose(q);local back=E.compose({0,0,0,1},b,s,t)
+  assert(math.abs(back[1]*q[1]+back[2]*q[2]+back[3]*q[3]+back[4]*q[4])>1-1e-9 and t==0,'Gimbal case reproduces the rotation')
+ end
+end
+-- Aim: angles for a parent bone so that its child points at a world target (the bone keeps its length).
+do
+ local I={0,0,0,1}
+ local b,s,t=E.aim(I,I,I,{0,0,0},{1,0,0},{0,2,0})
+ assert(math.abs(b-90)<1e-9 and math.abs(s)<1e-9 and math.abs(t)<1e-9,'Child on +X aimed at +Y is Bend 90')
+ b,s,t=E.aim(I,I,I,{0,0,0},{1,0,0},{0,0,3});assert(math.abs(s+90)<1e-9,'Aimed at +Z is Swing -90')
+ -- General case: rotated grandparent, edited parent, base off identity. The composed parent
+ -- rotation must send the bone (in the parent's frame) onto the target direction, length kept.
+ local grand=E.quat_axis_angle(1,2,3,70);local base=E.quat_axis_angle(0,1,0,25)
+ local parent_world=E.quat_multiply(grand,E.compose(base,15,-20,35))
+ local parent_p={1,2,3};local bone={0,.4,0}
+ local child_p;do local w=E.rotate(parent_world,bone);child_p={parent_p[1]+w[1],parent_p[2]+w[2],parent_p[3]+w[3]}end
+ local target={1.3,2.2,2.6}
+ b,s,t=E.aim(base,grand,parent_world,parent_p,child_p,target)
+ local w=E.rotate(E.quat_multiply(grand,E.compose(base,b,s,t)),bone)
+ local d={target[1]-parent_p[1],target[2]-parent_p[2],target[3]-parent_p[3]};local n=math.sqrt(d[1]^2+d[2]^2+d[3]^2);local l=math.sqrt(w[1]^2+w[2]^2+w[3]^2)
+ for i=1,3 do assert(math.abs(w[i]/l-d[i]/n)<1e-9,'Child direction follows the target')end
+ assert(math.abs(l-.4)<1e-9,'Bone length kept')
+ -- Degenerate inputs are refused, never NaN; an antiparallel target is a finite half turn.
+ assert(select(2,E.aim(I,I,I,{0,0,0},{0,0,0},{1,0,0}))=='Bone too short')
+ assert(select(2,E.aim(I,I,I,{0,0,0},{1,0,0},{0,0,0}))=='Target at the joint')
+ b,s,t=E.aim(I,I,I,{0,0,0},{1,0,0},{-1,0,0});w=E.rotate(E.compose(I,b,s,t),{1,0,0});assert(math.abs(w[1]+1)<1e-9,'Half turn')
+end
 print('Pose editor: groups, quaternion maths, pinned composition, pass-through and lifecycle passed')

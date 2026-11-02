@@ -62,6 +62,43 @@ function M.compose(base_q,bend,swing,twist)
  if M.BONE_FRAME_SIDE=='right'then return M.quat_normalize(M.quat_multiply(base_q,delta))end
  return M.quat_normalize(M.quat_multiply(delta,base_q))
 end
+-- The inverse of compose for a unit delta (xyzw): Bend, Swing, Twist in degrees. Swing is
+-- asin-bounded; at Swing +-90 Twist folds into Bend and the rotation itself is kept.
+function M.decompose(q)
+ local x,y,z,w=q[1],q[2],q[3],q[4]
+ local m11,m21,m31=1-2*(y*y+z*z),2*(x*y+z*w),2*(x*z-y*w)
+ local m12,m22=2*(x*y-z*w),1-2*(x*x+z*z)
+ local m32,m33=2*(y*z+x*w),1-2*(x*x+y*y)
+ local s=math.max(-1,math.min(1,-m31))
+ local bend,twist
+ if math.abs(s)>1-1e-12 then bend,twist=math.atan2(-m12,m22),0 else bend,twist=math.atan2(m21,m11),math.atan2(m32,m33)end
+ return math.deg(bend),math.deg(math.asin(s)),math.deg(twist)
+end
+-- Angles for a parent bone so that its child points at a world target, bone length kept:
+-- base_q is the parent's base rotation (in its own parent's frame), grand_q that parent's
+-- world rotation (identity for a root), parent_q the parent's current world rotation,
+-- parent_p/child_p/target world positions. The turn is the smallest one from the bone's
+-- direction to the target's; the result replaces the parent's three angles.
+function M.aim(base_q,grand_q,parent_q,parent_p,child_p,target)
+ local d={child_p[1]-parent_p[1],child_p[2]-parent_p[2],child_p[3]-parent_p[3]}
+ local t={target[1]-parent_p[1],target[2]-parent_p[2],target[3]-parent_p[3]}
+ local dl,tl=math.sqrt(d[1]*d[1]+d[2]*d[2]+d[3]*d[3]),math.sqrt(t[1]*t[1]+t[2]*t[2]+t[3]*t[3])
+ if not(dl>1e-6)then return nil,'Bone too short'end
+ if not(tl>1e-6)then return nil,'Target at the joint'end
+ for i=1,3 do d[i]=d[i]/dl;t[i]=t[i]/tl end
+ local dot=d[1]*t[1]+d[2]*t[2]+d[3]*t[3]
+ local turn
+ if dot<-1+1e-9 then
+  -- Antiparallel: a half turn about any axis across the bone.
+  local ax={-d[2],d[1],0};if math.abs(ax[1])+math.abs(ax[2])<1e-6 then ax={0,-d[3],d[2]}end
+  turn=M.quat_axis_angle(ax[1],ax[2],ax[3],180)
+ else
+  turn=M.quat_normalize({d[2]*t[3]-d[3]*t[2],d[3]*t[1]-d[1]*t[3],d[1]*t[2]-d[2]*t[1],1+dot})
+ end
+ -- turn * parent_q = grand_q * base_q * delta
+ local delta=M.quat_multiply(conjugate(base_q),M.quat_multiply(conjugate(grand_q),M.quat_multiply(turn,parent_q)))
+ return M.decompose(M.quat_normalize(delta))
+end
 local AXES={bend=1,swing=2,twist=3}
 -- A loaded 'X edits' pose is the base named X: the suffix never stacks.
 local function base_name(text)return(tostring(text):match('^(.-) edits$'))or tostring(text)end
@@ -82,6 +119,7 @@ function M.new()
  end
  function self.touch()dirty=true end
  function self.has_base()return base~=nil end
+ function self.base_rotation(node)local n=base and base.nodes[node];return n and n.q or nil end
  function self.base_label()return label end
  function self.select(node)
   if not M.rig_names[node]then return false,'Unknown bone'end
