@@ -566,4 +566,8 @@ branch; Arsenal profile "LuaJIT Proton", folder install in the LLL Mods folder).
   selected one); only a parent inside the current group turns (the first ring
   of a group selects but never drags the body). Built as `bone-posing-dev.5`
   (77 modules, build 20261102.0447-2b70a92, package sha256 947e9aa9...).
-  Install pending the game closing; live acceptance of the new drag pending.
+  Installed 2026-11-02 05:08 UTC with the game closed
+  (`INSTALL-RECEIPT-folder-1bf17de-bone-posing-dev.5.json`; previous folder at
+  `Port-Candidate-Backups/war-journalist-proton-1.3.4-3fc60e7-before-bone-posing-dev.5-20261102T050828Z`;
+  audit 77/77; Settings untouched). The Lua 5.1 line has the same change as
+  595e813 (BML dev.6). Live acceptance of the new drag: pending the user's run.
