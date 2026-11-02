@@ -87,6 +87,7 @@ function M.new(adapter,bank,is_frozen)
  end
  supported=supported and(adapter.canonical_node==nil or type(adapter.canonical_node)=='function')
  supported=supported and(adapter.resolve_node==nil or type(adapter.resolve_node)=='function')
+ supported=supported and(adapter.reconcile==nil or type(adapter.reconcile)=='function')
  local self={catalog=bank.catalog};local targets,choices={},{};local selected,lease,pose,closing,blocked
  local status={available=supported==true,capability='explicit_photographic_subject',player_authority=false,
   state=supported and'unselected'or'unsupported',pending=false,message=supported and'Select a photographic subject'or'Subject adapter is not qualified'}
@@ -236,6 +237,12 @@ function M.new(adapter,bank,is_frozen)
    elseif not write_mode(current.mode,lease.original.mode)then return false,status.message end
   end
   if not commit()then return false,status.message end
+  -- A body the game took back leaves nothing to write and so no commit: the adapter must
+  -- still drop its ledger and cape, or every later discovery refuses (live 2026-11-02).
+  if foreign and adapter.reconcile then
+   local called,done,why=pcall(adapter.reconcile,selected,bank.rig)
+   if not called or done~=true then return pending('Subject cleanup needs explicit recovery',called and why or done)end
+  end
   return finish(false,foreign)
  end
  function self.session_current()
