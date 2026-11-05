@@ -237,6 +237,24 @@ function M.new(view,actions,existing)
    {type='text',text='CINEMA CAMERA',x=x,y=y+10*scale,size=12*scale,c=T.gold,a=alpha,layer=310,text_bold=true,text_role='title'},
    {type='text',text=key..': reposition'..(capture_ready==false and''or'  |  Screenshot key: capture'),x=x,y=y-5*scale,size=10*scale,c=T.white,a=alpha,layer=310,text_role='body'}})
  end
+ -- A refused Photo key, shown while the panel is closed (Discord, 2026-11-05: the key
+ -- looked ignored). Readable for four seconds, gone after five, then nothing is left on
+ -- screen. Returns whether the banner is still shown.
+ function self.draw_notice(w,h,title,text,elapsed)
+  local age=type(elapsed)=='number'and elapsed==elapsed and elapsed>=0 and elapsed or nil
+  local alpha=age and math.max(0,math.min(1,5-age))or 0
+  if alpha==0 or not valid(w)or not valid(h)then view.draw({});return false end
+  refresh_text_cache(w,h)
+  local scale=math.max(.75,math.min(w/1920,h/1080));local x,y=20*scale,h-48*scale;local size=10*scale
+  local body=fit(text,math.min(w*.6,w-x-28*scale),size)
+  local width=math.min(w-x,math.max(340*scale,measure(body,size)+16*scale))
+  view.draw({
+   {type='rect',x=x-8*scale,y=y-10*scale,w=width,h=38*scale,c=T.background,a=.68*alpha,layer=300,ui_role='photo_notice'},
+   {type='rect',x=x-8*scale,y=y+27*scale,w=width,h=2*scale,c=T.gold,a=alpha,layer=301},
+   {type='text',text=tostring(title),x=x,y=y+10*scale,size=12*scale,c=T.gold,a=alpha,layer=310,text_bold=true,text_role='title'},
+   {type='text',text=body,x=x,y=y-5*scale,size=size,c=T.white,a=alpha,layer=310,text_role='body'}})
+  return true
+ end
  function self.draw(w,h,focused,hidden,keys)
   capture_cleared=false
   -- Tab changes input ownership inside the same visible panel. Preserve the

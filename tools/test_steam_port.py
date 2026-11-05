@@ -16,6 +16,7 @@ FIXTURES+=('steam_engine_capture_tests.lua','steam_native_diagnostics_tests.lua'
 
 FIXTURES+=('engine_input_gate_tests.lua','windows_hover_freeze_tests.lua','windows_hover_activity_tests.lua',)
 FIXTURES+=('steam_pick_runtime_tests.lua',)
+FIXTURES+=('steam_open_refusal_tests.lua',)  # The Photo key never looks ignored: refusals are logged and shown.
 FIXTURES+=('esc_state_observer_tests.lua',)
 FIXTURES+=('windows_native_fog_probe_tests.lua',)
 FIXTURES+=('engine_cursor_gate_tests.lua',)

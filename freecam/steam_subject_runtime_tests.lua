@@ -208,6 +208,8 @@ do
  local f=fixture()
  for _=1,100 do f.step(.016)end
  assert(f.factories==0 and f.subject_native==0 and f.controls.subject_refresh.disabled==true)
+ -- Its button says what it does; the menu's generic 'Activate' read as a select button (Discord, 2026-11-05).
+ assert(f.controls.subject_refresh.button_label=='Refresh','The Refresh row is labelled Refresh')
  f.enable();assert(#f.controls.subject_pose.choices==213 and f.controls.subject_pose.choices_revision==f.subject.catalog)
  assert(f.controls.subject_preview==nil and f.controls.subject_select_3.disabled)
  f.select();local writes=f.node_writes

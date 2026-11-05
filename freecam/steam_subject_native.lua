@@ -299,6 +299,9 @@ local function factory(sr,policy,preview)
    -- nearest four, and validate their complete rig before exposing any target.
    if point~=nil then point=vector(point,3);check(type(U.world_position)=='function','Subject position getter unavailable')end
    local candidates,seen={},{};local key;local scanned=0
+   -- Why units were left out, for the log and the Subject tab: a Helldiver whose node
+   -- count differs from the pose bank's 107 is otherwise invisible (Discord, 2026-11-05).
+   local skipped={nodes={},dead=0,elsewhere=0};local skips=0
    for index=1,129 do
     local unit;key,unit=next(units,key);if key==nil then break end
     check(index<=128,'Subject inventory exceeds the 128-unit discovery budget')
@@ -306,7 +309,15 @@ local function factory(sr,policy,preview)
     check(finite(key)and key%1==0 and key>=1 and type(unit)=='userdata','Subject inventory entry shape changed')
     if not seen[unit]then
      seen[unit]=true
-     if one(pack(U.alive(unit)),'boolean','Unit.alive')and U.world(unit)==world and U.num_scene_graph_items(unit)==107 then
+     local usable=false
+     if not one(pack(U.alive(unit)),'boolean','Unit.alive')then skipped.dead=skipped.dead+1;skips=skips+1
+     elseif U.world(unit)~=world then skipped.elsewhere=skipped.elsewhere+1;skips=skips+1
+     else
+      local count=U.num_scene_graph_items(unit)
+      if count==107 then usable=true
+      else count=finite(count)and count%1==0 and count>=0 and count or -1;skipped.nodes[count]=(skipped.nodes[count]or 0)+1;skips=skips+1 end
+     end
+     if usable then
       local distance=0
       if point then local p=xyz(one(pack(U.world_position(unit,1)),'userdata','Unit.world_position'))
        for j=1,3 do distance=distance+(p[j]-point[j])^2 end
@@ -328,7 +339,16 @@ local function factory(sr,policy,preview)
     found[i]=target;next_records[target]=r
    end
    generation=next_generation;records=next_records
-   if began and type(policy.log)=='function'then pcall(policy.log,string.format('Subject discovery: scanned=%d listed=%d elapsed_ms=%.3f',scanned,#found,(policy.measure()-began)*1000))end
+   if skips>0 then found.skipped=skipped end
+   if began and type(policy.log)=='function'then
+    local parts={}
+    local counts={};for count in pairs(skipped.nodes)do counts[#counts+1]=count end;table.sort(counts)
+    for _,count in ipairs(counts)do parts[#parts+1]=(count<0 and'unreadable'or count)..' nodes x'..skipped.nodes[count]end
+    if skipped.dead>0 then parts[#parts+1]='not alive x'..skipped.dead end
+    if skipped.elsewhere>0 then parts[#parts+1]='other world x'..skipped.elsewhere end
+    pcall(policy.log,string.format('Subject discovery: scanned=%d listed=%d elapsed_ms=%.3f',scanned,#found,(policy.measure()-began)*1000)..
+     (#parts>0 and'; skipped '..table.concat(parts,', ')or''))
+   end
    return found
   end)
  end

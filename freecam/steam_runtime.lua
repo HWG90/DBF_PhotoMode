@@ -1806,7 +1806,7 @@ function M.new(host,sr,deps,service)
   light_clear=function()return light_action('release','User cleared lights')end})
  pages[#pages+1]={id='camera' ,name='Controls',require_confirmation=false,controls=bindings}
  if type(deps.load_subject)=='function'then for _,page in ipairs(pages)do if page.id=='subject'then
-  local rows={{id='subject_refresh',type='button',label='Refresh subjects (up to four)',on_activate=function()
+  local rows={{id='subject_refresh',type='button',label='Refresh subjects (up to four)',button_label='Refresh',on_activate=function()
    local ok,why=load_subject();if not ok then return false,why end
    local had=subject_status~=nil and subject_status.selected~=nil
    local done,reason=subject_action('refresh');if done and had then self.clear_pose_edits()end;return done,reason end}}
@@ -2608,6 +2608,24 @@ function M.new(host,sr,deps,service)
   last_time=sr.Application.time_since_launch()
   return true
  end
+ -- The Photo key must never look ignored: say why Photo Mode did not open, in the log
+ -- and for a few seconds on screen while the panel stays closed (Discord, 2026-11-05).
+ -- Methods, not locals: open() is at Lua 5.1's 60-upvalue limit.
+ function self.refuse(why)
+  local message=tostring(why or'Photo Mode did not open')
+  pcall(host.log,'Photo Mode did not open: '..message)
+  self.refusal={text=message,at=sr.Application.time_since_launch()}
+  self.draw_refusal()
+ end
+ function self.draw_refusal()
+  local refusal=self.refusal
+  if not refusal then return end
+  if self.active or type(menu.draw_notice)~='function'then self.refusal=nil;return end
+  local w,h=sr.Gui.resolution()
+  local called,shown=pcall(menu.draw_notice,w,h,'PHOTO MODE',refusal.text,sr.Application.time_since_launch()-refusal.at)
+  if not called then pcall(host.log,'Photo Mode notice unavailable: '..tostring(shown))end
+  if not called or shown~=true then self.refusal=nil end
+ end
  function self.open()
   local called,ok,why=pcall(open)
   if not called then notice(ok);self.close();return false,ok end
@@ -2683,6 +2701,7 @@ function M.new(host,sr,deps,service)
  end
  function self.tick()
   if disposed then return end
+  if self.refusal then self.draw_refusal()end
   if self.freeze_skeleton and self.freeze_skeleton.active()then
    local ok,why=self.freeze_skeleton.tick(self.active and not pending_cleanup and not subject_holds and not(shot and shot.handycam)and(deps.freeze_pose_hold or input.focused())and simulation and simulation.owns_zero()or false,sr.Application.time_since_launch())
    if not ok then notice(why)end
@@ -2734,7 +2753,8 @@ function M.new(host,sr,deps,service)
   if edge('toggle_key')then
    if self.mode=='shot'and self.active then self.reposition_shot()
    elseif self.active and shot and shot.handycam then self.begin_shot()
-   elseif self.active then self.close()else self.open()end
+   elseif self.active then self.close()
+   else local ok,why=self.open();if not ok then self.refuse(why)end end
   end
   end
   if simulation then

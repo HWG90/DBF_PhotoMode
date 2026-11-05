@@ -549,4 +549,26 @@ do -- node_frame: world position and rotation of a node through the adapter
  local fr=f.controller.node_frame(69);assert(fr.position[3]==3 and fr.rotation[4]==1)
  assert(select(2,f.controller.node_frame(500))~=nil or f.controller.node_frame(500)==nil)
 end
+-- An empty list says so, and names a Helldiver the pose bank cannot drive, instead of
+-- asking the player to choose from nothing (Discord, 2026-11-05).
+do
+ local f=fixture();local c=f.controller
+ f.candidates={skipped={nodes={[111]=1}}}
+ assert(c.refresh(),'Discovery that skips every unit still succeeds')
+ local message=c.status().message
+ assert(message:find('111 bones',1,true)and message:find('needs 107',1,true),'An unsupported Helldiver is named with its bone count: '..message)
+ f.adapter.locate=function()return nil end
+ local ok,why=c.select_unit({})
+ assert(not ok and why=="this Helldiver can't be posed yet",'A picked unsupported Helldiver gets a short reason: '..tostring(why))
+ f.candidates={skipped={nodes={[111]=1,[99]=2}}}
+ assert(c.refresh()and c.status().message:find('3 found with 99, 111 bones',1,true),'Several counts are listed in order: '..c.status().message)
+ f.candidates={}
+ assert(c.refresh()and c.status().message=='No Helldiver found','An empty list says so')
+ ok,why=c.select_unit({})
+ assert(not ok and why=='Picked character is not a listed subject','Without a skipped Helldiver the usual reason stays')
+ f.candidates={skipped={nodes='bad',dead=-1}}
+ assert(c.refresh()and c.status().message=='No Helldiver found','A malformed skip summary is ignored')
+ f.candidates={f.a,skipped={nodes={[111]=1}}}
+ assert(c.refresh()and c.status().message=='Choose a photographic subject explicitly','A listed subject keeps the usual prompt')
+end
 print('Steam selected subject: explicit selection, zero idle work, exact PQS/matrix12 ownership, anchors, foreign/partial guards and recovery passed')
