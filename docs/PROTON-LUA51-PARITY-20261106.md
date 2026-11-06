@@ -1,6 +1,6 @@
 # Lua 5.1 changes in the Proton candidate, 2026-11-06
 
-This is a local review candidate, not an installed or published release. The live game and its mod profile were not changed.
+This is an offline-verified candidate, not a published or live-game-accepted release. The scoped deployment follow-up below records installation after the initial review.
 
 ## Source boundary
 
@@ -62,4 +62,17 @@ Offline checks cannot certify game ABI, render output or live input cleanup. Bef
 5. Test Handycam aim lock and ADS handoff, held left/right modifiers, numeric fields, screenshot capture and settings persistence.
 6. Measure closed idle and open menu behavior. Keep existing scene-effect/numeric-DoF and decorative-overlay qualification gates; this port does not visually qualify them.
 
-No game launch, live deployment, Git push, tag or release was performed.
+At initial candidate completion, no game launch, live deployment, Git push, tag or release had been performed. The subsequent scoped installation is recorded below.
+
+
+## Scoped installation follow-up
+
+At 2026-11-06 03:59:30 UTC, candidate source commit `71eec8a`, build `20261106.0355-71eec8a`, was installed into the active WORMHOLE Proton prefix's `LLL/Helldivers2/Mods/dbf_freecam` folder. The game was closed before and after. The selected and deployed Arsenal profile was `LuaJIT Proton`; LLL explicitly enabled this folder. Its prior 86 files matched the known Proton dev.6 candidate byte-for-byte before replacement.
+
+The old folder was moved intact to `Port-Candidate-Backups/war-journalist-before-parity-71eec8a-20261106T035929Z/dbf_freecam`. That backup also contains a verified copy of the separate WJ settings and `LLL.cfg`. Settings, Arsenal metadata, `LLL.cfg`, shared boot files, native bridges outside this mod and all other mods were left unchanged. DBF and MCM deployment owners confirmed no overlapping work.
+
+The installed folder matches all candidate hashes. `verify_installed_modules.py` passed against the actual installed directory with 79 declared/actual modules, and all 80 installed Lua chunks compile under both Lua 5.1 and LuaJIT 2.1. The disabled Proton archive remains disabled. The existing Chef asset/core row refuses under LLL before creating its runtime, as its source and current loader log confirm; it was not changed.
+
+Installation receipt: `dist/validation/INSTALL-RECEIPT-71eec8a.json`. Actual installed audit: `dist/validation/installed-71eec8a-audit.json`. Roll back with the game closed by moving the installed folder aside and restoring the backed-up `dbf_freecam` folder to its original `Mods` location. No settings rollback is needed because settings were unchanged.
+
+The game was not launched. Live acceptance remains the checklist above, not a completed claim. No Git push, tag or release was performed.
