@@ -73,7 +73,10 @@ function M.new(sr,service,recovery,policy)
  function self.set_mode(value)
   assert(value=='menu'or value=='camera','Invalid Photo input mode')
   if keyboard_required and not(service.capabilities and service.capabilities.keyboard==true)then
-   return false,'Native keyboard isolation is required; update the shared input service'
+   if not policy.allow_shared_keys or token or release_wait or capture_fault then
+    return false,'Native keyboard isolation is required; update the shared input service'
+   end
+   self.keyboard_fallback='Keyboard isolation unavailable. Camera keys reach gameplay.'
   end
   local capture_keyboard=not keyboard_denied and service.capabilities and service.capabilities.keyboard==true
   local canonical_mask=service.capabilities and service.capabilities.keyboard_mask
@@ -106,7 +109,7 @@ function M.new(sr,service,recovery,policy)
     local restored=self.release()
     local status=service.status()
     if restored and type(status)=='table'and status.owner==nil and status.pending_restore==false then
-     if keyboard_required then return false,'Native keyboard isolation was denied; Photo Mode stayed closed'end
+     if keyboard_required and not policy.allow_shared_keys then return false,'Native keyboard isolation was denied; Photo Mode stayed closed'end
      keyboard_denied=true
      self.keyboard_fallback='Native keyboard capture was denied; engine key input is active'
      return self.set_mode(value)

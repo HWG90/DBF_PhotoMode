@@ -47,11 +47,20 @@ local function toward(from,to)
     if n<.05 then return nil end
     return math.atan2(d[2],d[1]),math.asin(math.max(-1,math.min(1,d[3]/n)))
 end
-function M.follow_start(kind,position,forward,target,anchor)
-    assert(kind=='pivot'or kind=='pin','Unknown follow camera')
+function M.follow_start(kind,position,forward,target,anchor,heading,tilt,basis)
+    assert(kind=='pivot'or kind=='pin'or kind=='look'or kind=='part','Unknown follow camera')
     local yaw=math.atan2(forward[2],forward[1]);local pitch=math.asin(math.max(-1,math.min(1,forward[3])))
     local state={kind=kind,position={position[1],position[2],position[3]},yaw=yaw,pitch=pitch}
-    if kind=='pin'then
+    if kind=='part' then
+        assert(basis,'Missing attachment orientation')
+        local offset={position[1]-anchor[1],position[2]-anchor[2],position[3]-anchor[3]}
+        state.local_pos,state.local_forward={},{}
+        for axis,v in ipairs(basis) do
+            state.local_pos[axis]=v[1]*offset[1]+v[2]*offset[2]+v[3]*offset[3]
+            state.local_forward[axis]=v[1]*forward[1]+v[2]*forward[2]+v[3]*forward[3]
+        end
+    elseif kind~='pivot'then
+        state.heading,state.tilt=heading or 0,tilt or 0
         state.offset={position[1]-anchor[1],position[2]-anchor[2],position[3]-anchor[3]}
     else
         local ty,tp=toward(position,target)
@@ -59,7 +68,27 @@ function M.follow_start(kind,position,forward,target,anchor)
     end
     return state
 end
-function M.follow_step(state,target,anchor)
+function M.follow_step(state,target,anchor,heading,tilt,basis)
+    if state.kind=='part' then
+        local p,f={},{}
+        for i=1,3 do
+            p[i]=anchor[i]
+            f[i]=0
+            for axis,v in ipairs(basis) do
+                p[i]=p[i]+v[i]*state.local_pos[axis]
+                f[i]=f[i]+v[i]*state.local_forward[axis]
+            end
+        end
+        local forward,right=M.level(f)
+        return p,forward,right
+    end
+    if state.kind=='look' then
+        local turn=(heading or 0)-state.heading
+        local c,s,o=math.cos(turn),math.sin(turn),state.offset
+        local p={anchor[1]+c*o[1]-s*o[2],anchor[2]+s*o[1]+c*o[2],anchor[3]+o[3]}
+        local f,r=direction(state.yaw+turn,math.max(-1.55,math.min(1.55,state.pitch+(tilt or 0)-state.tilt)))
+        return p,f,r
+    end
     if state.kind=='pin'then
         local o=state.offset;local f,r=direction(state.yaw,state.pitch)
         return {anchor[1]+o[1],anchor[2]+o[2],anchor[3]+o[3]},f,r

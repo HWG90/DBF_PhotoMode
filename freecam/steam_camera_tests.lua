@@ -238,3 +238,14 @@ do
  assert(not pcall(L.follow_start,'orbit',{0,0,0},{1,0,0},{1,0,0},{1,0,0}),'Unknown follow modes are refused')
  print('Follow cameras: pivot stays put and keeps the framing, pin keeps offset and orientation passed')
 end
+
+-- A camera mounted above a vehicle moves with its part through a 90-degree bank.
+do
+ local look=dofile('freecam/look.lua')
+ local mount=look.follow_start('part',{0,0,2},{0,1,0},{0,0,0},{0,0,0},0,0,{{1,0,0},{0,1,0},{0,0,1}})
+ local p,f=look.follow_step(mount,nil,{5,6,7},0,0,{{0,0,-1},{0,1,0},{1,0,0}})
+ assert(p[1]==7 and p[2]==6 and p[3]==7 and math.abs(f[2]-1)<1e-9)
+ local tracking=look.follow_start('look',{1,0,0},{1,0,0},{0,0,0},{0,0,0},0,0)
+ p,f=look.follow_step(tracking,nil,{0,0,0},math.pi/2,.3)
+ assert(math.abs(p[2]-1)<1e-9 and math.abs(f[3]-math.sin(.3))<1e-9)
+end

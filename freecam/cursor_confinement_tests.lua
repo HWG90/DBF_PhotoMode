@@ -1,5 +1,5 @@
 local root=rawget(_G,'DBF_PHOTO_TEST_ROOT')or'freecam/'
-local Capture=dofile(root..'photo_input_capture.lua')
+local Capture=dofile(root..'../archive/pre-rewrite/photo_input_capture.lua')
 local function copy(v)if v then return{v[1],v[2],v[3],v[4]}end end
 local function same(a,b)return a and b and table.concat(a,',')==table.concat(b,',')end
 local desktop={-1920,0,2560,1440};local actual=copy(desktop);local client={-1800,120,-520,840}

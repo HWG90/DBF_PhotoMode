@@ -1,5 +1,5 @@
 local root=rawget(_G,'DBF_PHOTO_TEST_ROOT')or'freecam/'
-local Controller=dofile(root..'controller.lua')
+local Controller=dofile(root..'../archive/pre-rewrite/controller.lua')
 
 -- The former blanket-release manager remains deliberately hostile here:
 -- opening, rendering and closing Photo Mode must never call it.

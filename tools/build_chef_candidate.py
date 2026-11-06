@@ -10,7 +10,7 @@ import photo_light_assets
 
 ROOT = Path(__file__).resolve().parents[1]
 # Chef Shared Loader v1.4.0 (2026-10-29). The addon still needs only 1.2.3: the
-# 1.4.0 services are probed at run time (freecam/chef/loader_features.lua).
+# 1.4.0 services are probed at run time (archive/pre-rewrite/chef/loader_features.lua).
 UPSTREAM = '418815244bd3a513cb357f7ad91d0df67549dfa7'
 RESOURCE = 'mods/goose/war_journalist'
 VERSION = '0.6.0-chef-lite-dev.1'
@@ -44,11 +44,11 @@ def digest(data):
 
 
 def bundle():
-    entry = (ROOT / 'freecam/chef/main.lua').read_text(encoding='utf-8')
+    entry = (ROOT / 'archive/pre-rewrite/chef/main.lua').read_text(encoding='utf-8')
     header, body = entry.split('-- Development entry;', 1)
     parts = [header, '-- Generated modules stay inside this addon sandbox.\n']
     for name, path in MODULES.items():
-        source = (ROOT / 'freecam' / path).read_text(encoding='utf-8')
+        source = ((ROOT / ('archive/pre-rewrite' if path.startswith('chef/') else 'freecam')) / path).read_text(encoding='utf-8')
         parts.append("package.preload[%s] = function(...)\n%s\nend\n" % (json.dumps(name), source))
     from chef_crest import fallback, logos
     parts.append("package.preload['wj.assets.crest_fallback'] = function(...)\n" +
@@ -98,7 +98,7 @@ def build(output, sandboxes):
                   'runtime': 'Lua 5.1 source', 'candidate_only': True, 'live_game_verified': False,
                   'installed': False, 'published': False,
                   'photo_light': photo_light_assets.validate_unit(photo_light_assets.resource()[2]), 'source_sha256': {
-                      path: digest((ROOT / 'freecam' / path).read_bytes())
+                      path: digest(((ROOT / ('archive/pre-rewrite' if path.startswith('chef/') else 'freecam')) / path).read_bytes())
                       for path in [*MODULES.values(), 'chef/main.lua', 'assets/logo_art.lua', 'assets/logos/runtime-manifest.json']}}
     provenance['build_sources_sha256'] = {path: digest((ROOT / 'tools' / path).read_bytes()) for path in
                                          ['build_chef_candidate.py', 'chef_archive.py', 'chef_crest.py', 'photo_assets.py', 'photo_light_assets.py']}

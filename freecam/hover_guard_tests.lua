@@ -1,6 +1,6 @@
 local root=rawget(_G,'DBF_PHOTO_TEST_ROOT')or'freecam/'
-local Guard=dofile(root..'hover_guard.lua')
-local Simulation=dofile(root..'simulation.lua')
+local Guard=dofile(root..'../archive/pre-rewrite/hover_guard.lua')
+local Simulation=dofile(root..'../archive/pre-rewrite/simulation.lua')
 local events={};local mode=0;local install_ok=1;local arm_ok=1;local rate=1;local clock=10;local fail_restore=false
 local native={}
 function native.PhotoHoverGuardInstall()events[#events+1]='install';return install_ok end

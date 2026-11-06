@@ -1,5 +1,5 @@
 local root=rawget(_G,'DBF_PHOTO_TEST_ROOT')or'freecam/'
-local render=dofile(root..'render_profile.lua');local lens=dofile(root..'lens.lua')
+local render=dofile(root..'../archive/pre-rewrite/render_profile.lua');local lens=dofile(root..'lens.lua')
 local fields={focal_distance=2,focal_region=30,focal_region_start=1,focal_region_end=1,focal_near_scale=1,focal_far_scale=1,focal_near_max=1,focal_far_max=1,focal_far_max_close=1}
 local baseline={};for k,v in pairs(fields)do baseline[k]=v end
 local flags={dof_enabled=false,bloom_enabled=true};local restored=0;local valid=true;local available=false;local writes=0;local ticks=0;local released=0
@@ -21,7 +21,7 @@ available=true;profile.tick();assert(profile.native_numeric_ready and profile.pa
 assert(ticks==1,'A newly attached lens must validate once in its owning frame')
 profile.tick();assert(ticks==2 and profile.native_numeric_ready,'An existing lens must not run its retirement check twice per frame')
 DBF_PHOTO_RENDER_PROFILE=profile
-local effect=dofile(root..'postfx.lua').new(sr,lens)
+local effect=dofile(root..'../archive/pre-rewrite/postfx.lua').new(sr,lens)
 local opts=dofile(root..'photo_options.lua');local o=opts.read({get=function(k)return opts.defaults[k]end})
 o.dof_mode=1;o.dof=true;o.focus_distance=1.4;o.aperture=2
 assert(effect.apply(42,o,math.rad(90)));assert(effect.native_numeric_ready)
@@ -62,7 +62,7 @@ do
    release=function()if owner==1 then released_old=released_old+1 end;return restore()end}
  end}
  local handoff_profile=assert(render.new(sr,43,function()return true end,9,10))
- local handoff_effect=dofile(root..'postfx.lua').new(sr,lens,{new=function()return handoff_profile end})
+ local handoff_effect=dofile(root..'../archive/pre-rewrite/postfx.lua').new(sr,lens,{new=function()return handoff_profile end})
  local unchanged=opts.read({get=function(key)return opts.defaults[key]end})
  unchanged.dof_mode,unchanged.dof,unchanged.focus_distance,unchanged.aperture=1,true,1.4,2
  local mapped=lens.depth(unchanged.focus_distance,unchanged.aperture,math.rad(90))
@@ -81,7 +81,7 @@ print('Native handoff: unchanged focus/aperture reapply immediately with exact o
 
 -- The production renderer checks before commands exist. Read them after the
 -- original renderer returns, then attach from copied scalars next frame.
-local camera=dofile(root..'camera_profile.lua')
+local camera=dofile(root..'../archive/pre-rewrite/camera_profile.lua')
 local time,queued,observations=0,nil,0
 local world={address=10,native=100,provider=200};local cam={address=300,id=400}
 local function identity(w,c)return {world_address=w.address,native=w.native,provider=w.provider,camera_address=c.address,camera_id=c.id}end

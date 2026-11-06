@@ -66,7 +66,7 @@ print('MDL adapter: real-global sandbox contract, isolated file host, standalone
 
 -- Cursor flags belong to a later external owner; restore only our own lease.
 do
- local Capture=dofile(root..'photo_input_capture.lua');local active=false;local throws=false
+ local Capture=dofile(root..'../archive/pre-rewrite/photo_input_capture.lua');local active=false;local throws=false
  local focus,cursor,clip=true,false,false;local writes={};local refusal;local bad_readback=false
  local function setter(name,value)writes[#writes+1]={name,value};if refusal==name then return false end
   if not bad_readback then if name=='focus'then focus=value elseif name=='cursor'then cursor=value else clip=value end end;return true

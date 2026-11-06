@@ -16,7 +16,7 @@ api.create_photo_view=function()return{draw=function(c)commands=c end,release=fu
 local effects={fov=math.pi/2,native_dof_candidate=true,native_dof_ready=true,parameters={focus_distance=true,aperture=true,dof=true},release=function()return true end}
 local photo={};local sampler={sample=function()samples=samples+1;return 4 end,release=function()return true end}
 local screenshots={active=function()return capture end,cancel=function()capture=false end,tick=function()return true end}
-local controller=dofile(root..'controller.lua').new(photo,{},function()return true end,function()end,nil,Options,effects,Menu,nil,nil,screenshots,sampler,lights)
+local controller=dofile(root..'../archive/pre-rewrite/controller.lua').new(photo,{},function()return true end,function()end,nil,Options,effects,Menu,nil,nil,screenshots,sampler,lights)
 local function tick()controller.tick(.016)end
 local function press(key)keys[key]=true;tick();keys[key]=false;tick()end
 tick();press(80);photo.light_context={world='world',position={0,0,0},right={1,0,0},forward={0,1,0},up={0,0,1}};tick()

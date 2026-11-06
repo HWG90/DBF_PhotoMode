@@ -106,9 +106,9 @@ local function assemble(scene_code,motion_code)
  return replace(value,'__ANIMATION_STATE__',animation_source)
 end
 local source=assemble(scene_source)
-local scene_file=assert(io.open(root..'camera_scene.lua','rb'));local actual_scene_source=scene_file:read('*a');scene_file:close()
+local scene_file=assert(io.open(root..'../archive/pre-rewrite/camera_scene.lua','rb'));local actual_scene_source=scene_file:read('*a');scene_file:close()
 local actual_scene_runtime=assemble(actual_scene_source)
-local motion_file=assert(io.open(root..'camera_motion.lua','rb'));local actual_motion_source=motion_file:read('*a');motion_file:close()
+local motion_file=assert(io.open(root..'../archive/pre-rewrite/camera_motion.lua','rb'));local actual_motion_source=motion_file:read('*a');motion_file:close()
 local actual_motion_runtime=assemble(actual_scene_source,actual_motion_source)
 local function fixture(late_render,actual_scene,actual_motion)
  local state={updates=0,renders=0,inputs=0,writes=0,refreshes=0,stops=0,flushes=0,cached=0,before=0,after=0,ragdolls=0,events={}}

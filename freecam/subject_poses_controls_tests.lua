@@ -1,5 +1,5 @@
 local root=rawget(_G,'DBF_PHOTO_TEST_ROOT')or'freecam/'
-local Core=dofile(root..'vendor/core.lua');local Controller=dofile(root..'controller.lua')
+local Core=dofile(root..'vendor/core.lua');local Controller=dofile(root..'../archive/pre-rewrite/controller.lua')
 local Options=dofile(root..'photo_options.lua');local Menu=dofile(root..'photo_menu.lua')
 -- The sampled-pose service contract is mocked here; native sample/restore
 -- correctness belongs to its backend fixtures. These checks exercise real UI

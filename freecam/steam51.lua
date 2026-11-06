@@ -19,7 +19,7 @@ entry={live_lua_api=1,name='War Journalist',
   local loader=assert(mod.host_loader or rawget(_G,'LiveLuaLoader'),'Live Lua Loader or Boot Mod Loader is required')
   local engine_host=loader.engine_input==true
   assert(not rawget(_G,'DBF_PHOTO_MODE_OWNER'),'Another Photo Mode runtime is already active')
-  local deps={ragdoll=mod.require('src/ragdoll_pause.lua'),handycam=mod.require('src/steam_handycam.lua'),hud=mod.require('src/steam_hud.lua'),input_policy={require_keyboard=not engine_host or loader.require_keyboard==true},director=mod.require('src/director.lua'),bookmark=mod.require('src/steam_bookmark.lua'),subject_backend=mod.require('src/subject_backend.lua'),subject_visibility=mod.require('src/subject_visibility.lua'),input_cleanup=mod.require('src/input_cleanup.lua'),camera=mod.require('src/steam_camera.lua'),input=mod.require('src/steam_input.lua'),
+  local deps={ragdoll=mod.require('src/ragdoll_pause.lua'),handycam=mod.require('src/steam_handycam.lua'),hud=mod.require('src/steam_hud.lua'),input_policy={allow_shared_keys=loader.allow_shared_keys,require_keyboard=not engine_host or loader.require_keyboard==true},director=mod.require('src/director.lua'),bookmark=mod.require('src/steam_bookmark.lua'),subject_backend=mod.require('src/subject_backend.lua'),subject_visibility=mod.require('src/subject_visibility.lua'),input_cleanup=mod.require('src/input_cleanup.lua'),camera=mod.require('src/steam_camera.lua'),input=mod.require('src/steam_input.lua'),
    path=mod.require('src/steam_path.lua'),decorative_overlay=mod.require('src/steam_overlay.lua'),
    lighting=mod.require('src/steam_lighting.lua'),lights=mod.require('src/photo_lights.lua'),
    light_presets=mod.require('src/photo_light_presets.lua'),
@@ -32,7 +32,9 @@ entry={live_lua_api=1,name='War Journalist',
    composition=mod.require('src/composition.lua'),look=mod.require('src/look.lua'),lens=mod.require('src/lens.lua'),
    pick=mod.require('src/steam_pick.lua')}
   deps.diagnostics=engine_host and not mod.release_mode
+  deps.follow_target=mod.require('src/follow_target.lua')
   deps.engine_time_only=engine_host
+  deps.shared_keys=engine_host and loader.require_keyboard==false
   -- Hosts trying the depth shaders keep those rows.
   deps.depth_shaders=loader.depth_shaders==true
   if engine_host then deps.freeze_rate,deps.freeze_rate_sample=mod.require('src/windows_hover_freeze.lua').new(stingray,mod.log,true)end

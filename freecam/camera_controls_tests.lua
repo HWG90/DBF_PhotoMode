@@ -1,6 +1,6 @@
 -- Exclusive camera ownership outlives input capture while any Photo cleanup is pending.
 local root=rawget(_G,'DBF_PHOTO_TEST_ROOT')or'freecam/'
-local controller=dofile(root..'controller.lua');local core=dofile('src/core.lua')
+local controller=dofile(root..'../archive/pre-rewrite/controller.lua');local core=dofile('src/core.lua')
 local function fixture(occupied,reuse_api)
  local calls={acquire=0,release=0,input_acquire=0,input_release=0};local state={lease=false,input=false,effect_ok=true,input_ok=true,time_pending=false,enter_ok=true,native_open=false}
  local photo={active=false,input={}}

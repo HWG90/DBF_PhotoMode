@@ -1,7 +1,7 @@
 """Isolated PUC Lua 5.1 fixtures, run inside a real upstream Chef sandbox.lua.
 
 The sandbox is the loader's own file (pass one per --sandbox); the loader's chef
-helpers are modelled by freecam/chef/test_support.lua, with and without the
+helpers are modelled by archive/pre-rewrite/chef/test_support.lua, with and without the
 Chef 1.4.0 services. Nothing here runs the game or proves in-game behaviour.
 """
 import argparse
@@ -13,6 +13,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 # git blob of src/chef_loader/sandbox.lua -> the Chef Shared Loader tags that ship it.
 SANDBOX_BLOBS = {
+    '473f247e1051ecf54e7a7454e020a46476b03ee6': '1.5.2',
     '737728a5911189c3f02b13b21487ab8dbac97310': '1.2.3/1.2.4',
     '7876938935a5054ad774ee5a021e3850740008e6': '1.3.0/1.3.1',
     'ebdcfafc5d6d4914fbf6e240f449bf8b324b3e3f': '1.4.0',
@@ -50,8 +51,8 @@ def run(source, sandbox, shared_fixtures=True):
             assert lua.eval('_VERSION') == 'Lua 5.1' and lua.eval('jit == nil and package.loaded.ffi == nil')
             lua.globals().CHEF_SOURCE = source.decode('utf-8')
             lua.globals().SANDBOX_SOURCE = text
-            lua.execute((ROOT / 'freecam/chef/test_support.lua').read_text(encoding='utf-8'))
-            lua.execute((ROOT / 'freecam' / fixture).read_text(encoding='utf-8'))
+            lua.execute((ROOT / 'archive/pre-rewrite/chef/test_support.lua').read_text(encoding='utf-8'))
+            lua.execute(((ROOT / ('archive/pre-rewrite' if fixture.startswith('chef/') else 'freecam')) / fixture).read_text(encoding='utf-8'))
             results.append({'fixture': fixture, 'passed': True})
     finally:
         os.chdir(previous)

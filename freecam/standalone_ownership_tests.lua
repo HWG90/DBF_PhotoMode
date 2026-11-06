@@ -1,6 +1,6 @@
 local root=rawget(_G,'DBF_PHOTO_TEST_ROOT')or'freecam/'
 local Standalone=dofile(root..'standalone.lua')
-local Capture=dofile(root..'photo_input_capture.lua')
+local Capture=dofile(root..'../archive/pre-rewrite/photo_input_capture.lua')
 local Camera=dofile(root..'vendor/camera_input.lua')
 local function empty()return{package={loaded={}}}end
 local function status(open,active,pending,owner)return{open=open,active=active,pending_restore=pending,owner=owner}end

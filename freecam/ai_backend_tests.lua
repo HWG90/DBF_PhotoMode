@@ -1,6 +1,6 @@
 -- Real byte-backed native backend; no process attachment or native invocation.
 local root=rawget(_G,'DBF_PHOTO_TEST_ROOT')or'freecam/'
-local B=dofile(root..'ai_backend.lua')
+local B=dofile(root..'../archive/pre-rewrite/ai_backend.lua')
 local function fixture(entity_override)
 local s={reads=0,read_bytes=0,writes=0};local now=0;local bytes={};local function put(at,data)for i=1,#data do bytes[at+i-1]=data:byte(i)end end
 local function le(n,size)local out={};for i=1,size do out[i]=string.char(n%256);n=math.floor(n/256)end;return table.concat(out)end

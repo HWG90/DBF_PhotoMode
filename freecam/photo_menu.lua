@@ -276,7 +276,7 @@ function M.new(view,actions,existing)
   for _,page in ipairs(self.pages)do
    watch(page);watch(page.name)
    for _,c in ipairs(page.controls or{})do
-    watch(c);watch(c.label);watch(c.disabled);watch(c.button_label)
+    watch(c);watch(c.label);watch(c.hidden);watch(c.disabled);watch(c.button_label)
     if c.choices then
      watch(#c.choices)
      -- Optional publisher promise: labels stay immutable until the revision or
@@ -436,7 +436,7 @@ function M.new(view,actions,existing)
    if type(c.photo_section)=='string'and c.photo_section~=''then pending_section=c.photo_section end
    local neutral_status=c.type=='text'and((c.status_only and(c.label or '')=='')or(c.id=='shader_status'and c.label=='Shader overlay: none'))
    local global_ai=has_ai and(c.photo_global_ai or c.id=='ai_behavior'or c.id=='ai_reset'or c.id=='ai_status'or c.id=='ai_hint'or c.id=='ai_limits')
-   if(not actions.hide_unavailable or not c.disabled)and c.id~='controls'and not(actions.freeze and c.id=='freeze_player')and not(actions.slowmo and(c.id=='slowmo_speed'or c.id=='lock_camera'))and not global_ai and not c.layout_storage and not neutral_status then rows[#rows+1]=c;row_sections[#rows]=pending_section;pending_section=nil end
+   if not c.hidden and(not actions.hide_unavailable or not c.disabled)and c.id~='controls'and not(actions.freeze and c.id=='freeze_player')and not(actions.slowmo and(c.id=='slowmo_speed'or c.id=='lock_camera'))and not global_ai and not c.layout_storage and not neutral_status then rows[#rows+1]=c;row_sections[#rows]=pending_section;pending_section=nil end
   end
   self.selection=math.max(1,math.min(#rows,self.selection));if not selectable(rows[self.selection])then for i,c in ipairs(rows)do if selectable(c)then self.selection=i;break end end end
   if self.editing_value and self.editing_value.disabled then self.editing_value=nil;text_edit=nil end;if popup and popup.c.disabled then popup=nil end

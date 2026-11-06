@@ -18,6 +18,13 @@ active. The log reports either the pending owner or `gameplay mouse restored`.
 Recovery restores normal time and exits an action shot. It does not synthesize
 key releases or change saved keybinds, artwork, screenshots or presets.
 
+The shortcut is also the way out of a held pose that cannot be restored. If
+stopping a pose fails (the log says `Subject … failed: …` with the reason),
+Photo Mode keeps time frozen and will not reopen. Ctrl+Shift+F10 retries the
+restoration once and, if it still cannot be proven, gives the pose up. It puts
+the bone mode back without writing the body, so the Helldiver returns to its
+animation as time resumes. The log records `Pose restoration could not be proven`.
+
 This package contains no new native input DLL or runtime hook. Separate Epic LUT
 and MCM Lua fixes accompany the local development installation. The Photo fix
 also recognizes older Epic frontends, while the updated Epic frontend handles

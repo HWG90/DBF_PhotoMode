@@ -17,6 +17,8 @@ SANDBOX_DIR = ROOT / 'dist/chef-src/sandbox'
 SANDBOXES = [(SANDBOX_DIR / 'sandbox-v1.4.0.lua', '1.4.0'), (SANDBOX_DIR / 'sandbox-v1.4.1.lua', '1.4.1'),
              (SANDBOX_DIR / 'sandbox-v1.4.2-test1.lua', '1.4.2-test1'), (SANDBOX_DIR / 'sandbox-v1.5.0.lua', '1.5.0'),
              (SANDBOX_DIR / 'sandbox-v1.5.1.lua', '1.5.1'), (SANDBOX_DIR / 'sandbox-v1.5.1.lua', '1.10.0')]
+if (SANDBOX_DIR / 'sandbox-v1.5.2.lua').exists():
+    SANDBOXES.append((SANDBOX_DIR / 'sandbox-v1.5.2.lua', '1.5.2'))
 
 
 def sandbox_arg(value):

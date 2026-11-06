@@ -1,5 +1,5 @@
 local root=assert(DBF_PHOTO_TEST_ROOT)
-local factory=dofile(root..'depth_resource.lua')
+local factory=dofile(root..'../archive/pre-rewrite/depth_resource.lua')
 local calls=0;local verified=true;local token={}
 local sr={Renderer={resource=function(name)assert(name=='linear_depth');calls=calls+1;return token end}}
 local depth=factory.new(sr,function()return verified end)

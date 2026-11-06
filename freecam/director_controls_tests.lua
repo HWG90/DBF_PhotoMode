@@ -1,6 +1,6 @@
 local root=rawget(_G,'DBF_PHOTO_TEST_ROOT')or'freecam/'
-local Core=dofile('src/core.lua');local Controller=dofile(root..'controller.lua');local Options=dofile(root..'photo_options.lua')
-local Subject=dofile(root..'subject.lua');local Director=dofile(root..'director.lua')
+local Core=dofile('src/core.lua');local Controller=dofile(root..'../archive/pre-rewrite/controller.lua');local Options=dofile(root..'photo_options.lua')
+local Subject=dofile(root..'../archive/pre-rewrite/subject.lua');local Director=dofile(root..'director.lua')
 local photo={active=false};local player={local_owner=true,identity='local:1',position={0,0,1},yaw=0}
 local part={identity='own:1',mesh_count=1};local mask=255;local writes=0;local available=true
 local subject=Subject.new({resolve=function()if available then return{local_owner=true,identity='local:1',groups={hide_player={part},hide_armour={part},hide_weapons={}}}end;return nil,'Player unavailable'end,

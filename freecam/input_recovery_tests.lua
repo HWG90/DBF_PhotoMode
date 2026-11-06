@@ -1,5 +1,5 @@
 local root=DBF_PHOTO_TEST_ROOT or'freecam/'
-local Recovery=dofile(root..'input_recovery.lua')
+local Recovery=dofile(root..'../archive/pre-rewrite/input_recovery.lua')
 local function fixture()
  local s={keys={},focused=true,native_menu=false,chat=false,focus=false,cursor=true,writes=0,stops=0,resets=0,
   external={available=true,open=false,active=false,pending_restore=false},

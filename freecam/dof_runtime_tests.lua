@@ -1,8 +1,8 @@
 -- Candidate integration uses the actual compositor and owned postfx restore.
 -- Native GPU draw behavior remains a separate visual validation step.
 local root=rawget(_G,'DBF_PHOTO_TEST_ROOT')or'freecam/'
-local runtime_factory=dofile(root..'photo_runtime.lua')
-local postfx_factory=dofile(root..'postfx.lua');local lens_math=dofile(root..'lens.lua')
+local runtime_factory=dofile(root..'../archive/pre-rewrite/photo_runtime.lua')
+local postfx_factory=dofile(root..'../archive/pre-rewrite/postfx.lua');local lens_math=dofile(root..'lens.lua')
 local defaults=dofile(root..'photo_options.lua').defaults
 local o={};for key,value in pairs(defaults)do o[key]=value end;o.dof=true;o.bloom=true;o.dof_mode=2
 local native={dof=1,bloom=0,focus_distance=10,aperture=8}
@@ -65,11 +65,11 @@ assert(lens_applies>=8,'Candidate failures prevented ordinary camera updates')
 -- Asset lookup cannot lift the numeric gates without renderer registration.
 local registered=false;local validation_error=false;local asset_queries=0
 sr.Application.can_get=function()asset_queries=asset_queries+1;return true end
-local guard=dofile(root..'shader_template_guard.lua').new(sr,function()
+local guard=dofile(root..'../archive/pre-rewrite/shader_template_guard.lua').new(sr,function()
  if validation_error then error('renderer template validation failed')end
  return registered
 end)
-local guarded_overlay=dofile(root..'dof_overlay.lua').new(sr,{available=function()return true end,get=function()error('Unregistered shader must not query a draw resource')end},true,guard)
+local guarded_overlay=dofile(root..'../archive/pre-rewrite/dof_overlay.lua').new(sr,{available=function()return true end,get=function()error('Unregistered shader must not query a draw resource')end},true,guard)
 local guarded=runtime_factory.new(sr,lens,composition,postfx_factory,function()end,nil,nil,{new=function()return guarded_overlay end})
 o.dof=true;assert(apply(guarded));numeric(guarded,false)
 assert(native.dof==1 and asset_queries==0,'Missing renderer registration must stop before asset queries or native suppression')

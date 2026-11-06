@@ -1,5 +1,5 @@
 local root=rawget(_G,'DBF_PHOTO_TEST_ROOT')or'freecam/'
-local make=dofile(root..'simulation.lua')
+local make=dofile(root..'../archive/pre-rewrite/simulation.lua')
 local multiplier=1.25;local now=0;local world_time=100;local dt=0
 local unit,world={},{};local current=unit;local peers,joining={},{};local fail_restore=false
 local sr={World={time=function()return world_time end,delta_time=function()return dt end},

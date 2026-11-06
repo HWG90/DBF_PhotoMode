@@ -12,7 +12,7 @@ local api=core.new(nil,function()end);api.is_open=function()return mcm end;api.c
 api.photo_resolution=function()return 1920,1080 end;api.create_photo_view=function()return{draw=function(c)commands=c end,release=function()commands={}end}end;DBFMCM=api
 local effects={native_dof_candidate=true,native_dof_ready=true,parameters={focus_distance=true,aperture=true,dof=true},release=function()return true end}
 local photo={};local capture=false;local screenshots={active=function()return capture end,cancel=function()capture=false end,tick=function()return true end,request=function()capture=true;return true end}
-local controller=dofile(root..'controller.lua').new(photo,{},function()return true end,function()end,nil,options,effects,menu,nil,nil,screenshots,sampler)
+local controller=dofile(root..'../archive/pre-rewrite/controller.lua').new(photo,{},function()return true end,function()end,nil,options,effects,menu,nil,nil,screenshots,sampler)
 local function tick(dt)dt=dt or .016;clock=clock+dt;controller.tick(dt)end
 local function press(k)keys[k]=true;tick();keys[k]=false;tick()end
 local function double_click()press(1);press(1)end

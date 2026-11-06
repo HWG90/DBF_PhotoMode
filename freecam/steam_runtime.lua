@@ -656,12 +656,19 @@ function M.new(host,sr,deps,service)
   if controls.handycam_hide_helmet then controls.handycam_hide_helmet.disabled=attached==true or not self.pov_visibility end
   if not controls.subject_refresh then return end
   local enabled=not attached and subject_opt_in and self.active and not pending_cleanup and self.mode~='shot'and s and s.available==true
+  local listed=#(subject_choices or {})
+  local extra=subject and subject.camera_choices or {}
+  controls.subject_refresh.label=string.format('Find Helldivers (%d found)',listed+#extra)
   controls.subject_refresh.disabled=not self.active or pending_cleanup or self.mode=='shot'or attached or subject_holds
   for i=1,4 do
    local c=controls['subject_select_'..i];local choice=subject_choices and subject_choices[i]
-   c.label=choice and choice.label or'No subject refreshed'
+   local camera_choice=extra[i-listed]
+   c.hidden=not choice and not camera_choice
+   c.label=choice and choice.label or camera_choice and camera_choice.label or'No subject refreshed'
+   if choice and choice.id==self.camera_association then c.label=c.label..' (gameplay camera)'end
    c.button_label=choice and s and s.selected==choice.id and'Selected'or'Select'
-   c.disabled=not enabled or subject_holds or not choice
+   if camera_choice then c.button_label=self.camera_choice==camera_choice and 'Following' or 'Follow'end
+   c.disabled=not enabled or subject_holds or c.hidden
   end
   controls.subject_pose.disabled=not enabled or subject_pending
   controls.subject_pose_play.disabled=not enabled or subject_pending or not(s and s.selected)or not(simulation and simulation.owns_zero())
@@ -684,7 +691,10 @@ function M.new(host,sr,deps,service)
     if controls.pose_rescan then controls.pose_rescan.disabled=store==nil end
    end
   end
-  if texts.subject_pose_status then texts.subject_pose_status.label=(picked_label and picked_label..'  |  'or'')..subject_message end
+  if texts.subject_pose_status then
+   local hint=(deps.shared_keys or input.keyboard_fallback) and subject_holds and ' | Camera keys reach gameplay. Use keys unbound in the game.' or ''
+   texts.subject_pose_status.label=(picked_label and picked_label..'  |  'or'')..subject_message..hint
+  end
  end
  local function subject_call(method,value)
   local called,ok,why=pcall(subject[method],value)
@@ -738,7 +748,14 @@ function M.new(host,sr,deps,service)
   if ragdoll then local ok,why=ragdoll.release();if not ok then return false,why end end
   if not subject then return true end
   if explicit_retry and subject_pending then
-   local ok,why=subject_call('recover');if not ok then return false,why end
+   local ok,why=subject_call('recover')
+   if not ok then
+    -- The recovery key is the last way out: a pose whose restoration cannot be proven is
+    -- given up (bone mode back, no body writes) so time and Photo Mode are released.
+    pcall(host.log,'Pose restoration could not be proven ('..tostring(why)..'); giving the pose up')
+    ok,why=subject_call('abandon');if not ok then return false,why end
+    local s=subject_status;pcall(host.log,tostring(s and s.message)..(s and type(s.detail)=='string'and'; '..s.detail or''))
+   end
    subject_close_started=false
   end
   if not subject_close_started then
@@ -1046,6 +1063,12 @@ function M.new(host,sr,deps,service)
   local f,r=photo.forward,photo.right
   local up=deps.lens.up(f,r,photo.path_roll or photo.roll or o.roll)
   local fov=photo.path_fov or(o.fov>0 and math.rad(o.fov)or initial.fov)
+  if handle.get('action_camera_mode')==6 and deps.follow_target then
+   local called,reader,node=pcall(deps.follow_target.surface,sr,{pos=photo.pos,forward=f,right=r,up=up,fov=fov},x,y,width,height,depth)
+   self.part_target=called and reader or nil
+   local message=called and ('Camera attachment selected: node '..node) or tostring(reader)
+   notice(message);return called,message
+  end
   local hit,why=pick.pick({pos=photo.pos,forward=f,up=up,fov=fov},x,y,width,height,math.max(24,height*.04),depth,audit)
   if not hit then notice(why);return false,why end
   local distance=math.max(.1,math.min(200,math.floor(hit.distance*1000+.5)/1000))
@@ -1054,11 +1077,19 @@ function M.new(host,sr,deps,service)
   end
   if controls.light_subject_distance and not controls.light_subject_distance.disabled then handle.set('light_subject_distance',distance)end
   local message=hit.label..string.format(' selected (%.1f m)',hit.distance)
+  self.clicked_target=nil
+  if hit.helldiver and deps.follow_target then
+   local ok,reader=pcall(deps.follow_target.target,sr,hit.unit)
+   if ok then self.clicked_target=reader end
+  end
   if hit.helldiver and subject and type(subject.select_unit)=='function'then
    if subject_holds then message=message..'; reset the held pose to pose it'
    elseif subject_action('refresh',hit.center)then
     local had=subject_status~=nil and subject_status.selected~=nil
-    local ok,reason=subject_call('select_unit',hit.unit);if not ok then message=message..'; '..tostring(reason)elseif had then self.clear_pose_edits()end
+    local ok,reason=subject_call('select_unit',hit.unit)
+    if not ok then
+     message=message..'; '..tostring(reason)..(self.clicked_target and '; Follow camera ready' or '')
+    elseif had then self.clear_pose_edits()end
    end
   elseif not hit.helldiver then message=message..' for focus and lighting; poses need a Helldiver'end
   picked_label=message;sync_subject();notice(message)
@@ -1330,6 +1361,7 @@ function M.new(host,sr,deps,service)
  end
  self.capture=capture
  function self.close(clear_time,automatic,subject_retry)
+  self.part_target,self.clicked_target,self.camera_choice=nil,nil,nil
   director_bridge.remember()
   deferred_shot=nil;self.pending_pose=nil
   -- Bone edits outlive the close and apply again on the next open (user 2026-11-02: "remember
@@ -1598,14 +1630,23 @@ function M.new(host,sr,deps,service)
   end
   -- Follow player: Pivot stays where it was placed and turns with the selected Helldiver;
   -- Pin keeps its offset and orientation and moves with it.
-  local follow=not handheld and({'pivot','pin'})[(handle.get('action_camera_mode')or 1)-2]
+  local follow=not handheld and({'pivot','pin','look','part'})[(handle.get('action_camera_mode')or 1)-2]
   if follow then
    if play_path then return false,'Choose Placed camera for a recorded path'end
    local backend=self.tracking_backend or subject_backend
-   if not backend then return false,'Select a Helldiver in Subject to follow'end
-   local called,frame=pcall(backend.head_frame)
-   if not called then notice(frame);return false,frame end
-   follow=deps.look.follow_start(follow,photo.pos,photo.forward,frame.head,frame.position);follow.identity=frame.identity
+   local reader
+   if follow=='part' then reader=self.part_target
+   else reader=self.clicked_target or (backend and backend.head_frame) end
+   if not reader then return false,'Double-click the subject or attachment point first'end
+   local called,frame=pcall(reader)
+   if not called or not frame then return false,tostring(frame or 'Camera target unavailable')end
+   if follow=='look' and frame.root_handle and deps.follow_target then
+    local ok,value=pcall(deps.follow_target.target,sr,frame.root_handle)
+    if not ok then return false,tostring(value)end
+    reader=value;frame=reader()
+   end
+   follow=deps.look.follow_start(follow,photo.pos,photo.forward,frame.head,frame.position,frame.yaw,frame.pitch,frame.basis)
+   follow.identity,follow.read=frame.identity,reader
   end
   if play_path and(not path or path.count()<2)then notice('Record at least two camera points');return false,self.reason end
   if not stop_path()then return false,self.reason end
@@ -1809,7 +1850,8 @@ function M.new(host,sr,deps,service)
   local rows={{id='subject_refresh',type='button',label='Refresh subjects (up to four)',button_label='Refresh',on_activate=function()
    local ok,why=load_subject();if not ok then return false,why end
    local had=subject_status~=nil and subject_status.selected~=nil
-   local done,reason=subject_action('refresh');if done and had then self.clear_pose_edits()end;return done,reason end}}
+   self.clicked_target,self.camera_choice=nil,nil
+   local done,reason=subject_action('refresh',photo and photo.pos);if done and had then self.clear_pose_edits()end;return done,reason end}}
   if deps.freeze_bone_probe then rows[#rows+1]={id='subject_freeze_bone_test',type='button',label='Test frozen bone transfer (6 seconds)',on_activate=function()
    local ok,why=deps.freeze_bone_probe.start(subject,sr.Application.time_since_launch(),subject_action)
    if not ok then notice(why)end;return ok,why
@@ -1842,7 +1884,27 @@ function M.new(host,sr,deps,service)
   end}end
   for i=1,4 do local index=i
    rows[#rows+1]={id='subject_select_'..i,type='button',label='No subject refreshed',button_label='Select',
-    on_activate=function()local choice=subject_choices and subject_choices[index];local had=subject_status~=nil and subject_status.selected~=nil;local ok,why=choice and subject_action('select',choice.id)or false;if ok and had then self.clear_pose_edits()end;return ok,why end}
+    on_activate=function()
+     local choices=subject_choices or {}
+     local choice=choices[index]
+     local extra=subject and subject.camera_choices
+     if not choice and extra and extra[index-#choices] then
+      local row=extra[index-#choices]
+      local ok,reader=pcall(deps.follow_target.target,sr,row.unit)
+      if not ok then notice(reader);return false,reader end
+      local cleared,reason=subject.clear_selection()
+      if not cleared then notice(reason);return false,reason end
+      self.clear_pose_edits()
+      self.camera_choice,self.clicked_target=row,reader
+      sync_subject();notice('Camera follows this Helldiver. Poses require the stock rig.')
+      return true
+     end
+     if not choice then return false end
+     local had=subject_status and subject_status.selected
+     local ok,why=subject_action('select',choice.id)
+     if ok then self.clicked_target,self.camera_choice=nil,nil;if had then self.clear_pose_edits()end end
+     return ok,why
+    end}
   end
   rows[#rows+1]={id='subject_recover',type='button',label='Recover subject pose',on_activate=function()return subject_action('recover')end}
   for i=#rows,1,-1 do table.insert(page.controls,1,rows[i])end
@@ -1961,7 +2023,7 @@ function M.new(host,sr,deps,service)
   end
   sync_dof()
  end
- controls.action_camera_mode.choices={'Placed camera',handycam and'First-person handycam'or'First-person handycam (player unavailable)','Follow player - Pivot','Follow player - Pin'}
+ controls.action_camera_mode.choices={'Placed camera',handycam and'First-person handycam'or'First-person handycam (player unavailable)','Follow player - Pivot','Follow player - Pin','Follow look','Pin to picked part'}
  texts.cinema_status.label='Place a camera, then begin an action shot'
  for _,page in ipairs(core.mods.dbf_freecam.pages)do for _,c in ipairs(page.controls)do if c.id=='cinema_hint'then
   c.label='Move and fight while the camera holds its shot. Your Photo Mode key returns to placement and restores Freeze Action.'
@@ -2321,9 +2383,9 @@ function M.new(host,sr,deps,service)
    if not ok then notice(reason);self.close(true);return end
   end
   if shot and shot.follow then
-   local called,frame=pcall((self.tracking_backend or subject_backend).head_frame)
+   local called,frame=pcall(shot.follow.read)
    if called and type(frame)=='table'and frame.identity==shot.follow.identity then
-    photo.pos,photo.forward,photo.right=deps.look.follow_step(shot.follow,frame.head,frame.position)
+    photo.pos,photo.forward,photo.right=deps.look.follow_step(shot.follow,frame.head,frame.position,frame.yaw,frame.pitch,frame.basis)
    elseif not shot.follow.lost then shot.follow.lost=true;notice('Follow camera: subject unavailable; the camera holds still')end
   end
   local f,r=photo.forward,photo.right
@@ -2484,7 +2546,7 @@ function M.new(host,sr,deps,service)
    end
   end
   if handycam then
-   if controls.action_camera_mode then controls.action_camera_mode.choices={'Placed camera','First-person handycam','Follow player - Pivot','Follow player - Pin'}end
+   if controls.action_camera_mode then controls.action_camera_mode.choices={'Placed camera','First-person handycam','Follow player - Pivot','Follow player - Pin','Follow look','Pin to picked part'}end
    if controls.handycam_intensity then controls.handycam_intensity.disabled=false end
    if controls.handycam_lag_ms then controls.handycam_lag_ms.disabled=false end
   end
@@ -2536,7 +2598,7 @@ function M.new(host,sr,deps,service)
    if self.tracking_backend and subject and type(subject.select_camera)=='function'then
     local identity=camera.identity();if identity then
      local called,selected,basis=pcall(subject.select_camera,identity.unit,initial.position)
-     if called and selected then sync_subject();host.log('Handycam automatic target: '..tostring(basis))end
+     if called and selected then self.camera_association=subject.status().selected;self.camera_basis=basis;sync_subject();host.log('Handycam automatic target: '..tostring(basis))end
     end
    end
   end
@@ -2605,12 +2667,21 @@ function M.new(host,sr,deps,service)
   wrapper=owned
   rawset(_G,'render',wrapper)
   checkpoint('open: complete')
+  self.first_shot_hint()
   last_time=sr.Application.time_since_launch()
   return true
  end
  -- The Photo key must never look ignored: say why Photo Mode did not open, in the log
  -- and for a few seconds on screen while the panel stays closed (Discord, 2026-11-05).
  -- Methods, not locals: open() is at Lua 5.1's 60-upvalue limit.
+ function self.first_shot_hint()
+  if self.hint_seen or not deps.legend or not deps.legend.binding_label then return end
+  self.hint_seen=true
+  local key=function(id)return deps.legend.binding_label(id,handle)end
+  local previous=menu.notice
+  notice((previous and previous..' | ' or '')..'First shot: '..key('focus_key')..' moves the camera, '..key('screenshot_key')..' takes a photo, '..key('toggle_key')..' closes.'..
+   ((deps.shared_keys or input.keyboard_fallback) and ' Camera keys also reach the game. Use arrows for a frozen pose.' or ''))
+ end
  function self.refuse(why)
   local message=tostring(why or'Photo Mode did not open')
   pcall(host.log,'Photo Mode did not open: '..message)
@@ -2731,7 +2802,7 @@ function M.new(host,sr,deps,service)
   local recovery_modifiers=input.down(17)and input.down(16)
   local recovery=recovery_modifiers and edge('recover_input_key')
   if not recovery_modifiers then edges.recover_input_key=false end
-  if recovery then self.close(true,nil,true);return end
+  if recovery then pcall(host.log,'Recovery key: retrying Photo Mode cleanup');self.close(true,nil,true);return end
   end
   if pending_cleanup then
    if simulation and not subject_pending then
@@ -2748,7 +2819,9 @@ function M.new(host,sr,deps,service)
   local handycam_edge=handycam and edge('handycam_key')
   if handycam_edge and not handoff and not(menu.editing_key()or menu.editing_text()or menu.bound_key)and not(capture and capture.active())then
    -- Say why Handycam did not start; a refusal must not look like an ignored key.
-   local ok,why=self.toggle_handycam();if not ok and why then notice(why)end;return
+   local ok,why=self.toggle_handycam()
+   if not ok and why then if self.active then notice(why)else self.refuse(why)end end
+   return
   end
   if edge('toggle_key')then
    if self.mode=='shot'and self.active then self.reposition_shot()

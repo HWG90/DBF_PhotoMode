@@ -1,10 +1,10 @@
 -- Exercise the production compositor/postfx with a verified native DoF-only
 -- profile. These tests do not treat a successful Lua draw as GPU visual proof.
 local root=assert(DBF_PHOTO_TEST_ROOT)
-local factory=dofile(root..'photo_runtime.lua')
-local postfx=dofile(root..'postfx.lua')
+local factory=dofile(root..'../archive/pre-rewrite/photo_runtime.lua')
+local postfx=dofile(root..'../archive/pre-rewrite/postfx.lua')
 local lens_math=dofile(root..'lens.lua')
-local scene_math=dofile(root..'scene_overlay.lua')
+local scene_math=dofile(root..'../archive/pre-rewrite/scene_overlay.lua')
 local defaults=dofile(root..'photo_options.lua').defaults
 local o={};for key,value in pairs(defaults)do o[key]=value end
 o.dof=true;o.dof_mode=1;o.bloom=true;o.scene_shader=1;o.scene_strength=100

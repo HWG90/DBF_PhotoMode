@@ -1,5 +1,5 @@
 local root=rawget(_G,'DBF_PHOTO_TEST_ROOT')or'freecam/'
-local Core=dofile('src/core.lua');local Controller=dofile(root..'controller.lua');local Options=dofile(root..'photo_options.lua')
+local Core=dofile('src/core.lua');local Controller=dofile(root..'../archive/pre-rewrite/controller.lua');local Options=dofile(root..'photo_options.lua')
 local keys={};local fail=false;local close_calls=0;local effects_released=0;local time_released=0;local input_released=0;local keyups=0;local subject_restore=0;local ai_restore=0
 local service=Core.new(nil,function()end);service.is_open=function()return false end
 service.create_photo_view=function()return{}end;service.photo_resolution=function()return 1920,1080 end

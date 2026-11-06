@@ -75,9 +75,13 @@ local function boot_host()
  -- game's own settings folder, which every install has.
  local mod={id=ID,name=TITLE,version=VERSION,build=BUILD,release_mode=RELEASE_MODE,native_dir=lll and writable(lll..'/Native')and lll..'/Native'or game,
   config_dir=lll and writable(lll..'/Settings/'..ID)and lll..'/Settings/'..ID or game}
+ local LOG=game..'/war_journalist_lua51.log'
+ local log_mode='ab'
+ local probe=io.open(LOG,'rb')
+ if probe then local size=probe:seek('end');probe:close();if size and size>4194304 then log_mode='wb'end end
  function mod.log(message)
   print('['..TITLE..'] '..tostring(message))
-  local f=io.open(game..'/war_journalist_lua51.log','ab');if f then f:write(os.date('%Y-%m-%d %H:%M:%S '),tostring(message),'\n');f:close()end
+  local f=io.open(LOG,log_mode);log_mode='ab';if f then f:write(os.date('%Y-%m-%d %H:%M:%S '),tostring(message),'\n');f:close()end
  end
  -- Windows refuses unsigned in-process DLLs (error 577), so no bridge is written or loaded
  -- on any host, under Proton too: it behaves as it does on Windows.
@@ -108,6 +112,7 @@ local function boot_host()
    end
   end
  end
+ mod.log('War Journalist '..VERSION..' ('..BUILD..') session started')
  local entry=mod.require('main.lua')
  -- Live Lua Loader runs archive entries itself (LLL API 1).
  if rawget(_G,'LiveLuaLoader')then return entry end
@@ -126,7 +131,7 @@ local function boot_host()
  end
  local launched,why=pcall(function()input_pending=mod.require('src/windows_input_service.lua').start(mod,stingray,clock)end)
  if not launched then input_service=without_helper(why)end
- mod.host_loader={engine_input=true,require_keyboard=true,input_service=input_service,bindings=bindings,capabilities={revision='boot-mod-loader-r34-input.1'}}
+ mod.host_loader={engine_input=true,allow_shared_keys=true,require_keyboard=true,input_service=input_service,bindings=bindings,capabilities={revision='boot-mod-loader-r34-input.1'}}
  local state='waiting'
  -- Read-only native diagnostics at start and twice later, while subject/hover fail here.
  local diagnose_at,started_at=RELEASE_MODE and{}or{0,30,120}
@@ -159,6 +164,7 @@ local function boot_host()
     if ok then input_service,input_driver=service,driver else input_service=without_helper(service)end
     mod.host_loader.input_service,mod.host_loader.helper_screenshots=input_service,ok and screenshots or nil
    end
+   mod.host_loader.require_keyboard=input_driver~=nil
    local ok,why=pcall(entry.on_enable)
    if ok then state='running';started_at=clock();mod.log('Photo Mode started on Boot Mod Loader')else state='failed';mod.log('Photo Mode did not start: '..tostring(why))end
   elseif state=='running'then
@@ -258,6 +264,7 @@ local function chef_host(chef)
  local addon={version=VERSION}
  function addon.update(dt)
   if state=='waiting'then
+   mod.host_loader.require_keyboard=input_driver~=nil
    local ok,why=pcall(entry.on_enable)
    if ok then state='running';mod.log('Photo Mode started on Chef Shared Loader')
    else state='failed';mod.log('Photo Mode did not start: '..tostring(why));chef.log('%s','War Journalist did not start: '..tostring(why))end

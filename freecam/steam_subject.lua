@@ -271,7 +271,7 @@ function M.new(adapter,bank,is_frozen)
  function self.refresh(point)
   if not supported then return false,status.message end
   if lease then return false,'Reset the held pose before refreshing subjects'end
-  selected=nil;pose=nil;targets,choices={},{};unsupported=nil
+  selected=nil;pose=nil;targets,choices={},{};unsupported=nil;self.camera_choices=nil
   local called,found,why=pcall(adapter.discover,resource,4,bank.rig,point)
   if not called or type(found)~='table'or #found>4 then
    state('unselected','Subject discovery unavailable',called and why or found);return false,status.message
@@ -286,6 +286,8 @@ function M.new(adapter,bank,is_frozen)
    next_targets[candidate.identity]=candidate;next_choices[i]={id=candidate.identity,label=candidate.label}
   end
   targets,choices=next_targets,next_choices
+  self.camera_choices=found.camera_only
+
   unsupported=#next_choices==0 and M.unsupported(found.skipped)or nil
   state('unselected',#next_choices>0 and'Choose a photographic subject explicitly'or unsupported or'No Helldiver found')
   return true,choices
@@ -301,6 +303,11 @@ function M.new(adapter,bank,is_frozen)
    return false,status.message
   end
   selected=candidate;explicit_selection=not automatic;pose=nil;closing=false;state('selected','Photographic subject selected');return true
+ end
+ function self.clear_selection()
+  if lease then return false,'Reset the held pose first'end
+  selected=nil;explicit_selection=false;pose=nil;state('unselected','Camera target selected for Follow only')
+  return true
  end
  function self.tracking_frame()
   if not selected or not explicit_selection then return nil,'Select your Helldiver explicitly in Subject first'end
@@ -500,6 +507,21 @@ function M.new(adapter,bank,is_frozen)
   return restore()
  end
  function self.recover()return restore(true)end
+ -- Last resort (Photo Mode's recovery key): give up a pose whose restoration cannot be
+ -- proven, so Photo Mode can close and release time. The optional adapter.abandon(target,
+ -- rig,original_mode) writes no body node; it forgets its attempts and puts the bone mode
+ -- back, and animation drives the body again once time resumes.
+ function self.abandon()
+  if not lease then return true end
+  if type(adapter.abandon)~='function'then return false,'This subject adapter cannot give up a pose'end
+  local checked,valid=pcall(adapter.valid,selected,bank.rig)
+  if checked and valid==false then return finish(true)end
+  local called,ok,detail=pcall(adapter.abandon,selected,bank.rig,lease.original.mode)
+  if not called or ok~=true then return pending('Giving up the pose failed',called and detail or ok)end
+  finish(false,true)
+  state(status.state,'Pose given up; the subject returns to its animation when time resumes',detail)
+  return true,status.message
+ end
  function self.close()
   closing=true;pose=nil
   if blocked then

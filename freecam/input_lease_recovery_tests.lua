@@ -1,7 +1,7 @@
 -- The real Lua capture/service pair against a bounded native input double.
 -- Sampling must report loss without releasing a pause-dependent input lease.
 local root=rawget(_G,'DBF_PHOTO_TEST_ROOT')or'freecam/'
-local Capture=dofile(root..'photo_input_capture.lua')
+local Capture=dofile(root..'../archive/pre-rewrite/photo_input_capture.lua')
 local Camera=dofile(root..'vendor/camera_input.lua')
 local function fixture()
  local f={focused=true,available=true,parent=false,mode=0,clock=1,releases=0,captures=0,window_writes=0,

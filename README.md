@@ -11,6 +11,14 @@ poses, bone posing, camera paths and a first-person Handycam.
 
 **New in 1.3.3:** works with the 29 October 2026 game update, Pose Stop works again, Handycam is now on Page Down so Steam's Ctrl+F11 recording works, Saved Shots work, the camera comes back where you left it, and new Follow player cameras. See the [1.3.3 notes](docs/RELEASE-1.3.3.md).
 
+## Your first shot
+
+1. On the ship, press **P** (or your Photo Mode binding). Press **Tab** to move the camera and **Tab** again to use the panel.
+2. Frame the shot. Press **Pause** to capture, then **P** to return. The Controls tab shows your current bindings.
+3. For a pose, freeze while standing still, open **Subject**, press **Refresh**, and select your Helldiver. Choose a pose and press **Apply**. On Chef use camera keys that aren't also bound to gameplay movement.
+
+For a moving shot open **Director**, choose a Follow mode and press **Begin action shot**. Pivot turns toward the subject. Pin travels with it. Follow look turns with the Helldiver's head. For an FRV, choose **Pin to picked part**, double-click near the desired attachment point on the visible vehicle, place the camera and begin the shot. Surface picking requires depth support.
+
 ## What's in it
 
 War Journalist runs on [Boot Mod Loader](https://github.com/pat-pat-patrick/boot-mod-loader) or [Chef's Shared Loader](https://www.nexusmods.com/helldivers2/mods/17760) 1.4.0 or newer. With Boot Mod Loader on Windows, the included helper (WJL) starts on its own and stops your keys and mouse from moving your Helldiver while Photo Mode is open.
