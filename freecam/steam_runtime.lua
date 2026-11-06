@@ -1066,7 +1066,7 @@ function M.new(host,sr,deps,service)
   if handle.get('action_camera_mode')==6 and deps.follow_target then
    local called,reader,node=pcall(deps.follow_target.surface,sr,{pos=photo.pos,forward=f,right=r,up=up,fov=fov},x,y,width,height,depth)
    self.part_target=called and reader or nil
-   local message=called and ('Camera attachment selected: node '..node) or tostring(reader)
+   local message=called and ('Camera attachment selected: node '..node) or tostring(reader):gsub('^.-%.lua:%d+: ','')
    notice(message);return called,message
   end
   local hit,why=pick.pick({pos=photo.pos,forward=f,up=up,fov=fov},x,y,width,height,math.max(24,height*.04),depth,audit)

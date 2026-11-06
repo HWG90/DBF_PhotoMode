@@ -46,23 +46,37 @@ function M.surface(sr,camera,x,y,w,h,depth)
  local U=sr.Unit
  local best,node,nearest=nil,nil,2.25
  local world=sr.Application.main_world()
- local scanned,reads=0,0
+ local candidates={}
+ local scanned=0
  for _,unit in pairs(sr.World.units(world))do
   scanned=scanned+1
-  assert(scanned<=16384,'Too many units for a pin pick')
+  if scanned>16384 then break end
   if type(unit)=='userdata' and U.alive(unit) and U.world(unit)==world then
    local count=U.num_scene_graph_items(unit)
-   if count>=1 and count<=512 and distance(point(sr,U.world_position(unit,1)),hit)<=144 then
-    for i=1,count do
-     reads=reads+1
-     assert(reads<=8192,'Too many nearby nodes. Move closer and pick again')
-     local d=distance(point(sr,U.world_position(unit,i)),hit)
-     if d<nearest then best,node,nearest=unit,i,d end
+   if count>=1 and count<=512 then
+    local d=distance(point(sr,U.world_position(unit,1)),hit)
+    if d<nearest then best,node,nearest=unit,1,d end
+    if count>1 and d<=144 then
+     candidates[#candidates+1]={unit=unit,count=count,distance=d}
     end
    end
   end
  end
- assert(best,'No attachment point near that surface')
+ -- Spend the child-node budget near the click first. Keep the best match
+ -- when the budget runs out, including roots seen during the first pass.
+ table.sort(candidates,function(a,b)return a.distance<b.distance end)
+ local remaining=8192
+ for _,candidate in ipairs(candidates)do
+  if remaining==0 or nearest==0 then break end
+  local last=math.min(candidate.count,remaining+1)
+  for i=2,last do
+   local d=distance(point(sr,U.world_position(candidate.unit,i)),hit)
+   if d<nearest then best,node,nearest=candidate.unit,i,d end
+   if nearest==0 then break end
+  end
+  remaining=remaining-(last-1)
+ end
+ if not best then error('No attachment point found. Pick another spot on the part.',0) end
  return M.target(sr,best,node),node
 end
 return M

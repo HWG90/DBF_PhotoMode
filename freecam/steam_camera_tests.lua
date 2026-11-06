@@ -249,3 +249,26 @@ do
  p,f=look.follow_step(tracking,nil,{0,0,0},math.pi/2,.3)
  assert(math.abs(p[2]-1)<1e-9 and math.abs(f[3]-math.sin(.3))<1e-9)
 end
+
+-- A crowded pin pick must keep a valid child match when the scan budget runs out.
+do
+ local picker=dofile('freecam/follow_target.lua')
+ local units={}
+ for i=1,100 do units[i]=newproxy() end
+ local target=units[100]
+ local reads=0
+ local U={alive=function()return true end,world=function()return 1 end,
+  resource_name=function()return 'rig' end,num_scene_graph_items=function()return 107 end,
+  world_pose=function()return pose(0,vector(0,0,0))end,
+  world_position=function(unit,index)
+   if index==1 then return vector(unit==target and 8 or 15,0,0) end
+   reads=reads+1
+   return vector(unit==target and index==7 and 10.2 or 18,0,0)
+  end}
+ local sr={Application={main_world=U.world},Network={game_session=function()return 1 end},
+  IdString64={equal=function(a,b)return a==b end},Unit=U,Vector3=V,Matrix4x4=M4,
+  World={units=function()return units end}}
+ local frame,node=picker.surface(sr,{pos={0,0,0},forward={1,0,0},right={0,1,0},up={0,0,1},fov=1},
+  50,50,100,100,10)
+ assert(node==7 and frame().identity==target and reads<=8194,'Crowded pin pick lost its match or exceeded its budget')
+end
