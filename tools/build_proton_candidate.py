@@ -1,7 +1,7 @@
 """Build the Proton (LuaJIT under LLL) War Journalist folder candidate; never installs.
 
-The same source tree also builds the Boot Mod Loader package (build_steam_candidate),
-which refuses FFI. This build keeps everything the LLL host can run on Proton:
+The upstream Lua 5.1 branch builds the Boot Mod Loader/Chef package and refuses FFI.
+This integration branch keeps everything the LLL host can run on Proton:
 LuaJIT FFI enemy behavior, the native bridges and LLL's capture/input services.
 It packages exactly the private require-closure of the entry, so engine-host
 (Boot Mod Loader / native Windows) payloads stay out unless something imports them.
@@ -19,7 +19,7 @@ from test_steam_port import run
 # Game build 26251122. One bridge serves memory, lens, HUD, keyboard, hover and pointer clip; the
 # scene bridge binds depth. The Boot Mod Loader list (build_steam_candidate) loads none in game.
 NATIVE_LIBRARIES=('port51/hd2_nativeinfo_c1578203689e39b9.dll','port51/hd2_nativeinfo_8db3d96f8c3cbb24.dll')
-from build_steam_archive import build_id
+from package_head import build_id
 
 ROOT=Path(__file__).resolve().parents[1]
 MOD_ID='dbf_freecam'
@@ -44,7 +44,7 @@ def build(output):
     output=output.resolve()
     assert output.is_relative_to(ROOT/'dist/review'),'Development builds stay in dist/review'
     output.mkdir(parents=True,exist_ok=True)
-    fixture=run()
+    fixture={'lua51':run(),'luajit21':run('luajit21')}
     version=(ROOT/'VERSION').read_text().strip()+'-proton'
     entry=(ROOT/'freecam/steam51.lua').read_text(encoding='utf-8')
     modules=closure(entry)
@@ -59,7 +59,11 @@ def build(output):
            'if type(mod)=="table"then mod.version=mod.version or '+json.dumps(version)+';mod.build=mod.build or '+json.dumps(build)+' end\n')
     files={'main.lua':(stamp+entry).encode('utf-8'),'manifest.json':(json.dumps(manifest,indent=2)+'\n').encode(),
            'config/defaults.cfg':b'{}\n'}
-    for name in NATIVE_LIBRARIES:files[name]=(ROOT/'freecam/native'/name).read_bytes()
+    for name in NATIVE_LIBRARIES:
+        body=(ROOT/'freecam/native'/name).read_bytes()
+        expected=Path(name).stem.removeprefix('hd2_nativeinfo_')
+        assert digest(body).startswith(expected),'Native bridge hash differs: '+name
+        files[name]=body
     for label in manifest['license_files']:files[label]=(ROOT/'freecam/vendor'/label).read_bytes()
     for name in modules:files[name]=(ROOT/'freecam'/name[len('src/'):]).read_bytes()
     # Both VMs must load every chunk: LLL on Proton runs LuaJIT, its fallback PUC 5.1.

@@ -1,6 +1,6 @@
 -- Actual selected-subject controller, actual runtime/core/input/time policy;
 -- engine mutation and qualification remain isolated dependency-injected doubles.
-assert(_VERSION=='Lua 5.1'and not rawget(_G,'jit'),'Run in actual Lua 5.1')
+assert(_VERSION=='Lua 5.1'and (not rawget(_G,'jit')or DBF_PHOTO_TEST_LUAJIT==true),'Run in Lua 5.1 or the explicit LuaJIT fixture runner')
 DBF_PHOTO_CAPTURE_FIXTURE_ONLY=true
 local base_fixture=dofile('freecam/steam_capture_runtime_tests.lua')
 DBF_PHOTO_CAPTURE_FIXTURE_ONLY=nil
@@ -96,7 +96,7 @@ local function configure(f,deps,sr)
   adapter.tracking_frame=function(t)
    count();assert(valid(t));local p=t.nodes[1].p
    return{explicit_subject=true,identity=t.identity,root_handle=t,world=f.world,position={p[1],p[2],p[3]},head={p[1],p[2],p[3]+1.6},yaw=0}
-  end
+ end
   adapter.abandon=function(t,_,original_mode)
    count();assert(valid(t));if f.abandon_refuse then return false,'Fixture abandon refused'end
    f.receipt=nil;if t.mode~=original_mode then t.mode=original_mode;event('mode:'..original_mode)end
@@ -214,6 +214,8 @@ do
  local f=fixture()
  for _=1,100 do f.step(.016)end
  assert(f.factories==0 and f.subject_native==0 and f.controls.subject_refresh.disabled==true)
+ -- Its button says what it does; the menu's generic 'Activate' read as a select button (Discord, 2026-11-05).
+ assert(f.controls.subject_refresh.button_label=='Refresh','The Refresh row is labelled Refresh')
  f.enable();assert(#f.controls.subject_pose.choices==213 and f.controls.subject_pose.choices_revision==f.subject.catalog)
  assert(f.controls.subject_preview==nil and f.controls.subject_select_3.disabled)
  f.select();local writes=f.node_writes
@@ -280,7 +282,7 @@ do
  local f=fixture(function(f)f.log=function(s)messages[#messages+1]=s end end);f.enable();f.select();f.partial=true;f.fail_node=13
  local function logged(text)for _,s in ipairs(messages)do if s:find(text,1,true)then return true end end;return false end
  assert(f.action('subject_pose_play'));f.settle();assert(f.subject.status().pending)
- assert(logged('Subject apply failed: Subject node write needs explicit recovery (Fixture partial node write)'),'Log the reason with the failure')
+ assert(logged('Subject apply detail: Fixture partial node write'),'Log the reason with the failure')
  assert(not f.runtime.close(true)and f.runtime.state=='closing'and f.rate==0)
  assert(not f.runtime.open(),'Pending pose cleanup keeps Photo Mode closed')
  f.events={};f.recovery_key()

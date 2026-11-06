@@ -41,3 +41,36 @@ input=factory.new(sr,service,nil,{require_keyboard=true})
 local ok,why=input.set_mode('camera');assert(ok==false and why:find('isolation is required',1,true))
 assert(service.status().owner==nil and acquisitions==1,'Missing isolation capability must not acquire a pointer-only lease')
 print('WJ mandatory keyboard isolation: accepted samples/mode switching, denial cleanup, capability refusal, generation failure and zero engine-key reads passed')
+
+-- A host explicitly allowing shared keys can switch its admitted pointer-only
+-- lease between panel and camera, but never downgrade a live captured lease.
+do
+ local active,acquired,released,refuse_release=nil,0,0,false
+ local broker={version=1,capabilities={menu=true,camera=true,relative_mouse=true,keyboard=false}}
+ function broker.acquire(_,_,_,options)
+  assert(active==nil);active={};acquired=acquired+1;return active
+ end
+ function broker.owns(t)return t~=nil and t==active end
+ function broker.status()return{owner=active and 'dbf_freecam'or nil,pending_restore=refuse_release}end
+ function broker.release(t)
+  assert(t==active)
+  if refuse_release then return false,'Fixture restoration pending'end
+  active=nil;released=released+1;return true
+ end
+ local shared=factory.new(sr,broker,nil,{require_keyboard=true,allow_shared_keys=true})
+ assert(shared.set_mode('menu')and shared.keyboard_fallback and acquired==1)
+ assert(shared.set_mode('camera')and acquired==2 and released==1,'Explicit shared-key fallback switches through owned cleanup')
+ assert(shared.set_mode('camera')and acquired==2,'An unchanged fallback mode keeps its lease')
+ refuse_release=true
+ assert(not shared.set_mode('menu')and acquired==2 and shared.pending_restore(),'A pending restore cannot acquire another fallback lease')
+ refuse_release=false;assert(shared.release()and active==nil)
+ -- Capability loss is not permission to downgrade a currently captured lease.
+ broker.capabilities.keyboard=true;broker.capabilities.keyboard_mask=mask
+ shared=factory.new(sr,broker,nil,{require_keyboard=true,allow_shared_keys=true})
+ assert(shared.set_mode('menu')and not shared.keyboard_fallback)
+ broker.capabilities.keyboard=false
+ local before=acquired
+ assert(not shared.set_mode('camera')and acquired==before and not shared.keyboard_fallback,'Captured lease capability loss fails closed')
+ assert(shared.release()and active==nil)
+end
+print('Explicit shared-key fallback: mode transitions, unchanged mode, pending cleanup and captured-capability loss passed')

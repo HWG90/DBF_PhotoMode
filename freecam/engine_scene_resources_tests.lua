@@ -24,19 +24,21 @@ local sr={Application={process_id=function()return 99 end,main_world=function()r
  save_render_target=function(name,path)assert(name=='linear_depth','Color/back-buffer CPU readback is forbidden');captures=captures+1;files[path]=dds(bad_depth and 28 or 41)end},
  Gui={resolution=function()return 2,2 end},Renderer={resource=function(name)gets=gets+1;assert(captures>=1 and handles[name],'Never look up unverified/missing resources');return handles[name]end},
  Material={set_resource=function(mat,slot,value)assert(slot=='diffuse_map'and value==handles.linear_depth);binds=binds+1 end}}
-local mod={render_contract_verified=true,game_root='C:/game',log=function()end,require=function()return{paths=function(global)assert(not global);return's','m','ss','sm'end}end}
-assert(not pcall(module.new,sr,{render_contract_verified=false},{name='owned.patch_0',hex='61'}),'No GPU lookup without a stock graph witness')
-local r=module.new(sr,mod,{name='owned.patch_0',hex='61'})
+local B=dofile('freecam/base64.lua')
+local function requiring(paths)return function(name)if name=='src/base64.lua'then return B end;return{paths=paths}end end
+local mod={render_contract_verified=true,game_root='C:/game',log=function()end,require=requiring(function(global)assert(not global);return's','m','ss','sm'end)}
+assert(not pcall(module.new,sr,{render_contract_verified=false},{name='owned.patch_0',base64='YQ=='}),'No GPU lookup without a stock graph witness')
+local r=module.new(sr,mod,{name='owned.patch_0',base64='YQ=='})
 assert(r.registered());assert(r.depth.available());assert(captures==1 and gets==2)
 for i=1,100 do assert(r.depth.available());r.depth.get();r.color()end
 assert(captures==1 and gets==2,'Unchanged targets must not repeat GPU readback or resource lookup')
 local ok,c=r.color();assert(ok and c.format==19 and c.width==2 and c.hdr_enabled==false)
 assert(not r.depth.global_binding,'Withdrawn global-depth candidate must not reactivate')
 assert(r.depth.bind({},'diffuse_map',r.depth.get()));assert(binds==1)
-local private=module.new(sr,mod,{name='owned.patch_0',hex='61',depth_binding='private-local-v1'})
+local private=module.new(sr,mod,{name='owned.patch_0',base64='YQ==',depth_binding='private-local-v1'})
 assert(private.depth.binding_contract=='private-local-v1'and not private.depth.global_binding)
 local old_paths=mod.require
-mod.require=function()return{paths=function(binding)assert(binding=='private-local-v1');return's','m','ss','sm'end}end
+mod.require=requiring(function(binding)assert(binding=='private-local-v1');return's','m','ss','sm'end)
 assert(private.registered());mod.require=old_paths
 local old_captures,old_gets=captures,gets
 assert(private.depth.available());local target=private.depth.get()
@@ -47,7 +49,7 @@ assert(not pcall(private.depth.bind,{},'diffuse_map',{}),'Foreign depth handle m
 assert(not pcall(private.depth.bind,{},'output_target',target),'Foreign parameter must refuse')
 sr.Material.set_resource=old_set
 local control={source='output_target'}
-local controlled=module.new(sr,mod,{name='owned.patch_0',hex='61',depth_binding='private-local-v1'},control)
+local controlled=module.new(sr,mod,{name='owned.patch_0',base64='YQ==',depth_binding='private-local-v1'},control)
 assert(controlled.depth.available());local real_depth=controlled.depth.get();local color_key=controlled.depth.binding_identity
 sr.Material.set_resource=function(_,slot,value)assert(slot=='wjl_scene_depth'and value==handles.output_target);binds=binds+1 end
 assert(controlled.depth.bind({},'diffuse_map',real_depth),'Color control binds only the already verified GPU resource')
@@ -116,14 +118,14 @@ assert(reopened.identity~=reappeared.identity,'Release must not recycle a depth 
 assert(r.release());bad_depth=true;local before=gets;assert(not r.depth.available());assert(gets==before,'Bad depth proof must not query resource handles')
 for key in pairs(files)do assert(key=='C:/game/data/owned.patch_0','Every owned probe file must be removed')end
 assert(r.release());files['C:/game/data/owned.patch_0']='foreign'
-local other=module.new(sr,mod,{name='owned.patch_0',hex='61'});assert(not pcall(other.registered),'Foreign shader registry refuses before use')
+local other=module.new(sr,mod,{name='owned.patch_0',base64='YQ=='});assert(not pcall(other.registered),'Foreign shader registry refuses before use')
 -- Beside other mods' archives of the same name, ours may be deployed as patch_N.
 files['C:/game/data/owned.patch_1']='b';files['C:/game/data/owned.patch_2']='a'
-local shifted=module.new(sr,mod,{name='owned.patch_0',hex='61'});assert(shifted.registered(),'A shifted shader registry is found by its bytes')
+local shifted=module.new(sr,mod,{name='owned.patch_0',base64='YQ=='});assert(shifted.registered(),'A shifted shader registry is found by its bytes')
 files['C:/game/data/owned.patch_2']=nil;files['C:/game/data/owned.patch_70']='a'
-local far=module.new(sr,mod,{name='owned.patch_0',hex='61'});assert(not pcall(far.registered),'The scan stops 64 numbers past the last patch present')
+local far=module.new(sr,mod,{name='owned.patch_0',base64='YQ=='});assert(not pcall(far.registered),'The scan stops 64 numbers past the last patch present')
 files['C:/game/data/owned.patch_0'],files['C:/game/data/owned.patch_1'],files['C:/game/data/owned.patch_70']=nil,nil,nil
-local missing=module.new(sr,mod,{name='owned.patch_0',hex='61'});local ok,why=pcall(missing.registered)
+local missing=module.new(sr,mod,{name='owned.patch_0',base64='YQ=='});local ok,why=pcall(missing.registered)
 assert(not ok and tostring(why):find('archive missing',1,true),tostring(why))
 io.open,os.remove,os.getenv=old_open,old_remove,old_env
 print('Engine scene resources: exact registry at any patch number, depth-only DDS proof, GPU-only color, no missing-target lookup, cached readbacks, HDR invalidation, binding and cleanup passed; visual shader output pending')

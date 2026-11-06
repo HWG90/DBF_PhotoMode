@@ -21,7 +21,7 @@ entry={live_lua_api=1,name='War Journalist',
   local loader=assert(mod.host_loader or rawget(_G,'LiveLuaLoader'),'Live Lua Loader or Boot Mod Loader is required')
   local engine_host=loader.engine_input==true
   assert(not rawget(_G,'DBF_PHOTO_MODE_OWNER'),'Another Photo Mode runtime is already active')
-  local deps={ragdoll=mod.require('src/ragdoll_pause.lua'),handycam=mod.require('src/steam_handycam.lua'),hud=mod.require('src/steam_hud.lua'),input_policy={require_keyboard=not engine_host or loader.require_keyboard==true},director=mod.require('src/director.lua'),bookmark=mod.require('src/steam_bookmark.lua'),subject_backend=mod.require('src/subject_backend.lua'),subject_visibility=mod.require('src/subject_visibility.lua'),input_cleanup=mod.require('src/input_cleanup.lua'),camera=mod.require('src/steam_camera.lua'),input=mod.require('src/steam_input.lua'),
+  local deps={ragdoll=mod.require('src/ragdoll_pause.lua'),handycam=mod.require('src/steam_handycam.lua'),hud=mod.require('src/steam_hud.lua'),input_policy={allow_shared_keys=loader.allow_shared_keys,require_keyboard=not engine_host or loader.require_keyboard==true},director=mod.require('src/director.lua'),bookmark=mod.require('src/steam_bookmark.lua'),subject_backend=mod.require('src/subject_backend.lua'),subject_visibility=mod.require('src/subject_visibility.lua'),input_cleanup=mod.require('src/input_cleanup.lua'),camera=mod.require('src/steam_camera.lua'),input=mod.require('src/steam_input.lua'),
    path=mod.require('src/steam_path.lua'),decorative_overlay=mod.require('src/steam_overlay.lua'),
    lighting=mod.require('src/steam_lighting.lua'),lights=mod.require('src/photo_lights.lua'),
    light_presets=mod.require('src/photo_light_presets.lua'),
@@ -34,7 +34,10 @@ entry={live_lua_api=1,name='War Journalist',
    composition=mod.require('src/composition.lua'),look=mod.require('src/look.lua'),lens=mod.require('src/lens.lua'),
    pick=mod.require('src/steam_pick.lua')}
   deps.diagnostics=engine_host and not mod.release_mode
+  deps.follow_target=mod.require('src/follow_target.lua')
   deps.engine_time_only=engine_host
+  deps.shared_keys=engine_host and loader.require_keyboard==false
+  deps.depth_shaders=loader.depth_shaders==true
   -- Enemy behavior needs FFI: LuaJIT under LLL has it, Boot Mod Loader does not.
   if not engine_host then
    local ffi_available=pcall(require,'cffi')
@@ -76,12 +79,13 @@ entry={live_lua_api=1,name='War Journalist',
   if loader.bindings then deps.hosted_bindings={api=loader.bindings,window=loader.bindings.window,factory=mod.require('src/steam_bindings.lua')}end
   deps.load_scene=function(sr)
    if engine_host then
-    local resources=mod.require('src/engine_scene_resources.lua').new(sr,mod,mod.require('src/engine_scene_registry.lua'),selftest and selftest.local_binding_probe)
+    -- A host without WJL brings its own scene resources.
+    local resources=loader.scene_resources and loader.scene_resources(sr)or mod.require('src/engine_scene_resources.lua').new(sr,mod,mod.require('src/engine_scene_registry.lua'),selftest and selftest.local_binding_probe)
     local overlay=mod.require('src/steam_scene_overlay.lua').new(sr,resources.depth,true,{present=resources.registered},resources.color)
     local folder=assert(os.getenv('APPDATA')):gsub('\\','/')..'/Arrowhead/Helldivers2'
     local sampler,why=mod.require('src/steam_focus_sampler.lua').new(sr,resources.depth,resources.focus_descriptor,
      {now=sr.Application.time_since_launch,measure=deps.operation_clock,pid=sr.Application.process_id(),directory=folder,mkdir=function(path)return path==folder end,
-      auto_budget_ms=8,log=mod.log})
+      auto_budget_ms=8,log=mod.log,capture=loader.focus_capture})
     assert(sampler,why)
     local scene=mod.require('src/steam_scene.lua').new(sr,resources,overlay,sampler,sr.Application.time_since_launch,deps.pick.new(sr))
     local release=scene.release

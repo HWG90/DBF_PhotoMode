@@ -1,5 +1,5 @@
 local root=rawget(_G,'DBF_PHOTO_TEST_ROOT')or'freecam/'
-local factory=dofile(root..'saved_camera.lua');local options=dofile(root..'photo_options.lua');local controller=dofile(root..'controller.lua')
+local factory=dofile(root..'../archive/pre-rewrite/saved_camera.lua');local options=dofile(root..'photo_options.lua');local controller=dofile(root..'../archive/pre-rewrite/controller.lua')
 local photo={active=true,pos={10,0,2},view={yaw=1.2,pitch=.3},options={roll=25,fov=50}}
 local world,epoch,player,point='mission',1,'diver',{0,0,2};local available=true
 local function context()if available then return world,epoch,player,point end end

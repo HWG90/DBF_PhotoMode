@@ -77,6 +77,14 @@ function M.new(chef,valid_view)
     function self.count()
         local count=0;for index=1,M.maximum do if records[index] then count=count+1 end end;return count
     end
+    function self.scene()
+        local current
+        for i=1,M.maximum do if records[i] then
+            if current and current~=records[i].world then return nil end
+            current=records[i].world
+        end end
+        return current
+    end
     local function apply(index,options,view)
         assert(type(index)=='number' and index%1==0 and index>=1 and index<=M.maximum,'Choose light 1-3')
         assert(valid_view(view),'Photo camera frame unavailable')
@@ -168,6 +176,15 @@ function M.new(chef,valid_view)
             end
         end
         return list
+    end
+    function self.definition(index)
+        local record=records[index]
+        if not record or not record.values then return nil,'Choose an existing photo light' end
+        return {options=copy(record.values),frame=copy(record.anchor)}
+    end
+    function self.edit(index,options)
+        local item,why=self.definition(index);if not item then return false,why end
+        return self.apply(index,options,item.frame)
     end
     function self.replace(list)
         if type(list)~='table' then return false,'Invalid lighting setup' end

@@ -15,7 +15,7 @@ FIXTURES+=('steam_scene_sdr_tests.lua','steam_scene_resources_tests.lua','steam_
 FIXTURES+=('steam_engine_capture_tests.lua','steam_native_diagnostics_tests.lua','steam_bindings_tests.lua','steam_engine_input_tests.lua','steam_native_library_tests.lua','steam_pick_tests.lua','steam_handoff_runtime_tests.lua','steam_native_lens_runtime_tests.lua','steam_ragdoll_runtime_tests.lua','steam_hover_pause_tests.lua','steam_hover_runtime_tests.lua','steam_hover_backend_tests.lua','steam_bml_degraded_tests.lua','steam_mcm_host_tests.lua')
 
 FIXTURES+=('engine_input_gate_tests.lua','windows_hover_freeze_tests.lua','windows_hover_activity_tests.lua',)
-FIXTURES+=('steam_pick_runtime_tests.lua','steam_handycam_aim_tests.lua')
+FIXTURES+=('steam_pick_runtime_tests.lua','steam_handycam_aim_tests.lua','steam_open_refusal_tests.lua')
 FIXTURES+=('esc_state_observer_tests.lua',)
 FIXTURES+=('windows_native_fog_probe_tests.lua',)
 FIXTURES+=('engine_cursor_gate_tests.lua',)
@@ -34,18 +34,31 @@ FIXTURES+=('pose_editor_runtime_tests.lua',)
 FIXTURES+=('pose_marker_tests.lua',)
 FIXTURES+=('windows_dev_reload_tests.lua',)
 FIXTURES+=('windows_subject_tracking_tests.lua',)
+FIXTURES+=('base64_tests.lua',)
 FIXTURES+=('windows_visibility_probe_tests.lua',)
 FIXTURES+=('windows_mesh_visibility_tests.lua',)
 FIXTURES+=('windows_pov_visibility_tests.lua','windows_camera_signals_tests.lua','windows_handycam_ads_tests.lua',)
 FIXTURES+=('windows_movement_probe_tests.lua',)
+FIXTURES+=('control_legend_tests.lua',)  # Menu keys per host: W/S/A/D under Boot Mod Loader, the movement keys on Chef.
 FIXTURES+=('windows_freeze_bone_probe_tests.lua',)
 FIXTURES+=('windows_freeze_physics_probe_tests.lua',)
 FIXTURES+=('windows_freeze_pose_probe_tests.lua','windows_freeze_cape_tests.lua','windows_freeze_ramp_tests.lua')
 FIXTURES+=('windows_animation_source_tests.lua',)
-FIXTURES+=('proton_font_tests.lua',)
+FIXTURES+=('proton_font_tests.lua','chef_host_tests.lua','chef_scene_resources_tests.lua')
 
-def run():
-    from lupa.lua51 import LuaRuntime
+def run(runtime='lua51'):
+    assert runtime in ('lua51','luajit21'),'Unknown fixture runtime'
+    if runtime=='luajit21':
+        from lupa.luajit21 import LuaRuntime
+    else:
+        from lupa.lua51 import LuaRuntime
+    def new_runtime():
+        lua=LuaRuntime()
+        assert lua.eval('_VERSION')=='Lua 5.1'
+        assert bool(lua.eval('jit~=nil'))==(runtime=='luajit21')
+        if runtime=='lua51':assert lua.eval('package.loaded.ffi==nil')
+        lua.globals().DBF_PHOTO_TEST_LUAJIT=runtime=='luajit21'
+        return lua
     previous=Path.cwd()
     rows=[]
     try:
@@ -92,10 +105,9 @@ def run():
         assert shipped and named<=shipped,'Lua names bridges the Proton build does not ship: '+str(sorted(named-shipped))
         rows.append({'fixture':'proton_bridge_name_closure','passed':True,'bridges':sorted(named)})
         for fixture in FIXTURES:
-            lua=LuaRuntime()
-            assert lua.eval('_VERSION')=='Lua 5.1' and lua.eval('jit==nil and package.loaded.ffi==nil')
+            lua=new_runtime()
             lua.execute((ROOT/'freecam'/fixture).read_text(encoding='utf-8'))
-            rows.append({'fixture':fixture,'passed':True,'runtime':'Lua 5.1'})
+            rows.append({'fixture':fixture,'passed':True,'runtime':'LuaJIT 2.1'if runtime=='luajit21'else'Lua 5.1'})
         # These exercise shared feature models/controllers using mock native
         # adapters. Passing proves VM compatibility, never a live backend.
         mcm=ROOT.parent/'DBF-MCM'
@@ -106,11 +118,11 @@ def run():
         (ROOT/'dist/validation').mkdir(parents=True,exist_ok=True)  # Light presets write a fixture file here.
         os.chdir(mcm)
         for fixture in FEATURE_FIXTURES:
-            lua=LuaRuntime()
+            lua=new_runtime()
             lua.globals().DBF_PHOTO_TEST_ROOT=(ROOT/'freecam').as_posix()+'/'
             lua.globals().DBF_PHOTO_REPO_ROOT=ROOT.as_posix()+'/'
             lua.execute((ROOT/'freecam'/fixture).read_text(encoding='utf-8'))
-            rows.append({'fixture':fixture,'passed':True,'runtime':'Lua 5.1','native_adapter':'fixture only'})
+            rows.append({'fixture':fixture,'passed':True,'runtime':'LuaJIT 2.1'if runtime=='luajit21'else'Lua 5.1','native_adapter':'fixture only'})
     finally:
         os.chdir(previous)
     return {'passed':True,'fixtures':rows,'live_game_verified':False}
@@ -118,8 +130,9 @@ def run():
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--receipt',type=Path)
+    parser.add_argument('--runtime',choices=('lua51','luajit21'),default='lua51')
     args=parser.parse_args()
-    result=run()
+    result=run(args.runtime)
     if args.receipt:
         args.receipt.parent.mkdir(parents=True,exist_ok=True)
         args.receipt.write_text(json.dumps(result,indent=2)+'\n')

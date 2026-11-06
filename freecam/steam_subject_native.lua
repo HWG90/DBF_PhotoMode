@@ -303,6 +303,10 @@ local function factory(sr,policy,preview)
    -- nearest four, and validate their complete rig before exposing any target.
    if point~=nil then point=vector(point,3);check(type(U.world_position)=='function','Subject position getter unavailable')end
    local candidates,seen={},{};local key;local scanned=0
+   -- Why units were left out, for the log and the Subject tab: a Helldiver whose node
+   -- count differs from the pose bank's 107 is otherwise invisible (Discord, 2026-11-05).
+   local skipped={nodes={},dead=0,elsewhere=0};local skips=0
+   local camera_only={}
    for index=1,129 do
     local unit;key,unit=next(units,key);if key==nil then break end
     check(index<=128,'Subject inventory exceeds the 128-unit discovery budget')
@@ -310,7 +314,26 @@ local function factory(sr,policy,preview)
     check(finite(key)and key%1==0 and key>=1 and type(unit)=='userdata','Subject inventory entry shape changed')
     if not seen[unit]then
      seen[unit]=true
-     if one(pack(U.alive(unit)),'boolean','Unit.alive')and U.world(unit)==world and U.num_scene_graph_items(unit)==107 then
+     local usable=false
+     if not one(pack(U.alive(unit)),'boolean','Unit.alive')then skipped.dead=skipped.dead+1;skips=skips+1
+     elseif U.world(unit)~=world then skipped.elsewhere=skipped.elsewhere+1;skips=skips+1
+     else
+      local count=U.num_scene_graph_items(unit)
+      if count==107 then usable=true
+      else
+       count=finite(count)and count%1==0 and count>=0 and count or -1
+       skipped.nodes[count]=(skipped.nodes[count]or 0)+1;skips=skips+1
+       if count>0 and U.has_node(unit,'head')==true then
+        local d=0
+        if point then
+         local p=xyz(U.world_position(unit,1))
+         for axis=1,3 do d=d+(p[axis]-point[axis])^2 end
+        end
+        camera_only[#camera_only+1]={unit=unit,count=count,distance=math.sqrt(d),key=key}
+       end
+      end
+     end
+     if usable then
       local distance=0
       if point then local p=xyz(one(pack(U.world_position(unit,1)),'userdata','Unit.world_position'))
        for j=1,3 do distance=distance+(p[j]-point[j])^2 end
@@ -329,14 +352,31 @@ local function factory(sr,policy,preview)
    local found,next_records={},{}
    for i,row in ipairs(candidates)do
     local unit=row.unit
-    local identity='photographic-subject-'..next_generation..'-'..i;local label='Photographic subject '..i
+    local identity='photographic-subject-'..next_generation..'-'..i;local label='Helldiver '..i..(point and string.format(' (%.1f m)',math.sqrt(row.distance))or '')
     local target={identity=identity,label=label,resource=resource,node_count=107}
     local r={identity=identity,label=label,unit=unit,world=world,rig=rig,topology=topology_copy,nodes={},refresh_nodes={}}
     lifetime(r);for node=1,107 do topology(r,node)end
     found[i]=target;next_records[target]=r
    end
    generation=next_generation;records=next_records
-   if began and type(policy.log)=='function'then pcall(policy.log,string.format('Subject discovery: scanned=%d listed=%d elapsed_ms=%.3f',scanned,#found,(policy.measure()-began)*1000))end
+   if skips>0 then found.skipped=skipped end
+   if #camera_only>0 then
+    table.sort(camera_only,function(a,b)return a.distance<b.distance or a.distance==b.distance and a.key<b.key end)
+    found.camera_only={}
+    for i=1,math.min(limit-#found,#camera_only)do
+     local row=camera_only[i]
+     found.camera_only[i]={unit=row.unit,label=string.format('Helldiver (%d nodes, %.1f m) - follow only',row.count,row.distance)}
+    end
+   end
+   if type(policy.log)=='function'then
+    local parts={}
+    local counts={};for count in pairs(skipped.nodes)do counts[#counts+1]=count end;table.sort(counts)
+    for _,count in ipairs(counts)do parts[#parts+1]=(count<0 and'unreadable'or count)..' nodes x'..skipped.nodes[count]end
+    if skipped.dead>0 then parts[#parts+1]='not alive x'..skipped.dead end
+    if skipped.elsewhere>0 then parts[#parts+1]='other world x'..skipped.elsewhere end
+    pcall(policy.log,string.format('Subject discovery: scanned=%d listed=%d',scanned,#found)..(began and string.format(' elapsed_ms=%.3f',(policy.measure()-began)*1000)or '')..
+     (#parts>0 and'; skipped '..table.concat(parts,', ')or''))
+   end
    return found
   end)
  end
@@ -578,26 +618,6 @@ local function factory(sr,policy,preview)
   end)
   if ok~=true then return false,why end;return true
  end
- -- Last resort after an unproven restoration (Photo Mode's recovery key): forget every
- -- attempt and a failed scene refresh, put the bone mode back and release the cape. No
- -- body node is written; animation drives the body again once its mode is back. A cape
- -- that refuses release is dropped and reported, so it cannot hold the game frozen.
- function self.abandon(target,rig,original_mode)
-  local ok,why=result(function()
-   local r=record(target,rig);check(mode(original_mode),'Original bone mode unavailable')
-   forget(r)
-   if current(r)~=original_mode then
-    authorize('restore_mode',target)
-    local called=pack(pcall(U.set_animation_bone_mode,r.unit,original_mode));status.last_result=receipt(called)
-    check(called[1]and called[2]~=false,called[1]and(called[3]or'Subject mode setter refused')or called[2])
-    check(current(r)==original_mode,'Subject mode readback differs from submitted value')
-   end
-   local released,issue=pcall(restore_cape,r)
-   if not released then r.cape=nil;r.cape_capture_done=nil;return true,'Cape release failed: '..tostring(issue)end
-   return true
-  end)
-  if ok~=true then return false,why end;return true,why
- end
  -- The controller found its pose taken over: the game put a moving body's own mode back and
  -- its animation repainted the body, so restoring wrote nothing and committed nothing. Forget
  -- what the body no longer shows and release the cape once nothing is owned. Reads only: a
@@ -616,6 +636,28 @@ local function factory(sr,policy,preview)
    return true
   end)
   if ok~=true then return false,why end;return true
+ end
+ -- Last resort after an unproven restoration (Photo Mode's recovery key): forget every
+ -- attempt and a failed scene refresh, put the bone mode back and release the cape. No
+ -- body node is written; animation drives the body again once its mode is back. A cape
+ -- that refuses release is dropped and reported, so it cannot hold the game frozen.
+ function self.abandon(target,rig,original_mode)
+  local ok,why=result(function()
+   local r=record(target,rig);check(mode(original_mode),'Original bone mode unavailable')
+   local actual=current(r);local entry=r.mode
+   if actual~=original_mode and entry and entry.base==original_mode and
+    (actual==entry.value or entry.attempt and actual==entry.attempt.target) then
+    authorize('restore_mode',target)
+    local called=pack(pcall(U.set_animation_bone_mode,r.unit,original_mode));status.last_result=receipt(called)
+    check(called[1]and called[2]~=false,called[1]and(called[3]or'Subject mode setter refused')or called[2])
+    check(current(r)==original_mode,'Subject mode readback differs from submitted value')
+   end
+   forget(r)
+   local released,issue=pcall(restore_cape,r)
+   if not released then r.cape=nil;r.cape_capture_done=nil;return true,'Cape release failed: '..tostring(issue)end
+   return true
+  end)
+  if ok~=true then return false,why end;return true,why
  end
  function self.status()return status end
  return self

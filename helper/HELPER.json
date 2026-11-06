@@ -1,0 +1,30 @@
+{
+  "sha256": "a6f5f3f6aede55b22627911b0c4429169e98d4378b7ca934cced0e7fa67723ef",
+  "version": "1.3.4.0",
+  "preserved_shortcut": "Ctrl+Shift+Space",
+  "shared_shortcuts": "tuples another application already owns stay with it",
+  "compiler": "MSVC under wine",
+  "sources": {
+    "steam_files.c": "f2836743b3d0b0fea798eab9606d0a7d91cfabf1cec2710a56d31411c3591ba8",
+    "steam_screenshot_jobs.c": "46192eafc03fe56f4cf3a7fb260d96fac617b1c200655105df73734eac1b86c8",
+    "steam_service.c": "d3eadc3d1098ab95d9f73ff3f67821a007206a01db169e3b52e04d2e449e1deb",
+    "lll_ffi.c": "71006661f5eefdcb7b39c3cbd13286a5f550ea0d60cb3ce53614898d70acd5db",
+    "test_steam_screenshot_jobs.c": "3e4df7c3cd91c86a29a4b9e7f0f0ea2f1ee38a9321b322d1710586c217c0cf1f",
+    "input_guard.c": "d6c648f03faeea81eff11c59ef6c60a700c44018af2b3923fd11fc7f6d004b07",
+    "lean_runtime.c": "a23ebcaac5566057c6cb79e5760193ea7f23799a3632f5847dcf3e2d00bf4fc3",
+    "steam_keyboard.c": "3c326421009f782960ceb6e00de8be1362eaf6328e615d17796e77dfa9195555",
+    "steam_pointer.c": "6061eb6d34716a999ec78d3c0dfc246de939885664e23a298e78386ab0189a09",
+    "steam_screenshot.cpp": "ec84445be4291cf834dec46490135fa517f6cc39f7b5ba4bec47c557e65c5257",
+    "steam_screenshot.h": "452839bfb9eda77f026033abe4448e9f6a284a9980235a28e1b9689c618d1f0c",
+    "steam_screenshot_jobs.h": "1a265884160a8f698310f5dbb9b5460ee2df8841515abd32fc91dfaf17f6fbb7",
+    "test_input_guard.c": "eefbb40b2ebee6601ca5ad99ae90be0074fea4c2612243181f9c9a93ac8296fa",
+    "test_steam_files.c": "8b6b468e5067c1c35305dc6f7ae2b57857cc26ee4e6bd7ddf81feaf7efc563d0",
+    "test_steam_keyboard.c": "8534504a12979ddc7347d520a44b0c3214d32bcc57adf43b9a8566caaf722280",
+    "test_steam_pointer.c": "eb5feb3df2b69bf89cccb76a068387c1828a3c851399255e10fa859dcf4e4f78",
+    "test_steam_screenshot_runtime.cpp": "8f7a5d401c264750ec488152de87e278ca4c9ef2269f65365820489f6841a542",
+    "steam_codec.c": "9689a31d3d76abbec7b5811369b87096ef0ed17f23dbeb2b08e7ba56a0445583",
+    "test_steam_codec.c": "fc23eeaf534b26911c091346e76c8921b8cc21ea7100fd94cb210257050ae13d",
+    "war_journalist_helper.manifest": "778e94f1a72d7345c1e4dea204a48afa97c779541b1c85f7e1fdb8c358b377ef",
+    "war_journalist_helper.rc": "6d485e75d2aa9b0cf7b13340be1a911a6cec09eb425f0bbebc89632940a5b7aa"
+  }
+}

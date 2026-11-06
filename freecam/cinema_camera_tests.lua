@@ -1,5 +1,5 @@
 local root=rawget(_G,'DBF_PHOTO_TEST_ROOT')or'freecam/'
-local Cinema=dofile(root..'cinema_camera.lua')
+local Cinema=dofile(root..'../archive/pre-rewrite/cinema_camera.lua')
 local photo={active=true,pos={1,2,3},view={yaw=.7,pitch=.2},options={fov=0,roll=17}}
 local context={world='mission',epoch=1,player='local:1',gameplay_input=true}
 local mode=Cinema.new(photo,function()return context end)

@@ -1,10 +1,10 @@
 -- Exercise the exact review's private core, controller, menu and real overlay.
 local root=assert(rawget(_G,'DBF_PHOTO_TEST_ROOT'))
 local core=dofile(root..'vendor/core.lua');local options=dofile(root..'photo_options.lua')
-local menu=dofile(root..'photo_menu.lua');local runtime_factory=dofile(root..'photo_runtime.lua')
-local lens_math=dofile(root..'lens.lua');local postfx=dofile(root..'postfx.lua')
-local overlay_factory=dofile(root..'dof_overlay.lua')
-local guard_factory=dofile(root..'shader_template_guard.lua')
+local menu=dofile(root..'photo_menu.lua');local runtime_factory=dofile(root..'../archive/pre-rewrite/photo_runtime.lua')
+local lens_math=dofile(root..'lens.lua');local postfx=dofile(root..'../archive/pre-rewrite/postfx.lua')
+local overlay_factory=dofile(root..'../archive/pre-rewrite/dof_overlay.lua')
+local guard_factory=dofile(root..'../archive/pre-rewrite/shader_template_guard.lua')
 local keys,commands,uniforms={},nil,{};local primitives=0
 local native={dof=1,bloom=0}
 DBF_PHOTO_RENDER_PROFILE={world=10,parameters={dof=true,bloom=true},read=function(key)return native[key]end,write=function(key,value)native[key]=value end}
@@ -26,7 +26,7 @@ api.camera_input={down=function(key)return keys[key]or false end,focused=functio
 api.photo_resolution=function()return 1920,1080 end
 api.create_photo_view=function()return {draw=function(value)commands=value end,release=function()end}end
 DBFMCM=api
-local photo={};local controller=dofile(root..'controller.lua').new(photo,{},function()return true end,function()end,nil,options,runtime,menu)
+local photo={};local controller=dofile(root..'../archive/pre-rewrite/controller.lua').new(photo,{},function()return true end,function()end,nil,options,runtime,menu)
 controller.tick(.016);keys[80]=true;controller.tick(.016);keys[80]=false
 assert(photo.active)
 controller.tick(.016) -- Photo Mode already starts with menu focus.

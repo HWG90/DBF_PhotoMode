@@ -230,7 +230,7 @@ fail_destroy=true;assert(not manager.preset({name='portrait',target=subject,fram
 fail_destroy=false;sr.Unit.light=original_light
 assert(not manager.flush(a,camera));assert(not manager.pending and manager.count()==1 and same(original_setup,manager.export_setup()),'Preset rollback did not finish owned cleanup')
 assert(manager.flush(a,camera));assert(manager.clear());sr.World.spawn_unit=spawn_api
-local options=dofile(root..'photo_options.lua');local controller_factory=dofile(root..'controller.lua')
+local options=dofile(root..'photo_options.lua');local controller_factory=dofile(root..'../archive/pre-rewrite/controller.lua')
 local previous_api=DBFMCM;local values={};local controls={};local open=false;local owned=false
 local api={camera_input={down=function()return false end,focused=function()return true end,
  acquire=function()owned=true;return{}end,release=function()owned=false;return true end,

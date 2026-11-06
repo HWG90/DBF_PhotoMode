@@ -1,5 +1,5 @@
 local root=rawget(_G,'DBF_PHOTO_TEST_ROOT')or'freecam/'
-local module=dofile(root..'chat_context.lua');local layout=module.layout
+local module=dofile(root..'../archive/pre-rewrite/chat_context.lua');local layout=module.layout
 local function integer(value,size)local out={};for _=1,size do out[#out+1]=string.char(value%256);value=math.floor(value/256)end;return table.concat(out)end
 local base,manager,open=0x10000000,0x20000000,0
 local metadata={base=base,stamp=layout.stamp,image_size=layout.image_size};local prefix,store=layout.writer_prefix,layout.writer_store

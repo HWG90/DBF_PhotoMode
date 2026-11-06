@@ -1,5 +1,5 @@
 -- Standalone source-only contracts. No game, native DLL, clock or asset writes.
-assert(_VERSION=='Lua 5.1'and not rawget(_G,'jit'),'Run in actual Lua 5.1')
+assert(_VERSION=='Lua 5.1'and (not rawget(_G,'jit')or DBF_PHOTO_TEST_LUAJIT==true),'Run in Lua 5.1 or the explicit LuaJIT fixture runner')
 local Overlay=dofile('freecam/steam_overlay.lua')
 local View=dofile('freecam/vendor/view.lua')
 local catalog=dofile('freecam/composition.lua')

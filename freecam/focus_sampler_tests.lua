@@ -1,5 +1,5 @@
 local root=rawget(_G,'DBF_PHOTO_TEST_ROOT')or'freecam/'
-local factory=dofile(root..'focus_sampler.lua');local ffi=require('ffi')
+local factory=dofile(root..'../archive/pre-rewrite/focus_sampler.lua');local ffi=require('ffi')
 local function integer(v)local out={};for i=1,4 do out[i]=string.char(v%256);v=math.floor(v/256)end;return table.concat(out)end
 local function packed(v)local n=ffi.new('float[1]',v);return ffi.string(n,4)end
 local function dds(w,h,values)

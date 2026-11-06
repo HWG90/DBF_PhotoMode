@@ -1,5 +1,5 @@
 local root=rawget(_G,'DBF_PHOTO_TEST_ROOT')or'freecam/'
-local Guard=dofile(root..'hover_pause.lua');local Simulation=dofile(root..'simulation.lua')
+local Guard=dofile(root..'hover_pause.lua');local Simulation=dofile(root..'../archive/pre-rewrite/simulation.lua')
 local function fixture()
     local f={rate=1.25,value=6,epoch=10,dt=.016,clock=10,world_time=20,action=0,z=1,events={},unit=1}
     local pack={identity='pack455',generation=1}

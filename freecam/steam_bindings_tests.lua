@@ -50,7 +50,7 @@ do
  value,_,lines=case(nil);assert(value=='page down'and #lines==0,'A new install gets the default')
 end
 -- The runtime with a hosted helper: the minimal harness of steam_runtime_tests.
-local function runtime_case(api,saved,virtual_cursor,extra,log,custom_service,key_positions)
+local function runtime_case(api,saved,virtual_cursor,extra,log,custom_service,key_positions,host_fields)
  local pressed={};local time=0;local stored=saved or{}
  local token,lease
  local raw={x=100,y=100,width=1920,height=1080,buttons=0,wheel=0,dx=0,dy=0}
@@ -74,14 +74,16 @@ local function runtime_case(api,saved,virtual_cursor,extra,log,custom_service,ke
   write_view=function(p)last_position={p[1],p[2],p[3]};return true end,close=function()camera_active=false;return true end}
  local deps={camera={new=function()return camera end},input=module('steam_input'),core=module('vendor/core'),
   store={new=function()return{load=function()return stored end,save=function(_,values)stored=values;return true end}end},
-  view={new=function()return{draw=function(commands)for _,c in ipairs(commands or{})do if c.ui_role=='photo_pointer'then drawn_pointer=true end end end,release=function()end}end},
+  view={new=function()return{draw=function(commands)drawn_text={};for _,c in ipairs(commands or{})do if c.ui_role=='photo_pointer'then drawn_pointer=true end;if type(c.text)=='string'then drawn_text[#drawn_text+1]=c.text end end end,release=function()end}end},
   options=module('photo_options'),menu=module('photo_menu'),legend=module('control_legend'),composition=module('composition'),
   look=module('look'),lens=module('lens'),hosted_bindings=api and{api=api,window=api.window,factory=B}}
  for k,v in pairs(extra or{})do deps[k]=v end
  local menu;local menu_new=deps.menu.new;deps.menu.new=function(...)menu=menu_new(...);return menu end
  render=function()return'native'end
  drawn_pointer=false
- local runtime=module('steam_runtime').new({config_dir='unused',log=log or function()end,key_positions=key_positions},sr,deps,service)
+ local host={config_dir='unused',log=log or function()end,key_positions=key_positions}
+ for k,v in pairs(host_fields or{})do host[k]=v end
+ local runtime=module('steam_runtime').new(host,sr,deps,service)
  -- The camera is written at render time, as in game.
  local function tick()time=time+.016;runtime.tick();render()end
  return runtime,deps,pressed,tick,function()return last_position end,function()return menu end
@@ -198,5 +200,76 @@ do
  assert(count('Hover pause unavailable: waiting for its game code')==1 and count('Protected native read failed')==0,'Hover says once that it waits')
  assert(count('Hover pause ready')==1 and hover_calls==3,'Hover logs when it becomes ready')
  assert(runtime.dispose())
+end
+-- Right Shift, Ctrl and Alt are their own keys.
+do
+ assert(names[160]=='left shift'and names[161]=='right shift'and names[162]=='left ctrl'and names[163]=='right ctrl'and names[164]=='left alt'and names[165]=='right alt')
+ assert(B.spec(160,names).button=='left shift'and B.spec(162,names).button=='left ctrl','Left-hand codes remain bindable')
+ assert(B.spec(161,names).button=='right shift'and B.spec(163,names).button=='right ctrl','The loader is given the right-hand key')
+ local api=helper();local hosted=B.new(api,{{id='up_key',label='Move up',default=161}},names)
+ assert(hosted.code('up_key')==161 and hosted.label('up_key')=='RIGHT SHIFT')
+ local legend=module('control_legend')
+ assert(legend.key_label(161)=='R SHIFT'and legend.key_label(163)=='R CTRL'and legend.key_label(16)=='SHIFT'and legend.key_label(38)=='UP')
+ -- Right Shift is 161, not 16.
+ local held,ids={['right shift']=true},{}
+ local sr={Gui={resolution=function()return 200,300 end},Window={has_focus=function()return true end},
+  Keyboard={button_id=function(n)ids[#ids+1]=n;return #ids end,button=function(id)return held[ids[id]]and 1 or 0 end}}
+ local input=module('steam_input').new(sr,{version=1,capabilities={menu=true},status=function()return{pending_restore=false}end})
+ input.frame();assert(input.down(161)and not input.down(16)and not input.down(163),'Right Shift reads as itself')
+ print('Right Shift / Ctrl / Alt: names, bindings, labels and engine reads passed')
+end
+-- Arrow-key host (Chef): WASD defaults become arrows, a key the player chose stays.
+do
+ local function registered(saved)
+  local api=helper();runtime_case(api,saved,nil,nil,nil,nil,nil,{arrow_keys=true})
+  local d={};for _,id in ipairs({'forward_key','back_key','left_key','right_key','roll_left_key','up_key'})do d[id]=api.registered['war_journalist.'..id].default.button end
+  return d
+ end
+ local d=registered()
+ assert(d.forward_key=='up'and d.back_key=='down'and d.left_key=='left'and d.right_key=='right','Arrow keys move the camera')
+ assert(d.roll_left_key=='q'and d.up_key=='left shift','Roll and rise keep their keys')
+ d=registered({forward_key=87,back_key=83,left_key=65,right_key=68})
+ assert(d.forward_key=='up'and d.back_key=='down'and d.left_key=='left'and d.right_key=='right','Saved WASD defaults become arrows')
+ d=registered({forward_key=73});assert(d.forward_key=='i'and d.back_key=='down','A key the player chose stays')
+ local api=helper()
+ local runtime,deps,pressed,tick,_,menu=runtime_case(api,nil,true,nil,nil,nil,nil,{arrow_keys=true})
+ api.down['war_journalist.toggle_key']=true;tick();api.down['war_journalist.toggle_key']=false;tick()
+ assert(runtime.active and runtime.mode=='menu')
+ local m=menu();local start=m.selection
+ pressed.down=true;tick();pressed.down=false;tick();local moved=m.selection
+ assert(moved~=start,'Down arrow moves the selection')
+ pressed.s=true;tick();pressed.s=false;tick();assert(m.selection==moved,'S no longer moves it')
+ pressed.up=true;tick();pressed.up=false;tick();assert(m.selection~=moved,'Up arrow moves it back')
+ local footer=false;for _,t in ipairs(drawn_text)do footer=footer or t:find('UP/DOWN rows',1,true)~=nil end
+ assert(footer,'The panel hint names the arrow keys')
+ -- Rebinding movement moves the selection keys with it.
+ local before=m.selection
+ assert(runtime.handle.set('back_key',75)and api.values['war_journalist.back_key']=='k')
+ pressed.k=true;tick();pressed.k=false;tick();assert(m.selection~=before,'The rebound back key moves the selection')
+ -- Tabs: Shift + value keys. Value keys alone and Q/E do nothing.
+ local page=m.page
+ pressed.right=true;tick();pressed.right=false;tick();assert(m.page==page,'Right alone changes a value, not the tab')
+ pressed.e=true;tick();pressed.e=false;tick();assert(m.page==page,'E no longer switches tabs on an arrow host')
+ pressed['left shift']=true;pressed.right=true;tick();pressed.right=false;pressed['left shift']=false;tick()
+ assert(m.page==page%#m.pages+1,'Shift+Right switches to the next tab')
+ pressed['right shift']=true;pressed.left=true;tick();pressed.left=false;pressed['right shift']=false;tick()
+ assert(m.page==page,'Either Shift works: Shift+Left switches back')
+ local tabs=false;for _,t in ipairs(drawn_text)do tabs=tabs or t:find('Shift+LEFT/RIGHT tabs',1,true)~=nil end
+ assert(tabs,'The panel hint names Shift + the value keys')
+ assert(runtime.dispose())
+ -- No host flag: WASD and Q/E as before.
+ local wasd=helper();local wr,_,wp,wtick,_,wmenu=runtime_case(wasd)
+ assert(wasd.registered['war_journalist.forward_key'].default.button=='w','Other hosts keep WASD')
+ wasd.down['war_journalist.toggle_key']=true;wtick();wasd.down['war_journalist.toggle_key']=false;wtick()
+ local wm=wmenu();local wpage=wm.page;wp.e=true;wtick();wp.e=false;wtick();assert(wm.page==wpage%#wm.pages+1,'Other hosts keep Q/E tabs')
+ -- Boot Mod Loader as before: rebinding movement leaves the panel on W/S/A/D (AZERTY's Q left would be a tab key).
+ local wbefore=wm.selection
+ assert(wr.handle.set('back_key',75)and wasd.values['war_journalist.back_key']=='k')
+ wp.k=true;wtick();wp.k=false;wtick();assert(wm.selection==wbefore,'Other hosts: the rebound back key does not move the selection')
+ wp.s=true;wtick();wp.s=false;wtick();assert(wm.selection~=wbefore,'Other hosts: S still moves it')
+ local whint=false;for _,t in ipairs(drawn_text)do whint=whint or t:find('W/S rows  |  A/D values  |  Q/E tabs',1,true)~=nil end
+ assert(whint,'Other hosts: the panel hint keeps W/S, A/D and Q/E')
+ assert(wr.dispose())
+ print('Arrow-key host: camera and panel selection on arrows, Shift+value tabs, saved WASD moved, chosen keys kept, rebinding moves both passed')
 end
 print('Hosted bindings: registration and defaults, refused keys stay ours, held keys and our edges, loader hold-back, labels, no Enable row, the drawn virtual cursor, native retry messages and the unhosted path passed')

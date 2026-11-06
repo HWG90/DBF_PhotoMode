@@ -15,7 +15,7 @@ local env=setmetatable({
  pairs=function(t)if t==G then forbidden()end;return pairs(t)end,
  next=function(t,k)if t==G then forbidden()end;return next(t,k)end,
 }, {__index=_G})
-local factory=setfenv(assert(loadfile(root..'camera_ownership.lua')),env)()
+local factory=setfenv(assert(loadfile(root..'../archive/pre-rewrite/camera_ownership.lua')),env)()
 local owner=factory.new(G,forbidden,forbidden)
 assert(owner.available==true and owner.held==false and owner.refresh()==true)
 assert(owner.wrap_update==nil and owner.set_priority==nil and owner.set_input_blocked==nil,

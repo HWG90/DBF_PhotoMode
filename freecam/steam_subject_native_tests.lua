@@ -1,5 +1,5 @@
 -- Actual Lua5.1; synthetic matrix storage doubles, never a game/ABI claim.
-assert(_VERSION=='Lua 5.1'and not rawget(_G,'jit'))
+assert(_VERSION=='Lua 5.1'and (not rawget(_G,'jit')or DBF_PHOTO_TEST_LUAJIT==true))
 local Native=dofile('freecam/steam_subject_native.lua')
 local Subject=dofile('freecam/steam_subject.lua')
 local function clone(value)if type(value)~='table'then return value end;local out={};for k,v in pairs(value)do out[k]=clone(v)end;return out end
@@ -45,7 +45,7 @@ local function fixture()
  U.alive=function(value)call('alive',true);unit(value);return f.alive and not(f.dead and f.dead[value])end
  U.world=function(value)call('unit_world',true);unit(value);return f.unit_world or f.world end
  U.resource_name=function(value)call('resource_name',true);unit(value);return opaque('id',f.actual_resource or f.resource,true)end
- U.num_scene_graph_items=function(value)call('node_count',true);unit(value);return f.count end
+ U.num_scene_graph_items=function(value)call('node_count',true);unit(value);return f.counts and f.counts[value]or f.count end
  U.animation_bone_mode=function(value)call('mode',true);unit(value);return f.mode end
  U.scene_graph_parent=function(value,index)
   call('parent',true);unit(value);check(index>=1 and index<=107 and index%1==0)
@@ -403,3 +403,36 @@ do
  local writes=f.writes;f.current_session=newproxy();check(a.session_current()==false and f.writes==writes,'Session predicate is read-only')
  f.current_session=nil;local current,why=a.session_current();check(current==nil and type(why)=='string','Unavailable session is not a replacement session')
 end
+
+-- A Helldiver the 107-node pose bank cannot drive is skipped, and discovery says why in
+-- the log, so one log answers "why is my Helldiver not listed" (Discord, 2026-11-05).
+do
+ local f=fixture();local lines={};f.policy.log=function(m)lines[#lines+1]=m end;f.policy.measure=function()return 0 end
+ f.counts={[f.unit]=111}
+ local a=f:arm();f:step()
+ local found,why=a.discover(f.resource,4,f.rig,{0,0,0});check(found,why)
+ check(#found==0,'A 111-node Helldiver is not listed')
+ check(type(found.skipped)=='table'and found.skipped.nodes[111]==1,'The skip is reported by node count')
+ local text=table.concat(lines,'\n')
+ check(text:find('Subject discovery: scanned=1 listed=0',1,true),'Discovery still logs its totals')
+ check(text:find('skipped 111 nodes x1',1,true),'The log names the unsupported node count')
+ check(f.writes==0,'Skipping writes nothing')
+end
+do
+ local f=fixture();local lines={};f.policy.log=function(m)lines[#lines+1]=m end;f.policy.measure=function()return 0 end
+ local odd,dead=newproxy(),newproxy()
+ f.extra={[odd]=true,[dead]=true};f.dead={[dead]=true};f.counts={[odd]=99}
+ f.units={f.unit,odd,dead}
+ local a=f:arm();f:step()
+ local found,why=a.discover(f.resource,4,f.rig,{0,0,0});check(found,why);check(#found==1)
+ check(found.skipped.nodes[99]==1 and found.skipped.dead==1,'Each skip reason is counted')
+ local text=table.concat(lines,'\n')
+ check(text:find('listed=1',1,true)and text:find('skipped 99 nodes x1, not alive x1',1,true),'Skips are logged in a fixed order')
+end
+do
+ local f=fixture();local lines={};f.policy.log=function(m)lines[#lines+1]=m end;f.policy.measure=function()return 0 end
+ local a=f:arm();f:step()
+ local found,why=a.discover(f.resource,4,f.rig,{0,0,0});check(found,why);check(#found==1)
+ check(not table.concat(lines,'\n'):find('skipped',1,true),'A clean discovery logs no skip list')
+end
+print('steam_subject_native discovery skips: node count, not alive and clean runs passed')

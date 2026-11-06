@@ -1,5 +1,5 @@
 local root=DBF_PHOTO_TEST_ROOT or'freecam/'
-local Motion=dofile(root..'camera_motion.lua');local Look=dofile(root..'look.lua')
+local Motion=dofile(root..'../archive/pre-rewrite/camera_motion.lua');local Look=dofile(root..'look.lua')
 local function copy(p)return{p[1],p[2],p[3]}end
 local function close(a,b)return math.abs(a-b)<1e-6 end
 local function fixture()

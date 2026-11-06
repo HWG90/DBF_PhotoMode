@@ -11,14 +11,19 @@ function M.new(chef, deps)
     for _, capability in ipairs({'menu', 'events', 'share'}) do
         assert(chef.has(capability), 'Chef capability unavailable: ' .. capability)
     end
-    local self = {version = '0.4.0', capabilities = {
+    local self = {version = '0.6.0', capabilities = {
         composition = true, camera_adjustment = true, free_mouse_camera = false,
         input_capture = false, screenshot = false, simulation = true, subject = false,
         lighting = false, scene_effects = false, numeric_dof = false,
     }}
     local token = {owner = chef.name, version = self.version}
+    -- Chef 1.4.0 services are optional: each is used only when this loader has it.
+    local features = deps.loader_features and deps.loader_features.probe(chef) or {}
+    local capture
+    self.capabilities.mouse_hold = features.mouse_hold == true
+    self.capabilities.players_event = features.players_event == true
     local camera = deps.camera.new(chef, deps.portable_camera)
-    local simulation = deps.simulation.new(chef)
+    local simulation = deps.simulation.new(chef, features)
     local shots=deps.shots and deps.shots.new(chef,deps.path)
     local bloom=deps.bloom and deps.bloom.new(chef)
     local dof=deps.bloom and deps.bloom.new(chef,'dof_enabled')
@@ -26,26 +31,33 @@ function M.new(chef, deps)
     local light_setups=lights and deps.light_setups and deps.light_setups.new(chef,lights,deps.lights,deps.shots)
     local subject=deps.subject and deps.subject.new(chef,deps.load_subject,simulation)
     local light_drag=lights and deps.light_drag and deps.light_drag.new(chef,lights)
+    local light_memory=lights and deps.light_memory and deps.light_memory.new(chef,lights)
     self.capabilities.paths=shots~=nil;self.capabilities.camera_presets=shots~=nil;self.capabilities.bloom=bloom~=nil
     self.capabilities.lighting=lights~=nil
     self.capabilities.cinema=true;self.capabilities.native_dof_switch=dof~=nil
     self.capabilities.subject_preview=subject~=nil
     if deps.logos then for index,art in pairs(deps.logos) do deps.composition.logo_art[index]=art end end
-    local controls,controls_reason = deps.controls.new(chef,deps.bindings)
+    local controls,controls_reason = deps.controls.new(chef,deps.bindings,features)
     self.capabilities.free_mouse_camera = controls ~= nil
     self.capabilities.keyboard_freecam = controls ~= nil
-    local values, subscriptions = {}, {}
+    local values, subscriptions, option_specs = {}, {}, {}
     local state, motion, dirty, stopped = 'closed', nil, false, false
     local time_dirty, last_time_reason = false, nil
     local actions={};local apply_view=false;local bloom_dirty=false;local last_bloom_reason
     local dof_dirty,last_dof_reason=false,nil
-    local shot,begin_shot,end_shot
+    local shot,begin_shot,end_shot,end_camera
     local geometry, width, height
     local geometry_dirty = true
     local grain_geometry,grain_phase,grain_fault
     local changing = false
     local function log(message) chef.log('%s', 'WJ: ' .. tostring(message)) end
     local function set(id, value)
+        local spec=option_specs[id]
+        if spec and spec.type=='slider' and finite(value) then
+            value=math.max(spec.min,math.min(spec.max,value))
+            if spec.step and spec.step>0 then value=spec.min+math.floor((value-spec.min)/spec.step+.5)*spec.step end
+            value=math.max(spec.min,math.min(spec.max,value))
+        end
         changing = true
         local result, why = chef.set(id, value)
         changing = false
@@ -59,13 +71,22 @@ function M.new(chef, deps)
     local close, update, render
     local function hooks()
         self.update = not stopped and (state == 'opening' or state == 'active' or time_dirty or simulation.owned
-            or #actions>0 or bloom_dirty or bloom and bloom.waiting() or dof_dirty or dof and dof.waiting()) and update or nil
+            or values.global_shortcuts and controls or #actions>0 or bloom_dirty or bloom and bloom.waiting()
+            or dof_dirty or dof and dof.waiting() or capture and capture.pending()) and update or nil
         self.render = not stopped and (values.overlay or state=='active' and
-            (values.show_legend or values.light_markers or values.light_swatch)) and render or nil
+            not values.capture_view and (values.show_legend or values.light_markers or values.light_swatch)) and render or nil
     end
-    close = function()
+    close = function(remember)
         actions={};apply_view=false
         shot=nil
+        if light_memory then
+            if remember==false or not values.remember_lights then light_memory.forget()
+            elseif remember and state=='active' then
+                local called,ok,why=pcall(light_memory.capture)
+                if not called or not ok then log('Light reopen memory: '..tostring(called and why or ok)) end
+            end
+        end
+        if values.capture_view then set('capture_view',false);geometry_dirty=true end
         if light_drag then light_drag.reset() end
         if shots then shots.reset() end
         local called, ok, why = pcall(camera.close)
@@ -88,7 +109,9 @@ function M.new(chef, deps)
         log(message)
         if type(chef.notify)=='function' then chef.notify(message,3,255,230,90) end
     end
+    capture = features.capture and deps.loader_features.capture_queue(chef, features, notify) or nil
     local function run_action(item)
+        if capture and item.name=='capture_dds' then return capture.request() end
         if item.name=='camera_cleanup' then
             local closed=close();local ok,why=simulation.release(true)
             set('freeze',simulation.frozen);set('slow_motion',simulation.slow)
@@ -97,17 +120,19 @@ function M.new(chef, deps)
         if subject and item.name=='subject_recover' then return subject.recover() end
         if subject and item.name=='subject_reset' then return subject.reset() end
         if subject and item.name=='subject_disable' then return subject.close() end
-        if lights and item.name=='light_remove' then return lights.remove(item.light_slot) end
-        if lights and item.name=='light_clear' then return lights.clear() end
+        if lights and item.name=='light_remove' then
+            if light_memory then light_memory.forget(item.light_slot) end;return lights.remove(item.light_slot)
+        end
+        if lights and item.name=='light_clear' then
+            if light_memory then light_memory.forget() end;return lights.clear()
+        end
         if state~='active' or not motion or not shots then return false,'Open a photo camera first' end
         local name,index=item.name,item.slot
         local view=motion.view()
         if name=='cinema_begin' or name=='cinema_path' then return begin_shot(name=='cinema_path') end
         if name=='cinema_reposition' then return end_shot() end
-        if name=='cinema_end' then
-            local closed=close();local ok,why=simulation.release(true)
-            set('freeze',simulation.frozen);set('slow_motion',simulation.slow);return closed and ok,why
-        end
+        if name=='cinema_end' then return end_camera() end
+        if name=='capture_view' then set('capture_view',not values.capture_view);geometry_dirty=true;hooks();return true end
         if subject and name:match('^subject_') then
             if not values.subject_preview then return false,'Enable experimental subject poses first' end
             if name=='subject_refresh' then return subject.refresh()
@@ -130,6 +155,17 @@ function M.new(chef, deps)
             local ok,why=lights.apply(item.light_slot,item.light,view)
             return ok,ok and ('Placed photo light '..item.light_slot) or why
         end
+        if lights and name=='light_edit' then return lights.edit(item.light_slot,item.light) end
+        if lights and name=='light_read' then
+            local definition,why=lights.definition(item.light_slot);if not definition then return false,why end
+            local o=definition.options
+            for _,field in ipairs({'intensity','enabled','cone','range','right','forward','up','follow'}) do set('light_'..field,o[field]) end
+            set('light_kind',o.kind=='spot' and 2 or 1);set('light_color',o.rgb and 7 or o.color)
+            local rgb=o.rgb or LIGHT_COLORS[o.color]
+            for i,channel in ipairs({'red','green','blue'}) do set('light_'..channel,rgb[i]) end
+            return true,'Selected light settings loaded'
+        end
+        if light_memory and name=='light_restore' then return light_memory.restore() end
         if lights and name=='light_aim' then
             local target={};for i=1,3 do target[i]=view.position[i]+view.forward[i]*item.target_distance end
             return lights.aim(item.light_slot,target)
@@ -187,7 +223,7 @@ function M.new(chef, deps)
     end
     local function fail(reason)
         log(reason)
-        close()
+        close(false)
     end
     local function open()
         if state ~= 'closed' and not close() then set('camera', false); return end
@@ -212,6 +248,13 @@ function M.new(chef, deps)
         time_dirty=false
         return sync_time(simulation.release(true))
     end
+    end_camera=function()
+        local ok=close(true)
+        if ok and values.keep_slow_on_close then
+            time_dirty=false;return sync_time(simulation.set(false,values.slow_motion,values.slow_rate))
+        end
+        local released=release_time();return ok and released
+    end
     begin_shot=function(play_path)
         if shot then return false,'An action shot is already active' end
         if play_path and shots.count()<2 then return false,'Record at least two camera points' end
@@ -225,7 +268,7 @@ function M.new(chef, deps)
         if play_path then
             local ok,why=shots.play();if not ok then end_shot();return false,why end
         end
-        return true,'Cinema camera holds while you control gameplay'
+        return true,values.cinema_notification and 'Cinema camera holds while you control gameplay' or nil
     end
     end_shot=function()
         if not shot then return false,'No action shot is active' end
@@ -249,14 +292,19 @@ function M.new(chef, deps)
                 state = 'active'
                 motion = deps.motion.new(baseline)
                 if shots then shots.begin(baseline) end
+                if light_memory and values.remember_lights then
+                    local ok,why=light_memory.restore(true);if not ok then notify(why) end
+                end
             end
             if controls and controls.command then
                 local command=controls.command()
                 if command=='exit' then
                     if shot then local ok,why=end_shot();if not ok then return false,why end
-                    else close();release_time();return true end
+                    else end_camera();return true end
                 elseif command=='freeze' then if shot then shot.refreeze=false end;set('freeze',not values.freeze);time_dirty=true
                 elseif command=='lock' then set('lock_camera',not values.lock_camera);motion.reset_motion();controls.reset()
+                elseif command=='capture_view' then
+                    set('capture_view',not values.capture_view);geometry_dirty=true;hooks()
                 elseif command then enqueue(command) end
             end
             local changed=dirty
@@ -270,15 +318,20 @@ function M.new(chef, deps)
             if state~='active' or not motion then return true end
             changed=apply_view or changed;apply_view=false
             local dragging=false
-            if light_drag and controls and values.light_markers and values.light_drag and not shot then
+            if light_drag and controls and values.light_markers and values.light_drag and not values.capture_view and not shot then
                 local pressed,fine=controls.drag();local reason
                 dragging,reason=light_drag.tick(pressed,fine,motion.view())
                 if reason then notify(reason) end
                 if dragging and shots then shots.stop() end
             elseif light_drag then light_drag.reset() end
             if values.freecam and controls and not shot and not values.lock_camera and not dragging then
-                local sample,reason=controls.sample(values.mouse_look)
+                local sample,reason=controls.sample(values.mouse_look,values.wheel_speed)
                 if reason then return false,reason end
+                if sample and sample.wheel~=0 and sample.wheel~=nil then
+                    local speed=math.max(.1,math.min(50,values.move_speed*(1+values.wheel_step/100)^sample.wheel))
+                    speed=math.min(50,.1+math.floor((speed-.1)/.1+.5)*.1)
+                    if speed~=values.move_speed then set('move_speed',speed) end
+                end
                 if sample and shots then shots.stop() end
                 changed=motion.step(sample,values) or changed
             else motion.reset_motion();if controls then controls.reset() end end
@@ -296,8 +349,28 @@ function M.new(chef, deps)
             return true
     end
     update = function()
+        if values.global_shortcuts and controls and controls.global_command then
+            local called,command=pcall(controls.global_command)
+            if not called then
+                log('Global shortcuts disabled: '..tostring(command));set('global_shortcuts',false)
+            elseif command=='global_camera' then
+                if shot then local ok,why=end_shot();if not ok then log(why) end
+                elseif state=='active' or state=='opening' then end_camera()
+                else open() end
+                hooks();return
+            elseif command=='global_slow' then
+                if state=='cleanup_pending' then log('Retry photo cleanup before changing time')
+                else
+                    if shot then shot.refreeze=false end
+                    set('slow_motion',not values.slow_motion);time_dirty=true
+                end
+            end
+        end
         if state=='closed' or state=='cleanup_pending' then
             drain_actions()
+        end
+        if capture and capture.pending() then
+            local ok,why=capture.tick();if not ok then notify(why) end
         end
         if bloom then
             local ok,why=true,nil
@@ -341,7 +414,7 @@ function M.new(chef, deps)
     render = function()
         local w, h = chef.screen()
         if not finite(w) or not finite(h) or w <= 0 or h <= 0 then return end
-        if state=='active' and values.show_legend and type(chef.text)=='function' then
+        if state=='active' and not values.capture_view and values.show_legend and type(chef.text)=='function' then
             local scale=values.legend_scale or 2
             local x,y=w*(values.legend_x or 2)/100,h*(values.legend_y or 3)/100
             local color=chef.color(255,230,140,math.floor((values.legend_opacity or 85)*2.55+.5))
@@ -350,7 +423,7 @@ function M.new(chef, deps)
             if type(chef.text_fit)=='function' then text=chef.text_fit(text,scale,math.max(0,w-x)) end
             chef.text(x,y,text,scale,color,chef.TOP+103)
         end
-        if state=='active' and values.light_markers and lights and type(chef.text)=='function' and type(chef.world_to_screen)=='function' then
+        if state=='active' and not values.capture_view and values.light_markers and lights and type(chef.text)=='function' and type(chef.world_to_screen)=='function' then
             for _,marker in ipairs(lights.markers()) do
                 local p=marker.position;local x,y=chef.world_to_screen(p[1],p[2],p[3])
                 if finite(x) and finite(y) and x>=0 and y>=0 and x<=w and y<=h then
@@ -358,7 +431,7 @@ function M.new(chef, deps)
                 end
             end
         end
-        if state=='active' and values.light_swatch and lights and w>=100 and h>=50 then
+        if state=='active' and not values.capture_view and values.light_swatch and lights and w>=100 and h>=50 then
             local rgb=LIGHT_COLORS[values.light_color]
             local r,g,b=values.light_red,values.light_green,values.light_blue
             if rgb then r,g,b=rgb[1],rgb[2],rgb[3] end
@@ -368,7 +441,9 @@ function M.new(chef, deps)
         if not values.overlay then return end
         if geometry_dirty or width ~= w or height ~= h then
             width, height = w, h
-            geometry = deps.composition.layout_static(w, h, values)
+            local visible=values
+            if values.capture_view then visible={};for key,value in pairs(values) do visible[key]=value end;visible.grid=1 end
+            geometry = deps.composition.layout_static(w, h, visible)
             geometry_dirty = false
             grain_phase,grain_fault=nil,nil
         end
@@ -401,6 +476,7 @@ function M.new(chef, deps)
     end
     chef.title('War Journalist (Chef preview)')
     local function option(id, spec, changed)
+        option_specs[id]=spec
         local value, why = chef.option(id, spec)
         assert(value ~= nil, 'Chef option ' .. id .. ': ' .. tostring(why))
         values[id] = value
@@ -422,6 +498,16 @@ function M.new(chef, deps)
     option('grain',{type='slider',label='Film grain',min=0,max=100,step=1,default=0})
     option('grain_size',{type='slider',label='Grain size',min=1,max=4,step=.5,default=1.5})
     option('clean_view',{type='toggle',label='Clean composition (hide guides and logo)',default=false})
+    option('capture_view',{type='toggle',label='External screenshot view (hide WJ guides/controls)',default=false},function()
+        geometry_dirty=true;hooks()
+    end);set('capture_view',false)
+    if capture then
+        -- Saved by the loader itself, as DDS, only for a mod its TRUSTED list grants
+        -- screenshots; every other mod is told 'not available to this mod'.
+        option('capture_dds',{type='toggle',label='Save screenshot after menu closes (DDS, needs Chef grant)',default=false},
+            function(on) if on then enqueue('capture_dds') end end)
+        set('capture_dds',false)
+    end
     option('logo',{type='choice',label='Logo',default=1,choices={'None','Helldiver crest','DBF mark','Super Earth crest',
         'Helldivers 2','Arrowhead','Helldivers 2 wide','Helldivers 2 compact','Helldivers II crest',
         'Super Citizen Edition','Omens of Tyranny','Heart of Democracy','Into the Unjust'}})
@@ -457,7 +543,10 @@ function M.new(chef, deps)
         option(o[1],{type='slider',label=o[2],min=o[3],max=o[4],step=1,default=o[5]},function() end)
     end
     option('camera', {type = 'toggle', label = 'Photo camera (experimental)', default = false},
-        function(on) if on then open() else close(); release_time() end end)
+        function(on) if on then open() else end_camera() end end)
+    option('global_shortcuts',{type='toggle',label='Enable gameplay shortcuts (shared keys, no chat detection)',default=false},function()
+        if controls and controls.reset_global then controls.reset_global() end;hooks()
+    end)
     option('freecam', {type='toggle',label='Free camera controls and hold',default=true},function()
         if controls then controls.reset() end
     end)
@@ -471,13 +560,20 @@ function M.new(chef, deps)
     option('mouse_look', {type='toggle',label='Mouse look while holding control key',default=false},function()
         if controls then controls.reset() end
     end)
-    option('move_speed', {type='slider',label='Camera speed (m/s)',min=.1,max=20,step=.1,default=3},function() end)
+    option('move_speed', {type='slider',label='Camera speed (m/s)',min=.1,max=50,step=.1,default=3},function() end)
+    option('wheel_speed',{type='toggle',label='Clutch + wheel adjusts camera speed',default=true},function() end)
+    option('wheel_step',{type='slider',label='Wheel speed change (%)',min=5,max=100,step=5,default=20},function() end)
+    option('vertical_world',{type='toggle',label='Vertical movement uses world up',default=false},function() end)
+    option('roll_speed',{type='slider',label='Camera roll speed (degrees/s)',min=5,max=180,step=5,default=60},function() end)
+    option('zoom_speed',{type='slider',label='Camera zoom speed (degrees/s)',min=5,max=90,step=5,default=45},function() end)
     option('turn_speed', {type='slider',label='Camera turn speed (degrees/s)',min=5,max=180,step=5,default=60},function() end)
     option('mouse_sensitivity', {type='slider',label='Mouse sensitivity',min=.01,max=1,step=.01,default=.12},function() end)
     local function time_changed() if shot then shot.refreeze=false end;time_dirty=true; hooks() end
     option('freeze', {type='toggle',label='Freeze action (solo)',default=false},time_changed)
     option('slow_motion', {type='toggle',label='Slow motion (solo)',default=false},time_changed)
     option('slow_rate', {type='slider',label='Slow-motion rate',min=.05,max=1,step=.05,default=.2},time_changed)
+    option('keep_slow_on_close',{type='toggle',label='Keep chosen slow motion after manual camera close',default=false},function() end)
+    option('cinema_notification',{type='toggle',label='Show three-second Cinema notification',default=true},function() end)
     if shots then
         option('focal_preset',{type='choice',label='Lens shortcut (24 mm sensor height)',default=3,
             choices={'24 mm','35 mm','50 mm','85 mm','135 mm'}},function() end)
@@ -516,6 +612,9 @@ function M.new(chef, deps)
         end);set('native_dof',1)
     end
     if lights then
+        option('remember_lights',{type='toggle',label='Restore lights when reopening in the same scene',default=true},function(on)
+            if not on and light_memory then light_memory.forget() end
+        end)
         option('light_slot',{type='choice',label='Photo light slot',default=1,choices={'1','2','3'}},function() end)
         option('light_color',{type='choice',label='Next light color',default=1,
             choices={'White','Warm','Cool','Red','Green','Violet','Custom RGB'}},function() end)
@@ -534,9 +633,11 @@ function M.new(chef, deps)
             if light_drag then light_drag.reset() end
         end)
         for _,a in ipairs({{'right','Right',0},{'forward','Forward',2},{'up','Up',0}}) do
-            option('light_'..a[1],{type='slider',label='Next light '..a[2]..' offset',min=-20,max=20,step=.1,default=a[3]},function() end)
+            option('light_'..a[1],{type='slider',label='Next light '..a[2]..' offset',min=-100,max=100,step=.1,default=a[3]},function() end)
         end
         for _,a in ipairs({{'light_place','Place/update selected light'},{'light_remove','Remove selected light'},
+            {'light_read','Load selected light settings'},{'light_edit','Apply settings at existing light anchor'},
+            {'light_restore','Retry remembered light restoration'},
             {'light_aim','Aim selected spot at lighting target'},
             {'light_clear','Remove all photo lights'}}) do
             local id=a[1];option(id,{type='toggle',label=a[2],default=false},function(on) if on then enqueue(id) end end)
@@ -578,10 +679,11 @@ function M.new(chef, deps)
     set('freeze',false); set('slow_motion',false)
     for _, id in ipairs({'right', 'forward', 'up', 'yaw', 'pitch', 'roll', 'fov'}) do set(id, 0) end
     subscriptions[#subscriptions + 1] = chef.on('world', function()
+        if light_memory then light_memory.forget() end
         if state ~= 'closed' then
             -- A settled world event may be a mission change inside the SAME
             -- engine world. Let close validate it; never blindly discard edits.
-            close()
+            close(false)
         end
         release_time()
         if bloom then bloom.close();set('bloom',1);bloom_dirty=false;hooks() end
@@ -591,7 +693,8 @@ function M.new(chef, deps)
         if stopped then return state == 'closed' and not simulation.owned and (not bloom or bloom.state=='closed') and
             (not dof or dof.state=='closed') and (not lights or lights.count()==0) end
         stopped = true
-        local ok = close()
+        if capture then capture.cancel() end
+        local ok = close(false)
         local time_ok = release_time()
         local bloom_ok=true
         if bloom then bloom_ok=bloom.close();if not bloom_ok then log('Bloom cleanup is pending at stop') end end
@@ -611,6 +714,7 @@ function M.new(chef, deps)
     function self.subject_status() return subject and subject.status() or nil end
     hooks()
     if controls_reason then log(controls_reason) end
+    if deps.loader_features then log(deps.loader_features.describe(features)) end
     log('Chef photo preview ready; input is shared with gameplay; live validation pending')
     return self
 end

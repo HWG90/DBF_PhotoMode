@@ -1,6 +1,6 @@
 -- Offline ownership tests; these do not reproduce an HDR/device reset.
 local root=rawget(_G,'DBF_PHOTO_TEST_ROOT')or'freecam/'
-local factory=dofile(root..'photo_runtime.lua')
+local factory=dofile(root..'../archive/pre-rewrite/photo_runtime.lua')
 local worlds={10,20};local unavailable=false;local malformed=false;local refuse_destroy=false
 local created,destroyed={},{};local lens_releases,postfx_releases=0,0
 local sr={Application={main_world=function()return 10 end,worlds=function()

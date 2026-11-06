@@ -36,6 +36,10 @@ MODULES+=('windows_freeze_physics_probe.lua',)
 MODULES+=('windows_freeze_pose_probe.lua','windows_freeze_cape.lua')
 MODULES+=('engine_render_contract.lua','engine_scene_resources.lua','engine_scene_registry.lua','wjl_helper_payload.lua','wjl_helper_startup.lua','windows_lens.lua','engine_cursor_gate.lua','windows_input_service.lua','vendor/wjl_transport.lua','vendor/wjl_capture.lua','vendor/wjl_input_service.lua')
 MODULES+=('windows_capture.lua',)
+MODULES+=('base64.lua','follow_target.lua')
+# Chef Shared Loader's host, in the one package; compiled only when Chef runs it.
+CHEF_ONLY=('chef_host.lua','chef_scene_resources.lua')
+MODULES+=CHEF_ONLY
 # Plain Lua 5.1 only: no cffi/ffi imports, ffi calls, cdef blocks or PORT51 adapters.
 FFI=re.compile(r"['\"]c?ffi['\"]|\bffi\s*\.|\bcdef\b|\bPORT51\b|luaopen_hd2_cffi")
 NATIVE_LIBRARIES=('port51/hd2_nativeinfo_f6d3465944c1aea1.dll', 'port51/hd2_nativeinfo_3139cc5f8ecb4078.dll', 'port51/hd2_nativeinfo_78b314de6177433d.dll', 'port51/hd2_nativeinfo_4aab2adfbc4090d6.dll', 'port51/hd2_nativeinfo_5e39eeeeb76b863a.dll')
@@ -44,7 +48,7 @@ NATIVE_LIBRARIES=('port51/hd2_nativeinfo_f6d3465944c1aea1.dll', 'port51/hd2_nati
 DEV_ONLY=('windows_dev_reload.lua',)
 
 def digest(data):return hashlib.sha256(data).hexdigest()
-def build(output,release=False):
+def build(output,release=False,bridges=True):
     from lupa.lua51 import LuaRuntime
     output=output.resolve()
     assert output.is_relative_to(ROOT/'dist/review'),'Development port must stay in dist/review'
@@ -58,10 +62,11 @@ def build(output,release=False):
                      'restart_only':False,'retain_until_exit':False}}
     manifest['public_release']=bool(release)
     manifest['license_files']=['LICENSE-Link.txt','LICENSE-Bingus.txt']
-    manifest['native_libraries']=list(NATIVE_LIBRARIES)
+    # The one package carries no in-process bridge (bridges=False): Windows refuses them.
+    manifest['native_libraries']=list(NATIVE_LIBRARIES)if bridges else[]
     files={'main.lua':(ROOT/'freecam/steam51.lua').read_bytes(),'manifest.json':(json.dumps(manifest,indent=2)+'\n').encode(),
            'config/defaults.cfg':b'{}\n'}
-    for name in NATIVE_LIBRARIES:files[name]=(ROOT/'freecam/native'/name).read_bytes()
+    for name in manifest['native_libraries']:files[name]=(ROOT/'freecam/native'/name).read_bytes()
     for label in manifest['license_files']:files[label]=(ROOT/'freecam/vendor'/label).read_bytes()
     for name in modules:files['src/'+name]=(ROOT/'freecam'/name).read_bytes()
     compile_lua=LuaRuntime().eval('function(s) return assert(loadstring(s)) end')

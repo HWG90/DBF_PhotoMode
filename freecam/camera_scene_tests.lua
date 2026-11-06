@@ -4,7 +4,7 @@ local scene_env=setmetatable({pairs=function(list)
  local state=counted_lists[list];if state then state.unit_walks=(state.unit_walks or 0)+1 end
  return pairs(list)
 end}, {__index=_G})
-local Scene=setfenv(assert(loadfile(root..'camera_scene.lua')),scene_env)()
+local Scene=setfenv(assert(loadfile(root..'../archive/pre-rewrite/camera_scene.lua')),scene_env)()
 local function point(x,y,z)return{x or 0,y or 0,z or 0}end
 local function pose(p,f,r,u)return{p=p,f=f or{1,0,0},r=r or{0,-1,0},u=u or{0,0,1}}end
 local function fixture(optimized)

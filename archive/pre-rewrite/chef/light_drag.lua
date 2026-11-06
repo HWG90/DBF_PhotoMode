@@ -9,10 +9,17 @@ function M.new(chef,lights)
     function self.tick(pressed,fine,view)
         if not pressed then self.reset();return false end
         if fault then return false end
+        if down and not drag then return false end
         if type(chef.cursor)~='function' or type(chef.world_to_screen)~='function' then return fail('Chef marker input unavailable') end
         local x,y=chef.cursor();local w,h=chef.screen()
         if not finite(x) or not finite(y) or not finite(w) or not finite(h) or w<=0 or h<=0 then return fail('Marker cursor unavailable') end
+        local sx,sy=drag and drag.sx,drag and drag.sy
         if not down then
+            -- Chef's cursor uses window pixels; projection uses GUI pixels.
+            -- Resolve their ratio once on press, not on every drag update.
+            local rw,rh=chef.call('Application.resolution')
+            if not finite(rw) or not finite(rh) or rw<=0 or rh<=0 then return fail('Marker window resolution unavailable') end
+            sx,sy=w/rw,h/rh;x,y=x*sx,y*sy
             local best,distance=nil,18^2
             for _,marker in ipairs(lights.markers()) do
                 local p=marker.position;local sx,sy=chef.world_to_screen(p[1],p[2],p[3])
@@ -24,9 +31,9 @@ function M.new(chef,lights)
             if best then
                 local depth=0;for i=1,3 do depth=depth+(best.position[i]-view.position[i])*view.forward[i] end
                 if depth>.05 then drag={slot=best.slot,position={unpack(best.position)},scale=2*depth*math.tan(view.fov/2)/h,
-                    right={unpack(view.right)},up={unpack(view.up)},w=w,h=h,x=x,y=y} end
+                    right={unpack(view.right)},up={unpack(view.up)},w=w,h=h,x=x,y=y,sx=sx,sy=sy} end
             end
-        end
+        else x,y=x*sx,y*sy end
         down=true
         if not drag then return false end
         if w~=drag.w or h~=drag.h then return fail('Marker drag ended after resize') end

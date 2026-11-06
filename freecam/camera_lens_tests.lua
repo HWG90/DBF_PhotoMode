@@ -1,7 +1,7 @@
 local root=DBF_PHOTO_TEST_ROOT or'freecam/'
-local Scene=dofile(root..'camera_scene.lua')
+local Scene=dofile(root..'../archive/pre-rewrite/camera_scene.lua')
 local Original=dofile(root..'lens.lua')
-local Guard=dofile(root..'camera_lens.lua')
+local Guard=dofile(root..'../archive/pre-rewrite/camera_lens.lua')
 local function close(a,b)return math.abs(a-b)<1e-9 end
 local function pose()return{p={0,0,1},f={1,0,0},r={0,-1,0},u={0,0,1}}end
 local function fixture()

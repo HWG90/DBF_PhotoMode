@@ -1,5 +1,5 @@
 local root=rawget(_G,'DBF_PHOTO_TEST_ROOT')or'freecam/'
-local Capture=dofile(root..'photo_input_capture.lua')
+local Capture=dofile(root..'../archive/pre-rewrite/photo_input_capture.lua')
 local Camera=dofile(root..'vendor/camera_input.lua')
 local Standalone=dofile(root..'standalone.lua')
 -- Optional source injection runs exactly these contracts against Epic LUT's

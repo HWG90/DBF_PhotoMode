@@ -3,7 +3,7 @@ local M={}
 local gold={244,202,53};local dark={12,14,16};local muted={154,159,159};local white={234,235,228}
 local function clamp(v,a,b)return math.max(a,math.min(b,v))end
 function M.key_label(v)
- local names={[0]='NONE',[8]='BACKSPACE',[9]='TAB',[13]='ENTER',[16]='SHIFT',[17]='CTRL',[18]='ALT',[27]='ESC',[32]='SPACE',[33]='PG UP',[34]='PG DN',[35]='END',[36]='HOME',[37]='LEFT',[38]='UP',[39]='RIGHT',[40]='DOWN',[45]='INSERT',[46]='DELETE',[186]=';',[187]='=',[188]=',',[189]='-',[190]='.',[191]='/',[192]='`',[219]='[',[220]='\\',[221]=']',[222]="'"}
+ local names={[0]='NONE',[8]='BACKSPACE',[9]='TAB',[13]='ENTER',[16]='SHIFT',[17]='CTRL',[18]='ALT',[27]='ESC',[32]='SPACE',[33]='PG UP',[34]='PG DN',[35]='END',[36]='HOME',[37]='LEFT',[38]='UP',[39]='RIGHT',[40]='DOWN',[45]='INSERT',[46]='DELETE',[160]='L SHIFT',[161]='R SHIFT',[162]='L CTRL',[163]='R CTRL',[164]='L ALT',[165]='R ALT',[186]=';',[187]='=',[188]=',',[189]='-',[190]='.',[191]='/',[192]='`',[219]='[',[220]='\\',[221]=']',[222]="'"}
  if names[v]then return names[v]end
  if v and v>=112 and v<=123 then return 'F'..(v-111)end
  if v and v>=96 and v<=105 then return 'NUM '..(v-96)end
@@ -72,9 +72,11 @@ function M.new(view)
   hazard(y);hazard(y+size-stripe)
   text(focused and 'MENU CONTROLS'or 'CAMERA CONTROLS',x+pad,y+size-35*s,size-2*pad-70*s,16*s,'legend_title')
   if parent then rect(dock_button.x,dock_button.y,dock_button.w,dock_button.h,{29,31,34},'legend_dock_button');text(docked and 'UNDOCK'or 'DOCK',dock_button.x+5*s,dock_button.y+7*s,dock_button.w-10*s,10*s,'legend_key')end
+  -- Menu keys follow the movement keys only on an arrow-key host (Chef); elsewhere W/S/A/D as before.
+  local nav=M.shift_tabs and{key('forward_key',87)..' / '..key('back_key',83),key('left_key',65)..' / '..key('right_key',68)}or{'W / S','A / D'}
   local entries=focused and {
-   {'W / S','Menu up / down'},{'A / D','Value / option'}, {'Q / E','Menu tabs'},
-   {'ENTER / SPACE','Edit / save'},{'SHIFT + A / D','Fine focus step'},{'RIGHT CLICK','Reset value'},
+   {nav[1],'Menu up / down'},{nav[2],'Value / option'}, {M.shift_tabs and('SHIFT + '..nav[2])or'Q / E','Menu tabs'},
+   {'ENTER / SPACE','Edit / save'},{'SHIFT + '..nav[2],'Fine focus step'},{'RIGHT CLICK','Reset value'},
    {'ESC','Cancel / return'},{key('focus_key',9),'Return to camera'},
    {key('toggle_key',80),'Photo on / off'},{key('handycam_key',34),'Start / end Handycam'},{key('hide_controls_key',72),'Show / hide controls'}
   }or {

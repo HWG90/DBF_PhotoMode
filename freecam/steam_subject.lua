@@ -72,6 +72,21 @@ local function copy_frame(value,identity)
  end
  return result
 end
+-- The Subject tab's message when discovery listed nobody but left out Helldivers the
+-- 107-node pose bank cannot drive. A malformed summary from an adapter is ignored.
+function M.unsupported(skipped)
+ if type(skipped)~='table'or type(skipped.nodes)~='table'then return nil end
+ local counts,total={},0
+ for count,units in pairs(skipped.nodes)do
+  if type(count)~='number'or count~=count or count%1~=0 or count<0 or count>100000 or
+   type(units)~='number'or units~=units or units%1~=0 or units<1 or units>128 then return nil end
+  counts[#counts+1]=count;total=total+units
+ end
+ if total==0 or total>128 then return nil end
+ table.sort(counts);for i,count in ipairs(counts)do counts[i]=tostring(count)end
+ return string.format("No Helldiver War Journalist can pose: %d found with %s bones (needs 107). Please report it with your log.",
+  total,table.concat(counts,', '))
+end
 function M.new(adapter,bank,is_frozen)
  assert(type(bank)=='table'and bank.version==1 and type(bank.rig)=='table'and
   bank.rig.resource==resource and bank.rig.node_count==107 and type(bank.rig.nodes)=='table'and
@@ -89,6 +104,8 @@ function M.new(adapter,bank,is_frozen)
  supported=supported and(adapter.resolve_node==nil or type(adapter.resolve_node)=='function')
  supported=supported and(adapter.reconcile==nil or type(adapter.reconcile)=='function')
  local self={catalog=bank.catalog};local targets,choices={},{};local selected,lease,pose,closing,blocked
+ -- The last refresh's message for Helldivers it left out as unsupported; nil when none.
+ local unsupported
  local status={available=supported==true,capability='explicit_photographic_subject',player_authority=false,
   state=supported and'unselected'or'unsupported',pending=false,message=supported and'Select a photographic subject'or'Subject adapter is not qualified'}
  local function state(name,message,detail)
@@ -254,7 +271,7 @@ function M.new(adapter,bank,is_frozen)
  function self.refresh(point,preferred)
   if not supported then return false,status.message end
   if lease then return false,'Reset the held pose before refreshing subjects'end
-  selected=nil;pose=nil;targets,choices={},{}
+  selected=nil;pose=nil;targets,choices={},{};unsupported=nil;self.camera_choices=nil
   local called,found,why=pcall(adapter.discover,resource,4,bank.rig,point,preferred)
   if not called or type(found)~='table'or #found>4 then
    state('unselected','Subject discovery unavailable',called and why or found);return false,status.message
@@ -268,7 +285,11 @@ function M.new(adapter,bank,is_frozen)
    end
    next_targets[candidate.identity]=candidate;next_choices[i]={id=candidate.identity,label=candidate.label}
   end
-  targets,choices=next_targets,next_choices;state('unselected','Choose a photographic subject explicitly')
+  targets,choices=next_targets,next_choices
+  self.camera_choices=found.camera_only
+
+  unsupported=#next_choices==0 and M.unsupported(found.skipped)or nil
+  state('unselected',#next_choices>0 and'Choose a photographic subject explicitly'or unsupported or'No Helldiver found')
   return true,choices
  end
  local explicit_selection=false
@@ -282,6 +303,11 @@ function M.new(adapter,bank,is_frozen)
    return false,status.message
   end
   selected=candidate;explicit_selection=not automatic;pose=nil;closing=false;state('selected','Photographic subject selected');return true
+ end
+ function self.clear_selection()
+  if lease then return false,'Reset the held pose first'end
+  selected=nil;explicit_selection=false;pose=nil;state('unselected','Camera target selected for Follow only')
+  return true
  end
  function self.tracking_frame()
   if not selected or not explicit_selection then return nil,'Select your Helldiver explicitly in Subject first'end
@@ -322,7 +348,7 @@ function M.new(adapter,bank,is_frozen)
  function self.select_unit(unit)
   if type(adapter.locate)~='function'then return false,'Subject picking unavailable'end
   local target=adapter.locate(unit)
-  if not target then return false,'Picked character is not a listed subject'end
+  if not target then return false,unsupported and"this Helldiver can't be posed yet"or'Picked character is not a listed subject'end
   return self.select(target.identity)
  end
  -- Private diagnostic: freeze animation transfer without writing any pose.

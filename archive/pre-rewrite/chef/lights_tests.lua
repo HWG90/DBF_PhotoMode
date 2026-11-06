@@ -101,6 +101,7 @@ local runtime=m['wj.chef.runtime'].new(c,{
         maintain=function() return true end,close=function() return true end} end},
     controls=m['wj.chef.controls'],bindings=bindings,motion=m['wj.chef.motion'],simulation=m['wj.chef.simulation'],
     composition=m['wj.composition'],shots=m['wj.chef.shots'],path=m['wj.steam_path'],lights=m['wj.chef.lights'],
+    light_memory=m['wj.chef.light_memory'],
 })
 c.set('light_intensity',5);assert(runtime.update==nil and s.spawned==0)
 c.set('light_place',true);runtime.update();assert(s.spawned==0 and runtime.update==nil)
@@ -113,6 +114,9 @@ function c.rect(x,y,w,h,color) assert(color[1]==12 and color[2]==34 and color[3]
 c.set('light_swatch',true);c.set('light_color',7)
 c.set('light_red',12);c.set('light_green',34);c.set('light_blue',56);runtime.render();assert(swatches==1)
 c.set('light_swatch',false);assert(runtime.render==nil);c.set('light_color',1)
+c.set('light_read',true);runtime.update();assert(s.values.light_intensity==5)
+c.set('light_intensity',7);c.set('light_edit',true);runtime.update()
+c.set('light_read',true);runtime.update();assert(s.values.light_intensity==7)
 reads=s.alive_reads;local writes=s.light_writes
 for _=1,1000 do runtime.update() end
 assert(s.alive_reads==reads and s.light_writes==writes,'Camera updates never poll static lights')
@@ -123,7 +127,12 @@ assert(runtime.status()=='cleanup_pending' and runtime.light_count()==2 and runt
 s.skip=nil;c.set('light_clear',true);runtime.update();assert(runtime.light_count()==0)
 c.set('camera',false);assert(runtime.status()=='cleanup_pending','Chef ignores unchanged toggles')
 c.set('camera_cleanup',true);runtime.update();assert(runtime.status()=='closed' and runtime.update==nil)
-c.set('camera',true);runtime.update();c.set('light_place',true);runtime.update();s.focused=false;runtime.update()
+c.set('camera',true);runtime.update();c.set('light_place',true);runtime.update()
+c.set('camera',false);assert(runtime.light_count()==0 and runtime.update==nil)
+c.set('camera',true);runtime.update();assert(runtime.light_count()==1,'Same-scene reopen restores definitions')
+c.set('remember_lights',false);c.set('camera',false)
+c.set('camera',true);runtime.update();assert(runtime.light_count()==0,'Disabling remembered lights drops the cache')
+c.set('light_place',true);runtime.update();s.focused=false;runtime.update()
 assert(runtime.status()=='closed' and runtime.light_count()==0 and runtime.update==nil)
 assert(runtime.shutdown())
 
@@ -178,5 +187,42 @@ w=1280;local ok,why=drag.tick(true,false,frame);assert(not ok and why)
 reads=s.alive_reads;for _=1,100 do assert(not drag.tick(true,false,frame)) end
 assert(s.alive_reads==reads,'A failed drag stays idle until released')
 drag.tick(false,false,frame);assert(lights.aim(1,{8,2,3}));assert(lights.export()[1].options.kind=='spot')
+assert(lights.clear())
+
+-- Cursor/window coordinates are scaled once to GUI/projected marker space.
+assert(lights.apply(1,options,frame));w,h=960,540;s.window_width,s.window_height=1920,1080
+x,y=200,200;drag.reset();assert(drag.tick(true,false,frame))
+reads=s.counts['Application.resolution'];x=220;assert(drag.tick(true,false,frame))
+assert(s.counts['Application.resolution']==reads,'Resolution is captured once per drag')
+drag.reset();x,y=900,900;assert(not drag.tick(true,false,frame))
+reads=s.counts['Application.resolution'];for _=1,100 do assert(not drag.tick(true,false,frame)) end
+assert(s.counts['Application.resolution']==reads,'A missed marker press stays idle until release')
+assert(lights.clear())
+
+-- Reopen memory contains definitions, never surviving units. Context changes
+-- discard it; failed restores remain explicitly retryable without polling.
+s,c,lights,m,bindings,units=fixture()
+local memory=m['wj.chef.light_memory'].new(c,lights)
+assert(lights.apply(1,options,frame));assert(memory.capture());assert(lights.clear())
+local calls=s.counts['Application.main_world']
+for _=1,1000 do assert(memory.pending()) end
+assert(s.counts['Application.main_world']==calls and lights.count()==0)
+assert(memory.restore() and not memory.pending() and lights.count()==1)
+local before=lights.markers()[1].position
+local edit=lights.definition(1).options;edit.intensity=2;assert(lights.edit(1,edit))
+local after=lights.markers()[1].position
+for i=1,3 do assert(before[i]==after[i]) end
+assert(memory.capture() and lights.clear());s.unloaded=true
+assert(not memory.restore() and memory.pending());assert(memory.capture() and memory.pending())
+s.unloaded=false;assert(memory.restore() and lights.count()==1)
+assert(memory.capture() and lights.clear());s.generation=s.generation+1
+assert(memory.restore() and not memory.pending() and lights.count()==0)
+assert(lights.apply(1,options,frame) and memory.capture() and lights.clear());s.session=newproxy()
+assert(memory.restore() and not memory.pending() and lights.count()==0)
+assert(lights.apply(1,options,frame));s.world={}
+assert(not memory.capture() and not memory.pending(),'A close during world replacement cannot relabel old placements')
+assert(lights.clear())
+assert(memory.restore(true) and lights.apply(1,options,frame));s.session=newproxy()
+assert(not memory.capture() and not memory.pending(),'A session replacement before close cannot relabel placements')
 assert(lights.clear())
 print('chef lights: owned resource, explicit edits, padded ABI, failed cleanup, no idle work and world retirement passed')

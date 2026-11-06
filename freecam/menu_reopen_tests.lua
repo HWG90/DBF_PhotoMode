@@ -1,6 +1,6 @@
 -- Real menu mouse actions + P reopening, using persisted private/shared settings.
 local root=rawget(_G,'DBF_PHOTO_TEST_ROOT')or'freecam/'
-local controller=dofile(root..'controller.lua');local menu=dofile(root..'photo_menu.lua')
+local controller=dofile(root..'../archive/pre-rewrite/controller.lua');local menu=dofile(root..'photo_menu.lua')
 local options=dofile(root..'photo_options.lua')
 local function copy(values)local result={};for key,value in pairs(values)do result[key]=value end;return result end
 for _,standalone in ipairs({true,false})do

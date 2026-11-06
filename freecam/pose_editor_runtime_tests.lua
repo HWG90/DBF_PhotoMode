@@ -1,5 +1,5 @@
 -- Pose editor runtime contracts: actual runtime, controller and core; engine mutation stays a double.
-assert(_VERSION=='Lua 5.1'and not rawget(_G,'jit'),'Run in actual Lua 5.1')
+assert(_VERSION=='Lua 5.1'and (not rawget(_G,'jit')or DBF_PHOTO_TEST_LUAJIT==true),'Run in Lua 5.1 or the explicit LuaJIT fixture runner')
 DBF_PHOTO_SUBJECT_FIXTURE_ONLY=true;local subject_fixture=dofile('freecam/steam_subject_runtime_tests.lua');DBF_PHOTO_SUBJECT_FIXTURE_ONLY=nil
 local E=dofile('freecam/pose_editor.lua')
 -- The pose editor is an injected dependency, as in steam51.

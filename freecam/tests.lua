@@ -1,5 +1,5 @@
 local root=rawget(_G,'DBF_PHOTO_TEST_ROOT')or'freecam/'
-local module=dofile(root..'controller.lua')
+local module=dofile(root..'../archive/pre-rewrite/controller.lua')
 local active,focus,menu,held=false,true,false,false
 local sample={wheel=0};local values;local spec
 local provider={down=function(k)return k==80 and held end,focused=function()return focus end,
@@ -86,7 +86,7 @@ do
 end
 print('Photo chat activation: authoritative callback gate, no input acquisition, held/rebound edges, Tab/show-only suppression, existing exit/hide controls, standalone recovery and unavailable-reader safety passed')
 do
- local options=dofile(root..'photo_options.lua');local capture_factory=dofile(root..'screenshot.lua');local keys={};local chat,editing,rebind,mcm,focused=false,false,false,false,true
+ local options=dofile(root..'photo_options.lua');local capture_factory=dofile(root..'../archive/pre-rewrite/screenshot.lua');local keys={};local chat,editing,rebind,mcm,focused=false,false,false,false,true
  local photo={};local visible=false;local requested,captured,mode=0,0,0;local acquired_bindings
  local files={};local real_open,real_remove=io.open,os.remove
  io.open=function(path,how)

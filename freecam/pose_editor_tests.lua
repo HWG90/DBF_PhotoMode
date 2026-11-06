@@ -1,5 +1,5 @@
 -- Pure pose editor contracts in actual Lua 5.1: bone groups, quaternion maths, composed frames.
-assert(_VERSION=='Lua 5.1'and not rawget(_G,'jit'),'Run in actual Lua 5.1')
+assert(_VERSION=='Lua 5.1'and (not rawget(_G,'jit')or DBF_PHOTO_TEST_LUAJIT==true),'Run in Lua 5.1 or the explicit LuaJIT fixture runner')
 local E=dofile('freecam/pose_editor.lua');local bank=dofile('freecam/assets/steam_subject_poses.lua')
 -- Group coverage: every node 8..92 exactly once, names match the rig.
 local seen={};for _,g in ipairs(E.GROUPS)do for _,b in ipairs(g.bones)do

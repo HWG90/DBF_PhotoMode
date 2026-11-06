@@ -11,6 +11,11 @@ freecam/assets/shaders/* -text -whitespace
 freecam/assets/shaders/release-0.9.5/** -text -whitespace
 freecam/assets/shaders/release-0.9.6/** -text -whitespace
 freecam/assets/logos/** -text -whitespace
+helper/native/** -text -whitespace
 
 # Shader resource identities are content-addressed across platforms.
 *.hlsl text eol=lf
+
+# ...except the shader sources kept above byte for byte: several were committed with CRLF, and
+# normalizing them on checkout left every worktree showing them modified.
+freecam/assets/shaders/**/*.hlsl -text -whitespace

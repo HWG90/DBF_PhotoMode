@@ -1,5 +1,5 @@
 local root=rawget(_G,'DBF_PHOTO_TEST_ROOT')or'freecam/'
-local M=dofile(root..'animation_state.lua')
+local M=dofile(root..'../archive/pre-rewrite/animation_state.lua')
 local function pack(...)return{n=select('#',...),...}end
 local alive=true;local graph=true;local calls=0;local graph_calls=0;local events={};local fail_alive=false;local fail_graph=false;local fail_get=false
 local current={id=1,generation=1};local args;local states={};for i=1,31 do states[i]=i*10 end

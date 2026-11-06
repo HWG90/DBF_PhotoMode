@@ -2,12 +2,12 @@
 -- are simulated; no game process, native hook or injected input is used.
 local root=assert(rawget(_G,'DBF_PHOTO_TEST_ROOT'))
 local Core=dofile('src/core.lua')
-local Controller=dofile(root..'controller.lua')
+local Controller=dofile(root..'../archive/pre-rewrite/controller.lua')
 local Camera=dofile(root..'vendor/camera_input.lua')
-local Capture=dofile(root..'photo_input_capture.lua')
+local Capture=dofile(root..'../archive/pre-rewrite/photo_input_capture.lua')
 local Options=dofile(root..'photo_options.lua')
-local Simulation=dofile(root..'simulation.lua')
-local ChatContext=dofile(root..'chat_context.lua')
+local Simulation=dofile(root..'../archive/pre-rewrite/simulation.lua')
+local ChatContext=dofile(root..'../archive/pre-rewrite/chat_context.lua')
 
 local function fixture(hover)
  local f={keys={},clock=1,epoch=1,world_time=20,rate=1,focused=true,available=true,parent=false,mcm=false,

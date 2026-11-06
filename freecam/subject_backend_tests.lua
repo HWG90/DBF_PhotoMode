@@ -1,7 +1,7 @@
 -- Exercise the real renderer backend against a bounded synthetic image. No
 -- game process, native getter, or arbitrary memory write is used by this test.
 local root=rawget(_G,'DBF_PHOTO_TEST_ROOT')or'freecam/'
-local factory=dofile(root..'subject_backend.lua');local core=dofile(root..'subject.lua')
+local factory=dofile(root..'subject_backend.lua');local core=dofile(root..'../archive/pre-rewrite/subject.lua')
 local bytes={};local game,exe=0x10000000,0x20000000;local cursor=0x80000000
 local function alloc(n)local at=cursor;cursor=cursor+n+256;cursor=math.ceil(cursor/8)*8;return at end
 local function put(at,s)for i=1,#s do bytes[at+i-1]=s:byte(i)end end

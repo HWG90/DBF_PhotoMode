@@ -19,7 +19,7 @@ local sr={Application={main_world=function()return 1 end,worlds=function()return
  Vector3=function(...)return {...}end,Vector2=function(...)return {...}end,Color=function(...)return {...}end}
 local lens={new=function()return {apply=function()return 1 end,release=function()return true end}end}
 local postfx={new=function()return {parameters={},apply=function()return true,'fixture'end,release=function()return true end}end}
-local runtime=dofile(root..'photo_runtime.lua').new(sr,lens,composition,postfx,function()end)
+local runtime=dofile(root..'../archive/pre-rewrite/photo_runtime.lua').new(sr,lens,composition,postfx,function()end)
 local function draw()assert(runtime.apply(3,4,1,{0,1,0},{1,0,0},o,0))end
 draw();assert(made==451);draw();assert(made==451 and removed==0,'Unchanged crest must retain geometry')
 o.logo_color='#F4CA35';draw();assert(made==902 and removed==451,'Tint change must replace exactly the owned triangles')

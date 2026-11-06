@@ -1,6 +1,6 @@
 local root=rawget(_G,'DBF_PHOTO_TEST_ROOT')or'freecam/'
-local Core=dofile('src/core.lua');local Controller=dofile(root..'controller.lua');local Options=dofile(root..'photo_options.lua')
-local AI=dofile(root..'ai_control.lua')
+local Core=dofile('src/core.lua');local Controller=dofile(root..'../archive/pre-rewrite/controller.lua');local Options=dofile(root..'photo_options.lua')
+local AI=dofile(root..'../archive/pre-rewrite/ai_control.lua')
 local function clone(t)local r={};for k,v in pairs(t)do r[k]=type(v)=='table'and clone(v)or v end;return r end
 local now=0;local writes=0;local authority=true;local solo=true;local fail_restore=false;local inside_update=false
 local enemy={entity=1,identity='scene:enemy:1',invalid=4294967295,fields={detector={value=1,token='detector'},still={value=0x200,token='still'},target={value=70,token='target'},hostiles={value=3,token='hostiles'},alert={value=2,token='alert'}}}

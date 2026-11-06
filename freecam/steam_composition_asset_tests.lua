@@ -1,5 +1,5 @@
 -- Actual Lua 5.1 entry wiring and portable logo geometry; no game or asset IO writes.
-assert(_VERSION=='Lua 5.1'and not rawget(_G,'jit'),'Run this fixture in actual Lua 5.1')
+assert(_VERSION=='Lua 5.1'and (not rawget(_G,'jit')or DBF_PHOTO_TEST_LUAJIT==true),'Run in Lua 5.1 or the explicit LuaJIT fixture runner')
 local globals={'mod','stingray','LiveLuaLoader','DBF_PHOTO_MODE_OWNER'}
 local previous={};for _,name in ipairs(globals)do previous[name]=rawget(_G,name)end
 local function check()

@@ -5,7 +5,7 @@ laid out as vc/{bin/x64,include,lib/x64} and sdk/include/{ucrt,um,shared,winrt,c
 sdk/lib/{um,ucrt}/x64, and llvm-rc compiles the version resource and manifest. LLL's
 Visual Studio builder gives identical code but links no resources, so it is not used."""
 from pathlib import Path
-import argparse,difflib,hashlib,json,os,re,shutil,subprocess
+import argparse,base64,difflib,hashlib,json,os,re,shutil,subprocess
 
 root=Path.cwd()
 parser=argparse.ArgumentParser(description=__doc__)
@@ -786,11 +786,19 @@ def wine_build(output,toolchain):
 built=wine_build(review/'build',args.wine_msvc)
 binary=built.with_name(NAME+'_'+hashlib.sha256(built.read_bytes()).hexdigest()[:16]+'.exe')
 binary.write_bytes(built.read_bytes())
-(review/'HELPER.json').write_text(json.dumps({'binary':str(binary),'sha256':hashlib.sha256(binary.read_bytes()).hexdigest(),'version':dotted,'preserved_shortcut':'Ctrl+Shift+Space',
+record={'sha256':hashlib.sha256(binary.read_bytes()).hexdigest(),'version':dotted,'preserved_shortcut':'Ctrl+Shift+Space',
  'shared_shortcuts':'tuples another application already owns stay with it',
  'compiler':'MSVC under wine',
- 'sources':{p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in native.iterdir()}},indent=2)+'\n')
+ 'sources':{p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in native.iterdir()}}
+(review/'HELPER.json').write_text(json.dumps({'binary':str(binary),**record},indent=2)+'\n')
 print(binary)
 
+# The exact sources go into the repository beside the payload: the LLL state they come from
+# is not a pushed LLL commit, so helper/ is the only public record of what was compiled.
+kept=root/'helper/native'
+if kept.exists():shutil.rmtree(kept)
+shutil.copytree(native,kept)
+(root/'helper/HELPER.json').write_text(json.dumps(record,indent=2)+'\n')
+
 # One helper file under one name; the game checks its bytes against sha256 before each start.
-(root/'freecam/wjl_helper_payload.lua').write_text('return {name="'+NAME+'.exe",sha256='+json.dumps(hashlib.sha256(binary.read_bytes()).hexdigest())+',hex='+json.dumps(binary.read_bytes().hex())+'}\n')
+(root/'freecam/wjl_helper_payload.lua').write_text('return {name="'+NAME+'.exe",sha256='+json.dumps(hashlib.sha256(binary.read_bytes()).hexdigest())+',base64='+json.dumps(base64.b64encode(binary.read_bytes()).decode())+'}\n')

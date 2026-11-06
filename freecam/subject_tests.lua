@@ -1,5 +1,5 @@
 local root=rawget(_G,'DBF_PHOTO_TEST_ROOT')or'freecam/'
-local module=dofile(root..'subject.lua');local generation=1;local writes={};local retired=false
+local module=dofile(root..'../archive/pre-rewrite/subject.lua');local generation=1;local writes={};local retired=false
 local helmet={identity='helmet:2',mesh_count=2};local cape={identity='cape:3',mesh_count=1}
 local masks={['helmet:2']={255,0},['cape:3']={255}}
 local context={local_owner=true,identity='player:496:world:1',groups={hide_player={helmet,cape},hide_cape={cape}}}

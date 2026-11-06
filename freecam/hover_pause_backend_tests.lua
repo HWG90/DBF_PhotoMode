@@ -1,5 +1,5 @@
 local root=rawget(_G,'DBF_PHOTO_TEST_ROOT')or'freecam/'
-local M=dofile(root..'hover_pause_backend.lua');local ffi=require('ffi');local L=M.layout
+local M=dofile(root..'../archive/pre-rewrite/hover_pause_backend.lua');local ffi=require('ffi');local L=M.layout
 local function le(n,size)local out={};for i=1,size do out[i]=string.char(n%256);n=math.floor(n/256)end;return table.concat(out)end
 local function f32(v)local b=ffi.new('float[1]',v);return ffi.string(b,4)end
 local function unhex(s)return(s:gsub('%x%x',function(x)return string.char(tonumber(x,16))end))end

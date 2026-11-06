@@ -31,7 +31,7 @@ local menu={new=function()
  panel={bind=function(_,pages)panel.pages=pages end,close=function()end,dismiss=function()return true end,draw=function()end,tick=function()end,editing_key=function()return editing end}
  return panel
 end}
-local photo={};local controller=dofile(root..'controller.lua').new(photo,{},function()return true end,function()end,nil,options,effects,menu,catalog)
+local photo={};local controller=dofile(root..'../archive/pre-rewrite/controller.lua').new(photo,{},function()return true end,function()end,nil,options,effects,menu,catalog)
 local function tick()controller.tick(.016)end
 local function press(key)keys[key]=true;tick();keys[key]=false;tick()end
 tick();press(80);assert(photo.active and owned and mode==1);press(9);assert(mode==3)
@@ -78,7 +78,7 @@ local queries={};local gui_owner;local custom_seen
 local sr={Application={main_world=function()return 10 end,worlds=function()return {10,20}end,
  can_get=function(_,name)queries[#queries+1]=name;return true end},
  World={create_screen_gui=function(owner)gui_owner=owner;return {}end,destroy_gui=function()end},Gui={resolution=function()return 1920,1080 end}}
-local runtime=dofile(root..'photo_runtime.lua').new(sr,{new=function()return {apply=function()return .9 end,release=function()return true end}end},
+local runtime=dofile(root..'../archive/pre-rewrite/photo_runtime.lua').new(sr,{new=function()return {apply=function()return .9 end,release=function()return true end}end},
  {shaders={''},layout=function()return {}end},{new=function()return {parameters=native_caps,
  apply=function(_,_,_,_,_,custom)custom_seen=custom;return true,'native flags' end,release=function()return true end}end},function()end)
 local values={};for key,value in pairs(options.defaults)do values[key]=value end;values.scene_effect=8;values.dof=true
@@ -92,7 +92,7 @@ assert(not runtime.warming_up_scene,'Unsupported public lens controls must not a
 -- Existing candidate readiness controls the banner; no artificial delay.
 local candidate_postfx={parameters={dof=true,bloom=true},native_numeric_candidate=true,native_numeric_ready=false,
  apply=function()return true,'Native lens source waiting'end,release=function()return true end}
-local waiting=dofile(root..'photo_runtime.lua').new(sr,{new=function()return {apply=function()return .9 end,release=function()return true end}end},
+local waiting=dofile(root..'../archive/pre-rewrite/photo_runtime.lua').new(sr,{new=function()return {apply=function()return .9 end,release=function()return true end}end},
  {shaders={''},layout=function()return {}end},{new=function()return candidate_postfx end},function()end)
 assert(waiting.apply(1,2,10,{0,1,0},{1,0,0},values,0)and waiting.warming_up_scene,'Initial candidate readiness must explain disabled native lens controls')
 candidate_postfx.native_numeric_ready=true
@@ -106,7 +106,7 @@ print('Stable release gates: no scene settings/assets, capability masks, L edge/
 
 -- This game emits DXGI_UNKNOWN for one verified HDR RGB10 back-buffer format.
 -- Normalize only our captured header, with exact native surface evidence.
-local backend_factory=dofile(root..'screenshot_backend.lua')
+local backend_factory=dofile(root..'../archive/pre-rewrite/screenshot_backend.lua')
 local function integer(value)local chars={};for i=1,4 do chars[i]=string.char(value%256);value=math.floor(value/256)end;return table.concat(chars)end
 local function dds()
  local header='DDS '..integer(124)..integer(0x1007)..integer(2)..integer(2)..integer(8)..string.rep('\0',56)

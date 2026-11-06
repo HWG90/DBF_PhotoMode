@@ -4,6 +4,7 @@ local M={}
 local names={[8]='backspace',[9]='tab',[13]='enter',[16]='left shift',[17]='left ctrl',[18]='left alt',[19]='pause',
  [20]='caps lock',[27]='esc',[32]='space',[33]='page up',[34]='page down',[35]='end',[36]='home',
  [37]='left',[38]='up',[39]='right',[40]='down',[45]='insert',[46]='delete',
+ [160]='left shift',[161]='right shift',[162]='left ctrl',[163]='right ctrl',[164]='left alt',[165]='right alt',
  [186]='semicolon',[187]='equal',[188]='comma',[189]='minus',[190]='period',[191]='slash',
  [192]='backtick',[219]='open bracket',[220]='backslash',[221]='close bracket',[222]='quote'}
 for code=48,57 do names[code]=string.char(code)end
@@ -14,15 +15,9 @@ for code,name in pairs({[12]='clear',[44]='print screen',[91]='left system',[92]
  [106]='numpad *',[107]='numpad +',[109]='numpad -',[110]='numpad .',[111]='numpad /',[144]='num lock',[145]='scroll lock',
  [160]='left shift',[161]='right shift',[162]='left ctrl',[163]='right ctrl',[164]='left alt',[165]='right alt'})do names[code]=name end
 for code=96,105 do names[code]='numpad '..(code-96)end
--- Engine key names by virtual key, for hosts that bind keys by name. A name
--- maps back to one key: where a left-hand key repeats a generic modifier's
--- name, the generic (lower) code keeps it, independent of table order.
-M.key_names={}
-do
- local first={}
- for code,name in pairs(names)do if not first[name]or code<first[name]then first[name]=code end end
- for name,code in pairs(first)do M.key_names[code]=name end
-end
+-- Keep every code name: the panel can bind left and right modifiers explicitly.
+-- The hosted helper's reverse lookup canonicalizes duplicate names itself.
+M.key_names=names
 local mouse_bits={[1]=1,[2]=2,[4]=4,[5]=8,[6]=16}
 local modifiers={[16]={160,161},[17]={162,163},[18]={164,165}}
 local zero_mask=string.rep('\0',32)
@@ -84,7 +79,13 @@ function M.new(sr,service,recovery,policy)
  function self.set_mode(value)
   assert(value=='menu'or value=='camera','Invalid Photo input mode')
   if keyboard_required and not(service.capabilities and service.capabilities.keyboard==true)then
-   return false,'Native keyboard isolation is required; update the shared input service'
+   -- An explicitly admitted pointer-only lease may change modes. Losing keyboard
+   -- support while a captured lease is active must still fail closed.
+   local continuing_shared=token and self.keyboard_fallback and not keyboard_requested and owns()
+   if not policy.allow_shared_keys or token and not continuing_shared or release_wait or capture_fault then
+    return false,'Native keyboard isolation is required; update the shared input service'
+   end
+   self.keyboard_fallback='Keyboard isolation unavailable. Camera keys reach gameplay.'
   end
   local capture_keyboard=not keyboard_denied and service.capabilities and service.capabilities.keyboard==true
   local canonical_mask=service.capabilities and service.capabilities.keyboard_mask
@@ -117,7 +118,7 @@ function M.new(sr,service,recovery,policy)
     local restored=self.release()
     local status=service.status()
     if restored and type(status)=='table'and status.owner==nil and status.pending_restore==false then
-     if keyboard_required then return false,'Native keyboard isolation was denied; Photo Mode stayed closed'end
+     if keyboard_required and not policy.allow_shared_keys then return false,'Native keyboard isolation was denied; Photo Mode stayed closed'end
      keyboard_denied=true
      self.keyboard_fallback='Native keyboard capture was denied; engine key input is active'
      return self.set_mode(value)

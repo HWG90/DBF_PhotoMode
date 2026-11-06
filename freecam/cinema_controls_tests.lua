@@ -1,6 +1,6 @@
 local root=rawget(_G,'DBF_PHOTO_TEST_ROOT')or'freecam/'
-local Core=dofile('src/core.lua');local Controller=dofile(root..'controller.lua');local Options=dofile(root..'photo_options.lua')
-local Cinema=dofile(root..'cinema_camera.lua');local Menu=dofile(root..'photo_menu.lua')
+local Core=dofile('src/core.lua');local Controller=dofile(root..'../archive/pre-rewrite/controller.lua');local Options=dofile(root..'photo_options.lua')
+local Cinema=dofile(root..'../archive/pre-rewrite/cinema_camera.lua');local Menu=dofile(root..'photo_menu.lua')
 local photo={};local context={world='mission',epoch=1,player='local:1',gameplay_input=true}
 local now=100
 local cinema=Cinema.new(photo,function()return context end,function()return now end)

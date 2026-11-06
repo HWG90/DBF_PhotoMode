@@ -301,7 +301,7 @@ end
 do
  local options=dofile('freecam/photo_options.lua');local pages=options.pages(function()end,function()end,nil,{without_depth_shaders=true})
  local controls={};for _,page in ipairs(pages)do for _,c in ipairs(page.controls)do controls[c.id]=c end end
- assert(#controls.dof_mode.choices==1 and controls.dof_mode.choices[1]=='Native camera')
+ assert(controls.dof_mode==nil and controls.known_issues==nil,'No depth of field method row and no shader note: native only')
  assert(#controls.scene_shader.choices==6 and controls.dof and controls.focus_distance and controls.aperture)
  for _,id in ipairs({'dof_quality','dof_strength','bokeh_shape','fog_distance','fog_density','scene_depth_range'})do assert(not controls[id],id)end
  local values=options.read({get=function(id)assert(controls[id],'Read a removed setting');return options.defaults[id]end},controls)

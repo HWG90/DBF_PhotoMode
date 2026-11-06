@@ -1,5 +1,5 @@
 -- Bone marker contracts in actual Lua 5.1: numeric projection only, no engine calls.
-assert(_VERSION=='Lua 5.1'and not rawget(_G,'jit'),'Run in actual Lua 5.1')
+assert(_VERSION=='Lua 5.1'and (not rawget(_G,'jit')or DBF_PHOTO_TEST_LUAJIT==true),'Run in Lua 5.1 or the explicit LuaJIT fixture runner')
 local G=dofile('freecam/photo_light_gizmos.lua');local Marker=dofile('freecam/pose_marker.lua')
 local frame={position={0,0,0},forward={0,1,0},right={1,0,0},up={0,0,1}}
 local m=Marker.new(G.project)

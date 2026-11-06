@@ -14,7 +14,8 @@ import tempfile
 import uuid
 
 from build_proton_candidate import MOD_ID, ROOT
-from build_steam_archive import ASSETS, long_string
+from build_package import ASSETS
+from package_head import ASSETS_SHA256, long_string
 from photo_assets import LUA, archive_rows, hash64, read_archive
 
 RESOURCE = 'mods/goose/war_journalist_proton'
@@ -221,6 +222,9 @@ def build(candidate, output, assets=ASSETS):
     (payload / f'{key:016x}.lua').write_bytes(data)
     for name in manifest['license_files']:
         shutil.copyfile(candidate / name, folder / name)
+    for name, expected in ASSETS_SHA256.items():
+        assert digest((assets / name).read_bytes()) == expected, 'Asset differs from the verified 1.3.0 set: ' + name
+    assert {p.name for p in assets.iterdir()} == set(ASSETS_SHA256), 'Unexpected asset files'
     shutil.copytree(assets, folder / 'Assets')
     description = ('War Journalist Photo Mode for the LuaJIT boot (Live Lua Loader on Proton) with its assets, as one '
                    'archive mod. Same build as the LLL folder install: FFI enemy behavior, settings in MCM, Handycam aim '

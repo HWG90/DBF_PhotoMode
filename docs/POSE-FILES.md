@@ -32,3 +32,15 @@ in a text editor; the file name must stay in the `wj-pose-NN.txt` pattern.
 - A file from a different rig or a damaged file is refused with a message
   in the Saved poses status line; nothing else is touched.
 - Up to 99 files. When all numbers are taken, delete one before saving.
+
+## Convert an emote replacement
+
+Unpack the mod ZIP, then run the converter with Python and Lupa installed.
+Give it the mod's patch file or an extracted animation .bin. For example:
+
+    python tools/convert_emote.py emote.patch_0 wj-pose-01.txt --time 0.58 --label "Wave"
+
+Time is in seconds. If the patch contains several animations, the converter lists
+their resource hashes. Add `--resource HASH` to choose one. This samples one frame
+from a stock 90-channel Helldiver animation. The output must be a new file.
+Copy it to a free pose slot in the settings folder and choose Rescan pose files.

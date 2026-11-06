@@ -1,5 +1,5 @@
 local root=rawget(_G,'DBF_PHOTO_TEST_ROOT')or'freecam/'
-local C=dofile(root..'ai_control.lua');local B=dofile(root..'ai_backend.lua');local bit=require('bit')
+local C=dofile(root..'../archive/pre-rewrite/ai_control.lua');local B=dofile(root..'../archive/pre-rewrite/ai_backend.lua');local bit=require('bit')
 -- Ownership/cleanup fixtures below exercise every batch without a timer.
 assert(C.hold_interval==.05 and C.interval==.5,'Production AI must enforce at 20 Hz and discover at 2 Hz')
 C.hold_interval=0;C.interval=.05

@@ -1,5 +1,5 @@
 -- Pure controller contracts in actual Lua 5.1. No game adapter or engine ABI.
-assert(_VERSION=='Lua 5.1'and not rawget(_G,'jit'),'Run in actual Lua 5.1')
+assert(_VERSION=='Lua 5.1'and (not rawget(_G,'jit')or DBF_PHOTO_TEST_LUAJIT==true),'Run in Lua 5.1 or the explicit LuaJIT fixture runner')
 local Subject=dofile('freecam/steam_subject.lua')
 local function node(x)return{p={x,2,3},q={0,0,0,1},s={1,1,1}}end
 local function copy(value)
@@ -556,5 +556,27 @@ do -- node_frame: world position and rotation of a node through the adapter
  f.adapter.node_frame=function(target,rig,index)assert(index==69 and rig==f.bank.rig);return{position={1,2,3},rotation={0,0,0,1}}end
  local fr=f.controller.node_frame(69);assert(fr.position[3]==3 and fr.rotation[4]==1)
  assert(select(2,f.controller.node_frame(500))~=nil or f.controller.node_frame(500)==nil)
+end
+-- An empty list says so, and names a Helldiver the pose bank cannot drive, instead of
+-- asking the player to choose from nothing (Discord, 2026-11-05).
+do
+ local f=fixture();local c=f.controller
+ f.candidates={skipped={nodes={[111]=1}}}
+ assert(c.refresh(),'Discovery that skips every unit still succeeds')
+ local message=c.status().message
+ assert(message:find('111 bones',1,true)and message:find('needs 107',1,true),'An unsupported Helldiver is named with its bone count: '..message)
+ f.adapter.locate=function()return nil end
+ local ok,why=c.select_unit({})
+ assert(not ok and why=="this Helldiver can't be posed yet",'A picked unsupported Helldiver gets a short reason: '..tostring(why))
+ f.candidates={skipped={nodes={[111]=1,[99]=2}}}
+ assert(c.refresh()and c.status().message:find('3 found with 99, 111 bones',1,true),'Several counts are listed in order: '..c.status().message)
+ f.candidates={}
+ assert(c.refresh()and c.status().message=='No Helldiver found','An empty list says so')
+ ok,why=c.select_unit({})
+ assert(not ok and why=='Picked character is not a listed subject','Without a skipped Helldiver the usual reason stays')
+ f.candidates={skipped={nodes='bad',dead=-1}}
+ assert(c.refresh()and c.status().message=='No Helldiver found','A malformed skip summary is ignored')
+ f.candidates={f.a,skipped={nodes={[111]=1}}}
+ assert(c.refresh()and c.status().message=='Choose a photographic subject explicitly','A listed subject keeps the usual prompt')
 end
 print('Steam selected subject: explicit selection, zero idle work, exact PQS/matrix12 ownership, anchors, foreign/partial guards and recovery passed')

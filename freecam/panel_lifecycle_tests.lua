@@ -1,5 +1,5 @@
 local root=rawget(_G,'DBF_PHOTO_TEST_ROOT')or'freecam/'
-local core=dofile('src/core.lua');local options=dofile(root..'photo_options.lua');local panel=dofile(root..'photo_menu.lua');local controller=dofile(root..'controller.lua')
+local core=dofile('src/core.lua');local options=dofile(root..'photo_options.lua');local panel=dofile(root..'photo_menu.lua');local controller=dofile(root..'../archive/pre-rewrite/controller.lua')
 local keys={};local focused=true;local main_menu=false;local mode=0;local rate=1;local commands
 local input={down=function(k)return keys[k]or false end,focused=function()return focused end,pause_allowed=function()return true end,
  acquire=function()mode=3;return {}end,release=function()mode=0;return true end,set_focus=function(v)mode=v and 1 or 3;return true end,
@@ -28,7 +28,7 @@ assert(api.mods.dbf_freecam.handle.get('slowmo_key')==220)
 keys[84]=true;c.tick(.016);assert(rate==0,'T must no longer be the default slow-motion key');keys[84]=false;c.tick(.016)
 keys[220]=true;c.tick(.016);assert(rate==0 and c.slowmo_active,'Selecting slow motion must retain Freeze Action');keys[220]=false;c.tick(.016);keys[220]=true;c.tick(.016);assert(rate==0 and not c.slowmo_active);keys[220]=false
 keys[80]=true;c.tick(.016);assert(not photo.active and mode==0 and rate==1);assert(c.close());DBFMCM=nil
-local runtime=dofile(root..'photo_runtime.lua')
+local runtime=dofile(root..'../archive/pre-rewrite/photo_runtime.lua')
 local sr={Application={worlds=function()return{1}end},Gui={resolution=function()return 1920,1080 end},World={create_screen_gui=function()return {}end,destroy_gui=function()end}}
 local fx=runtime.new(sr,{new=function()return {apply=function()return .9 end,release=function()return true end}end}, {layout=function()return {}end,shaders={''}},
  {new=function()return {apply=function()error('Renderer flag readback mismatch')end,release=function()return true end}end},function()end)

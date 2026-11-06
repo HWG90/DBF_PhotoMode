@@ -23,6 +23,12 @@ end
 assert(hazards==2);local n=0;for _ in pairs(columns)do n=n+1 end;assert(n==3)
 for _,label in ipairs({'F1','F2','F3','W / S','A / D','Q / E','SHIFT + A / D','RIGHT CLICK','ENTER / SPACE','ESC'})do assert(keys[label],label)end
 assert(not keys['I / K']and not keys.F4 and not keys.F5,'Menu focus must omit camera movement, lock and slow motion')
+-- An arrow-key host (Chef) names the movement keys the menu follows, and Shift + value keys for tabs.
+factory.shift_tabs=true;draw();keys={}
+for _,c in ipairs(commands)do if c.text_role=='legend_key'then keys[c.full_text]=true end end
+for _,label in ipairs({'I / K','J / L','SHIFT + J / L'})do assert(keys[label],'Arrow host: '..label)end
+assert(not keys['W / S']and not keys['Q / E'],'Arrow host: no fixed W/S or Q/E')
+factory.shift_tabs=nil;draw()
 local function labels()
  local result={};for _,c in ipairs(commands)do if c.type=='text'then result[c.full_text]=true end end;return result
 end

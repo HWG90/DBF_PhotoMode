@@ -1,7 +1,7 @@
 -- Real photo compositor, with recorded native draw/material calls. The native
 -- shaders still need visual acceptance; this checks their actual Lua contract.
 local root=rawget(_G,'DBF_PHOTO_TEST_ROOT')or'freecam/'
-local factory=dofile(root..'photo_runtime.lua');local catalog=dofile(root..'composition.lua')
+local factory=dofile(root..'../archive/pre-rewrite/photo_runtime.lua');local catalog=dofile(root..'composition.lua')
 local defaults=dofile(root..'photo_options.lua').defaults
 local clock=100;local provider={now=function()return clock end};DBFMCM={camera_input=provider}
 local vectors,bitmaps={},{};local layouts,created,destroyed,freed=0,0,0,0

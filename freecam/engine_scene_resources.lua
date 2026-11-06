@@ -39,7 +39,7 @@ function M.new(sr,mod,registry,local_probe)
  local function assets()
   if registry_checked then return true end
   local root=assert(mod.game_root,'WJL game-root proof unavailable')
-  local expected=registry.hex:gsub('%x%x',function(h)return string.char(tonumber(h,16))end)
+  local expected=mod.require('src/base64.lua').decode(registry.base64)
   -- A mod manager numbers archives that share a name, so ours is not always patch_0
   -- beside other mods. Find the patch whose bytes are exactly ours (stopping 64 numbers
   -- past the last one present, as Boot Mod Loader does).

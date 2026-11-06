@@ -1,5 +1,5 @@
 -- Pure composition contracts in actual Lua 5.1; no runtime, GUI or file writes.
-assert(_VERSION=='Lua 5.1'and not rawget(_G,'jit'),'Run this fixture in actual Lua 5.1')
+assert(_VERSION=='Lua 5.1'and (not rawget(_G,'jit')or DBF_PHOTO_TEST_LUAJIT==true),'Run in Lua 5.1 or the explicit LuaJIT fixture runner')
 local composition=dofile('freecam/composition.lua')
 composition.logo_art=dofile('freecam/assets/logo_art.lua')
 composition.logo_art[2]=dofile('freecam/assets/helldiver_crest.lua')

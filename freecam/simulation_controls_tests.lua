@@ -1,6 +1,6 @@
 local root=rawget(_G,'DBF_PHOTO_TEST_ROOT')or'freecam/'
-local Core=dofile('src/core.lua');local Controller=dofile(root..'controller.lua');local Simulation=dofile(root..'simulation.lua');local Options=dofile(root..'photo_options.lua')
-local Cinema=dofile(root..'cinema_camera.lua')
+local Core=dofile('src/core.lua');local Controller=dofile(root..'../archive/pre-rewrite/controller.lua');local Simulation=dofile(root..'../archive/pre-rewrite/simulation.lua');local Options=dofile(root..'photo_options.lua')
+local Cinema=dofile(root..'../archive/pre-rewrite/cinema_camera.lua')
 local function fixture(hover,cinema_enabled)
     local f={keys={},rate=1.25,epoch=10,world_time=20,clock=1,focused=true,allowed=true,unit=1,world=2,logs={},writes={}}
     local api=Core.new(nil,function()end);api.is_open=function()return false end

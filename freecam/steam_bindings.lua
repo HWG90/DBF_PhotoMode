@@ -16,7 +16,8 @@ end
 -- rows: {id=,label=,default=virtual key}. A row the helper refuses stays ours.
 function M.new(api,rows,names,log)
  local self={};local ids={};local codes={}
- for code,name in pairs(names)do codes[name]=code end
+ -- Generic modifiers keep their historic lower code, independent of pairs order.
+ for code,name in pairs(names)do if not codes[name]or code<codes[name]then codes[name]=code end end
  for _,row in ipairs(rows)do
   local id='war_journalist.'..row.id
   local called,ok,why=pcall(api.register_binding,id,row.label,nil,{category='War Journalist',default=M.spec(row.default,names)})

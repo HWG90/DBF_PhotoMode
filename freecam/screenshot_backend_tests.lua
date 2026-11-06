@@ -1,5 +1,5 @@
 local root=rawget(_G,'DBF_PHOTO_TEST_ROOT')or'freecam/'
-local factory=dofile(root..'screenshot_backend.lua')
+local factory=dofile(root..'../archive/pre-rewrite/screenshot_backend.lua')
 local function integer(v)local out={};for i=1,4 do out[i]=string.char(v%256);v=math.floor(v/256)end;return table.concat(out)end
 local function dds(width,height,pixels)
  local header='DDS '..integer(124)..integer(0x1007)..integer(height)..integer(width)..integer(width*4)..string.rep('\0',56)

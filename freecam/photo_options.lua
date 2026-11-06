@@ -188,7 +188,7 @@ function M.pages(reset,recenter,catalog,saved_actions)
  director_action('cinema_reposition','Reposition cinema camera','cinema_reposition'),
  director_action('cinema_end','Return to gameplay camera','cinema_end'),
  {id='cinema_status',type='text',label='Place a camera, then begin an action shot'},
- choice('action_camera_mode','Action camera mode',{'Placed camera','First-person handycam','Follow player - Pivot','Follow player - Pin'}),
+ choice('action_camera_mode','Action camera mode',{'Placed camera','First-person handycam','Follow player - Pivot','Follow player - Pin','Follow look','Pin to picked part'}),
  slider('handycam_intensity','Handycam shake intensity (%)',0,100,1),
  slider('handycam_lag_ms','Handycam movement lag (ms)',0,500,5),
  slider('handycam_forward_cm','POV camera forward (cm)',-30,30,1),
@@ -265,18 +265,21 @@ function M.pages(reset,recenter,catalog,saved_actions)
   {'Saved poses','pose_file','pose_load','pose_save_new','pose_overwrite','pose_delete','pose_rescan','pose_files_status','pose_files_hint'},
   {'Visibility','hide_player','hide_armour','handycam_hide_helmet','handycam_hide_torso','handycam_hide_cape','hide_cape','hide_weapons','handycam_pov_status','subject_status','subject_hint'}}}
  if saved_actions and saved_actions.without_depth_shaders then
-  local removed={dof_quality=true,dof_strength=true,bokeh_shape=true,scene_depth_range=true,fog_distance=true,fog_density=true}
+  -- No depth shaders and no choice of depth of field: the game's own, nothing else.
+  local removed={dof_mode=true,dof_quality=true,dof_strength=true,bokeh_shape=true,scene_depth_range=true,fog_distance=true,fog_density=true,known_issues=true}
   for _,page in ipairs(definition)do
    local controls={}
    for _,control in ipairs(page.controls)do if not removed[control.id]then
-    if control.id=='dof_mode'then control.choices={'Native camera'}
-    elseif control.id=='scene_shader'then
+    if control.id=='scene_shader'then
      local names={};for i=1,math.min(6,#control.choices)do names[i]=control.choices[i]end;control.choices=names
-    elseif control.id=='known_issues'then control.label='Native camera DoF is supported. Depth shaders are unavailable in this Lua rewrite.'end
+    end
     controls[#controls+1]=control
    end end
    page.controls=controls
   end
+  sections.lens={{'Lens','fov','focal_preset','focal_length_status'},
+   {'Focus & depth of field','dof','focus_mode','focus_distance','aperture','focus_status','focus_hint','lens_status'},
+   {'Camera tilt','roll','roll_preset'}}
  end
  for _,page in ipairs(definition)do
   local indexed,ordered,used={},{},{}

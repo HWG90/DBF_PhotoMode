@@ -1,5 +1,5 @@
 -- Pose file contracts in actual Lua 5.1: strict text format, probing storage with an injected filesystem.
-assert(_VERSION=='Lua 5.1'and not rawget(_G,'jit'),'Run in actual Lua 5.1')
+assert(_VERSION=='Lua 5.1'and (not rawget(_G,'jit')or DBF_PHOTO_TEST_LUAJIT==true),'Run in Lua 5.1 or the explicit LuaJIT fixture runner')
 local F=dofile('freecam/pose_files.lua')
 local function frame(x)local f={full_body=true,nodes={}};for i=8,92 do f.nodes[i]={p={x+i,.5,-.25},q={0,0,math.sin(.3),math.cos(.3)},s={1,1,1}}end;return f end
 local text=F.encode(frame(1),{label='Arms crossed',source='salute'})
