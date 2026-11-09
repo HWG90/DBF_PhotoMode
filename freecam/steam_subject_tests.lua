@@ -549,6 +549,18 @@ do -- node_frame: world position and rotation of a node through the adapter
  local fr=f.controller.node_frame(69);assert(fr.position[3]==3 and fr.rotation[4]==1)
  assert(select(2,f.controller.node_frame(500))~=nil or f.controller.node_frame(500)==nil)
 end
+-- Holster sockets another mod places (Diver Dock, Discord 2026-11-09) are left to the game:
+-- poses neither write nor compare them, and the game moving them is not a foreign change.
+do
+ local f=fixture();local c=f.controller
+ f.adapter.fixed_nodes=function(target,authored)assert(authored==f.bank.rig);return{[12]=true,[28]=true}end
+ f.select();assert(c.apply('full'))
+ for _,index in ipairs(f.written)do assert(index~=12 and index~=28,'A fixed socket is never written')end
+ assert(f.node_writes==83,'Every other body node is written')
+ f.b.nodes[28]=node(77)
+ assert(c.apply('other')and c.status().state=='posed','The game moving a fixed socket is not a foreign change')
+ assert(c.reset());assert(same(f.b.nodes[28],node(77))and same(f.b.nodes[12],f.original.nodes[12]),'Reset leaves fixed sockets alone')
+end
 -- An empty list says so, and names a Helldiver the pose bank cannot drive, instead of
 -- asking the player to choose from nothing (Discord, 2026-11-05).
 do
@@ -556,7 +568,7 @@ do
  f.candidates={skipped={nodes={[111]=1}}}
  assert(c.refresh(),'Discovery that skips every unit still succeeds')
  local message=c.status().message
- assert(message:find('111 bones',1,true)and message:find('needs 107',1,true),'An unsupported Helldiver is named with its bone count: '..message)
+ assert(message:find('111 bones',1,true)and message:find("don't match the poses",1,true),'An unsupported Helldiver is named with its bone count: '..message)
  f.adapter.locate=function()return nil end
  local ok,why=c.select_unit({})
  assert(not ok and why=="this Helldiver can't be posed yet",'A picked unsupported Helldiver gets a short reason: '..tostring(why))

@@ -139,8 +139,9 @@ local function factory(sr,policy,preview)
    q=quaternion(one(pack(B.rotation(matrix)),'userdata','Matrix4x4.rotation'),anchor),
    s=xyz(one(pack(B.scale(matrix)),'userdata','Matrix4x4.scale')),pose=pose},anchor)
  end
- local function read_node(unit,index,anchor)
-  return matrix_node(one(pack(U.local_pose(unit,index)),'userdata','Unit.local_pose'),anchor)
+ local function read_node(r,index,anchor)
+  local at=r.map[index];check(at,'Subject node is not mapped')
+  return matrix_node(one(pack(U.local_pose(r.unit,at)),'userdata','Unit.local_pose'),anchor)
  end
  local function math_node(value)
   value=copy(value)
@@ -161,6 +162,50 @@ local function factory(sr,policy,preview)
    result[i]={parent=node.parent,name=node.name}
   end
   return result
+ end
+ local function parent_of(unit,at)
+  local values=pack(U.scene_graph_parent(unit,at))
+  -- Current root1 is qualified to return zero values; other nodes return one integer.
+  if values.n==0 or values.n==1 and(values[1]==nil or values[1]==0)then return 0 end
+  check(values.n==1 and finite(values[1])and values[1]%1==0 and values[1]>=1,'Subject parent shape changed')
+  return values[1]
+ end
+ -- Mods change the Helldiver skeleton: Diver Dock (Nexus 15875) holster mods move the pistol,
+ -- sling and support sockets onto other body bones, and one gave every Helldiver 108 nodes
+ -- (Discord, 2026-11-09). So rig nodes are found by name, the two unnamed nodes above 'root'
+ -- by walking up from it, and parents are checked between mapped nodes. A moved leaf socket
+ -- is left to the game; a moved body bone or a missing one means the bank cannot pose it.
+ -- The stock skeleton maps onto itself, all 107 nodes checked as before.
+ local function rig_map(unit,count,topology_copy)
+  local map,used,moved,children={},{},{},{}
+  for i=1,107 do local node=topology_copy[i]
+   children[node.parent]=true
+   if node.name then
+    if U.has_node(unit,node.name)~=true then return nil,"bone '"..node.name.."' missing"end
+    local at=U.node(unit,node.name)
+    if not(finite(at)and at%1==0 and at>=1 and at<=count)then return nil,"bone '"..node.name.."' outside the skeleton"end
+    if used[at]then return nil,"bones '"..topology_copy[used[at]].name.."' and '"..node.name.."' share a node"end
+    map[i]=at;used[at]=i
+   end
+  end
+  for i=107,2,-1 do local p=topology_copy[i].parent
+   if map[i]and p>0 and not map[p]and not topology_copy[p].name then
+    local at=parent_of(unit,map[i])
+    if at<1 or at>count or used[at]then return nil,'node '..p..' above '..(topology_copy[i].name or i)..' not found'end
+    map[p]=at;used[at]=p
+   end
+  end
+  for i=1,92 do if not map[i]then return nil,'node '..i..' not found'end end
+  local identity=count==107
+  for i,at in pairs(map)do if at~=i then identity=false;break end end
+  if identity then for i=93,107 do map[i]=i end end
+  for i,at in pairs(map)do local node=topology_copy[i]
+   if parent_of(unit,at)~=(node.parent==0 and 0 or map[node.parent])then
+    if not(node.name and i>=8 and i<=92 and not children[i])then return nil,"bone '"..(node.name or i).."' has another parent"end
+    moved[i]=true
+   end
+  end
+  return{map=map,moved=moved,identity=identity}
  end
  local function record(target,rig)
   ready();local r=records[target]
@@ -187,25 +232,25 @@ local function factory(sr,policy,preview)
   local expected=one(pack(I.from_hex(resource)),'userdata','IdString64.from_hex')
   local actual=one(pack(U.resource_name(r.unit)),'userdata','Unit.resource_name')
   check(one(pack(I.equal(actual,expected)),'boolean','IdString64.equal'),'Selected subject resource changed')
-  check(num(U.num_scene_graph_items,r.unit)==107,'Selected subject node count changed')
+  check(num(U.num_scene_graph_items,r.unit)==r.count,'Selected subject node count changed')
  end
  local function topology(r,index)
   check(type(index)=='number'and index%1==0 and index>=1 and index<=107,'Subject node outside rig')
-  local node=r.topology[index];local values=pack(U.scene_graph_parent(r.unit,index))
-  -- Current root1 is qualified to return zero values; other nodes return one integer.
-  check((node.parent==0 and(values.n==0 or values.n==1 and(values[1]==nil or values[1]==0)))or
-   (values.n==1 and type(values[1])=='number'and values[1]==node.parent),'Subject parent topology changed')
+  local node,at=r.topology[index],r.map[index];check(at,'Subject node is not mapped')
+  local parent=parent_of(r.unit,at)
+  check(r.moved[index]or parent==(node.parent==0 and 0 or r.map[node.parent]),'Subject parent topology changed')
   if node.name then
    check(one(pack(U.has_node(r.unit,node.name)),'boolean','Unit.has_node'),'Subject node name missing')
-   check(num(U.node,r.unit,node.name)==index,'Subject node-name index changed')
+   check(num(U.node,r.unit,node.name)==at,'Subject node-name index changed')
   end
  end
+ local function each_mapped(r,fn)for i=1,107 do if r.map[i]then fn(r,i)end end end
  local function current(r,index,expected_mode)
   ready();lifetime(r);if index then topology(r,index)end
   local value=one(pack(U.animation_bone_mode(r.unit)),'string','Unit.animation_bone_mode')
   check(mode(value),'Unsupported subject bone mode')
   if expected_mode then check(value==expected_mode,'Subject bone mode changed')end
-  return value,index and read_node(r.unit,index)or nil
+  return value,index and read_node(r,index)or nil
  end
  local function result(fn,...)
   local values=pack(pcall(fn,...))
@@ -296,13 +341,13 @@ local function factory(sr,policy,preview)
    local id=one(pack(I.from_hex(resource)),'userdata','IdString64.from_hex')
    local units=one(pack(W.units_by_resource(world,id)),'table','World.units_by_resource')
    -- Four is the menu capacity, not a limit on live bodies/corpses in a mission.
-   -- Refresh is explicit: inspect one exact-resource inventory, retain only the
-   -- nearest four, and validate their complete rig before exposing any target.
+   -- Refresh is explicit: inspect one exact-resource inventory, list only the
+   -- nearest four, and validate their mapped rig before exposing any target.
    if point~=nil then point=vector(point,3);check(type(U.world_position)=='function','Subject position getter unavailable')end
    local candidates,seen={},{};local key;local scanned=0
-   -- Why units were left out, for the log and the Subject tab: a Helldiver whose node
-   -- count differs from the pose bank's 107 is otherwise invisible (Discord, 2026-11-05).
-   local skipped={nodes={},dead=0,elsewhere=0};local skips=0
+   -- Why units were left out, for the log and the Subject tab: a Helldiver whose bones the
+   -- pose bank cannot match is otherwise invisible (Discord, 2026-11-05).
+   local skipped={nodes={},why={},dead=0,elsewhere=0};local skips=0
    local camera_only={}
    for index=1,129 do
     local unit;key,unit=next(units,key);if key==nil then break end
@@ -311,12 +356,16 @@ local function factory(sr,policy,preview)
     check(finite(key)and key%1==0 and key>=1 and type(unit)=='userdata','Subject inventory entry shape changed')
     if not seen[unit]then
      seen[unit]=true
-     local usable=false
      if not one(pack(U.alive(unit)),'boolean','Unit.alive')then skipped.dead=skipped.dead+1;skips=skips+1
      elseif U.world(unit)~=world then skipped.elsewhere=skipped.elsewhere+1;skips=skips+1
      else
       local count=U.num_scene_graph_items(unit)
-      if count==107 then usable=true
+      if finite(count)and count%1==0 and count>=92 then
+       local distance=0
+       if point then local p=xyz(one(pack(U.world_position(unit,1)),'userdata','Unit.world_position'))
+        for j=1,3 do distance=distance+(p[j]-point[j])^2 end
+       end
+       candidates[#candidates+1]={unit=unit,distance=distance,key=key,count=count}
       else
        count=finite(count)and count%1==0 and count>=0 and count or -1
        skipped.nodes[count]=(skipped.nodes[count]or 0)+1;skips=skips+1
@@ -330,26 +379,34 @@ local function factory(sr,policy,preview)
        end
       end
      end
-     if usable then
-      local distance=0
-      if point then local p=xyz(one(pack(U.world_position(unit,1)),'userdata','Unit.world_position'))
-       for j=1,3 do distance=distance+(p[j]-point[j])^2 end
-      end
-      local at=#candidates+1
-      for j,row in ipairs(candidates)do if distance<row.distance or distance==row.distance and key<row.key then at=j;break end end
-      if at<=limit then table.insert(candidates,at,{unit=unit,distance=distance,key=key});if #candidates>limit then table.remove(candidates)end end
-     end
     end
    end
+   table.sort(candidates,function(a,b)return a.distance<b.distance or a.distance==b.distance and a.key<b.key end)
    check(generation<4294967295,'Subject discovery generation exhausted');local next_generation=generation+1
-   local found,next_records={},{}
-   for i,row in ipairs(candidates)do
-    local unit=row.unit
-    local identity='photographic-subject-'..next_generation..'-'..i;local label='Helldiver '..i..(point and string.format(' (%.1f m)',math.sqrt(row.distance))or '')
-    local target={identity=identity,label=label,resource=resource,node_count=107}
-    local r={identity=identity,label=label,unit=unit,world=world,rig=rig,topology=topology_copy,nodes={},refresh_nodes={}}
-    lifetime(r);for node=1,107 do topology(r,node)end
-    found[i]=target;next_records[target]=r
+   -- Match the nearest bodies' bones by name until four are listed. At most four bodies
+   -- that cannot be matched are tried, so Refresh stays bounded; they can still be followed.
+   local found,next_records={},{};local failures,by_name,by_name_counts,moved_names=0,0,{},{}
+   for _,row in ipairs(candidates)do
+    if #found>=limit or failures>=limit then break end
+    local mapped,why=rig_map(row.unit,row.count,topology_copy)
+    if mapped then
+     local i=#found+1
+     local identity='photographic-subject-'..next_generation..'-'..i;local label='Helldiver '..i..(point and string.format(' (%.1f m)',math.sqrt(row.distance))or '')
+     local target={identity=identity,label=label,resource=resource,node_count=107}
+     local r={identity=identity,label=label,unit=row.unit,world=world,rig=rig,topology=topology_copy,nodes={},refresh_nodes={},
+      map=mapped.map,moved=mapped.moved,count=row.count}
+     lifetime(r);each_mapped(r,topology)
+     found[i]=target;next_records[target]=r
+     if not mapped.identity then by_name=by_name+1;by_name_counts[row.count]=true end
+     for index in pairs(mapped.moved)do moved_names[topology_copy[index].name]=true end
+    else
+     failures=failures+1
+     skipped.nodes[row.count]=(skipped.nodes[row.count]or 0)+1;skips=skips+1
+     skipped.why[row.count]=skipped.why[row.count]or why
+     if U.has_node(row.unit,'head')==true then
+      camera_only[#camera_only+1]={unit=row.unit,count=row.count,distance=math.sqrt(row.distance),key=row.key}
+     end
+    end
    end
    generation=next_generation;records=next_records
    if skips>0 then found.skipped=skipped end
@@ -364,10 +421,17 @@ local function factory(sr,policy,preview)
    if type(policy.log)=='function'then
     local parts={}
     local counts={};for count in pairs(skipped.nodes)do counts[#counts+1]=count end;table.sort(counts)
-    for _,count in ipairs(counts)do parts[#parts+1]=(count<0 and'unreadable'or count)..' nodes x'..skipped.nodes[count]end
+    for _,count in ipairs(counts)do
+     parts[#parts+1]=(count<0 and'unreadable'or count)..' nodes x'..skipped.nodes[count]..(skipped.why[count]and' ('..skipped.why[count]..')'or'')
+    end
     if skipped.dead>0 then parts[#parts+1]='not alive x'..skipped.dead end
     if skipped.elsewhere>0 then parts[#parts+1]='other world x'..skipped.elsewhere end
+    local named,moved={},{}
+    for count in pairs(by_name_counts)do named[#named+1]=count end;table.sort(named)
+    for name in pairs(moved_names)do moved[#moved+1]=name end;table.sort(moved)
     pcall(policy.log,string.format('Subject discovery: scanned=%d listed=%d',scanned,#found)..(began and string.format(' elapsed_ms=%.3f',(policy.measure()-began)*1000)or '')..
+     (by_name>0 and string.format('; matched by name x%d (%s nodes)',by_name,table.concat(named,', '))or'')..
+     (#moved>0 and'; left to the game: '..table.concat(moved,', ')or'')..
      (#parts>0 and'; skipped '..table.concat(parts,', ')or''))
    end
    return found
@@ -375,7 +439,7 @@ local function factory(sr,policy,preview)
  end
  -- Read-only helpers for automatic and scene (double-click) selection. They
  -- use handles from the current discovery and the full lifetime guard, which
- -- proves the 107-node scene graph before any transform getter runs.
+ -- proves the discovered scene graph before any transform getter runs.
  function self.locate(unit)
   for target,r in pairs(records)do if not r.retired and r.unit==unit then return target end end
  end
@@ -391,11 +455,11 @@ local function factory(sr,policy,preview)
    for target,r in pairs(records)do
     if not r.retired and r.world==world then
      record(target,rig);lifetime(r);topology(r,7)
-     local anchor=matrix_values(U.world_pose(r.unit,7));local same=true
+     local anchor=matrix_values(U.world_pose(r.unit,r.map[7]));local same=true
      for i=1,12 do if math.abs(anchor[i]-camera_pose[i])>.0001 then same=false;break end end
      if same then check(not found,'Camera anchor is ambiguous');found=target end
      if view_position and U.has_node(r.unit,'head')==true then
-      local node=U.node(r.unit,'head');check(finite(node)and node%1==0 and node>=1 and node<=107,'Head bounds changed')
+      local node=U.node(r.unit,'head');check(finite(node)and node%1==0 and node>=1 and node<=r.count,'Head bounds changed')
       local p=xyz(U.world_position(r.unit,node));local d=0
       for i=1,3 do d=d+(p[i]-view_position[i])^2 end
       nearby[#nearby+1]={target=target,distance=math.sqrt(d)}
@@ -417,8 +481,8 @@ local function factory(sr,policy,preview)
  function self.node_position(target,rig,index)
   return result(function()
    local r=record(target,rig);lifetime(r)
-   check(type(index)=='number'and index%1==0 and index>=1 and index<=107,'Node index outside the rig')
-   local matrix=one(pack(U.world_pose(r.unit,index)),'userdata','Unit.world_pose')
+   check(type(index)=='number'and index%1==0 and index>=1 and index<=107 and r.map[index],'Node index outside the rig')
+   local matrix=one(pack(U.world_pose(r.unit,r.map[index])),'userdata','Unit.world_pose')
    return xyz(one(pack(B.translation(matrix)),'userdata','Matrix4x4.translation'))
   end)
  end
@@ -427,8 +491,8 @@ local function factory(sr,policy,preview)
  function self.node_frame(target,rig,index)
   return result(function()
    local r=record(target,rig);lifetime(r)
-   check(type(index)=='number'and index%1==0 and index>=1 and index<=107,'Node index outside the rig')
-   local matrix=one(pack(U.world_pose(r.unit,index)),'userdata','Unit.world_pose')
+   check(type(index)=='number'and index%1==0 and index>=1 and index<=107 and r.map[index],'Node index outside the rig')
+   local matrix=one(pack(U.world_pose(r.unit,r.map[index])),'userdata','Unit.world_pose')
    return{position=xyz(one(pack(B.translation(matrix)),'userdata','Matrix4x4.translation')),
     rotation=quaternion(one(pack(B.rotation(matrix)),'userdata','Matrix4x4.rotation'))}
   end)
@@ -438,7 +502,7 @@ local function factory(sr,policy,preview)
   return result(function()
    local r=record(target,rig);lifetime(r)
    check(U.has_node(r.unit,'head')==true,'Selected subject head unavailable')
-   local head=U.node(r.unit,'head');check(finite(head)and head%1==0 and head>=1 and head<=107,'Selected head bounds')
+   local head=U.node(r.unit,'head');check(finite(head)and head%1==0 and head>=1 and head<=r.count,'Selected head bounds')
    local pose=U.world_pose(r.unit,1);local forward=xyz(B.forward(pose))
    local frame={explicit_subject=true,identity=r.identity,root_handle=r.unit,world=r.world,rig_nodes=rig.nodes,
     position=xyz(U.world_position(r.unit,1)),head=xyz(U.world_position(r.unit,head)),
@@ -459,13 +523,21 @@ local function factory(sr,policy,preview)
    local bones={root=bone(1)}
    for _,name in ipairs({'hips','chest','head'})do
     if U.has_node(r.unit,name)==true then
-     local index=U.node(r.unit,name);check(finite(index)and index%1==0 and index>=1 and index<=107,'Anchor bone bounds')
+     local index=U.node(r.unit,name);check(finite(index)and index%1==0 and index>=1 and index<=r.count,'Anchor bone bounds')
      bones[name]=bone(index)
     end
    end
    local forward=bones.root.y
    local frame={identity=r.identity,position=bones.root.p,yaw=math.atan2(forward[2],forward[1]),bones=bones}
    lifetime(r);return frame
+  end)
+ end
+ -- Rig indices of holster sockets another mod places; poses neither compare nor write them.
+ function self.fixed_nodes(target,rig)
+  return result(function()
+   local r=record(target,rig);local out={}
+   for index in pairs(r.moved)do out[index]=true end
+   return out
   end)
  end
  function self.valid(target,rig)
@@ -484,8 +556,8 @@ local function factory(sr,policy,preview)
  function self.snapshot(target,rig)
   return result(function()
    local r=record(target,rig);local actual_mode=current(r)
-   for i=1,107 do topology(r,i)end
-   local nodes={};for i=8,92 do nodes[i]=read_node(r.unit,i)end
+   each_mapped(r,topology)
+   local nodes={};for i=8,92 do nodes[i]=read_node(r,i)end
    if r.mode and r.mode.attempt and actual_mode==r.mode.attempt.target then
     acknowledged_mode(r,r.mode.attempt.before,actual_mode)
    end
@@ -501,18 +573,19 @@ local function factory(sr,policy,preview)
  if preview then function self.snapshot_anchors(target,rig)
   return result(function()
    local r=record(target,rig);local actual_mode=current(r)
-   for i=1,107 do topology(r,i)end
+   each_mapped(r,topology)
    local nodes={}
    -- New anchor indices are read-only and not part of the prior 85-body-node
    -- live getter proof. Preserve actual scale and quaternion sign, without math
    -- constructor conversion; the finite driver must refuse an unexpected read.
-   for i=1,107 do if i<8 or i>92 then nodes[i]=read_node(r.unit,i,true)end end
+   for i=1,107 do if(i<8 or i>92)and r.map[i]then nodes[i]=read_node(r,i,true)end end
    return{identity=r.identity,resource=resource,node_count=107,mode=actual_mode,nodes=nodes}
   end)
  end end
  function self.set_node(target,rig,index,expected,value,expected_mode)
   local ok,why=result(function()
    local r=record(target,rig);check(r.captured,'Capture a coherent baseline before writing');check(index>=8 and index<=92 and index%1==0,'Subject write outside body')
+   check(not r.moved[index],'Another mod places this node')
    check(mode(expected_mode),'Expected mode unavailable');expected,value=copy(expected),copy(value)
    check(expected.pose and value.pose,'Raw numeric matrix ownership is required')
    matrix_from(expected.pose)
@@ -527,7 +600,7 @@ local function factory(sr,policy,preview)
    local temporary=matrix_from(value.pose)
    matrix_node(temporary) -- Validate actual target PQS without rebuilding its quaternion.
    r.nodes[index]=entry;begin_attempt(entry,expected,value,expected_mode);r.scene_dirty=true
-   local called=pack(pcall(U.set_local_pose,r.unit,index,temporary));status.last_result=receipt(called)
+   local called=pack(pcall(U.set_local_pose,r.unit,r.map[index],temporary));status.last_result=receipt(called)
    check(called[1]and called[2]~=false,called[1]and(called[3]or'Subject pose setter refused')or called[2])
    local _,after=current(r,index,expected_mode)
    if not equal(after,value)then
@@ -586,24 +659,24 @@ local function factory(sr,policy,preview)
     if actual_mode==entry.base or actual_mode~=entry.value then r.mode=nil end
    end
    for index,entry in pairs(r.nodes)do
-    topology(r,index);local actual=read_node(r.unit,index)
+    topology(r,index);local actual=read_node(r,index)
     if entry.attempt then check(known(entry,actual),'Node cleanup remains unknown: node '..index);clear_attempt(entry);entry.value=copy(actual)end
     if equal(actual,entry.base)or not equal(actual,entry.value)then r.nodes[index]=nil end
     expected_nodes[index]=copy(actual)
    end
    -- Retain restored baselines through commit too: scene evaluation must not
    -- silently change a node whose local setters have just restored it.
-   for index in pairs(r.refresh_nodes)do if not expected_nodes[index]then topology(r,index);expected_nodes[index]=read_node(r.unit,index)end end
+   for index in pairs(r.refresh_nodes)do if not expected_nodes[index]then topology(r,index);expected_nodes[index]=read_node(r,index)end end
    authorize('commit',target)
    if preview then
     record(target,rig);current(r,nil,actual_mode)
-    for index,expected in pairs(expected_nodes)do topology(r,index);check(equal(read_node(r.unit,index),expected),'Subject changed during preview authorization')end
+    for index,expected in pairs(expected_nodes)do topology(r,index);check(equal(read_node(r,index),expected),'Subject changed during preview authorization')end
    end
    r.refresh_expected={mode=actual_mode,nodes=expected_nodes}
    local called=pack(pcall(W.update_unit,r.world,r.unit));status.last_commit=receipt(called)
    check(called[1]and called[2]~=false,called[1]and(called[3]or'Subject scene refresh refused')or called[2])
    current(r,nil,actual_mode)
-   for index,expected in pairs(expected_nodes)do topology(r,index);check(equal(read_node(r.unit,index),expected),'Subject changed during scene refresh: node '..index..', mode '..actual_mode)end
+   for index,expected in pairs(expected_nodes)do topology(r,index);check(equal(read_node(r,index),expected),'Subject changed during scene refresh: node '..index..', mode '..actual_mode)end
    if r.cape then
     if next(r.nodes)or r.mode then apply_cape(r)else restore_cape(r)end
    elseif not next(r.nodes)and not r.mode then r.cape_capture_done=nil end
@@ -620,7 +693,7 @@ local function factory(sr,policy,preview)
    local r=record(target,rig)
    if r.mode and not r.mode.attempt then local actual=current(r);if actual==r.mode.base or actual~=r.mode.value then r.mode=nil end end
    for index,entry in pairs(r.nodes)do if not entry.attempt then
-    topology(r,index);local actual=read_node(r.unit,index)
+    topology(r,index);local actual=read_node(r,index)
     if equal(actual,entry.base)or not equal(actual,entry.value)then r.nodes[index]=nil end
    end end
    check(not next(r.nodes)and not r.mode,'Subject still shows owned writes after a takeover')

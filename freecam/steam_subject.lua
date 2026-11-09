@@ -72,8 +72,8 @@ local function copy_frame(value,identity)
  end
  return result
 end
--- The Subject tab's message when discovery listed nobody but left out Helldivers the
--- 107-node pose bank cannot drive. A malformed summary from an adapter is ignored.
+-- The Subject tab's message when discovery listed nobody but left out Helldivers whose
+-- bones the pose bank cannot match. A malformed summary from an adapter is ignored.
 function M.unsupported(skipped)
  if type(skipped)~='table'or type(skipped.nodes)~='table'then return nil end
  local counts,total={},0
@@ -84,7 +84,7 @@ function M.unsupported(skipped)
  end
  if total==0 or total>128 then return nil end
  table.sort(counts);for i,count in ipairs(counts)do counts[i]=tostring(count)end
- return string.format("No Helldiver War Journalist can pose: %d found with %s bones (needs 107). Please report it with your log.",
+ return string.format("No Helldiver War Journalist can pose: %d found with %s bones that don't match the poses. Please report it with your log.",
   total,table.concat(counts,', '))
 end
 function M.new(adapter,bank,is_frozen)
@@ -396,6 +396,12 @@ function M.new(adapter,bank,is_frozen)
  local function game_owned(key)
   local owned={}
   if key=='edited'then for i=8,92 do local node=bank.rig.nodes[i];if node and M.GAME_OWNED_NAMES[node.name]then owned[i]=true end end end
+  -- Holster sockets another mod places (Diver Dock, Discord 2026-11-09) are the game's
+  -- for every pose: the adapter reports them, and they are neither compared nor written.
+  if type(adapter.fixed_nodes)=='function'then
+   local called,fixed=pcall(adapter.fixed_nodes,selected,bank.rig)
+   if called and type(fixed)=='table'then for i=8,92 do if fixed[i]==true then owned[i]=true end end end
+  end
   return owned
  end
  local function apply_prepared(prepared,key,label_text)

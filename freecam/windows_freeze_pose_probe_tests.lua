@@ -119,6 +119,15 @@ do
  local bad=fixture({continuous=true,exclude_cape=true});bad.bad_cape=true
  assert(not bad.probe.prepare(bad.subject,0)and bad.writes==0,'A changed cape rig cannot silently write cape nodes')
 end
+-- A Helldiver modded to another node count (Diver Dock holsters, Discord 2026-11-09) can now
+-- be the selected subject. The hold's layout is the stock 107 nodes, so Freeze goes ahead
+-- without it, as it did before such a Helldiver could be selected.
+do
+ local f=fixture({continuous=true,exclude_cape=true,exclude_carry=true,claim_transfer=true});f.count=108
+ assert(f.probe.prepare(f.subject,0),'Freeze is not refused for a modded skeleton')
+ assert(not f.probe.active()and f.writes==0 and f.modes==0,'No skeleton is acquired or written')
+ f.count=107;assert(f.probe.prepare(f.subject,10)and f.probe.active(),'The stock skeleton is still held')
+end
 print('Freeze pose hold: coherent capture, copied scalars, body-only cape exclusion, idle write silence, exact-zero gate, trial/continuous lifetime and cleanup passed')
 
 -- The game re-places the carry sockets every frame; gear linked to them shows the game's value.

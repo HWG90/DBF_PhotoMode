@@ -161,6 +161,11 @@ function M.new(sr,log,measure,options)
   if not subject or type(subject.tracking_frame)~='function'then emit('no selected character; no skeleton acquired');return true end
   local called,frame=pcall(subject.tracking_frame)
   if not called or not frame then emit('selected character unavailable; no skeleton acquired');return true end
+  -- A modded skeleton (Diver Dock holsters: 108 nodes, Discord 2026-11-09) can be the
+  -- selected subject now; this hold's layout is the stock 107 nodes, so Freeze goes ahead
+  -- without it, as it did before such a Helldiver could be selected.
+  local counted,count=pcall(U.num_scene_graph_items,frame.root_handle)
+  if counted and count~=107 then emit('selected character has '..tostring(count)..' nodes, not the stock 107; no skeleton acquired');return true end
   return self.start(subject,now)
  end end
  function self.tick(enabled,now)

@@ -48,11 +48,13 @@ local function fixture()
  U.num_scene_graph_items=function(value)call('node_count',true);unit(value);return f.counts and f.counts[value]or f.count end
  U.animation_bone_mode=function(value)call('mode',true);unit(value);return f.mode end
  U.scene_graph_parent=function(value,index)
-  call('parent',true);unit(value);check(index>=1 and index<=107 and index%1==0)
-  if f.bad_parent==index then return index end;if index==1 then return end;return index-1
+  call('parent',true);unit(value);check(index>=1 and index<=#f.nodes and index%1==0)
+  if f.bad_parent==index then return index end
+  if f.parents then return f.parents[index]end
+  if index==1 then return end;return index-1
  end
- U.has_node=function(value,name)call('has_node',true);unit(value);return name~=f.missing_name end
- U.node=function(value,name)call('node',true);unit(value);return f.bad_name==name and 104 or tonumber(name:match('^bone_(%d+)$'))end
+ U.has_node=function(value,name)call('has_node',true);unit(value);if f.names then return f.names[name]~=nil end;return name~=f.missing_name end
+ U.node=function(value,name)call('node',true);unit(value);if f.names then return f.names[name]end;return f.bad_name==name and 104 or tonumber(name:match('^bone_(%d+)$'))end
  U.local_pose=function(value,index)call('pose',true);unit(value);if f.nil_pose then return nil end;return matrix(f.nodes[index].pose)end
  U.set_local_pose=function(value,index,temporary)
   unit(value);local target=data(temporary,'matrix');f.writes=f.writes+1;call('set_pose');local fail=f.failure.pose
@@ -71,7 +73,7 @@ local function fixture()
   if fail and fail.refuse then return false,fail.object or'Mode setter refused',nil end
  end
  setmetatable(V,{__call=function(_,x,y,z)call('vector');f.math_calls=f.math_calls+1;return opaque('vector',{float(x),float(y),float(z)},true)end})
- U.world_pose=function(value,index)call('world_pose',true);unit(value);check(index>=1 and index<=107 and index%1==0,'world_pose index');return matrix(f.nodes[index].pose)end
+ U.world_pose=function(value,index)call('world_pose',true);unit(value);check(index>=1 and index<=#f.nodes and index%1==0,'world_pose index');return matrix(f.nodes[index].pose)end
  U.world_position=function(value,index)call('world_position',true);unit(value);check(index==1);return V(f.positions and f.positions[value]or 0,0,0)end
  for i,name in ipairs({'x','y','z'})do local index=i;V[name]=function(value)call('vector_'..name);return data(value,'vector')[index]end end
  Q.from_elements=function(x,y,z,w)call('quaternion');f.math_calls=f.math_calls+1;return opaque('quaternion',{float(x),float(y),float(z),float(w)},true)end
@@ -390,11 +392,11 @@ do
  f.current_session=nil;local current,why=a.session_current();check(current==nil and type(why)=='string','Unavailable session is not a replacement session')
 end
 
--- A Helldiver the 107-node pose bank cannot drive is skipped, and discovery says why in
+-- A Helldiver whose bones the pose bank cannot match is skipped, and discovery says why in
 -- the log, so one log answers "why is my Helldiver not listed" (Discord, 2026-11-05).
 do
  local f=fixture();local lines={};f.policy.log=function(m)lines[#lines+1]=m end;f.policy.measure=function()return 0 end
- f.counts={[f.unit]=111}
+ f.counts={[f.unit]=111};f.missing_name='bone_70'
  local a=f:arm();f:step()
  local found,why=a.discover(f.resource,4,f.rig,{0,0,0});check(found,why)
  check(#found==0,'A 111-node Helldiver is not listed')
@@ -413,7 +415,7 @@ do
  local found,why=a.discover(f.resource,4,f.rig,{0,0,0});check(found,why);check(#found==1)
  check(found.skipped.nodes[99]==1 and found.skipped.dead==1,'Each skip reason is counted')
  local text=table.concat(lines,'\n')
- check(text:find('listed=1',1,true)and text:find('skipped 99 nodes x1, not alive x1',1,true),'Skips are logged in a fixed order')
+ check(text:find('listed=1',1,true)and text:find("skipped 99 nodes x1 (bone 'bone_100' outside the skeleton), not alive x1",1,true),'Skips are logged in a fixed order, with the reason a body was not matched: '..text)
 end
 do
  local f=fixture();local lines={};f.policy.log=function(m)lines[#lines+1]=m end;f.policy.measure=function()return 0 end
@@ -422,3 +424,86 @@ do
  check(not table.concat(lines,'\n'):find('skipped',1,true),'A clean discovery logs no skip list')
 end
 print('steam_subject_native discovery skips: node count, not alive and clean runs passed')
+
+-- Modded Helldivers: Diver Dock (Nexus 15875) exports holster mods that move the pistol,
+-- sling and support sockets onto other body bones, and Devist8er's Helldivers had 108 nodes
+-- with one (Discord, 2026-11-09: "Helldiver (108 nodes) - follow only"). Rig nodes are found
+-- by name, so an inserted node shifts nothing; a moved holster socket is left to the game.
+local bank=dofile('freecam/assets/steam_subject_poses.lua')
+local function modded(options)
+ local f=fixture();local rig=bank.rig;f.rig=rig
+ local insert=options.insert or 108
+ local to_unit,index={},{}
+ for k=1,107 do to_unit[k]=k<insert and k or k+1;local name=rig.nodes[k].name;if name then index[name]=k end end
+ local nodes={};for k=1,107 do nodes[to_unit[k]]=f.nodes[k]end
+ nodes[insert]={pose={0,0,0,1,1,1,1,0,0,float(9.9),float(.2),float(.3)}}
+ f.nodes=nodes;f.original=clone(nodes);f.count=108
+ f.names={holster_r_shoulder=insert};f.parents={[insert]=to_unit[index.r_clavicle]}
+ for k=1,107 do
+  local node=rig.nodes[k];if node.name then f.names[node.name]=to_unit[k]end
+  f.parents[to_unit[k]]=node.parent>0 and to_unit[node.parent]or nil
+ end
+ for _,name in ipairs(options.missing or{})do f.names[name]=nil end
+ for name,parent in pairs(options.move or{})do f.parents[to_unit[index[name]]]=parent=='holster'and insert or to_unit[index[parent]]end
+ f.to_unit,f.index=to_unit,index
+ f.lines={};f.policy.log=function(m)f.lines[#f.lines+1]=m end;f.policy.measure=function()return 0 end
+ return f
+end
+do
+ -- One node inserted mid-skeleton (every later index shifts by one), the pistol moved onto
+ -- the new holster node and the sling onto the chest.
+ local f=modded({insert=50,move={pistol='holster',sling='chest'}})
+ local snapshot=f:ready();local u=f.to_unit
+ for k=8,92 do check(same(snapshot.nodes[k].pose,f.original[u[k]].pose),'Rig node '..k..' reads scene node '..u[k])end
+ check(snapshot.node_count==107,'The controller still sees the 107-node pose rig')
+ local log=table.concat(f.lines,'\n')
+ check(log:find('listed=1',1,true),'The modded Helldiver is listed: '..log)
+ check(log:find('matched by name x1 (108 nodes)',1,true),'The log says it was matched by name: '..log)
+ check(log:find('left to the game: pistol, sling',1,true),'The log names the moved sockets: '..log)
+ local fixed=f.adapter.fixed_nodes(f.target,f.rig)
+ check(fixed[f.index.pistol]and fixed[f.index.sling]and next(fixed,next(fixed,next(fixed)))==nil,'Only the moved sockets are fixed')
+ local elbow=f.index.r_elbow;local base=snapshot.nodes[elbow];local desired=f:desired()
+ f:step();check(f.adapter.set_mode(f.target,f.rig,f.mode,'ignore')==true)
+ f:step();local ok,why=f.adapter.set_node(f.target,f.rig,elbow,base,desired,'ignore');check(ok,why)
+ check(same(f.nodes[u[elbow]].pose,desired.pose)and same(f.nodes[elbow],f.original[elbow]),'The write reaches the mapped scene node only')
+ f:step();check(f.adapter.commit(f.target,f.rig)==true,'Commit checks the mapped nodes')
+ local frame=f.adapter.node_frame(f.target,f.rig,elbow)
+ check(frame and frame.position[1]==desired.pose[10],'Node frames read the mapped scene node')
+ local writes=f.writes;f:step()
+ check(f.adapter.set_node(f.target,f.rig,f.index.pistol,snapshot.nodes[f.index.pistol],desired,'ignore')==false and f.writes==writes,
+  'A socket another mod places is never written')
+ f:step();check(f.adapter.set_node(f.target,f.rig,elbow,desired,base,'ignore'))
+ f:step();check(f.adapter.set_mode(f.target,f.rig,'ignore','position_and_rotation')and f.adapter.commit(f.target,f.rig))
+ check(same(f.nodes,f.original)and f.adapter.status().pending==0,'Restoration returns the modded skeleton exactly')
+ writes=f.writes;f.count=107;f:step()
+ check(f.adapter.set_node(f.target,f.rig,elbow,base,desired,f.mode)==false and f.writes==writes,'A changed node count still stops writes')
+end
+do
+ -- A node appended after the stock 107: indices are unchanged, nothing is moved.
+ local f=modded({})
+ local snapshot=f:ready()
+ check(next(f.adapter.fixed_nodes(f.target,f.rig))==nil,'Nothing is fixed')
+ local desired=f:desired();f:step();check(f.adapter.set_node(f.target,f.rig,70,snapshot.nodes[70],desired,f.mode))
+ check(same(f.nodes[70].pose,desired.pose))
+end
+do
+ -- A moved body bone cannot be posed from the bank: the Helldiver stays follow-only and
+ -- the log names the bone.
+ local f=modded({insert=50,move={hips='chest'}});f:arm();f:step()
+ local found,why=f.adapter.discover(f.resource,4,f.rig,{0,0,0});check(found,why)
+ check(#found==0 and found.skipped.nodes[108]==1,'Not listed for posing')
+ check(found.camera_only and #found.camera_only==1 and found.camera_only[1].label:find('108 nodes',1,true),'Still offered to follow')
+ local log=table.concat(f.lines,'\n');check(log:find("skipped 108 nodes x1 (bone 'hips' has another parent)",1,true),log)
+end
+do
+ local f=modded({missing={'r_elbow'}});f:arm();f:step()
+ local found,why=f.adapter.discover(f.resource,4,f.rig,{0,0,0});check(found,why);check(#found==0)
+ local log=table.concat(f.lines,'\n');check(log:find("skipped 108 nodes x1 (bone 'r_elbow' missing)",1,true),log)
+end
+do
+ -- A body too small for the pose rig is still offered to follow when it has a head.
+ local f=fixture();f.counts={[f.unit]=40};f:arm();f:step()
+ local found,why=f.adapter.discover(f.resource,4,f.rig,{0,0,0});check(found,why)
+ check(#found==0 and found.skipped.nodes[40]==1 and found.camera_only and #found.camera_only==1,'Follow-only stays available')
+end
+print('steam_subject_native modded skeletons: inserted node, appended node, moved sockets and moved body bones passed')
