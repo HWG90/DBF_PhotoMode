@@ -546,6 +546,30 @@ end
 print('Subject session lifecycle: no idle polling, explicit refresh requalification and fresh entry selection passed')
 
 do
+ -- A hover pack anywhere in the mission makes Freeze run time at 1e-14 so Resume cannot
+ -- launch a hovering player. Poses hold the body themselves, so they work there too
+ -- (Discord, 2026-11-09: "bone posing seems to break in missions when equipping the hover
+ -- pack"); the true-zero root hold stays off.
+ local f=fixture(function(f,deps)
+  deps.engine_time_only=true;deps.freeze_rate=function()return 1e-14 end
+  f.root_held=false
+  deps.freeze_root_hold={tick=function(enabled)f.root_held=enabled end,render=function()end,release=function()f.root_held=false;return true end}
+ end)
+ f.enable();f.select();assert(f.rate==1e-14,'Hover-pack Freeze runs time at 1e-14')
+ assert(not f.controls.subject_pose_play.disabled,'Apply is offered under the hover-pack Freeze')
+ f.pose(2);assert(f.subject.status().pose==f.subject.catalog[2].id and f.b.mode=='ignore','The pose is held')
+ local writes=f.node_writes
+ for _=1,30 do f.step(.016,1)end
+ assert(f.subject.status().state=='posed'and f.node_writes==writes,'The held pose stays without rewrites')
+ assert(not f.root_held,'The true-zero root hold stays off at 1e-14')
+ f.events={}
+ assert(f.runtime.handle.set('freeze_player',false)and f.rate==1);f.restored()
+ assert(index_of(f.events,'mode:position_and_rotation')<index_of(f.events,'time:1'),'Resume restores the subject before time runs')
+ f.finish()
+ print('Hover-pack Freeze: poses apply, hold and restore before Resume passed')
+end
+
+do
  local f=fixture();f.enable();f.select();f.events={}
  local writes=f.node_writes
  assert(f.runtime.handle.set('subject_pose',2));assert(f.action('subject_pose_play'))

@@ -358,7 +358,7 @@ function M.new(adapter,bank,is_frozen)
   if not supported or not selected or not explicit_selection then return false,'Select a photographic subject first'end
   if lease or blocked then return false,'Release the current pose before testing bone transfer'end
   local frozen,value=pcall(is_frozen)
-  if not frozen or value~=true then return false,'True-zero Freeze Action is required'end
+  if not frozen or value~=true then return false,'Freeze Action is required'end
   local current,why=snapshot()
   if not current then return false,why or'Subject snapshot unavailable'end
   if current.mode=='ignore'then return false,'Bone transfer is already held by another owner'end
@@ -439,7 +439,7 @@ function M.new(adapter,bank,is_frozen)
   if not selected then return false,'Select a photographic subject first'end
   if not labels[id]then return false,'Unknown subject pose'end
   local frozen,value=pcall(is_frozen)
-  if not frozen or value~=true then return false,'True-zero Freeze Action is required'end
+  if not frozen or value~=true then return false,'Freeze Action is required'end
   local prepared
   if not(lease and pose==id)then
    local why,detail;prepared,why,detail=prepare(id)
@@ -454,7 +454,7 @@ function M.new(adapter,bank,is_frozen)
   if blocked then return false,'Recover the pending subject cleanup first'end
   if not selected then return false,'Select a photographic subject first'end
   local frozen,value=pcall(is_frozen)
-  if not frozen or value~=true then return false,'True-zero Freeze Action is required'end
+  if not frozen or value~=true then return false,'Freeze Action is required'end
   local prepared,why,detail=prepare_frame(frame)
   if not prepared then state(lease and'posed'or'selected',why,detail);return false,status.message end
   if type(label)~='string'and type(frame.label)=='string'then label=frame.label end
@@ -472,7 +472,7 @@ function M.new(adapter,bank,is_frozen)
   if not supported then return nil,status.message end
   if not selected then return nil,'Select a photographic subject first'end
   local frozen,value=pcall(is_frozen)
-  if not frozen or value~=true then return nil,'True-zero Freeze Action is required'end
+  if not frozen or value~=true then return nil,'Freeze Action is required'end
   local current,why=snapshot()
   if current==false then return nil,'Selected subject retired'end
   if not current then return nil,why or'Subject snapshot unavailable'end

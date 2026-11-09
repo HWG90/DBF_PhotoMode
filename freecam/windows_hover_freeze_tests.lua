@@ -15,17 +15,23 @@ for i=1,100 do assert(p.tick())end;assert(reads==0 and #writes==0)
 assert(p.freeze()and rate==0 and p.owns_zero()and prepares==1)
 assert(p.resume()and rate==1)
 units={pack};assert(p.freeze()and rate==1e-14 and p.frozen and not p.owns_zero())
+-- Poses and bone edits hold the body themselves (bone mode 'ignore'), so they accept the
+-- hover-pack freeze; the skeleton, root and ragdoll holds keep requiring true zero
+-- (Discord, 2026-11-09: posing broke with a hover pack equipped; supply and jump packs worked).
+assert(p.owns_pose_freeze(),'Poses accept the confirmed hover-pack freeze')
 assert(prepares==1,'Positive fallback must not prepare exact-zero skeleton writes')
 local scans,changes=reads,#writes
 for i=1,100 do assert(p.freeze());assert(p.tick())end
 assert(reads==scans and #writes==changes,'Latched Freeze must remain idle')
 assert(sr.Application.set_time_step_policy('external_multiplier',1)==nil)
 assert(rate==1e-14 and p.frozen and not p.owns_zero(),'Foreign-write hold must preserve fallback instead of reasserting zero')
+assert(p.owns_pose_freeze(),'A held hover-pack freeze still admits poses')
 assert(p.set_slowmo(true,.3)and rate==1e-14)
-assert(p.resume()and rate==.3 and not p.frozen)
+assert(p.resume()and rate==.3 and not p.frozen and not p.owns_pose_freeze(),'Slow motion never admits poses')
 assert(p.freeze()and rate==1e-14);assert(p.release()and rate==1)
 units={};assert(p.freeze()and rate==0 and p.owns_zero(),'Recheck equipment on the next explicit Freeze')
-assert(p.release())
+assert(p.owns_pose_freeze(),'True zero admits poses as before')
+assert(p.release()and not p.owns_pose_freeze(),'Released time admits no poses')
 local refused=Runtime.time_policy(sr,function()return now end,function()return false,'pose cleanup pending'end,nil,function()return 1e-14 end)
 changes=#writes;assert(not refused.freeze()and #writes==changes,'Do not advance time before pose cleanup acknowledges')
 local unavailable=Runtime.time_policy(sr,function()return now end,nil,nil,function()return nil,'inventory unavailable'end)
@@ -38,6 +44,7 @@ local manual=Runtime.time_policy(sr,function()return now end,function()return tr
  function(value,index)assert(value==1e-11 and index>=1 and index<=3);samples=samples+1 end)
 assert(manual.set_near_zero(true)and rate==1)
 assert(manual.freeze()and rate==1e-11 and not manual.owns_zero())
+assert(not manual.owns_pose_freeze(),'Only the rates Freeze chooses itself admit poses, not the diagnostic near-zero button')
 for i=1,100 do assert(manual.tick())end;assert(samples==3,'Only three deployed delta samples per tiny-rate write')
 assert(manual.set_near_zero(false)and rate==0 and manual.owns_zero())
 assert(manual.set_near_zero(true)and rate==1e-11 and not manual.owns_zero())

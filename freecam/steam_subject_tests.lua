@@ -510,7 +510,7 @@ end
 do -- apply_frame: edited frames share the lease; only changed nodes are written
  local f=fixture();f.select()
  local function edited()local fr={full_body=true,nodes={}};for i=8,92 do fr.nodes[i]=copy(f.b.nodes[i])end;fr.nodes[70]={p=copy(f.b.nodes[70].p),q={0,0,math.sin(.4),math.cos(.4)},s={1,1,1}};return fr end
- f.frozen=false;assert(select(2,f.controller.apply_frame(edited()))=='True-zero Freeze Action is required');f.frozen=true
+ f.frozen=false;assert(select(2,f.controller.apply_frame(edited()))=='Freeze Action is required');f.frozen=true
  assert(f.controller.apply_frame(edited(),'Salute edits'));local s=f.controller.status()
  assert(s.state=='posed'and s.pose=='edited'and s.message=='Salute edits held on the selected subject',s.message)
  assert(f.node_writes==1 and f.written[1]==70 and f.mode_writes==1,'One changed node, one mode write')
@@ -521,7 +521,7 @@ do -- apply_frame: edited frames share the lease; only changed nodes are written
  assert(f.controller.reset());f.original_body()
  assert(select(2,f.controller.target_frame())=='No pose is held')
  local c=f.controller.current_frame();assert(c.nodes[8].p[1]==f.b.nodes[8].p[1]and c.nodes[92]and f.controller.status().state=='selected','Snapshot without a lease')
- f.frozen=false;assert(select(2,f.controller.current_frame())=='True-zero Freeze Action is required');f.frozen=true
+ f.frozen=false;assert(select(2,f.controller.current_frame())=='Freeze Action is required');f.frozen=true
  f.adapter.node_position=function(target,rig,index)assert(index==70 and rig==f.bank.rig);return{1,2,3}end
  assert(f.controller.node_position(70)[3]==3)
  assert(f.controller.node_parent(70)==69 and f.controller.node_parent(1)==0 and f.controller.node_parent(200)==nil,'Parent index from the rig')

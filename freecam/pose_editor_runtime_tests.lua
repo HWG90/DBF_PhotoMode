@@ -245,4 +245,20 @@ do -- group markers: one ring per bone, click selects, left drag aims the parent
  m.tick({x=r[66].x+60,y=r[66].y,click=false},down,nil,false)
  assert(f.action('subject_pose_stop'));f.restored()
 end
+do -- hover-pack Freeze (time at 1e-14): bone edits and snapshots work as at true zero
+ local F=dofile('freecam/pose_files.lua');local files={}
+ local fs={open=function(p,m)if m=='rb'then local c=files[p];if c==nil then return nil end;return{read=function()return c end,close=function()end}end;local b={};return{write=function(_,s)b[#b+1]=s;return true end,close=function()files[p]=table.concat(b);return true end}end,
+  rename=function(a,b)files[b]=files[a];files[a]=nil;return true end,remove=function(p)files[p]=nil;return true end}
+ local f=fixture(function(f,deps)
+  deps.engine_time_only=true;deps.freeze_rate=function()return 1e-14 end
+  deps.pose_files={storage=function()return F.storage('C:/cfg',fs)end}
+ end)
+ f.enable();f.select();elbow(f);assert(f.rate==1e-14)
+ assert(f.controls.bone_bend.disabled==false,'Sliders are live under the hover-pack Freeze')
+ assert(f.action('pose_save_new'),'A snapshot saves under the hover-pack Freeze')
+ assert(f.runtime.handle.set('bone_bend',45));f.step(.016,1);f.settle()
+ local s=f.subject.status();assert(s.state=='posed'and s.pose=='edited',s.message)
+ assert(near(f.b.nodes[70].q,E.compose(f.original_b[70].q,45,0,0)),'The edit reaches the bone')
+ assert(f.action('subject_pose_stop'));f.restored()
+end
 print('Pose editor runtime: settle, coalesced apply, slider sync, rebase, unfreeze, retire and enabled rules passed')

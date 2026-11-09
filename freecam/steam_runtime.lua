@@ -8,7 +8,8 @@ local M={}
 function M.time_policy(sr,clock,before_nonzero,before_zero,freeze_rate,observe_rate)
  local A,G,N=sr.Application,sr.GameSession,sr.Network
  local self={frozen=false,preparing=false,slowmo_active=false,rate=.2,owned=false,revision=0,reason=nil}
- local original,wrapper,world,session,last_check,zero_confirmed
+ -- The last multiplier our own write (or hold) confirmed; nil once anything else may have changed it.
+ local original,wrapper,world,session,last_check,confirmed_rate
  -- True while we are deliberately resuming or releasing time; a foreign write
  -- then takes control exactly as before instead of being held against.
  local releasing=false;local held_at
@@ -37,7 +38,7 @@ function M.time_policy(sr,clock,before_nonzero,before_zero,freeze_rate,observe_r
  local function detach()
   if wrapper and A.set_time_step_policy==wrapper then A.set_time_step_policy=original end
   wrapper=nil;original=nil;world=nil;session=nil
-  zero_confirmed=false;sample_remaining=0
+  confirmed_rate=nil;sample_remaining=0
   retry_at,retry_binding,retry_reason,retry_value,retry_dependency=nil,nil,nil,nil,nil
  end
  local function restore(value)
@@ -55,7 +56,7 @@ function M.time_policy(sr,clock,before_nonzero,before_zero,freeze_rate,observe_r
   if not self.owned then return true end
   binding=A.set_time_step_policy
   if binding~=wrapper then return pending('Time-policy binding changed; restoration is pending')end
-  zero_confirmed=false
+  confirmed_rate=nil
   local called,result=pcall(original,'external_multiplier',value)
   if not called or result==false then return pending('Time restoration failed: '..tostring(result))end
   retry_at,retry_binding,retry_reason,retry_value,retry_dependency=nil,nil,nil,nil,nil;return true
@@ -105,7 +106,7 @@ function M.time_policy(sr,clock,before_nonzero,before_zero,freeze_rate,observe_r
   local saved=original;local owned
   owned=function(...)
    local args={...}
-   if wrapper==owned then for _,arg in ipairs(args)do if arg=='external_multiplier'then zero_confirmed=false;break end end end
+   if wrapper==owned then for _,arg in ipairs(args)do if arg=='external_multiplier'then confirmed_rate=nil;break end end end
    local result={saved(...)}
    if wrapper==owned and result[1]~=false then
     for _,arg in ipairs(args)do if arg=='external_multiplier'then
@@ -121,7 +122,7 @@ function M.time_policy(sr,clock,before_nonzero,before_zero,freeze_rate,observe_r
      if hold then held_at=stamp;called,ok=pcall(saved,'external_multiplier',frozen_rate)end
      if called and ok~=false then
       -- A notice, not a reason: reasons mean ownership was lost.
-      zero_confirmed=frozen_rate==0;self.notice='Freeze Action kept after another time change';self.revision=self.revision+1
+      confirmed_rate=frozen_rate;self.notice='Freeze Action kept after another time change';self.revision=self.revision+1
      else
       self.owned,self.frozen,self.slowmo_active,self.pending_restore=false,false,false,false
       self.reason='Another time modifier took control';self.revision=self.revision+1
@@ -138,20 +139,28 @@ function M.time_policy(sr,clock,before_nonzero,before_zero,freeze_rate,observe_r
   self.owned=true;self.reason=nil;last_check=clock();return true
  end
  local function write(value,label)
-  zero_confirmed=false
+  confirmed_rate=nil
   local ok,result=pcall(original,'external_multiplier',value)
   if not ok or result==false then
    local restored,reason=self.release()
    return false,restored and(label..' failed: '..tostring(result))or reason
   end
-  zero_confirmed=value==0
+  confirmed_rate=value
   sample_remaining=observe_rate and value>0 and value<=1e-11 and 3 or 0
   return true
  end
  function self.owns_zero()
   -- Frozen is a cleanup obligation after a partial resume failure, not proof
   -- that native time is still zero. Pose writes require our last zero receipt.
-  return self.owned and self.frozen and not self.pending_restore and zero_confirmed==true and
+  return self.owned and self.frozen and not self.pending_restore and confirmed_rate==0 and
+   wrapper~=nil and A.set_time_step_policy==wrapper
+ end
+ -- Poses and bone edits switch the body's bone mode to 'ignore' and hold it themselves, so
+ -- they also accept the 1e-14 Freeze a live hover pack selects (Discord, 2026-11-09: posing
+ -- refused "Freeze Action first" with a hover pack equipped). The skeleton, root and ragdoll
+ -- holds keep owns_zero. The diagnostic near-zero rate (1e-11) admits nothing.
+ function self.owns_pose_freeze()
+  return self.owned and self.frozen and not self.pending_restore and(confirmed_rate==0 or confirmed_rate==1e-14)and
    wrapper~=nil and A.set_time_step_policy==wrapper
  end
  function self.freeze()
@@ -671,11 +680,11 @@ function M.new(host,sr,deps,service)
    c.disabled=not enabled or subject_holds or c.hidden
   end
   controls.subject_pose.disabled=not enabled or subject_pending
-  controls.subject_pose_play.disabled=not enabled or subject_pending or not(s and s.selected)or not(simulation and simulation.owns_zero())
+  controls.subject_pose_play.disabled=not enabled or subject_pending or not(s and s.selected)or not(simulation and simulation.owns_pose_freeze())
   controls.subject_pose_stop.disabled=not enabled or not subject_holds
   controls.subject_recover.disabled=not subject_pending
   if controls.bone_bend then
-   local can_edit=enabled and not subject_pending and s.selected~=nil and simulation~=nil and simulation.owns_zero()and self.pose_editor~=nil
+   local can_edit=enabled and not subject_pending and s.selected~=nil and simulation~=nil and simulation.owns_pose_freeze()and self.pose_editor~=nil
    for _,id in ipairs({'bone_bend','bone_swing','bone_twist','bone_drag_handle','bone_reset','bone_reset_all','bone_apply'})do
     if controls[id]then controls[id].disabled=not can_edit end
    end
@@ -778,7 +787,7 @@ function M.new(host,sr,deps,service)
   end
   if method=='refresh'and value==nil and photo then value=photo.pos end
   if method=='apply'then
-   if not(simulation and simulation.owns_zero())then return false,'True-zero Freeze Action is required'end
+   if not(simulation and simulation.owns_pose_freeze())then return false,'Freeze Action is required'end
    -- Match the explicit Reset -> Apply workflow. Never layer the next pose
    -- over the previous lease, or apply after an unacknowledged restoration.
    -- Apply two updates later, once the reset body has settled: the cape placement is
@@ -797,7 +806,7 @@ function M.new(host,sr,deps,service)
    end
   end
   if method=='apply_frame'then
-   if not(simulation and simulation.owns_zero())then return false,'True-zero Freeze Action is required'end
+   if not(simulation and simulation.owns_pose_freeze())then return false,'Freeze Action is required'end
    -- An edited frame refines the held lease, so edits never reset between
    -- them. The first frame takes the proven reset-and-settle path above so the
    -- cape is captured against a settled body.
@@ -935,7 +944,7 @@ function M.new(host,sr,deps,service)
    local frame,meta
    if editor and editor.has_base()then frame=editor.compose_frame(true);meta={label=frame.label,source=editor.base_label()}
    else
-    if not(simulation and simulation.owns_zero())then return refuse('Freeze Action first')end
+    if not(simulation and simulation.owns_pose_freeze())then return refuse('Freeze Action first')end
     local why;frame,why=subject and subject.current_frame()
     if not frame then return refuse(why or'Select a Helldiver in Subject')end
     meta={label='Snapshot',source='snapshot'}
@@ -987,7 +996,7 @@ function M.new(host,sr,deps,service)
    end
   end
   if not editor.dirty()then return end
-  if not(self.active and simulation and simulation.owns_zero())or subject_pending then return end
+  if not(self.active and simulation and simulation.owns_pose_freeze())or subject_pending then return end
   if not(s and s.selected)then
    -- No subject (retired, or another time modifier took over): the working
    -- pose waits for an explicit Refresh and Select, never a silent re-target.
@@ -1030,7 +1039,7 @@ function M.new(host,sr,deps,service)
   end
   if subject_opt_in then return true end
   if not subject then
-   local called,value=pcall(deps.load_subject,sr,function()return simulation and simulation.owns_zero()or false end,subject_backend)
+   local called,value=pcall(deps.load_subject,sr,function()return simulation and simulation.owns_pose_freeze()or false end,subject_backend)
    if not called or type(value)~='table'then notice(called and'Subject pose factory unavailable'or value);return false,'Subject pose factory unavailable'end
    for _,name in ipairs({'status','choices','refresh','select','apply','reset','recover','close','resume','invalidate','apply_frame','target_frame','current_frame'})do
     if type(value[name])~='function'then notice('Subject controller is incomplete');return false,'Subject controller is incomplete'end
