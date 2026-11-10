@@ -114,7 +114,7 @@ function M.new(adapter,bank,is_frozen)
  end
  local function pending(message,detail)state('pending',message,detail);return false,message end
  local function finish(retired,foreign)
-  lease=nil;pose=nil
+  lease=nil;pose=nil;status.left_to_game=nil
   if retired or closing then selected=nil;targets,choices={},{}end
   closing=false
   status.restored=not retired and not foreign
@@ -416,10 +416,19 @@ function M.new(adapter,bank,is_frozen)
    if current.matrix~=lease.original.matrix then return pending('Subject snapshot representation changed; recover without guessing ownership')end
    local expected_mode=lease.mode and lease.mode.value or lease.original.mode
    if current.mode~=expected_mode then lease.foreign=true;return pending('Subject mode changed; recover without overwriting it')end
-   for i=8,92 do if not skip[i]then
+   -- A bone the game moves while the pose is held (a weapon swap re-places the weapon mount
+   -- while frozen, Discord 2026-11-09) is the game's for the rest of this hold: no longer
+   -- compared, written or restored. Calling it foreign put the pose into recovery, the bone
+   -- rows vanished and Resume was refused, so the game stayed frozen.
+   lease.game=lease.game or{}
+   for i=8,92 do if not skip[i]and not lease.game[i]then
     local expected=lease.nodes[i]and lease.nodes[i].value or lease.original.nodes[i]
-    if not same_node(current.nodes[i],expected)then lease.foreign=true;return pending('Subject body changed; recover without overwriting it','node '..i)end
+    if not same_node(current.nodes[i],expected)then
+     if lease.nodes[i]then lease.nodes[i]=nil;lease.foreign=true end
+     lease.game[i]=true
+    end
    end end
+   for i in pairs(lease.game)do skip[i]=true end
    if key~='edited'and pose==key then return true end
   end
   local nodes=prepared.nodes
@@ -437,7 +446,13 @@ function M.new(adapter,bank,is_frozen)
    if not write_node(i,current.nodes[i],nodes[i],'ignore')then return false,status.message end
   end end
   if not commit()then return false,status.message end
-  pose=key;status.restored=false;state('posed',label_text..' held on the selected subject');return true
+  local left={};for i=8,92 do if lease.game and lease.game[i]then
+   local node=bank.rig.nodes[i];left[#left+1]=(node and node.name or'bone')..' (node '..i..')'
+  end end
+  status.left_to_game=#left>0 and table.concat(left,', ')or nil
+  pose=key;status.restored=false
+  state('posed',label_text..' held on the selected subject'..(status.left_to_game and'; left to the game: '..status.left_to_game or''))
+  return true
  end
  function self.apply(id)
   if not supported then return false,status.message end

@@ -713,6 +713,12 @@ function M.new(host,sr,deps,service)
   if listed and type(choices)=='table'and #choices<=4 then subject_choices=choices
   else subject_fault='Subject choices are unavailable'end
   sync_subject()
+  -- A bone the game moved during a held pose is left to it (steam_subject): name it once.
+  local left=subject_status and subject_status.left_to_game
+  if left~=self.subject_left_logged then
+   self.subject_left_logged=left
+   if left then pcall(host.log,'Pose: the game moved '..left..'; left to the game until the pose is reset')end
+  end
   local detail=ok~=true and subject_status and subject_status.detail
   detail=type(detail)=='string'and detail:gsub('%c',' '):sub(1,512)or nil
   if method=='refresh' then
@@ -747,8 +753,21 @@ function M.new(host,sr,deps,service)
   if subject_cleanup_attempted then return false,subject_message,subject_revision end
   subject_cleanup_attempted=true
   local ok,why=subject_call('resume')
+  if not ok and subject_pending then ok,why=self.settle_pending_pose()end
   if ok and hover then ok,why=hover.release()end
   return ok,why,subject_revision
+ end
+ -- A pose whose restoration cannot finish is recovered, or else given up (bone mode back, no
+ -- body writes), so neither Resume nor closing leaves the game frozen (Discord 2026-11-09: a
+ -- weapon swap during bone editing did, until Ctrl+Shift+F10). The recovery key comes here too.
+ -- A field, not a local: M.new is at Lua 5.1's 200-local limit.
+ function self.settle_pending_pose()
+  local ok,why=subject_call('recover')
+  if ok then return true end
+  pcall(host.log,'Pose restoration could not be proven ('..tostring(why)..'); giving the pose up')
+  ok,why=subject_call('abandon');if not ok then return false,why end
+  local s=subject_status;pcall(host.log,tostring(s and s.message)..(s and type(s.detail)=='string'and'; '..s.detail or''))
+  return true
  end
  local function close_subject(explicit_retry)
   if self.freeze_skeleton then local ok,why=self.freeze_skeleton.release('Photo Mode closed',explicit_retry);if not ok then return false,why end end
@@ -757,19 +776,17 @@ function M.new(host,sr,deps,service)
   if ragdoll then local ok,why=ragdoll.release();if not ok then return false,why end end
   if not subject then return true end
   if explicit_retry and subject_pending then
-   local ok,why=subject_call('recover')
-   if not ok then
-    -- The recovery key is the last way out: a pose whose restoration cannot be proven is
-    -- given up (bone mode back, no body writes) so time and Photo Mode are released.
-    pcall(host.log,'Pose restoration could not be proven ('..tostring(why)..'); giving the pose up')
-    ok,why=subject_call('abandon');if not ok then return false,why end
-    local s=subject_status;pcall(host.log,tostring(s and s.message)..(s and type(s.detail)=='string'and'; '..s.detail or''))
-   end
+   local ok,why=self.settle_pending_pose();if not ok then return false,why end
    subject_close_started=false
   end
   if not subject_close_started then
    subject_close_started=true;subject_cleanup_attempted=true
-   return subject_call('close')
+   local ok,why=subject_call('close')
+   if not ok and subject_pending then
+    ok,why=self.settle_pending_pose()
+    if ok then ok,why=subject_call('close')end
+   end
+   return ok,why
   end
   return not subject_holds,subject_message
  end

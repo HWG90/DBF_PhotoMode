@@ -250,8 +250,10 @@ do
  assert(f.runtime.handle.activate('path_add'));assert(f.runtime.handle.activate('path_add'));f.pose()
  assert(f.runtime.begin_shot(true));f.restored();assert(f.runtime.reposition_shot());f.finish()
 end
+-- A pose that can be neither restored nor given up keeps Photo Mode closing without touching
+-- the body again; the recovery key retries.
 do
- local f=fixture();f.enable();f.select();f.partial=true;f.fail_node=13
+ local f=fixture();f.enable();f.select();f.partial=true;f.fail_node=13;f.abandon_refuse=true
  -- Apply is scheduled; the failing write lands two updates later and offers recovery.
  assert(f.action('subject_pose_play'));f.settle()
  assert(f.subject.status().pending and f.controls.subject_recover.disabled==false)
@@ -274,34 +276,42 @@ do
   'Reopening lists current subjects and auto-selects one; no stale pose survives exit')
  f.finish()
 end
--- A restoration that can never be proven (the 26251122 pose soft-lock) is given up by the
--- recovery key: bone mode back, time and Photo Mode released, and the reasons logged.
+-- A restoration that can never be proven (the 26251122 pose soft-lock) is given up when Photo
+-- Mode closes: bone mode back, no body writes, time and Photo Mode released, reasons logged.
+-- Closing used to leave the game frozen until the recovery key (Discord 2026-11-09).
 do
  local messages={}
  local f=fixture(function(f)f.log=function(s)messages[#messages+1]=s end end);f.enable();f.select();f.partial=true;f.fail_node=13
  local function logged(text)for _,s in ipairs(messages)do if s:find(text,1,true)then return true end end;return false end
  assert(f.action('subject_pose_play'));f.settle();assert(f.subject.status().pending)
  assert(logged('Subject apply detail: Fixture partial node write'),'Log the reason with the failure')
- assert(not f.runtime.close(true)and f.runtime.state=='closing'and f.rate==0)
- assert(not f.runtime.open(),'Pending pose cleanup keeps Photo Mode closed')
- f.events={};f.recovery_key()
- assert(f.runtime.state=='closed'and f.rate==1 and not f.lease and not f.camera_open,'The recovery key gives up an unprovable pose and releases time')
- assert(f.subject_calls.abandon==1 and index_of(f.events,'abandon')and f.b.mode=='position_and_rotation')
- assert(logged('Recovery key: retrying Photo Mode cleanup'),'Log each recovery key press')
+ local writes=f.node_writes;f.events={};f.runtime.close(true)
+ assert(f.runtime.state=='closed'and f.rate==1 and not f.lease and not f.camera_open,'Closing gives up an unprovable pose and releases time')
+ assert(f.subject_calls.abandon==1 and index_of(f.events,'abandon')and f.b.mode=='position_and_rotation'and f.node_writes==writes,'No body write is guessed')
  assert(logged('Pose restoration could not be proven'),'Log why the pose was given up')
- f.pressed['left ctrl'],f.pressed['left shift'],f.pressed.f10=false,false,false;f.step(.016)
  assert(f.runtime.open()and f.subject.status().pose==nil,'Photo Mode opens again after giving up')
  f.finish()
 end
+-- Resume never leaves the game frozen (Discord 2026-11-09): a pending pose is restored when
+-- it can be proven...
 do
  local f=fixture();f.enable();f.select();f.partial=true;f.fail_node=13
+ assert(f.action('subject_pose_play'));f.settle();assert(f.subject.status().pending)
+ f.fail_node=nil;f.resolve=true
+ assert(f.runtime.handle.set('freeze_player',false)and f.rate==1 and f.runtime.active,'Resume restores a pending pose and runs time again')
+ f.restored();assert((f.subject_calls.abandon or 0)==0,'A provable restoration is not given up')
+ f.finish()
+end
+-- ...and given up when it cannot, as the recovery key does: bone mode back, no body writes.
+do
+ local messages={}
+ local f=fixture(function(f)f.log=function(s)messages[#messages+1]=s end end);f.enable();f.select();f.partial=true;f.fail_node=13
+ local function logged(text)for _,s in ipairs(messages)do if s:find(text,1,true)then return true end end;return false end
  assert(f.action('subject_pose_play'));f.settle();assert(f.subject.status().pending);local writes=f.node_writes
- assert(f.runtime.handle.set('freeze_player',false)and f.runtime.handle.get('freeze_player')and f.rate==0,
-  'Refused resume keeps Freeze preference synchronized with true-zero state')
- assert(f.runtime.active and f.b.mode=='position_and_rotation'and f.node_writes==writes)
- local native=f.subject_native;assert(not f.runtime.begin_shot()and f.subject_native==native)
- f.fail_node=nil;f.resolve=true;assert(f.action('subject_recover'));f.restored()
- assert(f.runtime.handle.set('freeze_player',false)and f.rate==1,'Explicit cleanup invalidates cached time refusal immediately')
+ assert(f.runtime.handle.set('freeze_player',false)and f.rate==1 and f.runtime.active,'Resume gives up an unprovable pose and runs time again')
+ assert(f.subject_calls.abandon==1 and f.b.mode=='position_and_rotation'and f.node_writes==writes,'No body write is guessed')
+ assert(logged('Pose restoration could not be proven'),'Log why the pose was given up')
+ assert(not f.subject.status().pending and f.controls.subject_recover.disabled,'Nothing is left to recover')
  f.finish()
 end
 for _,failure in ipairs({'false','throw'})do
@@ -404,17 +414,20 @@ for _,failure in ipairs({'nil','throw'})do
  local ok,why=f.runtime.close(true)
  assert(not ok and why==problem and f.lease and not f.camera_open and f.release_calls==1,
   'Unconfirmed captured release preserves the exact error and its cleanup lease')
+ -- Closing settles the unprovable pose first (given up: bone mode back, no body writes).
+ assert(f.subject_calls.abandon==1 and f.b.mode=='position_and_rotation'and not f.subject.status().pending)
  f.physical_recovery=true
  local native,status,reads,snapshots,saves=f.subject_native,f.status_reads,f.engine_reads,f.snapshot_calls,f.saves
+ local recoveries=f.subject_calls.recover
  for _=1,100 do f.step(.016,1)end
  assert(f.release_calls==1 and f.snapshot_calls==snapshots and f.engine_reads==reads and
-  f.subject_native==native and f.status_reads==status and f.saves==saves and not f.subject_calls.recover,
+  f.subject_native==native and f.status_reads==status and f.saves==saves and f.subject_calls.recover==recoveries,
   'Automatic cleanup never resubmits release, reads captured keys, or falls back to engine input')
- assert(not f.runtime.open(),'An unconfirmed input/subject lease prevents reopening')
- f.release_ack=true;f.fail_node=nil;f.resolve=true
+ assert(not f.runtime.open(),'An unconfirmed input lease prevents reopening')
+ f.release_ack=true
  assert(f.runtime.close(true,nil,true)and f.release_calls==2 and not f.lease and f.runtime.state=='closed',
   'Explicit cleanup retries once and retires the acknowledged captured lease')
- f.restored();assert(f.rate==1);f.finish()
+ assert(same(f.a.nodes,f.original_a)and f.rate==1);f.finish()
 end
 do
  local f=fixture(function(f,deps)

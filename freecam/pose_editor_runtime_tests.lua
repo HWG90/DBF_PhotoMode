@@ -37,6 +37,22 @@ do -- catalogue pose while editing rebases and clears; unfreeze keeps the workin
  assert(near(f.b.nodes[70].q,E.compose(base,20,0,0)),'Edits sit on the catalogue base')
  assert(f.action('subject_pose_stop'));f.restored()
 end
+do -- a weapon swap during bone editing (Discord 2026-11-09): the game re-places the weapon
+ -- mount while frozen. The next edit put the pose into recovery, the bone rows vanished and
+ -- Resume was refused, leaving the game frozen until Ctrl+Shift+F10.
+ local messages={}
+ local f=fixture(function(f)f.log=function(s)messages[#messages+1]=s end end);f.enable();f.select();elbow(f)
+ local function logged(text)for _,m in ipairs(messages)do if m:find(text,1,true)then return true end end;return false end
+ f.runtime.handle.set('bone_bend',30);f.step(.016,1);f.settle();assert(f.subject.status().pose=='edited')
+ f.b.nodes[33].p={9,9,9}
+ assert(f.runtime.handle.set('bone_bend',40));f.step(.016,1)
+ local s=f.subject.status();assert(s.state=='posed'and not s.pending,s.message)
+ assert(near(f.b.nodes[70].q,E.compose(f.original_b[70].q,40,0,0))and f.b.nodes[33].p[1]==9,'The edit applies; the weapon mount stays where the game put it')
+ assert(f.controls.bone_bend.disabled==false and f.controls.subject_recover.disabled==true,'The bone rows stay')
+ assert(logged('attach_weapon'),'The log names the bone left to the game')
+ assert(f.runtime.handle.set('freeze_player',false)and f.rate==1,'Resume runs time again')
+ assert(f.b.nodes[70].q[4]==f.original_b[70].q[4]and f.b.mode=='position_and_rotation','The pose is released')
+end
 do -- subject retires mid-edit
  local f=fixture();f.enable();f.select();elbow(f)
  f.runtime.handle.set('bone_bend',30);f.step(.016,1);f.settle();assert(f.subject.status().pose=='edited')

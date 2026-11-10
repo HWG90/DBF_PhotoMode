@@ -527,7 +527,7 @@ do -- apply_frame: edited frames share the lease; only changed nodes are written
  assert(f.controller.node_parent(70)==69 and f.controller.node_parent(1)==0 and f.controller.node_parent(200)==nil,'Parent index from the rig')
  f.validation='unknown';assert(not f.controller.apply_frame(edited()),'Unknown lifetime refuses like apply')
 end
-do -- edited frames tolerate the game's own carry sockets; a foreign write elsewhere still blocks
+do -- edited frames tolerate the game's own carry sockets and any bone the game moves
  local f=fixture();f.select()
  local function edited(x)local fr={full_body=true,nodes={}};for i=8,92 do fr.nodes[i]=copy(f.b.nodes[i])end;fr.nodes[70]={p=copy(f.b.nodes[70].p),q={0,0,math.sin(x),math.cos(x)},s={1,1,1}};return fr end
  f.bank.rig.nodes[28].name='sling';f.bank.rig.nodes[23].name='attach_samplepouch'
@@ -538,10 +538,32 @@ do -- edited frames tolerate the game's own carry sockets; a foreign write elsew
  assert(f.b.nodes[28].p[1]==999 and f.b.nodes[23].p[2]==-5,'Edits never write the game-owned sockets back')
  local written=0;for _,i in ipairs(f.written)do if i==28 or i==23 then written=written+1 end end;assert(written==0)
  assert(f.controller.reset());f.b.nodes[28].p[1]=f.original.nodes[28].p[1];f.b.nodes[23].p[2]=f.original.nodes[23].p[2];f.original_body()
+ -- A weapon swap while frozen re-places the weapon mount (Discord 2026-11-09: the next edit put
+ -- the pose into recovery, the bone rows vanished and Resume was refused, so the game stayed
+ -- frozen). The bone is the game's for the rest of this hold: the edit still applies, the bone
+ -- is neither written nor compared again, Reset leaves it, and the status names it.
+ f.bank.rig.nodes[33].name='attach_weapon'
+ local second,third=edited(.5),edited(.6) -- built before the swap: they carry the old mount
  assert(f.controller.apply_frame(edited(.4)))
- f.b.nodes[47].q[1]=.3 -- someone else moved the left elbow
- assert(not f.controller.apply_frame(edited(.5)))
- local s=f.controller.status();assert(s.state=='pending'and s.message=='Subject body changed; recover without overwriting it'and tostring(s.detail):find('node 47',1,true),tostring(s.detail))
+ f.b.nodes[33].p[1]=42
+ local before=#f.written
+ assert(f.controller.apply_frame(second),'A bone the game moved never blocks an edit')
+ local s=f.controller.status();assert(s.state=='posed'and not s.pending and s.pose=='edited',s.message)
+ assert(f.b.nodes[33].p[1]==42,'The moved bone keeps the game value')
+ local wrote_elbow=false;for i=before+1,#f.written do wrote_elbow=wrote_elbow or f.written[i]==70 end;assert(wrote_elbow,'The edit applies')
+ assert(tostring(s.left_to_game):find('attach_weapon',1,true)and s.message:find('attach_weapon',1,true),tostring(s.left_to_game))
+ f.b.nodes[33].p[1]=43 -- the game keeps placing it
+ assert(f.controller.apply_frame(third),'A bone left to the game is not compared again')
+ for i=before+1,#f.written do assert(f.written[i]~=33,'...nor written')end
+ assert(f.controller.reset()and f.b.nodes[33].p[1]==43,'Reset leaves the moved bone to the game')
+ assert(f.controller.status().left_to_game==nil,'The next hold starts with every bone')
+ f.b.nodes[33].p[1]=f.original.nodes[33].p[1];f.original_body()
+ -- A bone the edit wrote and the game then moves is dropped from the hold: not restored over.
+ assert(f.controller.apply_frame(edited(.4)))
+ f.b.nodes[70].q={0,0,0,1}
+ assert(f.controller.apply_frame(edited(.7)),'A written bone the game moved never blocks either')
+ assert(f.b.nodes[70].q[4]==1,'The game value stays')
+ assert(f.controller.reset()and f.b.nodes[70].q[4]==1 and f.controller.status().state=='foreign','Reset keeps the game value')
 end
 do -- node_frame: world position and rotation of a node through the adapter
  local f=fixture();f.select()
