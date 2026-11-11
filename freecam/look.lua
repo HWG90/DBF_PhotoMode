@@ -13,15 +13,21 @@ function M.basis(photo,initial,input)
         local smoothing=input.smoothing==true
         local yaw=smoothing and(v.target_yaw or v.yaw)or v.yaw
         local pitch=smoothing and(v.target_pitch or v.pitch)or v.pitch
-        yaw=(yaw-dx*scale)%(2*math.pi)
         pitch=math.max(math.rad(-89),math.min(math.rad(89),pitch-dy*scale))
         if smoothing then
             local dt=tonumber(input.dt)or 0;dt=dt==dt and math.max(0,math.min(.1,dt))or 0
             local alpha=1-math.exp(-dt/(input.smoothing_time or .15))
-            v.target_yaw,v.target_pitch=yaw,pitch
-            local arc=(yaw-v.yaw+math.pi)%(2*math.pi)-math.pi
-            v.yaw=(v.yaw+arc*alpha)%(2*math.pi);v.pitch=v.pitch+(pitch-v.pitch)*alpha
-        else v.yaw,v.pitch=yaw,pitch;v.target_yaw,v.target_pitch=nil,nil end
+            -- The yaw target is not wrapped: a fast swipe can lead the smoothed view by more
+            -- than half a turn, and the shortest arc to a wrapped target then turned the
+            -- camera the other way round. The view follows the signed difference; both are
+            -- brought back by the same whole turns, so yaw stays in range and the turn
+            -- still owed is kept.
+            yaw=yaw-dx*scale
+            local turned=v.yaw+(yaw-v.yaw)*alpha
+            local turns=math.floor(turned/(2*math.pi))*(2*math.pi)
+            v.yaw,v.target_yaw=turned-turns,yaw-turns
+            v.target_pitch=pitch;v.pitch=v.pitch+(pitch-v.pitch)*alpha
+        else v.yaw,v.pitch=(yaw-dx*scale)%(2*math.pi),pitch;v.target_yaw,v.target_pitch=nil,nil end
         v.sequence=input.sequence
     end
     local cy,sy,cp,sp=math.cos(v.yaw),math.sin(v.yaw),math.cos(v.pitch),math.sin(v.pitch)
