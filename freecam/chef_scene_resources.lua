@@ -2,8 +2,8 @@
 -- contract. Focus needs a CPU depth read; under Chef that is the loader's depth capture.
 local M={}
 local DXGI={R32F=41,R16G16B16A16F=10}
--- The game build the contract was made for (26251122). Any other build keeps the effects off.
-M.build='stingray:46805437a3d445f9df7662b60086ac8ae3c65b5c95da6'
+-- The game build the contract was made for (26568081). Any other build keeps the effects off.
+M.build='stingray:4713965ced4e456ae7032d4cd36088a367dbcf93994b1'
 -- capture: the host's depth service (chef_host.depth), or nil on a Chef without chef.capture('depth').
 -- The focus sampler asks it; this module only reads the file it asked for, to prove the format.
 function M.new(sr,mod,registry,contract,inspect,capture)
