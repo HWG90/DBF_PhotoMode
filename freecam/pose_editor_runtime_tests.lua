@@ -277,4 +277,60 @@ do -- hover-pack Freeze (time at 1e-14): bone edits and snapshots work as at tru
  assert(near(f.b.nodes[70].q,E.compose(f.original_b[70].q,45,0,0)),'The edit reaches the bone')
  assert(f.action('subject_pose_stop'));f.restored()
 end
+do -- All-Bones mode: the whole skeleton first; a click opens that bone's group; a click away shows all again
+ local f=fixture(function(f,deps)deps.pose_marker=dofile('freecam/pose_marker.lua');deps.gizmos=deps.gizmos or{new=function()return{update=function()end,cancel=function()end,draw=function()end,tick=function()return false end}end};deps.gizmos.project=dofile('freecam/photo_light_gizmos.lua').project end)
+ f.enable();f.select()
+ assert(f.controls.bone_all and f.runtime.handle.get('bone_all')==true,'All-Bones mode has a row and is on by default')
+ local seen;local update=f.menu.bone_marker.update
+ f.menu.bone_marker.update=function(frame,...)seen=frame or seen;return update(frame,...)end
+ local ahead;local reads={}
+ -- Bones spread along the camera's right vector, 10 cm apart per node, ten metres ahead.
+ f.subject.node_frame=function(index)
+  if not f.b.alive then return nil,'Selected subject retired'end
+  reads[index]=(reads[index]or 0)+1
+  if not ahead then return{position={0,0,0},rotation={0,0,0,1}}end
+  local k=(index-50)*.1;return{position={ahead[1]+seen.right[1]*k,ahead[2]+seen.right[2]*k,ahead[3]+seen.right[3]*k},rotation={0,0,0,1}}
+ end
+ local function rings()
+  f.menu.prepare_bone_marker(1920,1080,true,false);local cmds={};f.menu.bone_marker.draw(cmds);local out,count={},0
+  for _,c in ipairs(cmds)do if c.ui_role=='bone_marker'then out[c.bone]={x=c.x+c.w/2,y=c.y+c.h/2,w=c.w,white=c.c[1]==255 and c.c[2]==255};count=count+1 end end
+  return out,count
+ end
+ rings();ahead={};for i=1,3 do ahead[i]=seen.position[i]+seen.forward[i]*10 end
+ local total=0;for _,g in ipairs(E.GROUPS)do total=total+#g.bones end
+ reads={};local r,count=rings()
+ assert(count==total and total>70,'Every bone of every group has a ring: '..count..' of '..total)
+ assert(r[70].w<18 and not r[70].white and not r[18].white,'Overview rings are small and none is selected')
+ for index,n in pairs(reads)do assert(n==1,'Node '..index..' read '..n..' times in one draw')end
+ assert(f.controls.bone_status.label:find('All bones',1,true),f.controls.bone_status.label)
+ local keys={};local function down(k)return keys[k]or false end;local m=f.menu.bone_marker
+ local function click(x,y)local taken=m.tick({x=x,y=y,click=true},down,nil,false);m.tick({x=x,y=y,click=false},down,nil,false);return taken end
+ -- The Left knee is node 18: Left leg (group 4), second bone.
+ local writes=f.node_writes
+ assert(click(r[18].x,r[18].y)==true)
+ assert(f.runtime.handle.get('bone_group')==4 and f.runtime.handle.get('bone')==2,'The click selects the bone and its group')
+ r,count=rings();assert(count==5 and r[18].white and r[18].w>=18 and not r[17].white,'Only the Left leg now, full rings, Knee selected')
+ assert(f.controls.bone_status.label:find('Left leg / Knee',1,true),f.controls.bone_status.label)
+ f.step(.016,1);assert(f.node_writes==writes,'Picking a bone edits nothing')
+ -- A click away from the rings shows all bones again and keeps the rows.
+ assert(click(5,5)==false);r,count=rings()
+ assert(count==total and not r[18].white and r[18].w<18,'A click away shows all bones again')
+ assert(f.runtime.handle.get('bone_group')==4 and f.runtime.handle.get('bone')==2,'...and the rows keep the selection')
+ assert(f.controls.bone_status.label:find('All bones',1,true),f.controls.bone_status.label)
+ -- Clicking a bone of the group the rows already name opens it too.
+ assert(click(r[19].x,r[19].y)==true);r,count=rings()
+ assert(count==5 and r[19].white and f.runtime.handle.get('bone_group')==4 and f.runtime.handle.get('bone')==3,'Same group, other bone')
+ -- The rows open a group as well.
+ click(5,5);r,count=rings();assert(count==total)
+ assert(f.runtime.handle.set('bone_group',3));r,count=rings();assert(count==7 and r[70].white,'The Bone group row opens its group, the bone row keeps its place')
+ click(5,5);r,count=rings();assert(count==total)
+ assert(f.runtime.handle.set('bone',2));r,count=rings();assert(count==7 and r[68].white,'The Bone row opens its group')
+ -- Mode off: the group's rings only, and a click away changes nothing.
+ assert(f.runtime.handle.set('bone_all',false));r,count=rings();assert(count==7 and r[68].white)
+ click(5,5);r,count=rings();assert(count==7 and r[68].white,'Off: a click away keeps the group')
+ assert(f.runtime.handle.set('bone_all',true));click(5,5);r,count=rings();assert(count==total,'On again: a click away shows all bones')
+ -- The marker toggle still hides everything, and a failed read hides the overview without an error.
+ assert(f.runtime.handle.set('bone_marker',false));r,count=rings();assert(count==0);assert(f.runtime.handle.set('bone_marker',true))
+ r,count=rings();assert(count==total);f.b.alive=false;r,count=rings();assert(count==0,'A failed read hides the overview')
+end
 print('Pose editor runtime: settle, coalesced apply, slider sync, rebase, unfreeze, retire and enabled rules passed')

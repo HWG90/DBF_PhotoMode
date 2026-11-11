@@ -5,7 +5,7 @@ M.defaults={fov=0,focal_preset=1,roll=0,roll_preset=1,saved_camera_radius=60,ret
  shader=1,shader_opacity=10,shader_scale=1,shader_animate=true,scene_shader=1,scene_strength=100,fog_distance=25,fog_density=50,scene_depth_range=100,vignette=0,vignette_width=18,grain=0,grain_size=1.5,
  frame=1,grid=1,logo=1,logo_size=100,logo_x=90,logo_y=8,logo_opacity=85,logo_color='#FFFFFF',clean_view=false,hide_hud=true,hide_controls=false,
  light_selected=1,light_preset=1,light_setup_slot=1,light_kind=1,light_enabled=true,light_intensity=3,light_color='#FFFFFF',light_range=8,light_cone=45,light_right=0,light_forward=1,light_up=0,light_follow=false,light_follow_player=false,
- hide_player=false,hide_armour=false,hide_weapons=false,hide_cape=false,handycam_hide_helmet=false,handycam_hide_torso=false,handycam_hide_cape=false,subject_pose=1,bone_group=1,bone=1,bone_bend=0,bone_swing=0,bone_twist=0,bone_marker=true,pose_file=1,director_slot=1,path_point=1,path_duration=3,path_transition=1,
+ hide_player=false,hide_armour=false,hide_weapons=false,hide_cape=false,handycam_hide_helmet=false,handycam_hide_torso=false,handycam_hide_cape=false,subject_pose=1,bone_group=1,bone=1,bone_bend=0,bone_swing=0,bone_twist=0,bone_marker=true,bone_all=true,pose_file=1,director_slot=1,path_point=1,path_duration=3,path_transition=1,
  show_legend=true,legend_open=true,legend_docked=true,legend_tab_y=75,legend_columns=2,legend_x=2,legend_y=2,legend_size=38}
 -- Enemy behavior is stored only when its rows exist (FFI AI backend; see pages).
 M.ai_defaults={ai_behavior=1}
@@ -221,9 +221,9 @@ function M.pages(reset,recenter,catalog,saved_actions)
  bone_slider('bone_bend','Bend (deg)'),bone_slider('bone_swing','Swing (deg)'),bone_slider('bone_twist','Twist (deg)'),
  {id='bone_drag_handle',type='button',label='Drag to rotate bone',button_label='Drag to rotate bone',disabled=true,drag=M.bone_drag,on_activate=function()return true end},
  director_action('bone_reset','Reset bone','bone_reset'),director_action('bone_reset_all','Reset edits','bone_reset_all'),director_action('bone_apply','Apply edits','bone_apply'),
- toggle('bone_marker','Show bone marker'),
+ toggle('bone_marker','Show bone marker'),toggle('bone_all','All-Bones mode'),
  {id='bone_status',type='text',label='Freeze Action, then pick a bone'},
- {id='bone_hint',type='text',label='Freeze Action first. Rings mark the bones of the group, lines join them to their parents: click a ring to select it. L drag swings the bone from its parent joint so the ring follows the pointer, R drag bends and swings the bone itself, M drag twists, wheel pushes it deeper or nearer, Shift is fine. Picking another pose clears edits.'},
+ {id='bone_hint',type='text',label='Freeze Action first. All-Bones mode rings every bone: click one to work on its group, click away from the rings to see them all again. In a group, lines join the rings to their parents: click a ring to select it. L drag swings the bone from its parent joint so the ring follows the pointer, R drag bends and swings the bone itself, M drag twists, wheel pushes it deeper or nearer, Shift is fine. Picking another pose clears edits.'},
  choice('pose_file','Saved pose',{'No saved poses'}),
  director_action('pose_load','Load pose','pose_load'),director_action('pose_save_new','Save as new pose','pose_save_new'),director_action('pose_overwrite','Overwrite selected','pose_overwrite'),director_action('pose_delete','Delete selected','pose_delete'),director_action('pose_rescan','Rescan pose files','pose_rescan'),
  {id='pose_files_status',type='text',label='Poses are files next to the settings: wj-pose-01.txt to wj-pose-99.txt'},
@@ -260,7 +260,7 @@ function M.pages(reset,recenter,catalog,saved_actions)
   {'Camera path','path_point','path_add','path_remove','path_duration','path_transition','path_play','path_clear','path_status','path_hint'},
   {'Saved shots','director_slot','director_recall','director_save','director_clear','director_status','director_hint'}},
  subject={{'Pose','subject_pose','subject_pose_play','subject_pose_stop','subject_pose_status','subject_pose_hint'},
-  {'Pose editor','bone_group','bone','bone_bend','bone_swing','bone_twist','bone_drag_handle','bone_reset','bone_reset_all','bone_apply','bone_marker','bone_status','bone_hint'},
+  {'Pose editor','bone_group','bone','bone_bend','bone_swing','bone_twist','bone_drag_handle','bone_reset','bone_reset_all','bone_apply','bone_marker','bone_all','bone_status','bone_hint'},
   {'Saved poses','pose_file','pose_load','pose_save_new','pose_overwrite','pose_delete','pose_rescan','pose_files_status','pose_files_hint'},
   {'Visibility','hide_player','hide_armour','handycam_hide_helmet','handycam_hide_torso','handycam_hide_cape','hide_cape','hide_weapons','handycam_pov_status','subject_status','subject_hint'}}}
  if saved_actions and saved_actions.without_depth_shaders then

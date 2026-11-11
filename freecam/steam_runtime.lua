@@ -870,8 +870,12 @@ function M.new(host,sr,deps,service)
   local bone=group.bones[tonumber(handle.get('bone'))or 1]or group.bones[1]
   return bone and bone.node or nil,group,bone
  end
+ -- All-Bones mode shows every group's rings until a bone is picked (a ring or a row); a click
+ -- away from the rings shows them all again.
+ function self.bone_overview()return handle~=nil and handle.get('bone_all')==true and not self.bone_drilled end
  function self.bone_status()
   if not self.pose_editor then return'Pose editor unavailable'end
+  if self.bone_overview()and menu and menu.bone_marker then return'All bones: click one to work on its group'end
   local _,group,bone=self.bone_node()
   return self.pose_editor.status(group and group.label,bone and bone.label)
  end
@@ -894,6 +898,7 @@ function M.new(host,sr,deps,service)
  end
  function self.bone_selection_changed(id,value)
   if self.bone_sync then return end
+  self.bone_drilled=true -- A bone picked by its rows opens its group.
   if self.bone_preview and self.pose_editor then
    -- A drag preview in flight belongs to the bone being left: discard it.
    local node=self.pose_editor.selected();self.bone_preview=nil
@@ -1967,7 +1972,7 @@ function M.new(host,sr,deps,service)
  if simulation then supported.freeze_player=true;supported.slowmo_speed=true end
  if type(deps.load_subject)=='function'then for _,id in ipairs({'subject_refresh','subject_select_1','subject_select_2',
   'subject_select_3','subject_select_4','subject_recover','subject_pose','subject_pose_play','subject_pose_stop'})do supported[id]=true end end
- if deps.pose_editor and type(deps.load_subject)=='function'then for _,id in ipairs({'bone_group','bone','bone_bend','bone_swing','bone_twist','bone_drag_handle','bone_reset','bone_reset_all','bone_apply','bone_marker'})do supported[id]=true end end
+ if deps.pose_editor and type(deps.load_subject)=='function'then for _,id in ipairs({'bone_group','bone','bone_bend','bone_swing','bone_twist','bone_drag_handle','bone_reset','bone_reset_all','bone_apply','bone_marker','bone_all'})do supported[id]=true end end
  if deps.pose_files and deps.pose_editor and type(deps.load_subject)=='function'then for _,id in ipairs({'pose_file','pose_load','pose_save_new','pose_overwrite','pose_delete','pose_rescan'})do supported[id]=true end end
  if deps.freeze_bone_probe and type(deps.load_subject)=='function'then supported.subject_freeze_bone_test=true end
  if deps.freeze_physics_probe and type(deps.load_subject)=='function'then supported.subject_freeze_physics_test=true end
@@ -2222,9 +2227,21 @@ function M.new(host,sr,deps,service)
    adjust=function(values,finish)return self.bone_adjust(values,finish)end,
    -- A click on another ring is an ordinary bone selection.
    select=function(node)
+    if self.bone_overview()then
+     -- The overview: open the clicked bone's group. The group row goes first, as it relabels the bone row.
+     local g,b=deps.pose_editor.locate(node);if not g then return false end
+     local called,ok=pcall(handle.set,'bone_group',g);if not called or ok==false then return false end
+     called,ok=pcall(handle.set,'bone',b);self.bone_drilled=true;self.sync_bone_rows()
+     return called and ok~=false
+    end
     local _,group=self.bone_node();if not group then return false end
     for index,bone in ipairs(group.bones)do if bone.node==node then local called,ok=pcall(handle.set,'bone',index);return called and ok~=false end end
     return false
+   end,
+   -- A click on the scene away from the group's rings: all bones again.
+   away=function()
+    if handle.get('bone_all')~=true or not self.bone_drilled then return end
+    self.bone_drilled=nil;if texts.bone_status then texts.bone_status.label=self.bone_status()end
    end,
    -- A ring dragged to a world point: its parent bone (one of this group's) turns so the
    -- ring follows, bone length kept. Nothing is moved in space.
@@ -2248,24 +2265,32 @@ function M.new(host,sr,deps,service)
     editor.set_angle(parent,'bend',b);editor.set_angle(parent,'swing',sw);editor.set_angle(parent,'twist',t)
     return true
    end})
-  -- One ring per bone of the selected group, each with its parent's position for the bone line.
+  -- One ring per bone of the selected group, or in the All-Bones overview of every group, each
+  -- with its parent's position for the bone line. A node is read once per draw.
   menu.prepare_bone_marker=function(w,h,focused,hidden)
    local node,group;if self.pose_editor then node,group=self.bone_node()end
    local shown=self.active and focused and not hidden and node~=nil and group~=nil and subject~=nil and handle.get('bone_marker')==true and subject_status~=nil and subject_status.selected~=nil and type(subject.node_frame)=='function'
    if not shown then menu.bone_marker.update(nil,nil,nil,w,h,nil,nil,false);return end
-   local items={}
-   for _,bone in ipairs(group.bones)do
-    local fr=subject.node_frame(bone.node)
-    if fr then
-     local item={node=bone.node,position=fr.position}
-     local parent=type(subject.node_parent)=='function'and subject.node_parent(bone.node)or 0
-     local pf=parent and parent>0 and subject.node_frame(parent)or nil
-     if pf then item.parent=pf.position end
-     items[#items+1]=item
-    end
+   local overview=self.bone_overview()
+   if texts.bone_status and self.bone_overview_shown~=overview then self.bone_overview_shown=overview;texts.bone_status.label=self.bone_status()end
+   local items,frames={},{}
+   local function frame_of(index)
+    local fr=frames[index];if fr==nil then fr=subject.node_frame(index)or false;frames[index]=fr end
+    return fr or nil
    end
+   local function add(bone,index)
+    local fr=frame_of(bone.node);if not fr then return end
+    local item={node=bone.node,group=index,position=fr.position}
+    local parent=type(subject.node_parent)=='function'and subject.node_parent(bone.node)or 0
+    local pf=parent and parent>0 and frame_of(parent)or nil
+    if pf then item.parent=pf.position end
+    items[#items+1]=item
+   end
+   if overview then
+    for index,each in ipairs(deps.pose_editor.GROUPS)do for _,bone in ipairs(each.bones)do add(bone,index)end end
+   else for _,bone in ipairs(group.bones)do add(bone)end end
    local frame=light_frame();local o=read_options();local fov=photo.path_fov or(o.fov>0 and math.rad(o.fov)or initial.fov)
-   menu.bone_marker.update(frame,fov,w,h,items,node,#items>0)
+   menu.bone_marker.update(frame,fov,w,h,items,node,#items>0,overview)
   end
  end
  self.handle=handle

@@ -7,29 +7,34 @@
 -- wheel pushes the bone deeper, Shift is fine. Display and input only: hooks carry
 -- every change (get/adjust as the menu drag handle, select, aim). Menu space grows
 -- upward, like the projection.
+-- All-Bones overview (update's last argument): the items are every bone of every group,
+-- each with its group. Rings are small, nothing is selected and nothing drags; the group
+-- under the pointer turns white and a left click on a ring selects it (the runtime opens
+-- its group). In a group, a left click away from the rings calls hooks.away.
 local M={}
 local function finite(v)return type(v)=='number'and v==v and math.abs(v)<math.huge end
 local function vec(v)return type(v)=='table'and finite(v[1])and finite(v[2])and finite(v[3])end
 M.SELECTED={255,255,255};M.UNSELECTED={244,202,53}
 M.DEPTH_PER_NOTCH=.01;M.LINE_HALF_WIDTH=1.5
 M.BEND_PER_WIDTH=120;M.SWING_PER_HEIGHT=90;M.TWIST_PER_WIDTH=180
-local RADIUS=9
+local RADIUS,SMALL=9,5
 local function clamp(v)return math.max(-180,math.min(180,math.floor(v*100+.5)/100))end
 function M.new(project,hooks)
  assert(type(project)=='function','Marker projection required')
  hooks=hooks or{}
- local get,adjust,select_bone,aim=hooks.get,hooks.adjust,hooks.select,hooks.aim
+ local get,adjust,select_bone,aim,away=hooks.get,hooks.adjust,hooks.select,hooks.aim,hooks.away
  local self={};local rings,selected_ring,dot,cam={},nil,nil,nil;local visible=false;local width,height=1920,1080
- local gesture;local held={};local armed=true
- function self.update(frame,fov,w,h,items,selected,shown)
-  rings,selected_ring,dot,cam={},nil,nil,nil;visible=false
+ local gesture;local held={};local armed=true;local overview=false;local pointer
+ function self.update(frame,fov,w,h,items,selected,shown,all)
+  rings,selected_ring,dot,cam={},nil,nil,nil;visible=false;overview=all==true
+  if overview then selected=nil end
   if finite(w)and w>0 then width=w end;if finite(h)and h>0 then height=h end
   if shown~=true or type(items)~='table'then return end
   for _,item in ipairs(items)do
    if type(item)=='table'and vec(item.position)then
     local x,y,depth=project(frame,fov,w,h,item.position)
     if x then
-     local ring={node=item.node,x=x,y=y,depth=depth,position=item.position,selected=item.node==selected}
+     local ring={node=item.node,group=item.group,x=x,y=y,depth=depth,position=item.position,selected=selected~=nil and item.node==selected}
      rings[#rings+1]=ring
      if vec(item.parent)then local px,py=project(frame,fov,w,h,item.parent);if px then ring.px,ring.py=px,py end end
      if ring.selected then
@@ -39,7 +44,7 @@ function M.new(project,hooks)
     end
    end
   end
-  visible=#rings>0 and(selected==nil or selected_ring~=nil)
+  visible=#rings>0 and(overview or selected==nil or selected_ring~=nil)
   if not visible then rings,selected_ring,dot={},nil,nil;return end
   cam={right=frame.right,up=frame.up,forward=frame.forward,position=frame.position,fov=fov}
  end
@@ -58,9 +63,9 @@ function M.new(project,hooks)
  function self.cancel()finish(false);held={};armed=false end
  local function hit(input,block)
   if block and block(input.x,input.y)then return nil end
-  local best
+  local best;local reach=(overview and SMALL or RADIUS)+3
   for _,ring in ipairs(rings)do
-   if math.abs(input.x-ring.x)<=RADIUS+3 and math.abs(input.y-ring.y)<=RADIUS+3 then
+   if math.abs(input.x-ring.x)<=reach and math.abs(input.y-ring.y)<=reach then
     if not best or(ring.selected and not best.selected)or(ring.selected==best.selected and ring.depth<best.depth)then best=ring end
    end
   end
@@ -72,13 +77,24 @@ function M.new(project,hooks)
  end
  local function along(ax,k,bx,j)return{ax[1]*k+(bx and bx[1]*j or 0),ax[2]*k+(bx and bx[2]*j or 0),ax[3]*k+(bx and bx[3]*j or 0)}end
  function self.tick(input,down,block,modal)
-  if not visible or modal or not input or not(finite(input.x)and finite(input.y))then self.cancel();return false end
+  if not visible or modal or not input or not(finite(input.x)and finite(input.y))then pointer=nil;self.cancel();return false end
+  -- Where the pointer is over the scene, for the overview's group highlight.
+  pointer=not(block and block(input.x,input.y))and{x=input.x,y=input.y}or nil
   local left=input.click==true
   local right=input.right_click;if right==nil then right=down~=nil and down(2)==true end
   local middle=down~=nil and down(4)==true
   local pressed={left=left and not held.left,right=right and not held.right,middle=middle and not held.middle}
   held={left=left,right=right,middle=middle}
   local fine=down and down(16)and .1 or 1
+  if overview then
+   -- A left click on a ring selects it, once per press. Nothing drags and the wheel is idle.
+   if gesture then finish(false)end
+   if not(left or right or middle)then armed=true;return false end
+   if not armed or not pressed.left then return false end
+   local ring=hit(input,block);if not ring then return false end
+   if select_bone then select_bone(ring.node)end
+   return true
+  end
   if not(left or right or middle)then
    local captured=gesture~=nil
    if gesture then finish(true)end
@@ -106,7 +122,12 @@ function M.new(project,hooks)
    return true
   end
   if not armed or not(pressed.left or pressed.right or pressed.middle)then return false end
-  local ring=hit(input,block);if not ring then return false end
+  local ring=hit(input,block)
+  if not ring then
+   -- A left click on the scene, away from every ring: back to all bones. Not captured.
+   if pressed.left and away and pointer then away()end
+   return false
+  end
   if not ring.selected then if select_bone then select_bone(ring.node)end;return true end
   local kind=pressed.left and'aim'or pressed.right and'rotate'or'twist'
   if kind=='aim'and not aim then return true end
@@ -115,7 +136,14 @@ function M.new(project,hooks)
  end
  function self.draw(commands)
   if not visible then return end
-  local r=RADIUS
+  local r=overview and SMALL or RADIUS
+  -- The overview lights the whole group of the ring under the pointer.
+  local lit
+  if overview and pointer then local ring=hit(pointer);if ring then lit=ring.group or ring end end
+  local function colour_of(ring)
+   if ring.selected or(lit~=nil and(ring.group==lit or ring==lit))then return M.SELECTED end
+   return M.UNSELECTED
+  end
   local function rect(x,y,ww,hh,c,role,node)commands[#commands+1]={type='rect',x=x,y=y,w=ww,h=hh,c=c,a=1,layer=330,ui_role=role,bone=node}end
   -- The bone: a thin quad (two triangles) from the parent to the ring, under the rings.
   local function line(x1,y1,x2,y2,c,node)
@@ -125,10 +153,10 @@ function M.new(project,hooks)
    commands[#commands+1]={type='triangle',points={x1+nx,y1+ny,x2-nx,y2-ny,x2+nx,y2+ny},c=c,a=.9,layer=329,ui_role='bone_line',bone=node}
   end
   for _,ring in ipairs(rings)do
-   if ring.px then line(ring.px,ring.py,ring.x,ring.y,ring.selected and M.SELECTED or M.UNSELECTED,ring.node)end
+   if ring.px then line(ring.px,ring.py,ring.x,ring.y,colour_of(ring),ring.node)end
   end
   for _,ring in ipairs(rings)do
-   local colour=ring.selected and M.SELECTED or M.UNSELECTED
+   local colour=colour_of(ring)
    rect(ring.x-r-2,ring.y-r-2,r*2+4,r*2+4,colour,'bone_marker',ring.node)
    rect(ring.x-r,ring.y-r,r*2,r*2,{16,18,20},'bone_marker_inner',ring.node)
    rect(ring.x-2,ring.y-2,4,4,colour,'bone_marker_centre',ring.node)

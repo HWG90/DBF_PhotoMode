@@ -68,3 +68,56 @@ do
  d.update(nil,nil,nil,1920,1080,nil,nil,false);assert(not d.visible());cmds={};d.draw(cmds);assert(#cmds==0)
 end
 print('Pose marker: projection, rings and bone lines, select, aim/rotate/twist/depth gestures, fine, blocked and hidden cases passed')
+-- All-Bones overview: every bone of every group gets a small ring, nothing is selected and
+-- nothing drags. The group under the pointer lights up; a left click on a ring selects it
+-- (the runtime opens its group). In a group, a left click away from the rings asks for the
+-- overview again.
+do
+ local picked,away={},0;local all=true
+ local o=Marker.new(G.project,{select=function(node)picked[#picked+1]=node;return true end,away=function()away=away+1 end,
+  get=function()return 0 end,adjust=function(v)assert(not(v and all),'No drag in the overview')end,aim=function()assert(not all,'No aim in the overview');return true end})
+ local keys={};local function down(k)return keys[k]or false end
+ local items={{node=68,group=3,position={-1,5,0},parent={-1,5,-.3}},{node=70,group=3,position={0,5,0},parent={-1,5,0}},{node=17,group=4,position={1,5,0},parent={0,5,0}}}
+ local function show(overview,selected)all=overview;o.update(frame,math.rad(60),1920,1080,items,selected,true,overview)end
+ local function rings()
+  local cmds={};o.draw(cmds);local out,dots={},0
+  for _,c in ipairs(cmds)do if c.ui_role=='bone_marker'then out[c.bone]=c elseif c.ui_role=='bone_parent'then dots=dots+1 end end
+  return out,dots
+ end
+ local function white(c)return c.c[1]==255 and c.c[2]==255 and c.c[3]==255 end
+ show(true,nil);assert(o.visible(),'The overview needs no selected bone')
+ local r,dots=rings();assert(r[68]and r[70]and r[17]and dots==0,'One ring per bone, no parent dot')
+ for _,ring in pairs(r)do assert(ring.w<18 and not white(ring),'Overview rings are smaller and yellow until hovered')end
+ local x70,x17=r[70].x+r[70].w/2,r[17].x+r[17].w/2
+ -- Hover: the whole group under the pointer turns white; it survives the next update.
+ assert(o.tick({x=x70,y=540,click=false},down,nil,false)==false,'Hovering captures nothing')
+ show(true,nil);r=rings();assert(white(r[68])and white(r[70])and not white(r[17]),'The hovered bone lights its whole group')
+ o.tick({x=x17,y=540,click=false},down,nil,false);show(true,nil);r=rings();assert(white(r[17])and not white(r[70]),'Hover follows the pointer')
+ o.tick({x=x17,y=540,click=false},down,function()return true end,false);show(true,nil);r=rings();assert(not white(r[17]),'No hover under the menu')
+ o.tick({x=400,y=200,click=false},down,nil,false);show(true,nil);r=rings();assert(not white(r[17])and not white(r[70]),'No hover away from the rings')
+ -- No gestures: right and middle presses and the wheel do nothing on an overview ring.
+ keys[2]=true;assert(o.tick({x=x70,y=540,click=false},down,nil,false)==false);o.tick({x=x70+50,y=560,click=false},down,nil,false);keys[2]=false
+ o.tick({x=x70,y=540,click=false},down,nil,false)
+ keys[4]=true;assert(o.tick({x=x70,y=540,click=false},down,nil,false)==false);keys[4]=false;o.tick({x=x70,y=540,click=false},down,nil,false)
+ assert(o.tick({x=x70,y=540,click=false,wheel=120},down,nil,false)==false and not o.active(),'No wheel, no gesture')
+ -- Left click: select, once per press, and never start a drag.
+ assert(o.tick({x=x70,y=540,click=true},down,nil,false)==true and #picked==1 and picked[1]==70,'A click on an overview ring selects that bone')
+ assert(o.tick({x=x70+40,y=540,click=true},down,nil,false)==false and #picked==1 and not o.active(),'Holding selects once and drags nothing')
+ o.tick({x=x70,y=540,click=false},down,nil,false)
+ assert(o.tick({x=400,y=200,click=true},down,nil,false)==false and away==0,'All bones are already shown: away asks for nothing')
+ o.tick({x=400,y=200,click=false},down,nil,false)
+ -- In a group: the old rings, and a left click away from them asks for the overview once.
+ show(false,70);r,dots=rings();assert(r[70].w>=18 and white(r[70])and not white(r[68])and dots==1,'A group shows full rings and its selected bone')
+ assert(o.tick({x=400,y=200,click=true},down,nil,false)==false and away==1,'A left click away from the rings asks for all bones')
+ o.tick({x=410,y=200,click=true},down,nil,false);assert(away==1,'Once per press')
+ o.tick({x=400,y=200,click=false},down,nil,false)
+ assert(o.tick({x=400,y=200,click=true},down,function()return true end,false)==false and away==1,'A click on the menu is not away')
+ o.tick({x=400,y=200,click=false},down,nil,false)
+ keys[2]=true;o.tick({x=400,y=200,click=false},down,nil,false);keys[2]=false;o.tick({x=400,y=200,click=false},down,nil,false);assert(away==1,'Only the left button')
+ assert(o.tick({x=400,y=200,click=true},down,nil,true)==false and away==1,'A modal menu is not away')
+ o.tick({x=400,y=200,click=false},down,nil,false)
+ -- Releasing a drag away from the rings is not a click away.
+ show(false,70);assert(o.tick({x=x70,y=540,click=true},down,nil,false)==true)
+ o.tick({x=400,y=200,click=true},down,nil,false);o.tick({x=400,y=200,click=false},down,nil,false);assert(away==1,'A drag that ends off the rings is not away')
+end
+print('Pose marker overview: small rings, group hover, click selects, no gestures; click away in a group asks for all bones passed')

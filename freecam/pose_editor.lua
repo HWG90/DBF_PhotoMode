@@ -33,6 +33,13 @@ for i=1,8 do M.rig_names[34+i]='cape'..i end
 for _,f in ipairs({{62,'l_thumb'},{59,'l_index'},{56,'l_middle'},{53,'l_ring'},{50,'l_pinky'},{87,'r_thumb'},{82,'r_index'},{79,'r_middle'},{76,'r_ring'},{73,'r_pinky'}})do
  for s=1,3 do M.rig_names[f[1]+s-1]=f[2]..'_finger'..s end
 end
+-- The group and the place in it of a rig node: the first group that lists it. All-Bones mode
+-- opens a clicked bone's group with this.
+function M.locate(node)
+ if type(node)~='number'then return nil end
+ for g,group in ipairs(M.GROUPS)do for b,bone in ipairs(group.bones)do if bone.node==node then return g,b end end end
+ return nil
+end
 function M.quat_multiply(a,b)
  local ax,ay,az,aw,bx,by,bz,bw=a[1],a[2],a[3],a[4],b[1],b[2],b[3],b[4]
  return{aw*bx+ax*bw+ay*bz-az*by,aw*by-ax*bz+ay*bw+az*bx,aw*bz+ax*by-ay*bx+az*bw,aw*bw-ax*bx-ay*by-az*bz}

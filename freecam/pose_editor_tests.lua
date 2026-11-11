@@ -92,4 +92,14 @@ do
  assert(select(2,E.aim(I,I,I,{0,0,0},{1,0,0},{0,0,0}))=='Target at the joint')
  b,s,t=E.aim(I,I,I,{0,0,0},{1,0,0},{-1,0,0});w=E.rotate(E.compose(I,b,s,t),{1,0,0});assert(math.abs(w[1]+1)<1e-9,'Half turn')
 end
+-- All-Bones mode finds a clicked bone's group: the first group that lists the node.
+do
+ local g,b=E.locate(70);assert(E.GROUPS[g].id=='right_arm'and E.GROUPS[g].bones[b].label=='Elbow')
+ g,b=E.locate(18);assert(E.GROUPS[g].id=='left_leg'and E.GROUPS[g].bones[b].node==18)
+ g,b=E.locate(38);assert(E.GROUPS[g].id=='cape'and b==4)
+ for gi,group in ipairs(E.GROUPS)do for bi,bone in ipairs(group.bones)do
+  local g2,b2=E.locate(bone.node);assert(g2 and E.GROUPS[g2].bones[b2].node==bone.node and(g2<gi or g2==gi and b2<=bi),'Every listed bone is found')
+ end end
+ assert(E.locate(1)==nil and E.locate(nil)==nil and E.locate('70')==nil,'A node no group lists is not found')
+end
 print('Pose editor: groups, quaternion maths, pinned composition, pass-through and lifecycle passed')
