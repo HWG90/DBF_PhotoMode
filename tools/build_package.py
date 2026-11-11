@@ -23,10 +23,10 @@ from test_package import SANDBOXES, prove, sandbox_arg
 # The 1.3.0 assets, as every release since has shipped them.
 ASSETS = Path.home() / 'Worktrees/linux-hd2/wj-1.3.1-windows/dist/review/release-1.3.1/assets-1.3.0'
 # Set by the release session with the release notes; a release build refuses without it.
-RELEASE_DESCRIPTION = ('War Journalist 1.4.0: Photo Mode for Helldivers 2. One download for both Boot Mod Loader and Chef\'s '
-                       'Shared Loader ' + MINIMUM_CHEF + ' or newer. New: bone posing in the Subject tab and up to 99 saved poses. '
-                       'The Windows helper is now war_journalist_helper.exe and stays the same file across game updates. Center '
-                       'auto-focus works as intended. On Chef there is no helper: your keys reach the game and screenshots are DDS. '
+RELEASE_DESCRIPTION = ('War Journalist 1.4.1: Photo Mode for Helldivers 2. One download for both Boot Mod Loader and Chef\'s '
+                       'Shared Loader ' + MINIMUM_CHEF + ' or newer. Works with the 11 November 2026 game update. New: All-Bones mode '
+                       'and Natural limits for bone posing. Fixed: posing with a hover pack or holster mods, a weapon swap during a '
+                       'pose, smoothed mouse look. On Chef there is no helper: your keys reach the game and screenshots are DDS. '
                        'AI control and depth shaders are gone for now. Use one War Journalist at a time.')
 DEV_DESCRIPTION = ('War Journalist {version}, DEVELOPMENT build: one package for Boot Mod Loader and Chef Shared Loader '
                    + MINIMUM_CHEF + ' or newer. On Boot Mod Loader the helper gives keyboard isolation and PNG screenshots; '

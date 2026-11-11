@@ -1,15 +1,15 @@
 ![War Journalist](docs/artwork/war-journalist-0.9.7-cover.png)
 
-# War Journalist 1.4.0
+# War Journalist 1.4.1
 
 Photo Mode for Helldivers 2: set up shots with a free camera, lighting,
 poses, bone posing, camera paths and a first-person Handycam.
 
-**[Download War Journalist 1.4.0](https://github.com/HWG90/DBF_PhotoMode/releases/tag/v1.4.0)**: one ZIP for both Boot Mod Loader and Chef's Shared Loader, so there's only one file to get. This is still the first pass of a full rewrite, so not everything from the old version is back yet. Import the ZIP into HD2 Arsenal, make sure War Journalist is switched on, Deploy with the game closed, then start the game. Nothing else to install.
+**[Download War Journalist 1.4.1](https://github.com/HWG90/DBF_PhotoMode/releases/tag/v1.4.1)**: one ZIP for both Boot Mod Loader and Chef's Shared Loader, so there's only one file to get. This is still the first pass of a full rewrite, so not everything from the old version is back yet. Import the ZIP into HD2 Arsenal, make sure War Journalist is switched on, Deploy with the game closed, then start the game. Nothing else to install.
+
+**New in 1.4.1:** works with the 11 November 2026 game update. All-Bones mode puts a ring on every bone at once, and Natural limits keeps joints bending the way a body does. Posing works with a hover pack around and with holster mods, a weapon swap during a pose no longer freezes the game, and smoothed mouse look no longer spins the wrong way. See the [1.4.1 notes](docs/RELEASE-1.4.1.md).
 
 **New in 1.4.0:** pose your Helldiver bone by bone in the Subject tab, and save up to 99 poses to load again later. The same ZIP now runs on Chef's Shared Loader 1.4.0 or newer as well as Boot Mod Loader. The helper that War Journalist starts on Windows is now called `war_journalist_helper.exe`, shows its name and version in its file details, and stays the same file across game updates; this follows a Windows Defender false alarm on 1.3.3. Center auto-focus works as intended now. See the [1.4.0 notes](docs/RELEASE-1.4.0.md).
-
-**New in 1.3.3:** works with the 29 October 2026 game update, Pose Stop works again, Handycam is now on Page Down so Steam's Ctrl+F11 recording works, Saved Shots work, the camera comes back where you left it, and new Follow player cameras. See the [1.3.3 notes](docs/RELEASE-1.3.3.md).
 
 ## Your first shot
 
