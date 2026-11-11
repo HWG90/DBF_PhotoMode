@@ -102,4 +102,68 @@ do
  end end
  assert(E.locate(1)==nil and E.locate(nil)==nil and E.locate('70')==nil,'A node no group lists is not found')
 end
+-- Natural limits. A bone's rotation is read as a twist about its own X and a swing about Y and
+-- Z from a rest rotation; a limit is a range for each, in degrees.
+do
+ local abs=math.abs
+ local function same(a,b)local d=abs(a[1]*b[1]+a[2]*b[2]+a[3]*b[3]+a[4]*b[4]);return abs(d-1)<1e-9 end
+ for _,c in ipairs({{0,0,0},{40,0,0},{0,30,0},{0,0,-50},{25,-35,60},{-120,80,-20}})do
+  local t,y,z=E.swing_twist(E.from_swing_twist(c[1],c[2],c[3]))
+  assert(abs(t-c[1])<1e-9 and abs(y-c[2])<1e-9 and abs(z-c[3])<1e-9,'Swing and twist round trip')
+ end
+ assert(same(E.from_swing_twist(90,0,0),E.quat_axis_angle(1,0,0,90)),'Twist turns about X')
+ assert(same(E.from_swing_twist(0,90,0),E.quat_axis_angle(0,1,0,90))and same(E.from_swing_twist(0,0,90),E.quat_axis_angle(0,0,1,90)),'Swing turns about Y and Z')
+ local t,y,z=E.swing_twist({0,0,0,-1});assert(t==0 and y==0 and z==0,'Either sign of a quaternion is the same rotation')
+ -- A knee: bends about Z one way only.
+ local knee={r={0,0,0,1},t={-5,5},y={-5,5},z={-140,5}}
+ local function bend(d)return E.quat_axis_angle(0,0,1,d)end
+ local q,changed=E.limit_rotation(knee,bend(-90));assert(not changed and same(q,bend(-90)),'A natural bend passes')
+ q,changed=E.limit_rotation(knee,bend(-170));assert(changed and same(q,bend(-140)),'Too far stops at the range')
+ q,changed=E.limit_rotation(knee,bend(40));assert(changed and same(q,bend(5)),'Backwards stops just past straight')
+ q,changed=E.limit_rotation(knee,E.quat_axis_angle(0,1,0,30));assert(changed and same(q,E.quat_axis_angle(0,1,0,5)),'Sideways stops')
+ q,changed=E.limit_rotation(knee,E.quat_axis_angle(1,0,0,-60));assert(changed and same(q,E.quat_axis_angle(1,0,0,-5)),'Twist stops')
+ q,changed=E.limit_rotation(knee,bend(5));assert(not changed,'The limit itself is inside')
+ q,changed=E.limit_rotation(knee,bend(-140));assert(not changed)
+ -- A rest rotation: the ranges are measured from it.
+ local rest=E.quat_axis_angle(0,1,0,90);local turned={r=rest,t={-5,5},y={-5,5},z={-140,5}}
+ q,changed=E.limit_rotation(turned,E.quat_multiply(rest,bend(-90)));assert(not changed)
+ q,changed=E.limit_rotation(turned,E.quat_multiply(rest,bend(30)));assert(changed and same(q,E.quat_multiply(rest,bend(5))))
+ q,changed=E.limit_rotation(turned,bend(-90));assert(changed,'The same turn from another rest is outside')
+ -- A bone already outside its range stays; it only cannot move further out.
+ q,changed=E.limit_rotation(knee,bend(50),bend(60));assert(not changed,'Moving back in is free')
+ q,changed=E.limit_rotation(knee,bend(80),bend(60));assert(changed and same(q,bend(60)),'No further out than it was')
+ q,changed=E.limit_rotation(knee,bend(-20),bend(60));assert(not changed)
+ q,changed=E.limit_rotation(knee,E.quat_multiply(bend(60),E.quat_axis_angle(1,0,0,30)),bend(60));assert(changed,'Outside on one axis frees no other')
+end
+do -- the editor holds what the limits allow, and its angles say where the bone stopped
+ local abs=math.abs
+ local nodes={};for i=8,92 do nodes[i]={p={0,0,0},q={0,0,0,1},s={1,1,1}}end
+ local knee={r={0,0,0,1},t={-5,5},y={-5,5},z={-140,5}}
+ local e=E.new();e.rebase({nodes=nodes},'Test');assert(not e.limited())
+ e.set_limits({[13]=knee});assert(e.limited())
+ local ok,stopped=e.set_angle(13,'bend',-90);assert(ok and not stopped);local b,s,t=e.angles(13);assert(b==-90 and s==0 and t==0)
+ ok,stopped=e.set_angle(13,'bend',60);assert(ok and stopped==true,'The editor says when a bone stopped')
+ b,s,t=e.angles(13);assert(abs(b-5)<1e-6 and abs(s)<1e-6 and abs(t)<1e-6,'Bend stopped at 5, got '..b)
+ ok,stopped=e.set_angle(13,'swing',40);assert(ok and stopped);b,s,t=e.angles(13);assert(abs(s-5)<.3,'Swing stopped near 5, got '..s)
+ ok,stopped=e.set_angle(70,'bend',170);assert(ok and not stopped and e.angles(70)==170,'A bone without limits is free')
+ local frame=e.compose_frame();local got=E.limit_rotation(knee,frame.nodes[13].q);assert(select(2,E.limit_rotation(knee,frame.nodes[13].q))==false,'The composed pose is inside the limits')
+ -- All three angles at once: one check, not three.
+ e.reset_bone(13);ok,stopped=e.set_angles(13,-100,0,0);assert(ok and not stopped and e.angles(13)==-100)
+ ok,stopped=e.set_angles(13,-100,1,-1);assert(ok and not stopped);b,s,t=e.angles(13);assert(b==-100 and s==1 and t==-1,'Inside the ranges the angles are kept exactly')
+ assert(e.set_angles(13,0/0,0,0)==false and e.set_angles(999,0,0,0)==false,'Bad input is refused')
+ -- Off: free again. On again with a bone outside: it stays, and only cannot go further.
+ e.set_limits(nil);ok,stopped=e.set_angles(13,60,0,0);assert(ok and not stopped and e.angles(13)==60)
+ e.set_limits({[13]=knee});assert(e.angles(13)==60,'Switching limits on moves nothing')
+ ok,stopped=e.set_angle(13,'bend',70);assert(stopped and abs(e.angles(13)-60)<1e-6,'No further out')
+ ok,stopped=e.set_angle(13,'bend',30);assert(not stopped and e.angles(13)==30,'Back in is free')
+ ok,stopped=e.set_angle(13,'bend',60);assert(stopped and abs(e.angles(13)-30)<1e-6,'...and the way out closes behind it')
+ -- A base pose outside the range: no jump on the first touch.
+ local bent={};for i=8,92 do bent[i]=nodes[i]end;bent[13]={p={0,0,0},q=E.quat_axis_angle(0,0,1,50),s={1,1,1}}
+ local e2=E.new();e2.set_limits({[13]=knee});e2.rebase({nodes=bent},'Bent')
+ ok,stopped=e2.set_angle(13,'bend',10);assert(stopped and abs(e2.angles(13))<1e-6,'Cannot bend further backwards')
+ ok,stopped=e2.set_angle(13,'bend',-30);assert(not stopped and e2.angles(13)==-30,'Can straighten')
+ -- Angles set before a base exists are limited when the base arrives.
+ local e3=E.new();e3.set_limits({[13]=knee});ok,stopped=e3.set_angle(13,'bend',60);assert(ok and not stopped and e3.angles(13)==60)
+ e3.adopt({nodes=nodes},'Snapshot');assert(abs(e3.angles(13)-5)<1e-6,'Adopting a base applies the limits')
+end
 print('Pose editor: groups, quaternion maths, pinned composition, pass-through and lifecycle passed')

@@ -333,4 +333,46 @@ do -- All-Bones mode: the whole skeleton first; a click opens that bone's group;
  assert(f.runtime.handle.set('bone_marker',false));r,count=rings();assert(count==0);assert(f.runtime.handle.set('bone_marker',true))
  r,count=rings();assert(count==total);f.b.alive=false;r,count=rings();assert(count==0,'A failed read hides the overview')
 end
+do -- Natural limits: a row or a drag past the range stops the bone and the rows show where; off frees it
+ local limits={nodes={}}
+ local f=fixture(function(f,deps)
+  deps.pose_limits=limits
+  deps.pose_marker=dofile('freecam/pose_marker.lua');deps.gizmos=deps.gizmos or{new=function()return{update=function()end,cancel=function()end,draw=function()end,tick=function()return false end}end};deps.gizmos.project=dofile('freecam/photo_light_gizmos.lua').project end)
+ f.enable();f.select();elbow(f)
+ assert(f.controls.bone_limits and f.runtime.handle.get('bone_limits')==true,'Natural limits has a row and is on by default')
+ -- The elbow may bend down to -100 degrees from where it stands and 5 the other way; hardly twist or swing.
+ limits.nodes[70]={r=f.original_b[70].q,t={-5,5},y={-5,5},z={-100,5}}
+ local function bend()return f.runtime.handle.get('bone_bend')end
+ local function close(a,b)return math.abs(a-b)<.06 end -- rows keep a tenth of a degree
+ assert(f.runtime.handle.set('bone_bend',45));assert(close(bend(),5),'The row shows where the bone stopped: '..bend())
+ f.step(.016,1);f.settle();local s=f.subject.status();assert(s.state=='posed'and s.pose=='edited',s.message)
+ assert(near(f.b.nodes[70].q,E.compose(f.original_b[70].q,5,0,0)),'The bone stands at its limit')
+ assert(f.runtime.handle.set('bone_bend',-60));assert(bend()==-60,'Inside the range the row is kept');f.step(.016,1)
+ assert(near(f.b.nodes[70].q,E.compose(f.original_b[70].q,-60,0,0)))
+ assert(f.runtime.handle.set('bone_bend',-170));assert(close(bend(),-100),'Too far the natural way stops as well: '..bend());f.step(.016,1)
+ assert(f.runtime.handle.set('bone_twist',40));assert(math.abs(f.runtime.handle.get('bone_twist'))<8,'Twist is held to its range');f.step(.016,1)
+ assert(f.runtime.handle.set('bone_twist',0));assert(f.runtime.handle.set('bone_bend',0));f.step(.016,1)
+ -- A marker drag stops at the limit too, and carries on from where it stopped.
+ local seen;local update=f.menu.bone_marker.update
+ f.menu.bone_marker.update=function(frame,...)seen=frame or seen;return update(frame,...)end
+ local ahead;f.subject.node_frame=function(index)if not ahead then return{position={0,0,0},rotation={0,0,0,1}}end;local k=(index-70)*.2;return{position={ahead[1]+seen.right[1]*k,ahead[2]+seen.right[2]*k,ahead[3]+seen.right[3]*k},rotation={0,0,0,1}}end
+ local function rings()f.menu.prepare_bone_marker(1920,1080,true,false);local cmds={};f.menu.bone_marker.draw(cmds);local out={};for _,c in ipairs(cmds)do if c.ui_role=='bone_marker'then out[c.bone]={x=c.x+c.w/2,y=c.y+c.h/2}end end;return out end
+ rings();ahead={};for i=1,3 do ahead[i]=seen.position[i]+seen.forward[i]*5 end;local r=rings()
+ local keys={};local function down(k)return keys[k]or false end;local m=f.menu.bone_marker
+ -- R drag left by half the width: Bend +60 asked, 5 allowed.
+ keys[2]=true;assert(m.tick({x=r[70].x,y=r[70].y,click=false},down,nil,false)==true)
+ m.tick({x=r[70].x-960,y=r[70].y,click=false},down,nil,false)
+ assert(close(bend(),5),'The drag preview stops at the limit: '..bend())
+ m.tick({x=r[70].x-960+160,y=r[70].y,click=false},down,nil,false)
+ assert(close(bend(),-5),'Dragging back moves at once, from where it stopped: '..bend())
+ keys[2]=false;m.tick({x=r[70].x-800,y=r[70].y,click=false},down,nil,false);f.step(.016,1)
+ assert(close(bend(),-5)and near(f.b.nodes[70].q,E.compose(f.original_b[70].q,f.runtime.pose_editor.angles(70))),'Release keeps the stopped pose')
+ -- Off: free movement. On again: nothing moves, the bone only cannot go further out.
+ assert(f.runtime.handle.set('bone_limits',false));assert(f.runtime.handle.set('bone_bend',45));assert(bend()==45);f.step(.016,1)
+ assert(near(f.b.nodes[70].q,E.compose(f.original_b[70].q,45,0,0)),'Off: past the range')
+ assert(f.runtime.handle.set('bone_limits',true));f.step(.016,1);assert(bend()==45 and near(f.b.nodes[70].q,E.compose(f.original_b[70].q,45,0,0)),'On again moves nothing')
+ assert(f.runtime.handle.set('bone_bend',60));assert(close(bend(),45),'...but no further out: '..bend())
+ assert(f.runtime.handle.set('bone_bend',20));assert(bend()==20)
+ assert(f.action('subject_pose_stop'));f.restored()
+end
 print('Pose editor runtime: settle, coalesced apply, slider sync, rebase, unfreeze, retire and enabled rules passed')

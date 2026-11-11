@@ -62,6 +62,50 @@ end
 function M.rotate_inverse(q,v)
  local p=M.quat_multiply(M.quat_multiply(conjugate(q),{v[1],v[2],v[3],0}),q);return{p[1],p[2],p[3]}
 end
+-- Natural limits. A rotation in a bone's own frame is read as a twist about X (the bone's
+-- length) followed by a swing about an axis in the YZ plane: d = swing * twist. In degrees:
+-- the twist angle, then the swing as the Y and Z parts of its rotation vector.
+function M.swing_twist(d)
+ d=M.quat_normalize(d);local x,y,z,w=d[1],d[2],d[3],d[4]
+ if w<0 then x,y,z,w=-x,-y,-z,-w end
+ local n=math.sqrt(x*x+w*w)
+ if n<1e-12 then
+  -- A half-turn swing: no twist can be told apart from it.
+  local v=math.sqrt(y*y+z*z);if v<1e-12 then return 0,0,0 end
+  return 0,180*y/v,180*z/v
+ end
+ local tx,tw=x/n,w/n
+ local s=M.quat_multiply({x,y,z,w},{-tx,0,0,tw})
+ local twist=math.deg(2*math.atan2(tx,tw))
+ local v=math.sqrt(s[2]*s[2]+s[3]*s[3]);if v<1e-12 then return twist,0,0 end
+ local angle=math.deg(2*math.atan2(v,s[4]))
+ return twist,angle*s[2]/v,angle*s[3]/v
+end
+function M.from_swing_twist(twist,y,z)
+ local angle=math.sqrt(y*y+z*z)
+ local swing=angle<1e-12 and{0,0,0,1}or M.quat_axis_angle(0,y,z,angle)
+ return M.quat_normalize(M.quat_multiply(swing,M.quat_axis_angle(1,0,0,twist)))
+end
+-- A limit is a rest rotation r (in the parent's frame) and a range for the twist (t) and each
+-- swing part (y, z) measured from it. Returns the rotation held inside the ranges and whether
+-- it had to be changed. previous, when given, is where the bone is now: a bone already outside
+-- a range stays there and only cannot move further out.
+local LIMIT_SLACK=1e-6
+function M.limit_rotation(limit,q,previous)
+ local rest=M.quat_normalize(limit.r);local back={-rest[1],-rest[2],-rest[3],rest[4]}
+ local t,y,z=M.swing_twist(M.quat_multiply(back,q))
+ local pt,py,pz;if previous then pt,py,pz=M.swing_twist(M.quat_multiply(back,previous))end
+ local function hold(value,range,was)
+  local low,high=range[1],range[2]
+  if was then low=math.min(low,was);high=math.max(high,was)end
+  if value<low-LIMIT_SLACK then return low,true end
+  if value>high+LIMIT_SLACK then return high,true end
+  return value,false
+ end
+ local ht,ct=hold(t,limit.t,pt);local hy,cy=hold(y,limit.y,py);local hz,cz=hold(z,limit.z,pz)
+ if not(ct or cy or cz)then return q,false end
+ return M.quat_multiply(rest,M.from_swing_twist(ht,hy,hz)),true
+end
 -- Bend about local Z, Swing about local Y, Twist about local X, applied in
 -- the bone's own frame: the delta sits on BONE_FRAME_SIDE of the base.
 function M.compose(base_q,bend,swing,twist)
@@ -112,8 +156,22 @@ local function base_name(text)return(tostring(text):match('^(.-) edits$'))or tos
 local function clamp(v)return math.max(-180,math.min(180,v))end
 local function clamp_metres(v)return math.max(-1,math.min(1,v))end
 function M.new()
- local self={};local base,label;local angles={};local offsets={};local selected=70;local dirty=false
+ local self={};local base,label;local angles={};local offsets={};local selected=70;local dirty=false;local limits
  local function copy3(v)return{v[1],v[2],v[3]}end
+ -- Natural limits (node -> limit, see M.limit_rotation), or nil for free movement. Switching
+ -- them on moves nothing: a bone outside its range stays until it is moved.
+ function self.set_limits(value)limits=type(value)=='table'and value or nil end
+ function self.limited()return limits~=nil end
+ -- The angles the limits allow for a bone going from old to new, and whether it was stopped.
+ local function natural(node,old,new)
+  local limit=limits and limits[node];local source=base and base.nodes[node]
+  if not limit or not source then return new,false end
+  local q,stopped=M.limit_rotation(limit,M.compose(source.q,new[1],new[2],new[3]),M.compose(source.q,old[1],old[2],old[3]))
+  if not stopped then return new,false end
+  local b=M.quat_normalize(source.q);local back={-b[1],-b[2],-b[3],b[4]}
+  local bend,swing,twist=M.decompose(M.quat_normalize(M.BONE_FRAME_SIDE=='right'and M.quat_multiply(back,q)or M.quat_multiply(q,back)))
+  return{clamp(bend),clamp(swing),clamp(twist)},true
+ end
  function self.rebase(frame,text)
   assert(type(frame)=='table'and type(frame.nodes)=='table','Pose base frame required')
   for i=8,92 do assert(type(frame.nodes[i])=='table'and type(frame.nodes[i].q)=='table','Pose base node missing: '..i)end
@@ -123,6 +181,11 @@ function M.new()
  -- A base taken when editing has already started: angles survive.
  function self.adopt(frame,text)
   local kept,kept_offsets=angles,offsets;self.rebase(frame,text);angles,offsets=kept,kept_offsets;dirty=true
+  -- Angles set before there was a base meet the limits now, measured from the base.
+  for node,a in pairs(angles)do
+   local held=natural(node,{0,0,0},a)
+   if held[1]==0 and held[2]==0 and held[3]==0 then angles[node]=nil else angles[node]=held end
+  end
  end
  function self.touch()dirty=true end
  function self.has_base()return base~=nil end
@@ -134,15 +197,25 @@ function M.new()
  end
  function self.selected()return selected end
  function self.angles(node)local a=angles[node];if not a then return 0,0,0 end;return a[1],a[2],a[3]end
+ -- All three angles in one step, so the limits judge the turn as a whole. Returns true and
+ -- whether the limits stopped the bone short; angles() then says where it stopped.
+ -- free puts back angles the bone already had (a cancelled drag), which the limits never judge.
+ function self.set_angles(node,bend,swing,twist,free)
+  if not M.rig_names[node]then return false,'Unknown bone'end
+  if not(finite(bend)and finite(swing)and finite(twist))then return false,'Angle must be a number'end
+  local old=angles[node]or{0,0,0}
+  local new,stopped={clamp(bend),clamp(swing),clamp(twist)},false
+  if not free then new,stopped=natural(node,old,new)end
+  if new[1]==old[1]and new[2]==old[2]and new[3]==old[3]then return true,stopped end
+  if new[1]==0 and new[2]==0 and new[3]==0 then angles[node]=nil else angles[node]=new end
+  dirty=true;return true,stopped
+ end
  function self.set_angle(node,axis,degrees)
   if not M.rig_names[node]then return false,'Unknown bone'end
   local index=AXES[axis];if not index then return false,'Unknown axis'end
   if not finite(degrees)then return false,'Angle must be a number'end
-  local value=clamp(degrees);local a=angles[node]or{0,0,0}
-  if a[index]==value then return true end
-  a[index]=value
-  if a[1]==0 and a[2]==0 and a[3]==0 then angles[node]=nil else angles[node]=a end
-  dirty=true;return true
+  local a=angles[node]or{0,0,0};local new={a[1],a[2],a[3]};new[index]=degrees
+  return self.set_angles(node,new[1],new[2],new[3])
  end
  -- Offsets move a bone in its parent's frame (metres, clamped to one metre).
  function self.offset(node)local o=offsets[node];if not o then return 0,0,0 end;return o[1],o[2],o[3]end

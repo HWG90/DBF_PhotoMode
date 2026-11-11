@@ -870,6 +870,12 @@ function M.new(host,sr,deps,service)
   local bone=group.bones[tonumber(handle.get('bone'))or 1]or group.bones[1]
   return bone and bone.node or nil,group,bone
  end
+ -- Natural limits follow their row; the ranges are read from the pose bank (deps.pose_limits).
+ function self.bone_limits_sync()
+  local editor=self.pose_editor;if not editor or not handle then return end
+  local on=deps.pose_limits~=nil and controls.bone_limits~=nil and handle.get('bone_limits')==true
+  editor.set_limits(on and deps.pose_limits.nodes or nil)
+ end
  -- All-Bones mode shows every group's rings until a bone is picked (a ring or a row); a click
  -- away from the rings shows them all again.
  function self.bone_overview()return handle~=nil and handle.get('bone_all')==true and not self.bone_drilled end
@@ -902,7 +908,7 @@ function M.new(host,sr,deps,service)
   if self.bone_preview and self.pose_editor then
    -- A drag preview in flight belongs to the bone being left: discard it.
    local node=self.pose_editor.selected();self.bone_preview=nil
-   for key,axis in pairs({bone_bend='bend',bone_swing='swing',bone_twist='twist'})do self.pose_editor.set_angle(node,axis,handle.get(key)or 0)end
+   self.pose_editor.set_angles(node,handle.get('bone_bend')or 0,handle.get('bone_swing')or 0,handle.get('bone_twist')or 0,true)
   end
   if id=='bone_group'and controls.bone then
    local groups=deps.pose_editor and deps.pose_editor.GROUPS;local group=groups and groups[tonumber(value)or 1]
@@ -923,12 +929,23 @@ function M.new(host,sr,deps,service)
      if not called then notice(tostring(ok))elseif ok==false then notice(why)end
      return true
     end
-    local node=self.bone_node()
-    for id,axis in pairs({bone_bend='bend',bone_swing='swing',bone_twist='twist'})do editor.set_angle(node,axis,handle.get(id)or 0)end
+    editor.set_angles(self.bone_node(),handle.get('bone_bend')or 0,handle.get('bone_swing')or 0,handle.get('bone_twist')or 0,true)
     return true
    end
    if not editor or not self.active or pending_cleanup or not controls.bone_drag_handle or controls.bone_drag_handle.disabled then self.bone_preview=nil;return false end
    self.bone_preview=self.bone_preview or{};local node=self.bone_node()
+   if editor.limited()then
+    -- The limits judge the three angles together and may stop the bone short: the preview
+    -- holds where it stopped, so the drag carries on from there and release commits that.
+    if not editor.has_base()then self.adopt_pose_base()end
+    local wanted={}
+    for _,id in ipairs({'bone_bend','bone_swing','bone_twist'})do
+     local v=values[id];wanted[id]=type(v)=='number'and v==v and math.abs(v)<=180 and v or handle.get(id)or 0
+    end
+    editor.set_angles(node,wanted.bone_bend,wanted.bone_swing,wanted.bone_twist)
+    local preview=self.bone_preview;preview.bone_bend,preview.bone_swing,preview.bone_twist=editor.angles(node)
+    return true
+   end
    for id,axis in pairs({bone_bend='bend',bone_swing='swing',bone_twist='twist'})do
     local v=values[id]
     if type(v)=='number'and v==v and math.abs(v)<=180 then self.bone_preview[id]=v;editor.set_angle(node,axis,v)end
@@ -1033,6 +1050,8 @@ function M.new(host,sr,deps,service)
     if why~=self.bone_notice then self.bone_notice=why;notice(why)end
     return
    end
+   -- Angles set before there was a base have met the limits now: the rows show where they stopped.
+   if editor.limited()then self.sync_bone_rows()end
   end
   self.bone_notice=nil
   local frame=editor.compose_frame()
@@ -1075,7 +1094,7 @@ function M.new(host,sr,deps,service)
    subject=value;subject_pose_ids=ids;subject_choices={}
    controls.subject_pose.choices=labels;controls.subject_pose.choices_revision=value.catalog
   end
-  if deps.pose_editor and not self.pose_editor then self.pose_editor=deps.pose_editor.new()end
+  if deps.pose_editor and not self.pose_editor then self.pose_editor=deps.pose_editor.new();self.bone_limits_sync()end
   self.pose_editor_key=nil;self.sync_bone_rows()
   if deps.pose_files and deps.pose_editor and not self.pose_store and type(host.config_dir)=='string'then self.pose_store=deps.pose_files.storage(host.config_dir);self.pose_store_fresh=true end
   self.pose_files_sync(false)
@@ -1813,8 +1832,12 @@ function M.new(host,sr,deps,service)
   bone_select_change=function(id,value)self.bone_selection_changed(id,value)end,
   bone_angle_change=function(id,value)
    if self.bone_sync or not self.pose_editor then return end
-   local ok,why=self.pose_editor.set_angle(self.bone_node(),id:sub(6),value);if not ok then notice(why)end
+   -- With limits on, the base is taken first so the row can show at once where the bone stopped.
+   if self.pose_editor.limited()and not self.pose_editor.has_base()then self.adopt_pose_base()end
+   local ok,why=self.pose_editor.set_angle(self.bone_node(),id:sub(6),value)
+   if not ok then notice(why)elseif why==true then self.sync_bone_rows()end
   end,
+  bone_limits_change=function()self.bone_limits_sync()end,
   bone_reset=function()if not self.pose_editor then return false,'Pose editor unavailable'end;self.pose_editor.reset_bone(self.bone_node());self.sync_bone_rows();return true end,
   bone_reset_all=function()if not self.pose_editor then return false,'Pose editor unavailable'end;self.pose_editor.reset_all();self.sync_bone_rows();return true end,
   bone_apply=function()if not self.pose_editor then return false,'Pose editor unavailable'end;self.pose_editor.touch();return true end,
@@ -1972,7 +1995,7 @@ function M.new(host,sr,deps,service)
  if simulation then supported.freeze_player=true;supported.slowmo_speed=true end
  if type(deps.load_subject)=='function'then for _,id in ipairs({'subject_refresh','subject_select_1','subject_select_2',
   'subject_select_3','subject_select_4','subject_recover','subject_pose','subject_pose_play','subject_pose_stop'})do supported[id]=true end end
- if deps.pose_editor and type(deps.load_subject)=='function'then for _,id in ipairs({'bone_group','bone','bone_bend','bone_swing','bone_twist','bone_drag_handle','bone_reset','bone_reset_all','bone_apply','bone_marker','bone_all'})do supported[id]=true end end
+ if deps.pose_editor and type(deps.load_subject)=='function'then for _,id in ipairs({'bone_group','bone','bone_bend','bone_swing','bone_twist','bone_drag_handle','bone_reset','bone_reset_all','bone_apply','bone_marker','bone_all','bone_limits'})do supported[id]=true end end
  if deps.pose_files and deps.pose_editor and type(deps.load_subject)=='function'then for _,id in ipairs({'pose_file','pose_load','pose_save_new','pose_overwrite','pose_delete','pose_rescan'})do supported[id]=true end end
  if deps.freeze_bone_probe and type(deps.load_subject)=='function'then supported.subject_freeze_bone_test=true end
  if deps.freeze_physics_probe and type(deps.load_subject)=='function'then supported.subject_freeze_physics_test=true end
@@ -2262,7 +2285,7 @@ function M.new(host,sr,deps,service)
     if not(nf and pf and base)then return false end
     local b,sw,t=deps.pose_editor.aim(base,gf and gf.rotation or{0,0,0,1},pf.rotation,pf.position,nf.position,point)
     if not b then notice(sw);return false end
-    editor.set_angle(parent,'bend',b);editor.set_angle(parent,'swing',sw);editor.set_angle(parent,'twist',t)
+    editor.set_angles(parent,b,sw,t)
     return true
    end})
   -- One ring per bone of the selected group, or in the All-Bones overview of every group, each
