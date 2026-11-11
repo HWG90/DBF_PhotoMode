@@ -158,9 +158,9 @@ local memory={game=game,exe=exe,now=function()return now end,scene=function()ret
  read=function(at,size)if fault_address and at<=fault_address and at+size>fault_address then error('Injected unreadable memory')end;local out={};for i=1,size do out[i]=string.char(bytes[at+i-1]or 0)end;return table.concat(out)end,
  write=function(at,data)memwrites=memwrites+1;put(at,data)end}
 for _,item in ipairs({{game,B.game_stamp},{exe,B.exe_stamp}})do num(item[1]+60,0x100);put(item[1]+0x100,'PE\0\0');num(item[1]+0x108,item[2])end
-put(exe+0xa06a0,'\072\137\092\036\008\072\137\116\036\016\087\072\236\032\072\139\053\066\112\161\001')
+put(exe+0xa06d0,'\072\137\092\036\008\072\137\116\036\016\087\072\236\032\072\139\053\018\112\161\001')
 assert(not pcall(B.new,{},memory),'Invalid registry fingerprint accepted')
-put(exe+0xa06a0,'\072\137\092\036\008\072\137\116\036\016\087\072\131\236\032\072\139\053\066\112\161\001')
+put(exe+0xa06d0,'\072\137\092\036\008\072\137\116\036\016\087\072\131\236\032\072\139\053\018\112\161\001')
 local scene={};local peers={};local joining={}
 local sr={Application={main_world=function()return scene end},Network={game_session=function()return{}end,connections=function()return peers end},GameSession={other_peers=function()return peers end,synchronizing_peers=function()return joining end}}
 local world,state,mode,net,director=0x40000000,0x41000000,0x42000000,0x43000000,0x44000000
@@ -179,19 +179,19 @@ end
 local airow,aidesc=part(ai,0x2430,0x2448,0x2460,0x14);local brow=part(behavior,0x40,0x58,0x60,0x1f8);local drow=part(detector,0x30,0x48,0x50,0x13f8);local arow=part(alert,0x20,0x38,0x50,4)
 num(airow,0);num(airow+4,0x200);num(brow+0x68,entity);num(brow+0x18,77);num(drow+0x13f0,1,1);num(drow+0x310,3);num(arow,4)
 map(world+L.WORLD_ENTITIES,entity,0);num(world+L.WORLD_RECORDS+8,entity);num(world+L.WORLD_RECORDS+12,ref)
-local registry,pointers,generations,unit,vt=allocate(),allocate(),allocate(),allocate(),allocate();num(exe+L.UNIT_REGISTRY,registry,8);num(registry+0x98,10);num(registry+0x88,pointers,8);num(registry+0xa0,generations,8);num(generations+5,1,1);num(pointers+5*8,unit,8);num(unit+0x18,0x30000000,8);num(unit,vt,8);num(vt+0xf8,exe+0x28d330,8);num(vt+0xc8,exe+0x293550,8)
+local registry,pointers,generations,unit,vt=allocate(),allocate(),allocate(),allocate(),allocate();num(exe+L.UNIT_REGISTRY,registry,8);num(registry+0x98,10);num(registry+0x88,pointers,8);num(registry+0xa0,generations,8);num(generations+5,1,1);num(pointers+5*8,unit,8);num(unit+0x18,0x30000000,8);num(unit,vt,8);num(vt+0xf8,exe+0x28d3e0,8);num(vt+0xc8,exe+0x293600,8)
 local native=B.new(sr,memory);local ctx=assert(native.context());assert(ctx.solo and ctx.player_count==1);local record=assert(native.observe(ctx,entity));assert(record.fields.detector.value==1 and record.fields.still.value==0x200)
 do
  local before=memwrites;local mission_record=0x6a000000
- local owner_code='\076\139\037\120\110\176\001\073\139\156\036\008\227\010\000\076\141\171\248\000\000\000'
- put(game+0x11da689,owner_code);put(game+0x11da6de,'\065\015\182\069\008');num(state+0xae308,mission_record,8)
+ local owner_code='\076\139\037\024\109\176\001\073\139\156\036\008\227\010\000\076\141\171\248\000\000\000'
+ put(game+0x11da7e9,owner_code);put(game+0x11da83e,'\065\015\182\069\008');num(state+0xae308,mission_record,8)
  for id,name in pairs({[2]='terminids',[3]='automatons',[4]='illuminate'})do
   num(mission_record+0x100,id,1);now=now+.6;assert(native.faction()==name,'Mission faction enum mapping changed')
  end
  num(mission_record+0x100,1,1);now=now+.6;assert(native.faction()==nil,'Human/unknown records must not invent an enemy emblem')
  num(mission_record+0x100,2,1);num(state+L.STATE_VALUE,2);now=now+.6;assert(native.faction()==nil,'Ship/loading states must not display a cached mission emblem')
- num(state+L.STATE_VALUE,4);put(game+0x11da6de,'xxxxx');now=now+.6;assert(native.faction()==nil,'Changed code fingerprint must refuse the native field')
- put(game+0x11da6de,'\065\015\182\069\008');fault_address=mission_record+0x100;now=now+.6;assert(native.faction()==nil,'Unreadable mission record must fail safely');fault_address=nil
+ num(state+L.STATE_VALUE,4);put(game+0x11da83e,'xxxxx');now=now+.6;assert(native.faction()==nil,'Changed code fingerprint must refuse the native field')
+ put(game+0x11da83e,'\065\015\182\069\008');fault_address=mission_record+0x100;now=now+.6;assert(native.faction()==nil,'Unreadable mission record must fail safely');fault_address=nil
  local original_read=memory.read;local changed=false
  memory.read=function(at,size)
   local data=original_read(at,size)

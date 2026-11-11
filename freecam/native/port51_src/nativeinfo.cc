@@ -38,8 +38,8 @@ static bool expected_file() {
     if (hash) BCryptDestroyHash(hash);
     if (algorithm) BCryptCloseAlgorithmProvider(algorithm,0);
     CloseHandle(file);
-    const unsigned char expected[32]={0x25,0x7f,0xd7,0xde,0x21,0xa0,0x4e,0x86,0x68,0xe0,0x2e,0x5c,0x82,0x0e,0xdf,0x34,0x35,0x17,0x6f,0xbd,0xe3,0x56,0x97,0x65,0x25,0x5c,0xc5,0x2a,0x5e,0xa2,0x0f,0x9d};
-    return (ok && !std::memcmp(digest,expected,32)) || fail("Unsupported host executable; expected Helldivers 2 build 26251122");
+    const unsigned char expected[32]={0xb4,0x34,0xf6,0xf3,0x26,0xb7,0x75,0x99,0x78,0x26,0x5f,0x58,0x63,0xef,0x72,0xe3,0xc5,0xed,0xd4,0xaa,0x53,0x15,0xcc,0x1e,0xf4,0xb6,0x40,0xd2,0x04,0xea,0xe0,0xbb};
+    return (ok && !std::memcmp(digest,expected,32)) || fail("Unsupported host executable; expected Helldivers 2 build 26568081");
 }
 
 static Hd2LuaApi native_api={};
@@ -135,10 +135,10 @@ static int native_profile_float(lua_State *L) {
  const auto game=reinterpret_cast<uintptr_t>(GetModuleHandleA("game.dll"));
  uint32_t pe=0,stamp=0;
  for(int i=0;i<2;i++) {auto base=i?exe:game;
-  if(!read_exact(reinterpret_cast<void*>(base+60),&pe,4)||pe<64||pe>1048576||!read_exact(reinterpret_cast<void*>(base+pe+8),&stamp,4)||stamp!=(i?0x6ae0964a:0x6ae0e5ff))return fail("Lens build differs");
+  if(!read_exact(reinterpret_cast<void*>(base+60),&pe,4)||pe<64||pe>1048576||!read_exact(reinterpret_cast<void*>(base+pe+8),&stamp,4)||stamp!=(i?0x6af2d5e6:0x6af322c1))return fail("Lens build differs");
  }
  uintptr_t setter=0,getter=0;
- if(!read_exact(reinterpret_cast<void*>(vt+0x28),&setter,8)||setter!=exe+0x2ad280||!read_exact(reinterpret_cast<void*>(vt+0x30),&getter,8)||getter!=exe+0x2ad490)return fail("Lens provider methods differ");
+ if(!read_exact(reinterpret_cast<void*>(vt+0x28),&setter,8)||setter!=exe+0x2ad330||!read_exact(reinterpret_cast<void*>(vt+0x30),&getter,8)||getter!=exe+0x2ad540)return fail("Lens provider methods differ");
  const unsigned char prefix[]={0x40,0x53,0x55,0x41,0x55,0x41,0x57,0x48,0x83,0xec,0x58,0x48,0x8b,0x81,0xe8,0,0,0,0x4c,0x8b,0xf9,0x44,0x8b,0xea,0x49,0x8b,0xe9,0x4a,0x8b,0x0c,0xe8,0x41};
  unsigned char code[sizeof(prefix)]={};if(!read_exact(reinterpret_cast<void*>(setter),code,sizeof(code))||std::memcmp(code,prefix,sizeof(code)))return fail("Lens setter witness differs");
  uint32_t args[4];for(int i=0;i<4;i++){const auto n=native_api.luaL_checknumber(L,i+2);if(!(n>=0&&n<=4294967295.0))return fail("Lens identifier invalid");args[i]=static_cast<uint32_t>(n);if(n!=args[i])return fail("Lens identifier must be integral");}
@@ -168,13 +168,13 @@ static int native_hud_visible(lua_State *L) {
  if(static_cast<lua_Number>(widget)!=target)return native_api.luaL_error(L,"HUD pointer must be integral");
  auto rd=[&](uintptr_t at,void *to,size_t n)->bool{return at>=65536&&at<(UINT64_C(1)<<47)&&read_exact(reinterpret_cast<void*>(at),to,n);};
  uint32_t pe=0,stamp=0,size=0;
- if(!rd(game+60,&pe,4)||pe<64||pe>1048576||!rd(game+pe+8,&stamp,4)||stamp!=0x6ae0e5ff||!rd(game+pe+80,&size,4)||size!=0x3382000)return native_api.luaL_error(L,"HUD build differs");
+ if(!rd(game+60,&pe,4)||pe<64||pe>1048576||!rd(game+pe+8,&stamp,4)||stamp!=0x6af322c1||!rd(game+pe+80,&size,4)||size!=0x3382000)return native_api.luaL_error(L,"HUD build differs");
  const unsigned char prefix[]={0x48,0x83,0xec,0x28,0x44,0x8b,0x01,0x4c,0x8b,0xd1,0x41,0x8b,0xc0,0x45,0x8b,0xc8,0x83,0xe0,0xef,0x41,0x83,0xc9,0x10,0x84,0xd2,0x44,0x0f,0x44,0xc8,0x44,0x89,0x09};
- unsigned char actual[sizeof(prefix)]={};if(!rd(game+0x12e4cc0,actual,sizeof(actual))||std::memcmp(actual,prefix,sizeof(actual)))return native_api.luaL_error(L,"HUD setter witness differs");
+ unsigned char actual[sizeof(prefix)]={};if(!rd(game+0x12e4e20,actual,sizeof(actual))||std::memcmp(actual,prefix,sizeof(actual)))return native_api.luaL_error(L,"HUD setter witness differs");
  uintptr_t state=0,root=0,parent=0,panel_parent=0;uint32_t scene=0;unsigned char initialized=0;
  // Scene 4 is a mission. Scene 3 is the ship: the same widget, and no mission panel there.
  if(!rd(game+0x2ce1508,&state,8)||!rd(state+0xac29c,&scene,4)||(scene!=4&&scene!=3)||!rd(game+0x2e28788,&root,8)||widget!=root+0x820||!rd(root+0x24e334,&initialized,1)||initialized!=1||!rd(widget+0xf0,&parent,8)||parent!=root+0x258||(scene==4&&(!rd(root+0x24e340+0x146940+0xf0,&panel_parent,8)||panel_parent!=widget)))return native_api.luaL_error(L,"Gameplay HUD ownership differs");
- reinterpret_cast<void(*)(uintptr_t,uint8_t)>(game+0x12e4cc0)(widget,static_cast<uint8_t>(value));
+ reinterpret_cast<void(*)(uintptr_t,uint8_t)>(game+0x12e4e20)(widget,static_cast<uint8_t>(value));
  uint32_t flags=0;if(!rd(widget,&flags,4)||((flags>>4)&1)!=static_cast<uint32_t>(value))return native_api.luaL_error(L,"HUD visibility acknowledgement differs");
  native_api.lua_pushboolean(L,1);return 1;
 }
@@ -187,7 +187,7 @@ static int native_hud_toggle(lua_State *L) {
  const uintptr_t game=reinterpret_cast<uintptr_t>(GetModuleHandleA("game.dll"));
  auto rd=[&](uintptr_t at,void *to,size_t n)->bool{return at>=65536&&at<(UINT64_C(1)<<47)&&read_exact(reinterpret_cast<void*>(at),to,n);};
  uint32_t pe=0,stamp=0,size=0;
- if(!rd(game+60,&pe,4)||pe<64||pe>1048576||!rd(game+pe+8,&stamp,4)||stamp!=0x6ae0e5ff||!rd(game+pe+80,&size,4)||size!=0x3382000)return native_api.luaL_error(L,"HUD build differs");
+ if(!rd(game+60,&pe,4)||pe<64||pe>1048576||!rd(game+pe+8,&stamp,4)||stamp!=0x6af322c1||!rd(game+pe+80,&size,4)||size!=0x3382000)return native_api.luaL_error(L,"HUD build differs");
  uintptr_t state=0,root=0,parent=0;uint32_t scene=0;unsigned char initialized=0,current=0;
  if(!rd(game+0x2e28788,&root,8)||static_cast<lua_Number>(root)!=owner)return native_api.luaL_error(L,"HUD root differs");
  if(value==1&&(!rd(game+0x2ce1508,&state,8)||!rd(state+0xac29c,&scene,4)||scene!=3||!rd(root+0x24e334,&initialized,1)||initialized!=1||!rd(root+0x820+0xf0,&parent,8)||parent!=root+0x258))return native_api.luaL_error(L,"Ship HUD ownership differs");
@@ -210,11 +210,11 @@ static int native_hover_height(lua_State *L) {
  auto u32=[&](uintptr_t at,uint32_t &v)->bool{return rd(at,&v,4);};
  auto ptr=[&](uintptr_t at,uintptr_t &v)->bool{return rd(at,&v,8)&&v>=65536&&v<(UINT64_C(1)<<47);};
  for(int i=0;i<2;i++){uintptr_t base=i?exe:game;uint32_t pe=0,stamp=0;
-  if(!u32(base+60,pe)||pe<64||pe>1048576||!u32(base+pe+8,stamp)||stamp!=(i?0x6ae0964a:0x6ae0e5ff))return fail("Hover build differs");
+  if(!u32(base+60,pe)||pe<64||pe>1048576||!u32(base+pe+8,stamp)||stamp!=(i?0x6af2d5e6:0x6af322c1))return fail("Hover build differs");
  }
  const unsigned char height_code[]={0xf3,0x41,0x0f,0x10,0x84,0x24,0x9c,0,0,0};
  unsigned char code[sizeof(height_code)]={};
- if(!rd(game+0x9c6942,code,sizeof(code))||std::memcmp(code,height_code,sizeof(code)))return fail("Hover height consumer differs");
+ if(!rd(game+0x9c6972,code,sizeof(code))||std::memcmp(code,height_code,sizeof(code)))return fail("Hover height consumer differs");
  const double pack_number=native_api.luaL_checknumber(L,1),ref_number=native_api.luaL_checknumber(L,2);
  if(!(pack_number>0&&pack_number<4294967295.0&&ref_number>0&&ref_number<4294967295.0))return fail("Hover entity arguments invalid");
  const uint32_t pack=static_cast<uint32_t>(pack_number),ref=static_cast<uint32_t>(ref_number);
@@ -278,7 +278,7 @@ static int native_hover_ensure(lua_State *L) {
  auto u=[&](uintptr_t a,uint32_t &v){return rd(a,&v,4);};
  auto p=[&](uintptr_t a,uintptr_t &v){return rd(a,&v,8)&&v>=65536&&v<(UINT64_C(1)<<47);};
  auto game=reinterpret_cast<uintptr_t>(GetModuleHandleA("game.dll"));auto exe=reinterpret_cast<uintptr_t>(GetModuleHandleA(nullptr));
- for(int i=0;i<2;i++){uintptr_t b=i?exe:game;uint32_t pe=0,stamp=0;if(!u(b+60,pe)||pe<64||pe>1048576||!u(b+pe+8,stamp)||stamp!=(i?0x6ae0964a:0x6ae0e5ff))return fail("Hover copy build differs");}
+ for(int i=0;i<2;i++){uintptr_t b=i?exe:game;uint32_t pe=0,stamp=0;if(!u(b+60,pe)||pe<64||pe>1048576||!u(b+pe+8,stamp)||stamp!=(i?0x6af2d5e6:0x6af322c1))return fail("Hover copy build differs");}
  const unsigned char witness[]={0x48,0x69,0xc0,0x18,0x01,0,0,0x49,0x03,0x83,0xa0,0,0,0};unsigned char code[sizeof(witness)]={};
  if(!rd(game+0x515eb2,code,sizeof(code))||std::memcmp(code,witness,sizeof(code)))return fail("Hover definition consumer differs");
  double a=native_api.luaL_checknumber(L,1),b=native_api.luaL_checknumber(L,2);
@@ -371,377 +371,377 @@ static bool bind_current_host() {
     Hd2LuaApi api={};api.abi_version=1;api.struct_size=sizeof(api);
     { // luaL_argerror, SDK member lib_argerror
         const unsigned char prefix[16]={0x48,0x89,0x5c,0x24,0x08,0x48,0x89,0x74,0x24,0x10,0x57,0x48,0x81,0xec,0xf0,0x00};
-        auto expected=base+0x792c00;
+        auto expected=base+0x792c50;
         if (table[91]!=expected || !readable(expected,16,true) || std::memcmp(expected,prefix,16))
             return fail("LuaApi validation failed: luaL_argerror");
         api.luaL_argerror=reinterpret_cast<decltype(api.luaL_argerror)>(table[91]);
     }
     { // luaL_checkany, SDK member lib_checkany
         const unsigned char prefix[16]={0x48,0x83,0xec,0x28,0x44,0x8b,0xd2,0x4c,0x8b,0xd9,0xe8,0x21,0x34,0x00,0x00,0x48};
-        auto expected=base+0x7932c0;
+        auto expected=base+0x793310;
         if (table[100]!=expected || !readable(expected,16,true) || std::memcmp(expected,prefix,16))
             return fail("LuaApi validation failed: luaL_checkany");
         api.luaL_checkany=reinterpret_cast<decltype(api.luaL_checkany)>(table[100]);
     }
     { // luaL_checkinteger, SDK member lib_checkinteger
         const unsigned char prefix[16]={0x48,0x89,0x5c,0x24,0x08,0x48,0x89,0x74,0x24,0x10,0x57,0x48,0x83,0xec,0x30,0x8b};
-        auto expected=base+0x7935d0;
+        auto expected=base+0x793620;
         if (table[96]!=expected || !readable(expected,16,true) || std::memcmp(expected,prefix,16))
             return fail("LuaApi validation failed: luaL_checkinteger");
         api.luaL_checkinteger=reinterpret_cast<decltype(api.luaL_checkinteger)>(table[96]);
     }
     { // luaL_checklstring, SDK member lib_checklstring
         const unsigned char prefix[16]={0x48,0x89,0x5c,0x24,0x08,0x48,0x89,0x6c,0x24,0x10,0x48,0x89,0x74,0x24,0x18,0x57};
-        auto expected=base+0x793300;
+        auto expected=base+0x793350;
         if (table[92]!=expected || !readable(expected,16,true) || std::memcmp(expected,prefix,16))
             return fail("LuaApi validation failed: luaL_checklstring");
         api.luaL_checklstring=reinterpret_cast<decltype(api.luaL_checklstring)>(table[92]);
     }
     { // luaL_checknumber, SDK member lib_checknumber
         const unsigned char prefix[16]={0x48,0x89,0x5c,0x24,0x08,0x57,0x48,0x83,0xec,0x40,0x0f,0x29,0x74,0x24,0x30,0x8b};
-        auto expected=base+0x793480;
+        auto expected=base+0x7934d0;
         if (table[94]!=expected || !readable(expected,16,true) || std::memcmp(expected,prefix,16))
             return fail("LuaApi validation failed: luaL_checknumber");
         api.luaL_checknumber=reinterpret_cast<decltype(api.luaL_checknumber)>(table[94]);
     }
     { // luaL_checktype, SDK member lib_checktype
         const unsigned char prefix[16]={0x40,0x53,0x48,0x83,0xec,0x20,0x45,0x8b,0xd0,0x44,0x8b,0xda,0x48,0x8b,0xd9,0xe8};
-        auto expected=base+0x793270;
+        auto expected=base+0x7932c0;
         if (table[99]!=expected || !readable(expected,16,true) || std::memcmp(expected,prefix,16))
             return fail("LuaApi validation failed: luaL_checktype");
         api.luaL_checktype=reinterpret_cast<decltype(api.luaL_checktype)>(table[99]);
     }
     { // luaL_checkudata, SDK member lib_checkudata
         const unsigned char prefix[16]={0x48,0x89,0x5c,0x24,0x08,0x48,0x89,0x6c,0x24,0x10,0x48,0x89,0x74,0x24,0x18,0x57};
-        auto expected=base+0x793170;
+        auto expected=base+0x7931c0;
         if (table[102]!=expected || !readable(expected,16,true) || std::memcmp(expected,prefix,16))
             return fail("LuaApi validation failed: luaL_checkudata");
         api.luaL_checkudata=reinterpret_cast<decltype(api.luaL_checkudata)>(table[102]);
     }
     { // luaL_error, SDK member lib_error
         const unsigned char prefix[16]={0x48,0x89,0x54,0x24,0x10,0x4c,0x89,0x44,0x24,0x18,0x4c,0x89,0x4c,0x24,0x20,0x53};
-        auto expected=base+0x792f20;
+        auto expected=base+0x792f70;
         if (table[104]!=expected || !readable(expected,16,true) || std::memcmp(expected,prefix,16))
             return fail("LuaApi validation failed: luaL_error");
         api.luaL_error=reinterpret_cast<decltype(api.luaL_error)>(table[104]);
     }
     { // luaL_newmetatable, SDK member lib_newmetatable
         const unsigned char prefix[16]={0x48,0x89,0x5c,0x24,0x08,0x48,0x89,0x74,0x24,0x10,0x57,0x48,0x83,0xec,0x20,0x48};
-        auto expected=base+0x7930a0;
+        auto expected=base+0x7930f0;
         if (table[101]!=expected || !readable(expected,16,true) || std::memcmp(expected,prefix,16))
             return fail("LuaApi validation failed: luaL_newmetatable");
         api.luaL_newmetatable=reinterpret_cast<decltype(api.luaL_newmetatable)>(table[101]);
     }
     { // luaL_optinteger, SDK member lib_optinteger
         const unsigned char prefix[16]={0x40,0x53,0x48,0x83,0xec,0x20,0x4d,0x8b,0xd0,0x44,0x8b,0xda,0x48,0x8b,0xd9,0xe8};
-        auto expected=base+0x7936d0;
+        auto expected=base+0x793720;
         if (table[97]!=expected || !readable(expected,16,true) || std::memcmp(expected,prefix,16))
             return fail("LuaApi validation failed: luaL_optinteger");
         api.luaL_optinteger=reinterpret_cast<decltype(api.luaL_optinteger)>(table[97]);
     }
     { // luaL_ref, SDK member lib_ref
         const unsigned char prefix[16]={0x48,0x89,0x5c,0x24,0x10,0x56,0x48,0x83,0xec,0x30,0x8d,0x82,0x0f,0x27,0x00,0x00};
-        auto expected=base+0x7943e0;
+        auto expected=base+0x794430;
         if (table[106]!=expected || !readable(expected,16,true) || std::memcmp(expected,prefix,16))
             return fail("LuaApi validation failed: luaL_ref");
         api.luaL_ref=reinterpret_cast<decltype(api.luaL_ref)>(table[106]);
     }
     { // luaL_register, SDK member lib_register
-        const unsigned char prefix[16]={0x45,0x33,0xc9,0xe9,0x28,0x00,0x00,0x00,0x48,0x83,0xec,0x40,0x4c,0x8b,0xf1,0xc3};
-        auto expected=base+0x7938b0;
+        const unsigned char prefix[16]={0x45,0x33,0xc9,0xe9,0x28,0x00,0x00,0x00,0x48,0x89,0x5c,0x24,0x28,0x57,0x53,0x57};
+        auto expected=base+0x793900;
         if (table[87]!=expected || !readable(expected,16,true) || std::memcmp(expected,prefix,16))
             return fail("LuaApi validation failed: luaL_register");
         api.luaL_register=reinterpret_cast<decltype(api.luaL_register)>(table[87]);
     }
     { // luaL_unref, SDK member lib_unref
         const unsigned char prefix[16]={0x45,0x85,0xc0,0x0f,0x88,0x9f,0x00,0x00,0x00,0x48,0x89,0x5c,0x24,0x08,0x48,0x89};
-        auto expected=base+0x794520;
+        auto expected=base+0x794570;
         if (table[107]!=expected || !readable(expected,16,true) || std::memcmp(expected,prefix,16))
             return fail("LuaApi validation failed: luaL_unref");
         api.luaL_unref=reinterpret_cast<decltype(api.luaL_unref)>(table[107]);
     }
     { // luaL_where, SDK member lib_where
         const unsigned char prefix[16]={0x40,0x57,0x48,0x81,0xec,0xe0,0x00,0x00,0x00,0x4c,0x8b,0x41,0x28,0x48,0x8b,0xf9};
-        auto expected=base+0x792e00;
+        auto expected=base+0x792e50;
         if (table[103]!=expected || !readable(expected,16,true) || std::memcmp(expected,prefix,16))
             return fail("LuaApi validation failed: luaL_where");
         api.luaL_where=reinterpret_cast<decltype(api.luaL_where)>(table[103]);
     }
     { // lua_call, SDK member call
         const unsigned char prefix[16]={0x48,0x89,0x5c,0x24,0x08,0x57,0x48,0x83,0xec,0x20,0x8d,0x42,0x01,0x41,0x8b,0xd8};
-        auto expected=base+0x797b40;
+        auto expected=base+0x797b90;
         if (table[64]!=expected || !readable(expected,16,true) || std::memcmp(expected,prefix,16))
             return fail("LuaApi validation failed: lua_call");
         api.lua_call=reinterpret_cast<decltype(api.lua_call)>(table[64]);
     }
     { // lua_concat, SDK member concat
         const unsigned char prefix[16]={0x48,0x89,0x5c,0x24,0x08,0x57,0x48,0x83,0xec,0x20,0x48,0x63,0xda,0x48,0x8b,0xf9};
-        auto expected=base+0x7980e0;
+        auto expected=base+0x798130;
         if (table[75]!=expected || !readable(expected,16,true) || std::memcmp(expected,prefix,16))
             return fail("LuaApi validation failed: lua_concat");
         api.lua_concat=reinterpret_cast<decltype(api.lua_concat)>(table[75]);
     }
     { // lua_createtable, SDK member createtable
         const unsigned char prefix[16]={0x48,0x89,0x5c,0x24,0x08,0x48,0x89,0x6c,0x24,0x10,0x48,0x89,0x74,0x24,0x18,0x57};
-        auto expected=base+0x797620;
+        auto expected=base+0x797670;
         if (table[54]!=expected || !readable(expected,16,true) || std::memcmp(expected,prefix,16))
             return fail("LuaApi validation failed: lua_createtable");
         api.lua_createtable=reinterpret_cast<decltype(api.lua_createtable)>(table[54]);
     }
     { // lua_error, SDK member error
         const unsigned char prefix[16]={0x48,0x83,0xec,0x28,0xe8,0xe7,0xe4,0xff,0xff,0x33,0xc0,0x48,0x83,0xc4,0x28,0xc3};
-        auto expected=base+0x798090;
+        auto expected=base+0x7980e0;
         if (table[73]!=expected || !readable(expected,16,true) || std::memcmp(expected,prefix,16))
             return fail("LuaApi validation failed: lua_error");
         api.lua_error=reinterpret_cast<decltype(api.lua_error)>(table[73]);
     }
     { // lua_getfield, SDK member getfield
         const unsigned char prefix[16]={0x48,0x89,0x5c,0x24,0x08,0x57,0x48,0x83,0xec,0x30,0x4d,0x8b,0xd0,0x48,0x8b,0xd9};
-        auto expected=base+0x797530;
+        auto expected=base+0x797580;
         if (table[51]!=expected || !readable(expected,16,true) || std::memcmp(expected,prefix,16))
             return fail("LuaApi validation failed: lua_getfield");
         api.lua_getfield=reinterpret_cast<decltype(api.lua_getfield)>(table[51]);
     }
     { // lua_getmetatable, SDK member getmetatable
         const unsigned char prefix[16]={0x48,0x83,0xec,0x28,0x4c,0x8b,0xd1,0xe8,0x54,0xf0,0xff,0xff,0x48,0x63,0x48,0x08};
-        auto expected=base+0x797690;
+        auto expected=base+0x7976e0;
         if (table[56]!=expected || !readable(expected,16,true) || std::memcmp(expected,prefix,16))
             return fail("LuaApi validation failed: lua_getmetatable");
         api.lua_getmetatable=reinterpret_cast<decltype(api.lua_getmetatable)>(table[56]);
     }
     { // lua_gettable, SDK member gettable
         const unsigned char prefix[16]={0x48,0x83,0xec,0x28,0x4c,0x8b,0xd1,0xe8,0xe4,0xf1,0xff,0xff,0x4d,0x8b,0x42,0x10};
-        auto expected=base+0x797500;
+        auto expected=base+0x797550;
         if (table[50]!=expected || !readable(expected,16,true) || std::memcmp(expected,prefix,16))
             return fail("LuaApi validation failed: lua_gettable");
         api.lua_gettable=reinterpret_cast<decltype(api.lua_gettable)>(table[50]);
     }
     { // lua_gettop, SDK member gettop
-        const unsigned char prefix[16]={0x48,0x8b,0x41,0x10,0x48,0x2b,0x41,0x18,0x48,0xc1,0xf8,0x04,0xc3,0x83,0xfe,0x01};
-        auto expected=base+0x796a60;
+        const unsigned char prefix[16]={0x48,0x8b,0x41,0x10,0x48,0x2b,0x41,0x18,0x48,0xc1,0xf8,0x04,0xc3,0x40,0x53,0x57};
+        auto expected=base+0x796ab0;
         if (table[13]!=expected || !readable(expected,16,true) || std::memcmp(expected,prefix,16))
             return fail("LuaApi validation failed: lua_gettop");
         api.lua_gettop=reinterpret_cast<decltype(api.lua_gettop)>(table[13]);
     }
     { // lua_insert, SDK member insert
         const unsigned char prefix[16]={0x48,0x83,0xec,0x28,0x4c,0x8b,0xd9,0xe8,0xc4,0xfb,0xff,0xff,0x49,0x8b,0x53,0x10};
-        auto expected=base+0x796b20;
+        auto expected=base+0x796b70;
         if (table[17]!=expected || !readable(expected,16,true) || std::memcmp(expected,prefix,16))
             return fail("LuaApi validation failed: lua_insert");
         api.lua_insert=reinterpret_cast<decltype(api.lua_insert)>(table[17]);
     }
     { // lua_isnumber, SDK member isnumber
         const unsigned char prefix[16]={0x48,0x83,0xec,0x28,0xe8,0x87,0xf9,0xff,0xff,0x8b,0x48,0x08,0x83,0xf9,0x03,0x74};
-        auto expected=base+0x796d60;
+        auto expected=base+0x796db0;
         if (table[21]!=expected || !readable(expected,16,true) || std::memcmp(expected,prefix,16))
             return fail("LuaApi validation failed: lua_isnumber");
         api.lua_isnumber=reinterpret_cast<decltype(api.lua_isnumber)>(table[21]);
     }
     { // lua_isstring, SDK member isstring
-        const unsigned char prefix[16]={0x48,0x83,0xec,0x28,0xe8,0x47,0xf9,0xff,0xff,0x48,0x8d,0x0d,0xc0,0x1d,0xf6,0x00};
-        auto expected=base+0x796da0;
+        const unsigned char prefix[16]={0x48,0x83,0xec,0x28,0xe8,0x47,0xf9,0xff,0xff,0x48,0x8d,0x0d,0x10,0x28,0xf6,0x00};
+        auto expected=base+0x796df0;
         if (table[22]!=expected || !readable(expected,16,true) || std::memcmp(expected,prefix,16))
             return fail("LuaApi validation failed: lua_isstring");
         api.lua_isstring=reinterpret_cast<decltype(api.lua_isstring)>(table[22]);
     }
     { // lua_isuserdata, SDK member isuserdata
         const unsigned char prefix[16]={0x48,0x83,0xec,0x28,0xe8,0x07,0xf9,0xff,0xff,0x8b,0x48,0x08,0x83,0xf9,0x07,0x74};
-        auto expected=base+0x796de0;
+        auto expected=base+0x796e30;
         if (table[24]!=expected || !readable(expected,16,true) || std::memcmp(expected,prefix,16))
             return fail("LuaApi validation failed: lua_isuserdata");
         api.lua_isuserdata=reinterpret_cast<decltype(api.lua_isuserdata)>(table[24]);
     }
     { // lua_newuserdata, SDK member newuserdata
         const unsigned char prefix[16]={0x48,0x89,0x5c,0x24,0x10,0x48,0x89,0x6c,0x24,0x18,0x48,0x89,0x74,0x24,0x20,0x57};
-        auto expected=base+0x7981b0;
+        auto expected=base+0x798200;
         if (table[55]!=expected || !readable(expected,16,true) || std::memcmp(expected,prefix,16))
             return fail("LuaApi validation failed: lua_newuserdata");
         api.lua_newuserdata=reinterpret_cast<decltype(api.lua_newuserdata)>(table[55]);
     }
     { // lua_objlen, SDK member objlen
         const unsigned char prefix[16]={0x40,0x53,0x48,0x83,0xec,0x20,0x4c,0x8b,0xd1,0xe8,0x42,0xf6,0xff,0xff,0x48,0x8b};
-        auto expected=base+0x7970a0;
+        auto expected=base+0x7970f0;
         if (table[34]!=expected || !readable(expected,16,true) || std::memcmp(expected,prefix,16))
             return fail("LuaApi validation failed: lua_objlen");
         api.lua_objlen=reinterpret_cast<decltype(api.lua_objlen)>(table[34]);
     }
     { // lua_pcall, SDK member pcall
         const unsigned char prefix[16]={0x48,0x89,0x5c,0x24,0x08,0x57,0x48,0x83,0xec,0x40,0x41,0x8b,0xf8,0x44,0x8b,0xda};
-        auto expected=base+0x797ba0;
+        auto expected=base+0x797bf0;
         if (table[65]!=expected || !readable(expected,16,true) || std::memcmp(expected,prefix,16))
             return fail("LuaApi validation failed: lua_pcall");
         api.lua_pcall=reinterpret_cast<decltype(api.lua_pcall)>(table[65]);
     }
     { // lua_pushboolean, SDK member pushboolean
         const unsigned char prefix[16]={0x4c,0x8b,0x41,0x10,0x33,0xc0,0x85,0xd2,0x0f,0x95,0xc0,0x41,0x89,0x00,0x41,0xc7};
-        auto expected=base+0x797490;
+        auto expected=base+0x7974e0;
         if (table[47]!=expected || !readable(expected,16,true) || std::memcmp(expected,prefix,16))
             return fail("LuaApi validation failed: lua_pushboolean");
         api.lua_pushboolean=reinterpret_cast<decltype(api.lua_pushboolean)>(table[47]);
     }
     { // lua_pushcclosure, SDK member pushcclosure
         const unsigned char prefix[16]={0x48,0x89,0x5c,0x24,0x08,0x48,0x89,0x74,0x24,0x10,0x57,0x48,0x83,0xec,0x20,0x4c};
-        auto expected=base+0x7973c0;
+        auto expected=base+0x797410;
         if (table[46]!=expected || !readable(expected,16,true) || std::memcmp(expected,prefix,16))
             return fail("LuaApi validation failed: lua_pushcclosure");
         api.lua_pushcclosure=reinterpret_cast<decltype(api.lua_pushcclosure)>(table[46]);
     }
     { // lua_pushfstring, SDK member pushfstring
         const unsigned char prefix[16]={0x48,0x89,0x54,0x24,0x10,0x4c,0x89,0x44,0x24,0x18,0x4c,0x89,0x4c,0x24,0x20,0x53};
-        auto expected=base+0x797370;
+        auto expected=base+0x7973c0;
         if (table[45]!=expected || !readable(expected,16,true) || std::memcmp(expected,prefix,16))
             return fail("LuaApi validation failed: lua_pushfstring");
         api.lua_pushfstring=reinterpret_cast<decltype(api.lua_pushfstring)>(table[45]);
     }
     { // lua_pushinteger, SDK member pushinteger
         const unsigned char prefix[16]={0x48,0x8b,0x41,0x10,0x0f,0x57,0xc0,0xf2,0x48,0x0f,0x2a,0xc2,0xc7,0x40,0x08,0x03};
-        auto expected=base+0x797260;
+        auto expected=base+0x7972b0;
         if (table[41]!=expected || !readable(expected,16,true) || std::memcmp(expected,prefix,16))
             return fail("LuaApi validation failed: lua_pushinteger");
         api.lua_pushinteger=reinterpret_cast<decltype(api.lua_pushinteger)>(table[41]);
     }
     { // lua_pushlightuserdata, SDK member pushlightuserdata
         const unsigned char prefix[16]={0x48,0x8b,0x41,0x10,0x48,0x89,0x10,0xc7,0x40,0x08,0x02,0x00,0x00,0x00,0x48,0x83};
-        auto expected=base+0x7974b0;
+        auto expected=base+0x797500;
         if (table[48]!=expected || !readable(expected,16,true) || std::memcmp(expected,prefix,16))
             return fail("LuaApi validation failed: lua_pushlightuserdata");
         api.lua_pushlightuserdata=reinterpret_cast<decltype(api.lua_pushlightuserdata)>(table[48]);
     }
     { // lua_pushlstring, SDK member pushlstring
         const unsigned char prefix[16]={0x48,0x89,0x5c,0x24,0x08,0x48,0x89,0x6c,0x24,0x10,0x48,0x89,0x74,0x24,0x18,0x57};
-        auto expected=base+0x797280;
+        auto expected=base+0x7972d0;
         if (table[42]!=expected || !readable(expected,16,true) || std::memcmp(expected,prefix,16))
             return fail("LuaApi validation failed: lua_pushlstring");
         api.lua_pushlstring=reinterpret_cast<decltype(api.lua_pushlstring)>(table[42]);
     }
     { // lua_pushnil, SDK member pushnil
         const unsigned char prefix[16]={0x48,0x8b,0x41,0x10,0xc7,0x40,0x08,0x00,0x00,0x00,0x00,0x48,0x83,0x41,0x10,0x10};
-        auto expected=base+0x797220;
+        auto expected=base+0x797270;
         if (table[39]!=expected || !readable(expected,16,true) || std::memcmp(expected,prefix,16))
             return fail("LuaApi validation failed: lua_pushnil");
         api.lua_pushnil=reinterpret_cast<decltype(api.lua_pushnil)>(table[39]);
     }
     { // lua_pushnumber, SDK member pushnumber
         const unsigned char prefix[16]={0x48,0x8b,0x41,0x10,0xf2,0x0f,0x11,0x08,0xc7,0x40,0x08,0x03,0x00,0x00,0x00,0x48};
-        auto expected=base+0x797240;
+        auto expected=base+0x797290;
         if (table[40]!=expected || !readable(expected,16,true) || std::memcmp(expected,prefix,16))
             return fail("LuaApi validation failed: lua_pushnumber");
         api.lua_pushnumber=reinterpret_cast<decltype(api.lua_pushnumber)>(table[40]);
     }
     { // lua_pushstring, SDK member pushstring
         const unsigned char prefix[16]={0x48,0x85,0xd2,0x75,0x0d,0x48,0x8b,0x41,0x10,0x89,0x50,0x08,0x48,0x83,0x41,0x10};
-        auto expected=base+0x7972f0;
+        auto expected=base+0x797340;
         if (table[43]!=expected || !readable(expected,16,true) || std::memcmp(expected,prefix,16))
             return fail("LuaApi validation failed: lua_pushstring");
         api.lua_pushstring=reinterpret_cast<decltype(api.lua_pushstring)>(table[43]);
     }
     { // lua_pushvalue, SDK member pushvalue
         const unsigned char prefix[16]={0x48,0x83,0xec,0x28,0x4c,0x8b,0xd1,0xe8,0x34,0xfa,0xff,0xff,0x4d,0x8b,0x42,0x10};
-        auto expected=base+0x796cb0;
+        auto expected=base+0x796d00;
         if (table[15]!=expected || !readable(expected,16,true) || std::memcmp(expected,prefix,16))
             return fail("LuaApi validation failed: lua_pushvalue");
         api.lua_pushvalue=reinterpret_cast<decltype(api.lua_pushvalue)>(table[15]);
     }
     { // lua_rawequal, SDK member rawequal
         const unsigned char prefix[16]={0x40,0x53,0x48,0x83,0xec,0x20,0x45,0x8b,0xd8,0x4c,0x8b,0xd1,0xe8,0xcf,0xf8,0xff};
-        auto expected=base+0x796e10;
+        auto expected=base+0x796e60;
         if (table[28]!=expected || !readable(expected,16,true) || std::memcmp(expected,prefix,16))
             return fail("LuaApi validation failed: lua_rawequal");
         api.lua_rawequal=reinterpret_cast<decltype(api.lua_rawequal)>(table[28]);
     }
     { // lua_rawget, SDK member rawget
         const unsigned char prefix[16]={0x40,0x53,0x48,0x83,0xec,0x20,0x4c,0x8b,0xd1,0xe8,0x42,0xf1,0xff,0xff,0x49,0x8b};
-        auto expected=base+0x7975a0;
+        auto expected=base+0x7975f0;
         if (table[52]!=expected || !readable(expected,16,true) || std::memcmp(expected,prefix,16))
             return fail("LuaApi validation failed: lua_rawget");
         api.lua_rawget=reinterpret_cast<decltype(api.lua_rawget)>(table[52]);
     }
     { // lua_rawgeti, SDK member rawgeti
         const unsigned char prefix[16]={0x48,0x83,0xec,0x28,0x45,0x8b,0xd0,0x4c,0x8b,0xd9,0xe8,0x01,0xf1,0xff,0xff,0x41};
-        auto expected=base+0x7975e0;
+        auto expected=base+0x797630;
         if (table[53]!=expected || !readable(expected,16,true) || std::memcmp(expected,prefix,16))
             return fail("LuaApi validation failed: lua_rawgeti");
         api.lua_rawgeti=reinterpret_cast<decltype(api.lua_rawgeti)>(table[53]);
     }
     { // lua_replace, SDK member replace
         const unsigned char prefix[16]={0x48,0x89,0x5c,0x24,0x08,0x57,0x48,0x83,0xec,0x20,0x8b,0xfa,0x48,0x8b,0xd9,0x81};
-        auto expected=base+0x796b70;
+        auto expected=base+0x796bc0;
         if (table[18]!=expected || !readable(expected,16,true) || std::memcmp(expected,prefix,16))
             return fail("LuaApi validation failed: lua_replace");
         api.lua_replace=reinterpret_cast<decltype(api.lua_replace)>(table[18]);
     }
     { // lua_setfield, SDK member setfield
         const unsigned char prefix[16]={0x48,0x89,0x5c,0x24,0x08,0x57,0x48,0x83,0xec,0x30,0x4d,0x8b,0xd0,0x48,0x8b,0xd9};
-        auto expected=base+0x7977a0;
+        auto expected=base+0x7977f0;
         if (table[59]!=expected || !readable(expected,16,true) || std::memcmp(expected,prefix,16))
             return fail("LuaApi validation failed: lua_setfield");
         api.lua_setfield=reinterpret_cast<decltype(api.lua_setfield)>(table[59]);
     }
     { // lua_setmetatable, SDK member setmetatable
         const unsigned char prefix[16]={0x48,0x83,0xec,0x28,0x4c,0x8b,0xd1,0xe8,0x64,0xed,0xff,0xff,0x49,0x8b,0x52,0x10};
-        auto expected=base+0x797980;
+        auto expected=base+0x7979d0;
         if (table[62]!=expected || !readable(expected,16,true) || std::memcmp(expected,prefix,16))
             return fail("LuaApi validation failed: lua_setmetatable");
         api.lua_setmetatable=reinterpret_cast<decltype(api.lua_setmetatable)>(table[62]);
     }
     { // lua_settop, SDK member settop
         const unsigned char prefix[16]={0x85,0xd2,0x78,0x40,0x4c,0x63,0xc2,0x48,0x8b,0x51,0x18,0x4d,0x03,0xc0,0x4a,0x8d};
-        auto expected=base+0x796a70;
+        auto expected=base+0x796ac0;
         if (table[14]!=expected || !readable(expected,16,true) || std::memcmp(expected,prefix,16))
             return fail("LuaApi validation failed: lua_settop");
         api.lua_settop=reinterpret_cast<decltype(api.lua_settop)>(table[14]);
     }
     { // lua_toboolean, SDK member toboolean
         const unsigned char prefix[16]={0x48,0x83,0xec,0x28,0xe8,0x17,0xf7,0xff,0xff,0x8b,0x48,0x08,0x85,0xc9,0x74,0x14};
-        auto expected=base+0x796fd0;
+        auto expected=base+0x797020;
         if (table[32]!=expected || !readable(expected,16,true) || std::memcmp(expected,prefix,16))
             return fail("LuaApi validation failed: lua_toboolean");
         api.lua_toboolean=reinterpret_cast<decltype(api.lua_toboolean)>(table[32]);
     }
     { // lua_tointeger, SDK member tointeger
         const unsigned char prefix[16]={0x48,0x83,0xec,0x38,0xe8,0x77,0xf7,0xff,0xff,0x8b,0x48,0x08,0x83,0xf9,0x03,0x74};
-        auto expected=base+0x796f70;
+        auto expected=base+0x796fc0;
         if (table[31]!=expected || !readable(expected,16,true) || std::memcmp(expected,prefix,16))
             return fail("LuaApi validation failed: lua_tointeger");
         api.lua_tointeger=reinterpret_cast<decltype(api.lua_tointeger)>(table[31]);
     }
     { // lua_tolstring, SDK member tolstring
         const unsigned char prefix[16]={0x48,0x89,0x5c,0x24,0x08,0x48,0x89,0x74,0x24,0x10,0x57,0x48,0x83,0xec,0x20,0x49};
-        auto expected=base+0x797000;
+        auto expected=base+0x797050;
         if (table[33]!=expected || !readable(expected,16,true) || std::memcmp(expected,prefix,16))
             return fail("LuaApi validation failed: lua_tolstring");
         api.lua_tolstring=reinterpret_cast<decltype(api.lua_tolstring)>(table[33]);
     }
     { // lua_tonumber, SDK member tonumber
         const unsigned char prefix[16]={0x48,0x83,0xec,0x38,0xe8,0xd7,0xf7,0xff,0xff,0x8b,0x48,0x08,0x83,0xf9,0x03,0x74};
-        auto expected=base+0x796f10;
+        auto expected=base+0x796f60;
         if (table[30]!=expected || !readable(expected,16,true) || std::memcmp(expected,prefix,16))
             return fail("LuaApi validation failed: lua_tonumber");
         api.lua_tonumber=reinterpret_cast<decltype(api.lua_tonumber)>(table[30]);
     }
     { // lua_touserdata, SDK member touserdata
         const unsigned char prefix[16]={0x48,0x83,0xec,0x28,0xe8,0x97,0xf5,0xff,0xff,0x8b,0x48,0x08,0x83,0xf9,0x02,0x74};
-        auto expected=base+0x797150;
+        auto expected=base+0x7971a0;
         if (table[36]!=expected || !readable(expected,16,true) || std::memcmp(expected,prefix,16))
             return fail("LuaApi validation failed: lua_touserdata");
         api.lua_touserdata=reinterpret_cast<decltype(api.lua_touserdata)>(table[36]);
     }
     { // lua_type, SDK member type
-        const unsigned char prefix[16]={0x48,0x83,0xec,0x28,0xe8,0x07,0xfa,0xff,0xff,0x48,0x8d,0x0d,0x80,0x1e,0xf6,0x00};
-        auto expected=base+0x796ce0;
+        const unsigned char prefix[16]={0x48,0x83,0xec,0x28,0xe8,0x07,0xfa,0xff,0xff,0x48,0x8d,0x0d,0xd0,0x28,0xf6,0x00};
+        auto expected=base+0x796d30;
         if (table[25]!=expected || !readable(expected,16,true) || std::memcmp(expected,prefix,16))
             return fail("LuaApi validation failed: lua_type");
         api.lua_type=reinterpret_cast<decltype(api.lua_type)>(table[25]);
     }
     { // lua_typename, SDK member lua_typename
-        const unsigned char prefix[16]={0x83,0xfa,0xff,0x75,0x08,0x48,0x8d,0x05,0x8c,0x0c,0xfa,0x00,0xc3,0x48,0x63,0xc2};
-        auto expected=base+0x796d10;
+        const unsigned char prefix[16]={0x83,0xfa,0xff,0x75,0x08,0x48,0x8d,0x05,0xcc,0x0b,0xfa,0x00,0xc3,0x48,0x63,0xc2};
+        auto expected=base+0x796d60;
         if (table[26]!=expected || !readable(expected,16,true) || std::memcmp(expected,prefix,16))
             return fail("LuaApi validation failed: lua_typename");
         api.lua_typename=reinterpret_cast<decltype(api.lua_typename)>(table[26]);
     }
     if (!accept_native_api(&api)) return fail("Host API binding rejected");
-    boot_status="validated build 26251122 and all 53 LuaApi slots";
+    boot_status="validated build 26568081 and all 53 LuaApi slots";
     return true;
 }
 HD2_EXPORT int luaopen_hd2_nativeinfo(lua_State *L) {

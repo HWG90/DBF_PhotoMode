@@ -9,7 +9,7 @@ function M.library(name)
 end
 function M.open()
  if not native then
-  local open,why=package.loadlib(M.library('hd2_nativeinfo_c1578203689e39b9.dll'),'luaopen_hd2_nativeinfo')
+  local open,why=package.loadlib(M.library('hd2_nativeinfo_85c81f8434fb71a6.dll'),'luaopen_hd2_nativeinfo')
   assert(open,why);native=assert(open(),'War Journalist native bridge refused this host')
   for _,name in ipairs({'function_address','userdata_address','read_memory','module_base'})do assert(type(native[name])=='function','Native bridge API differs: '..name)end
  end

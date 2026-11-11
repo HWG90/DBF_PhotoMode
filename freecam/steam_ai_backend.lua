@@ -3,7 +3,7 @@ local PORT51=mod.require('src/cffi.lua')
 -- hd2_net libraries. Copyright (c) 2026 Link; see vendor/LICENSE-Link.txt.
 -- This backend changes behavior fields and the solo player no-aggro bit only: no clock, pose, velocity, stun,
 -- spawn, despawn, physics API, or game-function invocation.
-local M={game_stamp=0x6ae0e5ff,exe_stamp=0x6ae0964a}
+local M={game_stamp=0x6af322c1,exe_stamp=0x6af2d5e6}
 M.layout={WORLD=0x2ce41b8,DIRECTOR=0x2ce1ed0,AI=0x2ce1878,BEHAVIOR=0x2ce18f0,DETECTOR=0x2ce16f8,ALERT=0x2ce16d8,
  INVALID=0x2e3f0d0,NET=0x2e38228,GAME_STATE=0x2ce1508,GAME_MODE=0x2ce1850,STATE_VALUE=0xac29c,
  WORLD_ENTITIES=0xf1c978,WORLD_RECORDS=0xf349e0,UNIT_REGISTRY=0x1ab76f8}
@@ -45,7 +45,7 @@ function M.new(sr,memory)
  local function image(base,stamp)local pe=u32(base+60);assert(pe>=64 and pe<1048576 and read(base+pe,4)=='PE\0\0'and u32(base+pe+8)==stamp,'Enemy behavior build unsupported')end
  image(memory.game,M.game_stamp);image(memory.exe,M.exe_stamp)
  -- Registry fingerprint shared with the already verified local-subject route.
- assert(read(memory.exe+0xa06a0,22)=='\072\137\092\036\008\072\137\116\036\016\087\072\131\236\032\072\139\053\066\112\161\001','AI Unit registry changed')
+ assert(read(memory.exe+0xa06d0,22)=='\072\137\092\036\008\072\137\116\036\016\087\072\131\236\032\072\139\053\018\112\161\001','AI Unit registry changed')
  local function map(header,key,copied)
   local h=copied or read(header,24);local data,cap,empty,seed=address(h,0),word(h,8),word(h,12),word(h,16)
   assert(data>=65536 and cap>0 and cap<=1048576 and bit.band(cap,cap-1)==0,'AI map layout changed')
@@ -88,8 +88,8 @@ function M.new(sr,memory)
   local now=memory.now();if now<faction_deadline then return faction_cache end
   faction_deadline=now+.5;faction_cache=nil
   local ok,value=pcall(function()
-   assert(read(memory.game+0x11da689,22)=='\076\139\037\120\110\176\001\073\139\156\036\008\227\010\000\076\141\171\248\000\000\000','Mission faction owner reader changed')
-   assert(read(memory.game+0x11da6de,5)=='\065\015\182\069\008','Mission faction byte reader changed')
+   assert(read(memory.game+0x11da7e9,22)=='\076\139\037\024\109\176\001\073\139\156\036\008\227\010\000\076\141\171\248\000\000\000','Mission faction owner reader changed')
+   assert(read(memory.game+0x11da83e,5)=='\065\015\182\069\008','Mission faction byte reader changed')
    local state=ptr(memory.game+L.GAME_STATE);local mode=ptr(memory.game+L.GAME_MODE)
    if not(state and mode and u32(state+L.STATE_VALUE)==4 and u32(mode+8)==1)then return end
    local record=ptr(state+0xae308);if not record then return end
@@ -160,7 +160,7 @@ function M.new(sr,memory)
   local methods=span(vt+0xc8,56)
   local alive=copied_pointer(methods,48,vt+0xf8)
   local visible=copied_pointer(methods,0,vt+0xc8)
-  if alive~=memory.exe+0x28d330 or visible~=memory.exe+0x293550 then return end
+  if alive~=memory.exe+0x28d3e0 or visible~=memory.exe+0x293600 then return end
   return ref
  end
  -- Solo Passive owns one player flag, rather than touching every enemy.

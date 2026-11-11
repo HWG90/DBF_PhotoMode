@@ -12,7 +12,7 @@ local function put(address,s)for i=1,#s do bytes[address+i-1]=s:byte(i)end end
 local function hash_bytes(hex)return le32(tonumber(hex:sub(9,16),16))..le32(tonumber(hex:sub(1,8),16))end
 local function pointer_bytes(v)return le32(v%4294967296)..le32(math.floor(v/4294967296))end
 -- game.dll as build 26251122 presents it: PE stamp, image size, checksum, then the HUD font globals.
-put(base+0x3c,le32(0x100));put(base+0x100,'PE\0\0');put(base+0x108,le32(0x6AE0E5FF));put(base+0x150,le32(0x3382000));put(base+0x158,le32(0x2ED103A))
+put(base+0x3c,le32(0x100));put(base+0x100,'PE\0\0');put(base+0x108,le32(0x6AF322C1));put(base+0x150,le32(0x3382000));put(base+0x158,le32(0x2ED4502))
 put(base+0x312D998,hash_bytes(FONT));put(base+0x312E618,hash_bytes(ATLAS));put(base+0x3180C08,pointer_bytes(owner));put(owner+24,hash_bytes(MATERIAL))
 local function read(address,count)
  local out={}
@@ -47,6 +47,6 @@ assert(#logged==1,'a recovered bridge adds no log line')
 -- 3. Another game build's stamp keeps the stock font: no unverified offsets are read.
 put(base+0x108,le32(0x6AD7C05D))
 assert(factory.new(nil,nil,nil,nil,mod.log).resolve(sr)==nil,'another game build keeps the stock font')
-put(base+0x108,le32(0x6AE0E5FF))
+put(base+0x108,le32(0x6AF322C1))
 mod=saved_mod;package.loadlib=saved_loadlib
 print('Proton HUD font: read through the main bridge, refusal reported once, retried on open passed')
